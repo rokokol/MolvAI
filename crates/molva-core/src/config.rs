@@ -63,6 +63,7 @@ pub struct Config {
     pub stats: StatsConfig,
     pub privacy: PrivacyConfig,
     pub autostart: AutostartConfig,
+    pub gui: GuiConfig,
     pub log: LogConfig,
 }
 
@@ -84,6 +85,7 @@ impl Default for Config {
             stats: StatsConfig::default(),
             privacy: PrivacyConfig::default(),
             autostart: AutostartConfig::default(),
+            gui: GuiConfig::default(),
             log: LogConfig::default(),
         }
     }
@@ -451,6 +453,17 @@ impl Default for PrivacyConfig {
 #[serde(default)]
 pub struct AutostartConfig {
     pub enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GuiConfig {
+    /// Анимировать значок в трее во время записи; по умолчанию `false`.
+    ///
+    /// Выключено намеренно: значок меняется только при смене состояния (покой, запись,
+    /// обработка), поэтому за реплику он обновляется считанные разы, а не на каждое событие
+    /// уровня сигнала. Кому мигающий индикатор нужнее спокойного трея — ставит `true`.
+    pub tray_animation: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

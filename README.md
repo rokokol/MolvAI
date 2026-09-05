@@ -160,6 +160,7 @@ bindr = , Control_R, exec, molva stop
 | `privacy` | `no_record_mode` | `false` | выключает журнал и историю целиком |
 | `privacy` | `telemetry` | `false` | телеметрии нет; ключ существует, чтобы это заявить явно |
 | `autostart` | `enabled` | `false` | запускать при входе в систему |
+| `gui` | `tray_animation` | `false` | `false` — значок трея меняется только при смене состояния и не мигает на каждое событие |
 | `log` | `level` | `info` | `error`, `warn`, `info`, `debug` или `trace` |
 
 Правка файла применяется без пересборки, неверное значение даёт ошибку с путём к файлу и именем ключа. Полный список полей — в `crates/molva-core/src/config.rs`

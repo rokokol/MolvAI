@@ -483,6 +483,11 @@ defect 'sound/stop-cue-on-record' 'crates/molva-core/src/app/daemon/mod.rs' \
   '                                        let _ = &sound;' \
   'конец записи не слышен: непонятно, отпустил ли ты клавишу и ушла ли реплика в обработку'
 
+defect 'gui/tray-icon-is-static-between-states' 'crates/molva-gui/src/tray.rs' \
+  '    shown != Some(next)' \
+  '    shown != Some(next) || true' \
+  'значок трея переставляется на каждое событие демона и мигает всю реплику'
+
 defect 'cli/second-instance-refuses-to-start' 'crates/molva/src/cmd/daemon.rs' \
   '    let Some(pid) = ping(socket) else {' \
   '    let Some(pid) = ping(socket).filter(|_| false) else {' \
