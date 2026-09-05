@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
-// Чистые функции форматирования и подготовки данных для графика.
-// Всё, что можно посчитать в ядре, считается в Rust; здесь только представление.
+// Чистые функции представления и геометрия графика.
+// Всё, что можно посчитать в ядре, считается в Rust; здесь только форматирование.
 
 import type { DayPoint } from "./types";
 
@@ -12,12 +12,21 @@ export function formatWpm(value: number | null | undefined, dash = "—"): strin
   return value.toFixed(1);
 }
 
+/**
+ * Разделитель разрядов — узкий неразрывный пробел U+202F: число не рвётся переносом
+ * строки. Вынесен в константу, потому что на глаз он неотличим от обычного пробела,
+ * и сравнивать с ним нужно именно эту константу, а не пробел из клавиатуры.
+ */
+export const GROUP_SEPARATOR = " ";
+
 /** Целое с разделителями разрядов: 12345 → «12 345». */
 export function formatCount(value: number): string {
-  return Math.round(value).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return Math.round(value)
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, GROUP_SEPARATOR);
 }
 
-/** Минуты в «2 ч 05 мин» или «7 мин»; меньше минуты — «<1 мин». */
+/** Минуты: до часа — числом, дальше «2:05»; меньше минуты — «<1». */
 export function formatMinutes(value: number): string {
   if (!Number.isFinite(value) || value <= 0) {
     return "0";
@@ -71,7 +80,7 @@ export interface ChartPoint {
   day: string;
   words: number;
   wpm: number | null;
-  /** Левый край столбика и его ширина в пользовательских координатах. */
+  /** Левый край столбика и его ширина. */
   x: number;
   width: number;
   /** Верх столбика и его высота: ось слов растёт вверх. */
@@ -85,15 +94,15 @@ export interface ChartGeometry {
   points: ChartPoint[];
   maxWords: number;
   maxWpm: number;
-  /** Ломаная линии темпа; пустая строка, если точек меньше двух. */
+  /** Ломаная линии темпа; дни без темпа разрывают её новой командой `M`. */
   wpmPath: string;
 }
 
 /**
  * Геометрия графика: столбики слов по дням и линия среднего темпа.
  *
- * Обе шкалы независимы и начинаются от нуля, иначе столбики и линия
- * визуально «спорят» друг с другом. Пустой ряд даёт пустую геометрию.
+ * Обе шкалы независимы и начинаются от нуля, иначе столбики и линия визуально
+ * спорят друг с другом. Пустой ряд даёт пустую геометрию, а не деление на ноль.
  */
 export function chartGeometry(
   series: DayPoint[],
@@ -127,7 +136,7 @@ export function chartGeometry(
   let started = false;
   for (const point of points) {
     if (point.wpmY === null) {
-      // Разрыв в данных не соединяем прямой: линия должна прерваться.
+      // Разрыв в данных не соединяем прямой: следующая точка начнёт линию заново.
       started = false;
       continue;
     }
@@ -136,12 +145,7 @@ export function chartGeometry(
     started = true;
   }
 
-  return {
-    points,
-    maxWords,
-    maxWpm,
-    wpmPath: segments.length > 1 ? segments.join(" ") : "",
-  };
+  return { points, maxWords, maxWpm, wpmPath: segments.join(" ") };
 }
 
 /** Ровные подписи оси: ноль, середина и максимум. */
