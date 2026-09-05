@@ -7,6 +7,8 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 authors.workspace = true
+# Бинарь распространяется релизами, не через crates.io: path-зависимость на ядро без версии
+publish = false
 
 [[bin]]
 name = "molva"
