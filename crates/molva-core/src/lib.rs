@@ -9,8 +9,10 @@
 //!
 //! Железо тестируется через фейки трейтов из `domain::fakes`, а не через feature flags.
 
+pub mod app;
 pub mod config;
 pub mod domain;
+pub mod infra;
 pub mod ipc;
 
 pub use config::Config;

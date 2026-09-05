@@ -17,6 +17,20 @@ uuid = { workspace = true }
 toml = { workspace = true }
 directories = { workspace = true }
 tracing = { workspace = true }
+interprocess = { workspace = true }
+which = { workspace = true }
+arboard = { workspace = true }
+enigo = { workspace = true }
+
+# На Linux буфер обмена и синтез ввода умеют Wayland, плюс evdev и уведомления.
+[target.'cfg(target_os = "linux")'.dependencies]
+arboard = { workspace = true, features = ["wayland-data-control"] }
+enigo = { workspace = true, features = ["wayland"] }
+evdev = { workspace = true }
+notify-rust = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+notify-rust = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
