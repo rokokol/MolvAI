@@ -45,10 +45,24 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// История реплик
+    History(cmd::history::HistoryArgs),
+    /// Статистика диктовки
+    Stats(cmd::stats::StatsArgs),
+    /// Профили постобработки
+    Styles {
+        #[command(subcommand)]
+        action: cmd::styles::StylesAction,
+    },
+    /// Словарь терминов
+    Dictionary {
+        #[command(subcommand)]
+        action: cmd::dictionary::DictionaryAction,
+    },
     /// Настройки
     Config {
         #[command(subcommand)]
-        action: ConfigAction,
+        action: cmd::config::ConfigAction,
     },
     /// Запустить демон
     Daemon {
@@ -116,12 +130,6 @@ enum Commands {
     },
 }
 
-#[derive(Subcommand)]
-enum ConfigAction {
-    /// Показать путь к файлу настроек
-    Path,
-}
-
 #[derive(Clone, Copy, ValueEnum)]
 enum ModeArg {
     Dictation,
@@ -186,14 +194,21 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         None => Config::default_path()?,
     };
     let socket = cmd::daemon::resolve_socket(cli.socket);
+    // Настройки читаются мягко: повреждённый файл не должен мешать посмотреть историю.
+    let config = || -> anyhow::Result<Config> {
+        let (config, warning) = Config::load_lenient(&config_path)?;
+        if let Some(warning) = warning {
+            eprintln!("предупреждение: {warning}");
+        }
+        Ok(config)
+    };
 
     match cli.command {
-        Commands::Config {
-            action: ConfigAction::Path,
-        } => {
-            println!("{}", config_path.display());
-            Ok(())
-        }
+        Commands::History(args) => cmd::history::run(args, &config()?),
+        Commands::Stats(args) => cmd::stats::run(args, &config()?),
+        Commands::Styles { action } => cmd::styles::run(action, &config()?),
+        Commands::Dictionary { action } => cmd::dictionary::run(action, &config()?, &config_path),
+        Commands::Config { action } => cmd::config::run(action, &config_path),
         Commands::Daemon { foreground } => {
             let config = Config::load(&config_path)?;
             init_logging(&config.log.level);

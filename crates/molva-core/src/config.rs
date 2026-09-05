@@ -32,6 +32,16 @@ pub enum ConfigError {
     Serialize(String),
     #[error("не удалось определить каталог настроек пользователя")]
     NoHome,
+    #[error("нет такой настройки: {0}")]
+    UnknownKey(String),
+    #[error("{key} = {value:?}: {message}")]
+    BadValue {
+        key: String,
+        value: String,
+        message: String,
+    },
+    #[error("настройки не прошли проверку:\n{}", .0.iter().map(|i| format!("  - {i}")).collect::<Vec<String>>().join("\n"))]
+    Invalid(Vec<ConfigIssue>),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -513,6 +523,457 @@ impl Config {
             source,
         })
     }
+
+    /// Каталог данных пользователя: журнал, модели, сохранённое аудио.
+    ///
+    /// `MOLVA_DATA_DIR` переопределяет — так удобно гонять несколько профилей и тесты руками.
+    pub fn data_dir() -> Result<PathBuf, ConfigError> {
+        if let Some(dir) = std::env::var_os("MOLVA_DATA_DIR") {
+            return Ok(PathBuf::from(dir));
+        }
+        directories::ProjectDirs::from("", "", "molva")
+            .map(|dirs| dirs.data_dir().to_path_buf())
+            .ok_or(ConfigError::NoHome)
+    }
+
+    /// Путь к журналу: из настроек или `<data_dir>/journal.jsonl`.
+    pub fn journal_path(&self) -> Result<PathBuf, ConfigError> {
+        if !self.journal.path.trim().is_empty() {
+            return Ok(PathBuf::from(&self.journal.path));
+        }
+        Ok(Self::data_dir()?.join("journal.jsonl"))
+    }
+
+    /// Путь к словарю: из настроек или `dictionary.toml` рядом с файлом настроек.
+    pub fn dictionary_path(&self) -> Result<PathBuf, ConfigError> {
+        self.dictionary_path_near(&Self::default_path()?)
+    }
+
+    /// То же, но рядом с конкретным файлом настроек: `--config` должен уводить и словарь.
+    pub fn dictionary_path_near(&self, config_path: &Path) -> Result<PathBuf, ConfigError> {
+        if !self.dictionary.path.trim().is_empty() {
+            return Ok(PathBuf::from(&self.dictionary.path));
+        }
+        let dir = match config_path.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),
+            _ => Self::default_dir()?,
+        };
+        Ok(dir.join("dictionary.toml"))
+    }
+
+    /// Прочитать файл, а повреждённый — отложить в `<path>.broken` и начать с умолчаний.
+    ///
+    /// Возвращает настройки и предупреждение, если файл пришлось заменить: молча терять чужие
+    /// настройки нельзя, но и падать на старте из-за одной лишней скобки — тоже.
+    pub fn load_lenient(path: &Path) -> Result<(Self, Option<String>), ConfigError> {
+        match Self::load(path) {
+            Ok(mut config) => {
+                let migrated = config.migrate();
+                if migrated {
+                    config.save(path)?;
+                }
+                Ok((config, None))
+            }
+            Err(ConfigError::Parse { message, .. }) => {
+                let mut broken = path.as_os_str().to_os_string();
+                broken.push(".broken");
+                let broken = PathBuf::from(broken);
+                std::fs::rename(path, &broken).map_err(|source| ConfigError::Write {
+                    path: broken.clone(),
+                    source,
+                })?;
+                let config = Self::default();
+                config.save(path)?;
+                let warning = format!(
+                    "файл настроек повреждён ({message}); он сохранён как {} и заменён \
+                     значениями по умолчанию",
+                    broken.display()
+                );
+                tracing::warn!("{warning}");
+                Ok((config, Some(warning)))
+            }
+            Err(other) => Err(other),
+        }
+    }
+
+    /// Привести настройки к текущей версии схемы. `true` — что-то изменилось.
+    pub fn migrate(&mut self) -> bool {
+        if self.version == CONFIG_VERSION {
+            return false;
+        }
+        if self.version > CONFIG_VERSION {
+            tracing::warn!(
+                version = self.version,
+                supported = CONFIG_VERSION,
+                "файл настроек из более новой версии MolvAI, читаю как есть"
+            );
+            return false;
+        }
+        // Версия 0 — файл, созданный до появления поля: полей не хватало, значения умолчаний
+        // уже подставлены serde, остаётся отметить схему.
+        self.version = CONFIG_VERSION;
+        true
+    }
+
+    /// Проверить настройки целиком. Ошибки собираются все сразу, а не по одной за запуск.
+    pub fn validate(&self) -> Result<(), Vec<ConfigIssue>> {
+        let mut issues = Vec::new();
+        let one_of = |issues: &mut Vec<ConfigIssue>, key: &str, value: &str, allowed: &[&str]| {
+            if !allowed.iter().any(|a| a.eq_ignore_ascii_case(value)) {
+                issues.push(ConfigIssue::allowed(key, value, allowed));
+            }
+        };
+        let in_range = |issues: &mut Vec<ConfigIssue>, key: &str, value: f64, lo: f64, hi: f64| {
+            if value < lo || value > hi {
+                issues.push(ConfigIssue::range(key, &format!("{value}"), lo, hi));
+            }
+        };
+
+        one_of(&mut issues, "ui_language", &self.ui_language, &["ru", "en"]);
+        in_range(&mut issues, "audio.gain", self.audio.gain as f64, 0.1, 10.0);
+        in_range(
+            &mut issues,
+            "audio.max_duration_secs",
+            self.audio.max_duration_secs as f64,
+            1.0,
+            7200.0,
+        );
+        in_range(
+            &mut issues,
+            "audio.sound_volume",
+            self.audio.sound_volume as f64,
+            0.0,
+            1.0,
+        );
+        one_of(
+            &mut issues,
+            "stt.engine",
+            &self.stt.engine,
+            &["whisper-cpp", "remote-openai"],
+        );
+        if self.stt.language != "auto" && self.stt.language.chars().count() != 2 {
+            issues.push(ConfigIssue::new(
+                "stt.language",
+                &self.stt.language,
+                "ожидается `auto` или двухбуквенный код языка, например `ru`",
+            ));
+        }
+        in_range(
+            &mut issues,
+            "stt.no_speech_threshold",
+            self.stt.no_speech_threshold as f64,
+            0.0,
+            1.0,
+        );
+        one_of(
+            &mut issues,
+            "stt.remote.api_key_source",
+            &self.stt.remote.api_key_source,
+            &["keyring", "env", "none"],
+        );
+        one_of(
+            &mut issues,
+            "output.mode",
+            &self.output.mode,
+            &["auto", "paste", "type", "clipboard"],
+        );
+        if self.output.auto_type_max_chars == 0 {
+            issues.push(ConfigIssue::new(
+                "output.auto_type_max_chars",
+                "0",
+                "ожидается положительное число символов",
+            ));
+        }
+        one_of(
+            &mut issues,
+            "llm.provider",
+            &self.llm.provider,
+            &[
+                "ollama",
+                "lmstudio",
+                "lm-studio",
+                "openrouter",
+                "groq",
+                "openai",
+                "custom",
+            ],
+        );
+        one_of(
+            &mut issues,
+            "llm.api_key_source",
+            &self.llm.api_key_source,
+            &["keyring", "env", "none"],
+        );
+        in_range(
+            &mut issues,
+            "llm.temperature",
+            self.llm.temperature as f64,
+            0.0,
+            2.0,
+        );
+        in_range(
+            &mut issues,
+            "llm.max_tokens",
+            self.llm.max_tokens as f64,
+            1.0,
+            32_768.0,
+        );
+        in_range(
+            &mut issues,
+            "llm.timeout_secs",
+            self.llm.timeout_secs as f64,
+            1.0,
+            600.0,
+        );
+        in_range(
+            &mut issues,
+            "llm.max_retries",
+            self.llm.max_retries as f64,
+            0.0,
+            10.0,
+        );
+        if self.llm.enabled && self.llm.base_url.trim().is_empty() {
+            issues.push(ConfigIssue::new(
+                "llm.base_url",
+                "",
+                "постобработка включена, но адрес модели не задан",
+            ));
+        }
+        let styles = crate::app::styles::Styles::from_config(&self.style);
+        if styles.get(&self.style.default).is_none() {
+            let known: Vec<&str> = styles.all().iter().map(|s| s.id.as_str()).collect();
+            issues.push(ConfigIssue::allowed(
+                "style.default",
+                &self.style.default,
+                &known,
+            ));
+        }
+        for (app, style) in &self.style.by_app {
+            if styles.get(style).is_none() {
+                issues.push(ConfigIssue::new(
+                    &format!("style.by_app.{app}"),
+                    style,
+                    "такого стиля нет: посмотрите `molva styles list`",
+                ));
+            }
+        }
+        in_range(
+            &mut issues,
+            "rules.llm_min_words",
+            self.rules.llm_min_words as f64,
+            0.0,
+            1000.0,
+        );
+        in_range(
+            &mut issues,
+            "stats.typing_baseline_wpm",
+            self.stats.typing_baseline_wpm as f64,
+            1.0,
+            400.0,
+        );
+        one_of(
+            &mut issues,
+            "log.level",
+            &self.log.level,
+            &["error", "warn", "info", "debug", "trace"],
+        );
+        if self.hotkeys.push_to_talk.trim().is_empty() {
+            issues.push(ConfigIssue::new(
+                "hotkeys.push_to_talk",
+                "",
+                "клавиша удержания не задана: диктовать будет нечем",
+            ));
+        }
+
+        if issues.is_empty() {
+            Ok(())
+        } else {
+            Err(issues)
+        }
+    }
+
+    /// Все ключи настроек в виде путей через точку — для `molva config get` и подсказок.
+    pub fn keys(&self) -> Vec<String> {
+        let mut keys = Vec::new();
+        if let Ok(value) = toml::Value::try_from(self) {
+            collect_keys(&value, "", &mut keys);
+        }
+        keys.sort();
+        keys
+    }
+
+    /// Значение по пути `stt.model`, как оно выглядело бы в TOML (строки — без кавычек).
+    pub fn get_by_path(&self, path: &str) -> Result<String, ConfigError> {
+        let root =
+            toml::Value::try_from(self).map_err(|e| ConfigError::Serialize(e.to_string()))?;
+        let value = value_at(&root, path).ok_or_else(|| ConfigError::UnknownKey(path.into()))?;
+        Ok(render(value))
+    }
+
+    /// Установить значение по пути; тип берётся из текущего значения, результат проверяется.
+    pub fn set_by_path(&mut self, path: &str, raw: &str) -> Result<(), ConfigError> {
+        let mut root =
+            toml::Value::try_from(&*self).map_err(|e| ConfigError::Serialize(e.to_string()))?;
+        let existing = value_at(&root, path)
+            .ok_or_else(|| ConfigError::UnknownKey(path.into()))?
+            .clone();
+        let parsed = parse_like(&existing, raw, path)?;
+        set_value_at(&mut root, path, parsed)?;
+        let updated: Config =
+            root.try_into()
+                .map_err(|e: toml::de::Error| ConfigError::BadValue {
+                    key: path.to_string(),
+                    value: raw.to_string(),
+                    message: e.to_string(),
+                })?;
+        updated.validate().map_err(ConfigError::Invalid)?;
+        *self = updated;
+        Ok(())
+    }
+
+    /// Выгрузить настройки в файл — тот же формат, что и рабочий конфиг.
+    pub fn export(&self, path: &Path) -> Result<(), ConfigError> {
+        self.save(path)
+    }
+
+    /// Загрузить настройки из файла профиля; повреждённый или неверный файл не применяется.
+    pub fn import(path: &Path) -> Result<Self, ConfigError> {
+        let text = std::fs::read_to_string(path).map_err(|source| ConfigError::Read {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        let mut config = Self::from_toml_str(path, &text)?;
+        config.migrate();
+        config.validate().map_err(ConfigError::Invalid)?;
+        Ok(config)
+    }
+}
+
+/// Одна претензия к настройкам: где, что стоит и что ожидалось.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfigIssue {
+    pub key: String,
+    pub value: String,
+    pub message: String,
+}
+
+impl ConfigIssue {
+    pub fn new(key: &str, value: &str, message: &str) -> Self {
+        Self {
+            key: key.to_string(),
+            value: value.to_string(),
+            message: message.to_string(),
+        }
+    }
+
+    fn allowed(key: &str, value: &str, allowed: &[&str]) -> Self {
+        Self::new(
+            key,
+            value,
+            &format!("допустимые значения: {}", allowed.join(", ")),
+        )
+    }
+
+    fn range(key: &str, value: &str, lo: f64, hi: f64) -> Self {
+        Self::new(key, value, &format!("ожидается число от {lo} до {hi}"))
+    }
+}
+
+impl std::fmt::Display for ConfigIssue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} = {:?}: {}", self.key, self.value, self.message)
+    }
+}
+
+fn collect_keys(value: &toml::Value, prefix: &str, out: &mut Vec<String>) {
+    match value {
+        toml::Value::Table(table) => {
+            for (key, child) in table {
+                let path = if prefix.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{prefix}.{key}")
+                };
+                collect_keys(child, &path, out);
+            }
+        }
+        _ => {
+            if !prefix.is_empty() {
+                out.push(prefix.to_string());
+            }
+        }
+    }
+}
+
+fn value_at<'a>(value: &'a toml::Value, path: &str) -> Option<&'a toml::Value> {
+    let mut current = value;
+    for part in path.split('.') {
+        current = current.as_table()?.get(part)?;
+    }
+    Some(current)
+}
+
+fn set_value_at(root: &mut toml::Value, path: &str, new: toml::Value) -> Result<(), ConfigError> {
+    let parts: Vec<&str> = path.split('.').collect();
+    let mut current = root;
+    for part in &parts[..parts.len() - 1] {
+        current = current
+            .as_table_mut()
+            .and_then(|table| table.get_mut(*part))
+            .ok_or_else(|| ConfigError::UnknownKey(path.into()))?;
+    }
+    let table = current
+        .as_table_mut()
+        .ok_or_else(|| ConfigError::UnknownKey(path.into()))?;
+    let last = parts[parts.len() - 1];
+    table.insert(last.to_string(), new);
+    Ok(())
+}
+
+/// Как значение выглядит в выводе `config get`: строка без кавычек, остальное — как в TOML.
+fn render(value: &toml::Value) -> String {
+    match value {
+        toml::Value::String(text) => text.clone(),
+        toml::Value::Array(items) => items.iter().map(render).collect::<Vec<String>>().join(", "),
+        other => other.to_string(),
+    }
+}
+
+/// Разобрать строку из командной строки в тип текущего значения.
+fn parse_like(existing: &toml::Value, raw: &str, key: &str) -> Result<toml::Value, ConfigError> {
+    let bad = |message: &str| ConfigError::BadValue {
+        key: key.to_string(),
+        value: raw.to_string(),
+        message: message.to_string(),
+    };
+    match existing {
+        toml::Value::String(_) => Ok(toml::Value::String(raw.to_string())),
+        toml::Value::Integer(_) => raw
+            .trim()
+            .parse::<i64>()
+            .map(toml::Value::Integer)
+            .map_err(|_| bad("ожидается целое число")),
+        toml::Value::Float(_) => raw
+            .trim()
+            .parse::<f64>()
+            .map(toml::Value::Float)
+            .map_err(|_| bad("ожидается число, например 0.4")),
+        toml::Value::Boolean(_) => match raw.trim().to_lowercase().as_str() {
+            "true" | "1" | "yes" | "да" | "on" => Ok(toml::Value::Boolean(true)),
+            "false" | "0" | "no" | "нет" | "off" => Ok(toml::Value::Boolean(false)),
+            _ => Err(bad("ожидается true или false")),
+        },
+        toml::Value::Array(_) => Ok(toml::Value::Array(
+            raw.split(',')
+                .map(|item| toml::Value::String(item.trim().to_string()))
+                .filter(|item| item.as_str().map(|s| !s.is_empty()).unwrap_or(false))
+                .collect(),
+        )),
+        toml::Value::Table(_) => Err(bad("это секция настроек, а не значение")),
+        _ => Err(bad(
+            "значение такого типа менять из командной строки нельзя",
+        )),
+    }
 }
 
 #[cfg(test)]
@@ -579,5 +1040,249 @@ mod tests {
             "ключ не должен храниться в файле"
         );
         assert!(text.contains("api_key_env"));
+    }
+
+    #[test]
+    fn defaults_pass_validation() {
+        assert_eq!(Config::default().validate(), Ok(()));
+    }
+
+    #[test]
+    fn a_wrong_value_names_the_key_the_value_and_what_was_expected() {
+        let mut config = Config::default();
+        config.output.mode = "пасте".into();
+        let issues = config.validate().unwrap_err();
+        assert_eq!(issues.len(), 1, "{issues:?}");
+        let text = issues[0].to_string();
+        assert!(text.contains("output.mode"), "{text}");
+        assert!(text.contains("пасте"), "{text}");
+        assert!(text.contains("auto, paste, type, clipboard"), "{text}");
+    }
+
+    #[test]
+    fn every_broken_key_is_reported_at_once() {
+        let mut config = Config {
+            ui_language: "kz".into(),
+            ..Config::default()
+        };
+        config.log.level = "громко".into();
+        config.stats.typing_baseline_wpm = 0;
+        config.llm.temperature = 9.0;
+        let issues = config.validate().unwrap_err();
+        let keys: Vec<&str> = issues.iter().map(|i| i.key.as_str()).collect();
+        assert!(keys.contains(&"ui_language"), "{keys:?}");
+        assert!(keys.contains(&"log.level"), "{keys:?}");
+        assert!(keys.contains(&"stats.typing_baseline_wpm"), "{keys:?}");
+        assert!(keys.contains(&"llm.temperature"), "{keys:?}");
+    }
+
+    #[test]
+    fn an_unknown_style_in_the_settings_is_reported() {
+        let mut config = Config::default();
+        config.style.default = "поэма".into();
+        config
+            .style
+            .by_app
+            .insert("kitty".into(), "тоже нет".into());
+        let issues = config.validate().unwrap_err();
+        let keys: Vec<&str> = issues.iter().map(|i| i.key.as_str()).collect();
+        assert!(keys.contains(&"style.default"), "{keys:?}");
+        assert!(keys.contains(&"style.by_app.kitty"), "{keys:?}");
+    }
+
+    #[test]
+    fn a_custom_style_counts_as_a_known_one() {
+        let mut config = Config::default();
+        config.style.custom.push(CustomStyle {
+            id: "поэма".into(),
+            name: "Поэма".into(),
+            uses_llm: true,
+            system_prompt: "Пиши стихами.".into(),
+        });
+        config.style.default = "поэма".into();
+        assert_eq!(config.validate(), Ok(()));
+    }
+
+    #[test]
+    fn values_are_read_by_dotted_path() {
+        let config = Config::default();
+        assert_eq!(config.get_by_path("stt.model").unwrap(), "small");
+        assert_eq!(
+            config.get_by_path("output.auto_type_max_chars").unwrap(),
+            "200"
+        );
+        assert_eq!(config.get_by_path("llm.enabled").unwrap(), "false");
+        assert_eq!(
+            config.get_by_path("stt.allowed_languages").unwrap(),
+            "ru, en"
+        );
+        assert!(matches!(
+            config.get_by_path("stt.нет_такого").unwrap_err(),
+            ConfigError::UnknownKey(_)
+        ));
+    }
+
+    #[test]
+    fn values_are_written_by_dotted_path_in_the_right_type() {
+        let mut config = Config::default();
+        config.set_by_path("output.mode", "paste").unwrap();
+        assert_eq!(config.output.mode, "paste");
+        config
+            .set_by_path("output.auto_type_max_chars", "120")
+            .unwrap();
+        assert_eq!(config.output.auto_type_max_chars, 120);
+        config.set_by_path("llm.enabled", "true").unwrap();
+        assert!(config.llm.enabled);
+        config.set_by_path("audio.gain", "1.5").unwrap();
+        assert!((config.audio.gain - 1.5).abs() < 1e-6);
+        config
+            .set_by_path("stt.allowed_languages", "ru, de")
+            .unwrap();
+        assert_eq!(config.stt.allowed_languages, vec!["ru", "de"]);
+    }
+
+    #[test]
+    fn a_wrong_type_is_refused_and_nothing_changes() {
+        let mut config = Config::default();
+        let before = config.clone();
+        let err = config
+            .set_by_path("output.auto_type_max_chars", "много")
+            .unwrap_err();
+        assert!(err.to_string().contains("целое число"), "{err}");
+        assert_eq!(config, before);
+    }
+
+    #[test]
+    fn a_value_that_fails_validation_is_refused_and_nothing_changes() {
+        let mut config = Config::default();
+        let before = config.clone();
+        let err = config.set_by_path("log.level", "громко").unwrap_err();
+        assert!(err.to_string().contains("log.level"), "{err}");
+        assert_eq!(config, before);
+    }
+
+    #[test]
+    fn a_section_cannot_be_assigned_a_value() {
+        let mut config = Config::default();
+        let err = config.set_by_path("llm", "что-нибудь").unwrap_err();
+        assert!(err.to_string().contains("секция"), "{err}");
+    }
+
+    #[test]
+    fn keys_list_every_leaf_and_no_sections() {
+        let keys = Config::default().keys();
+        assert!(keys.contains(&"stt.model".to_string()));
+        assert!(keys.contains(&"llm.timeout_secs".to_string()));
+        assert!(keys.contains(&"privacy.no_record_mode".to_string()));
+        assert!(!keys.contains(&"llm".to_string()));
+        // Список отсортирован, чтобы вывод `config get` был стабилен.
+        let mut sorted = keys.clone();
+        sorted.sort();
+        assert_eq!(keys, sorted);
+    }
+
+    #[test]
+    fn a_broken_file_is_moved_aside_and_replaced_by_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "[llm]\nenabled = = true\n").unwrap();
+
+        let (config, warning) = Config::load_lenient(&path).unwrap();
+        assert_eq!(config, Config::default());
+        let warning = warning.expect("пользователь должен узнать о подмене");
+        assert!(warning.contains("повреждён"), "{warning}");
+
+        let broken = dir.path().join("config.toml.broken");
+        assert!(broken.exists(), "испорченный файл должен сохраниться");
+        assert!(std::fs::read_to_string(&broken)
+            .unwrap()
+            .contains("= = true"));
+        // На месте настроек теперь рабочий файл.
+        assert_eq!(Config::load(&path).unwrap(), Config::default());
+    }
+
+    #[test]
+    fn a_healthy_file_is_left_alone_by_load_lenient() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "version = 1\n[stt]\nmodel = \"large-v3-turbo\"\n").unwrap();
+        let (config, warning) = Config::load_lenient(&path).unwrap();
+        assert_eq!(config.stt.model, "large-v3-turbo");
+        assert_eq!(warning, None);
+        assert!(!dir.path().join("config.toml.broken").exists());
+    }
+
+    #[test]
+    fn migration_stamps_the_schema_version_on_an_old_file() {
+        let mut config = Config::from_toml_str(Path::new("x.toml"), "version = 0\n").unwrap();
+        assert!(config.migrate());
+        assert_eq!(config.version, CONFIG_VERSION);
+        // Повторная миграция уже ничего не делает.
+        assert!(!config.migrate());
+    }
+
+    #[test]
+    fn a_file_from_the_future_is_read_as_is_without_downgrading() {
+        let mut config = Config {
+            version: CONFIG_VERSION + 5,
+            ..Config::default()
+        };
+        assert!(!config.migrate());
+        assert_eq!(config.version, CONFIG_VERSION + 5);
+    }
+
+    #[test]
+    fn a_profile_round_trips_through_export_and_import() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("profile.toml");
+        let mut config = Config::default();
+        config.stt.model = "large-v3-turbo".into();
+        config.output.mode = "paste".into();
+        config.export(&path).unwrap();
+
+        let imported = Config::import(&path).unwrap();
+        assert_eq!(imported, config);
+    }
+
+    #[test]
+    fn an_invalid_profile_is_not_imported() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("profile.toml");
+        std::fs::write(&path, "[output]\nmode = \"телепатия\"\n").unwrap();
+        let err = Config::import(&path).unwrap_err();
+        assert!(err.to_string().contains("output.mode"), "{err}");
+    }
+
+    #[test]
+    fn the_dictionary_lives_next_to_the_settings_file_it_belongs_to() {
+        let config = Config::default();
+        assert_eq!(
+            config
+                .dictionary_path_near(Path::new("/opt/profiles/work/config.toml"))
+                .unwrap(),
+            Path::new("/opt/profiles/work/dictionary.toml")
+        );
+    }
+
+    #[test]
+    fn an_explicit_dictionary_path_wins_over_the_settings_directory() {
+        let mut config = Config::default();
+        config.dictionary.path = "/srv/terms.toml".into();
+        assert_eq!(
+            config
+                .dictionary_path_near(Path::new("/opt/profiles/work/config.toml"))
+                .unwrap(),
+            Path::new("/srv/terms.toml")
+        );
+    }
+
+    #[test]
+    fn the_journal_path_comes_from_the_settings_when_it_is_set() {
+        let mut config = Config::default();
+        config.journal.path = "/tmp/molva-test/journal.jsonl".into();
+        assert_eq!(
+            config.journal_path().unwrap(),
+            Path::new("/tmp/molva-test/journal.jsonl")
+        );
     }
 }

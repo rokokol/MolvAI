@@ -8,10 +8,14 @@
 pub mod audio;
 pub mod bench;
 pub mod daemon;
+pub mod dictionary;
 pub mod engine;
 pub mod hotkeys;
 pub mod journal;
 pub mod models;
+pub mod pipeline;
 pub mod rules;
+pub mod secrets;
 pub mod stats;
+pub mod styles;
 pub mod wer;

@@ -22,6 +22,7 @@ directories = "6"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clap = { version = "4", features = ["derive", "env"] }
+strsim = "0.11"
 tempfile = "3"
 # Дорожка F: IPC, вставка, горячие клавиши, уведомления
 interprocess = "2.4"
@@ -44,10 +45,15 @@ symphonia = { version = "0.5", default-features = false, features = [
 ] }
 hound = "3.5"
 # Без default-tls: TLS только через rustls; доверенные корни берёт rustls-platform-verifier —
-# системное хранилище, а где его нет, набор Mozilla из webpki-root-certs
+# системное хранилище, а где его нет, набор Mozilla из webpki-root-certs. Один клиент на
+# загрузку весов (blocking) и на LLM (json).
 reqwest = { version = "0.13", default-features = false, features = [
     "blocking",
+    "json",
+    "http2",
+    "charset",
     "rustls",
+    "webpki-roots",
     "system-proxy",
 ] }
 sha2 = "0.10"

@@ -24,6 +24,7 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 toml = { workspace = true }
 directories = { workspace = true }
+strsim = { workspace = true }
 tracing = { workspace = true }
 # Захват и распознавание. tracing_backend уводит логи whisper.cpp из stderr в tracing:
 # в stdout только данные (Y-15).

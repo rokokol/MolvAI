@@ -43,7 +43,7 @@ const REPEAT_ALLOWED: &[&str] = &["очень", "чуть", "еле", "very"];
 const DOT_IS_NOT_A_COMMAND: &[&str] = &["зрения", "отсчета", "кипения", "опоры", "невозврата"];
 
 /// Разбор текста на токены. Переводы строк остаются отдельными токенами `\n` и `\n\n`.
-fn tokenize(text: &str) -> Vec<String> {
+pub(crate) fn tokenize(text: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut word = String::new();
     let mut newlines = 0usize;
@@ -87,7 +87,7 @@ fn is_newline(token: &str) -> bool {
 }
 
 /// Сборка токенов обратно: пробел между словами, но не вокруг переводов строки.
-fn join(tokens: &[String]) -> String {
+pub(crate) fn join(tokens: &[String]) -> String {
     let mut out = String::new();
     for token in tokens {
         if token.is_empty() {
@@ -104,7 +104,7 @@ fn join(tokens: &[String]) -> String {
 }
 
 /// Форма слова для сравнения со словарями команд: нижний регистр, без крайних знаков, `ё` как `е`.
-fn normalize(token: &str) -> String {
+pub(crate) fn normalize(token: &str) -> String {
     token
         .trim_matches(|c: char| !c.is_alphanumeric() && c != '-' && c != '%')
         .to_lowercase()

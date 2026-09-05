@@ -336,3 +336,122 @@ defect 'cli/pull-skips-installed' 'crates/molva/src/cmd/models.rs' \
   '    let ok = models::verify(target, sha256).map_err(|e| CmdError::file(e.to_string()))?;' \
   '    let ok = false;' \
   'молва каждый раз перекачивает уже установленную модель'
+
+# --- дорожка D: словарь, правила, стили, LLM, конфиг ---
+
+defect 'dictionary/case-from-the-dictionary' 'crates/molva-core/src/app/dictionary.rs' \
+  '            CaseMode::Keep => self.word.clone(),' \
+  '            CaseMode::Keep => self.word.to_lowercase(),' \
+  'термин теряет свой регистр: MolvAI превращается в molvai'
+
+defect 'dictionary/fuzzy-threshold' 'crates/molva-core/src/app/dictionary.rs' \
+  'pub const FUZZY_THRESHOLD: f64 = 0.85;' \
+  'pub const FUZZY_THRESHOLD: f64 = 0.1;' \
+  'нечёткое совпадение подменяет любое похожее по длине слово'
+
+defect 'dictionary/hits-count-real-substitutions' 'crates/molva-core/src/app/dictionary.rs' \
+  '                    if join(&original) != replacement {' \
+  '                    if true {' \
+  'счётчик попаданий словаря растёт на словах, которые и так были написаны верно'
+
+defect 'dictionary/multi-word-aliases' 'crates/molva-core/src/app/dictionary.rs' \
+  '        let max = self.max_alias_words.min(tokens.len() - at);' \
+  '        let max = 1;' \
+  'многословный алиас «молв ай» перестаёт распознаваться'
+
+defect 'dictionary/reload-notices-a-change' 'crates/molva-core/src/app/dictionary.rs' \
+  '        if current == self.mtime && self.mtime.is_some() {' \
+  '        if true {' \
+  'пополнение словаря не подхватывается без перезапуска демона'
+
+defect 'styles/verbatim-skips-the-model' 'crates/molva-core/src/app/styles.rs' \
+  '            uses_llm: false,' \
+  '            uses_llm: true,' \
+  'стиль «дословно» зовёт модель: пароли и команды уезжают на постобработку'
+
+defect 'styles/prompts-forbid-inventing' 'crates/molva-core/src/app/styles.rs' \
+  '" Сохрани язык входного текста. Не добавляй фактов, которых нет в' \
+  '" Переводи на английский. Дополняй текст деталями, которых нет в' \
+  'модель дописывает факты и болтает вступлениями прямо в поле пользователя'
+
+defect 'styles/explicit-choice-wins' 'crates/molva-core/src/app/styles.rs' \
+  '            Some(id) if self.get(id).is_some() => id.to_string(),' \
+  '            Some(id) if self.get(id).is_none() => id.to_string(),' \
+  'ручной выбор стиля игнорируется в пользу правила по окну'
+
+defect 'llm/auth-error-is-not-retryable' 'crates/molva-core/src/infra/llm/openai_compat.rs' \
+  '        if status.as_u16() == 401 || status.as_u16() == 403 {' \
+  '        if false {' \
+  'неверный ключ выглядит как временная недоступность: конвейер повторяет запрос впустую'
+
+defect 'llm/timeout-is-reported-as-timeout' 'crates/molva-core/src/infra/llm/openai_compat.rs' \
+  '                LlmError::Timeout(self.timeout.as_secs())' \
+  '                LlmError::Unavailable("timeout".into())' \
+  'таймаут модели неотличим от отказа сервера: пользователю нечего чинить'
+
+defect 'llm/key-goes-into-the-header' 'crates/molva-core/src/infra/llm/openai_compat.rs' \
+  '            request = request.bearer_auth(key.expose());' \
+  '            let _ = key;' \
+  'ключ не отправляется: облачный провайдер отвечает 401 при верных настройках'
+
+defect 'secrets/key-is-masked-in-logs' 'crates/molva-core/src/app/secrets.rs' \
+  '    format!("{head}…{tail}")' \
+  '    format!("{head}{}{tail}", &key[VISIBLE_HEAD..key.len() - VISIBLE_TAIL])' \
+  'ключ печатается в логах целиком'
+
+defect 'pipeline/rules-instead-of-the-model-on-short-utterances' 'crates/molva-core/src/app/pipeline.rs' \
+  '            && word_count(text) > self.config.rules.llm_min_words' \
+  '            && word_count(text) > 0' \
+  'реплика в три слова уходит в модель: лишние токены и лишняя секунда задержки'
+
+defect 'pipeline/model-failure-does-not-lose-the-utterance' 'crates/molva-core/src/app/pipeline.rs' \
+  '                warn!(error = %err, "постобработка не удалась, отдаю текст после правил");
+                after_rules' \
+  '                warn!(error = %err, "постобработка не удалась");
+                String::new()' \
+  'отказ модели съедает реплику: пользователь теряет сказанное целиком'
+
+defect 'pipeline/injection-failure-is-recorded' 'crates/molva-core/src/app/pipeline.rs' \
+  '                    entry.error = Some(err.to_string());' \
+  '                    let _ = &err;' \
+  'неудачная вставка выглядит в истории как успешная'
+
+defect 'pipeline/no-record-mode-writes-nothing' 'crates/molva-core/src/app/pipeline.rs' \
+  '        if self.config.privacy.no_record_mode {' \
+  '        if false {' \
+  'режим «не записывать» всё равно пишет реплику в журнал'
+
+defect 'pipeline/auth-error-is-not-retried' 'crates/molva-core/src/app/pipeline.rs' \
+  '                Err(LlmError::Auth) => return Err(LlmError::Auth),' \
+  '                Err(LlmError::Auth) => last = LlmError::Auth,' \
+  'протухший ключ бьётся в провайдера столько раз, сколько настроено повторов'
+
+defect 'config/broken-file-is-backed-up' 'crates/molva-core/src/config.rs' \
+  '                std::fs::rename(path, &broken).map_err(|source| ConfigError::Write {' \
+  '                std::fs::remove_file(path).map_err(|source| ConfigError::Write {' \
+  'повреждённый файл настроек стирается без копии: правки пользователя не вернуть'
+
+defect 'config/set-refuses-invalid-values' 'crates/molva-core/src/config.rs' \
+  '        updated.validate().map_err(ConfigError::Invalid)?;' \
+  '        let _ = updated.validate();' \
+  '`molva config set` записывает мусор, который потом ломает запуск'
+
+defect 'config/unknown-key-is-refused' 'crates/molva-core/src/config.rs' \
+  '        let value = value_at(&root, path).ok_or_else(|| ConfigError::UnknownKey(path.into()))?;' \
+  '        let value = value_at(&root, path).unwrap_or(&root);' \
+  'опечатка в имени настройки молча возвращает чужое значение вместо ошибки'
+
+defect 'config/validation-collects-every-issue' 'crates/molva-core/src/config.rs' \
+  '                issues.push(ConfigIssue::allowed(key, value, allowed));' \
+  '                let _ = (key, value, allowed);' \
+  'неверное значение из списка допустимых проходит проверку молча'
+
+defect 'cli/history-limit-keeps-the-newest' 'crates/molva/src/cmd/history.rs' \
+  '        selected = selected.split_off(selected.len() - args.limit);' \
+  '        selected.truncate(args.limit);' \
+  '`molva history --limit 20` показывает двадцать самых старых реплик вместо свежих'
+
+defect 'cli/plain-line-carries-the-id' 'crates/molva/src/cmd/history.rs' \
+  '        "{}  {}  {}  {ID_SEPARATOR}{}",' \
+  '        "{}  {}  {}  {}",' \
+  'строка для rofi теряет метку идентификатора: выбранную реплику не найти по id'
