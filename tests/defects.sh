@@ -61,3 +61,38 @@ defect 'journal/owner-only-permissions' 'crates/molva-core/src/app/journal.rs' \
   '        perms.set_mode(0o600);' \
   '        perms.set_mode(0o644);' \
   'журнал с текстами реплик читается любым пользователем системы'
+
+defect 'stats/average-weighted-by-time' 'crates/molva-core/src/app/stats.rs' \
+  '    Some(words as f32 / secs * 60.0)' \
+  '    Some(entries.iter().filter_map(|e| Entry::wpm_for(e.words, e.audio_secs)).sum::<f32>() / entries.len() as f32)' \
+  'средняя скорость усредняется по репликам: одна короткая фраза перевешивает час диктовки'
+
+defect 'stats/record-needs-a-real-utterance' 'crates/molva-core/src/app/stats.rs' \
+  '        if entry.audio_secs < RECORD_MIN_AUDIO_SECS || entry.words < RECORD_MIN_WORDS {' \
+  '        if false {' \
+  'личным рекордом становится полуторасекундная реплика с абсурдным WPM'
+
+defect 'stats/streak-breaks-on-a-gap' 'crates/molva-core/src/app/stats.rs' \
+  '    while days.contains(&cursor) {' \
+  '    while days.iter().any(|day| *day <= cursor) {' \
+  'серия дней подряд не замечает пропущенные дни и растёт до первой записи в истории'
+
+defect 'stats/streak-starts-from-yesterday' 'crates/molva-core/src/app/stats.rs' \
+  '        let yesterday = today - Duration::days(1);' \
+  '        let yesterday = today - Duration::days(3);' \
+  'серия обнуляется утром, до первой реплики нового дня'
+
+defect 'stats/saved-minutes-subtract-dictation' 'crates/molva-core/src/app/stats.rs' \
+  '        .map(|e| e.words as f32 / baseline - e.audio_secs / 60.0)' \
+  '        .map(|e| e.words as f32 / baseline)' \
+  'сэкономленное время не вычитает время самой диктовки и завышено вдвое'
+
+defect 'stats/session-splits-on-a-pause' 'crates/molva-core/src/app/stats.rs' \
+  '                    || entry.ts - prev.ts > Duration::minutes(SESSION_GAP_MINUTES)' \
+  '                    || false' \
+  'часовой перерыв не делит сессию: средняя скорость за сессию размывается простоем'
+
+defect 'stats/reset-marker-hides-old-entries' 'crates/molva-core/src/app/stats.rs' \
+  '        Some(at) => entries.iter().filter(|e| e.ts >= at).cloned().collect(),' \
+  '        Some(_) => entries.to_vec(),' \
+  'сброс статистики ничего не сбрасывает: старые реплики продолжают считаться'
