@@ -78,8 +78,8 @@ export default function Files({ onError }: ViewProps) {
         fns.forEach((fn) => fn()),
       );
     };
-    // Обработчики ставятся один раз: они не зависят от состояния компонента.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Обработчики ставятся один раз на всё время жизни вкладки: они опираются
+    // только на setJobs и ref со счётчиком, а те между рендерами не меняются.
   }, []);
 
   const statusLabel = (status: JobStatus) =>
