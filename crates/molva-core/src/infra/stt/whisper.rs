@@ -125,6 +125,10 @@ impl SttEngine for WhisperEngine {
         // сегментов не будет вовсе. Автоопределение вместе с распознаванием — это язык "auto".
         params.set_detect_language(false);
         params.set_language(Some(language.as_deref().unwrap_or("auto")));
+        // Энкодер whisper всегда считает окно в 30 секунд, даже если реплика длилась четыре:
+        // 85 % работы уходит на дополненную тишину. Окно ужимается под длину реплики — это
+        // главный рычаг задержки на CPU.
+        params.set_audio_ctx(audio_ctx_for(samples.len(), TARGET_SAMPLE_RATE) as i32);
         if let Some(prompt) = opts.initial_prompt.as_deref() {
             // Нулевой байт внутри подсказки уронил бы CString в whisper-rs.
             if !prompt.is_empty() && !prompt.contains('\0') {
@@ -198,6 +202,29 @@ fn centiseconds_to_ms(value: i64) -> u32 {
         .saturating_mul(10)
         .try_into()
         .unwrap_or(u32::MAX)
+}
+
+/// Полное окно энкодера whisper: 30 секунд аудио.
+const FULL_AUDIO_CTX: usize = 1500;
+
+/// Позиций энкодера на секунду звука.
+const AUDIO_CTX_PER_SEC: usize = FULL_AUDIO_CTX / 30;
+
+/// Запас поверх длины реплики: хвост слова не должен попасть на границу окна.
+const AUDIO_CTX_MARGIN: usize = 128;
+
+/// Размер окна энкодера под конкретную длину записи.
+///
+/// whisper дополняет вход до 30 секунд и честно считает свёртки по всей тишине. Для реплики в
+/// четыре секунды это впятеро больше работы, чем нужно. Ужимаем окно до длины реплики с запасом,
+/// но не меньше половины секунды: на совсем коротких окнах модель начинает ошибаться.
+fn audio_ctx_for(samples: usize, sample_rate: u32) -> usize {
+    if sample_rate == 0 {
+        return FULL_AUDIO_CTX;
+    }
+    let secs = samples.div_ceil(sample_rate as usize);
+    let needed = secs * AUDIO_CTX_PER_SEC + AUDIO_CTX_MARGIN;
+    needed.clamp(AUDIO_CTX_MARGIN, FULL_AUDIO_CTX)
 }
 
 /// Итоговая вероятность отсутствия речи — минимум по сегментам.
@@ -333,6 +360,31 @@ mod tests {
         assert_eq!(aggregate_no_speech(&[0.9, 0.2, 0.8]), Some(0.2));
         assert_eq!(aggregate_no_speech(&[]), None);
         assert_eq!(aggregate_no_speech(&[f32::NAN, 0.5]), Some(0.5));
+    }
+
+    #[test]
+    fn audio_ctx_shrinks_with_the_utterance() {
+        // Четыре секунды речи: окно впятеро меньше полного, но с запасом.
+        let four_seconds = audio_ctx_for(4 * 16_000, 16_000);
+        assert!(
+            four_seconds < FULL_AUDIO_CTX / 3,
+            "окно не ужалось: {four_seconds}"
+        );
+        assert!(
+            four_seconds >= 4 * AUDIO_CTX_PER_SEC,
+            "окно короче самой реплики: {four_seconds}"
+        );
+    }
+
+    #[test]
+    fn audio_ctx_never_exceeds_the_full_window() {
+        assert_eq!(audio_ctx_for(60 * 16_000, 16_000), FULL_AUDIO_CTX);
+        assert_eq!(audio_ctx_for(1_000, 0), FULL_AUDIO_CTX);
+    }
+
+    #[test]
+    fn very_short_audio_keeps_a_workable_window() {
+        assert!(audio_ctx_for(160, 16_000) >= AUDIO_CTX_MARGIN);
     }
 
     #[test]
