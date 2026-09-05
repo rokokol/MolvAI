@@ -18,6 +18,7 @@ use cpal::{FromSample, Sample, SampleFormat, SizedSample, StreamConfig};
 use tracing::{debug, info, warn};
 
 use crate::domain::audio::{downmix_to_mono, AudioError, AudioSource, DeviceInfo, PcmAudio};
+use crate::infra::audio::level::ZeroLevelWatch;
 
 /// Имя устройства, означающее «системное по умолчанию».
 pub const DEFAULT_DEVICE: &str = "default";
@@ -354,6 +355,7 @@ where
     let data_shared = Arc::clone(shared);
     let error_shared = Arc::clone(shared);
     let mut last_level = Instant::now() - LEVEL_INTERVAL;
+    let mut zero_level = ZeroLevelWatch::with_defaults();
 
     device
         .build_input_stream::<T, _, _>(
@@ -362,11 +364,16 @@ where
                 let floats: Vec<f32> = data.iter().map(|s| f32::from_sample(*s)).collect();
                 let mono = downmix_to_mono(&floats, channels);
 
-                if let Some(tx) = &level_tx {
-                    if last_level.elapsed() >= LEVEL_INTERVAL {
-                        last_level = Instant::now();
+                let now = Instant::now();
+                if now.duration_since(last_level) >= LEVEL_INTERVAL {
+                    last_level = now;
+                    let level = rms(&mono);
+                    if let Some(message) = zero_level.observe(level, now) {
+                        warn!("{message}");
+                    }
+                    if let Some(tx) = &level_tx {
                         // Слушателя может уже не быть — для записи это не сбой.
-                        let _ = tx.send(rms(&mono));
+                        let _ = tx.send(level);
                     }
                 }
 
