@@ -296,6 +296,8 @@ fn restrict_permissions(file: &File, path: &Path) -> Result<(), JournalError> {
 }
 
 #[cfg(not(unix))]
+// Обе версии обязаны иметь одну сигнатуру: на unix эта функция ошибку возвращает.
+#[allow(clippy::unnecessary_wraps)]
 fn restrict_permissions(_file: &File, _path: &Path) -> Result<(), JournalError> {
     Ok(())
 }
