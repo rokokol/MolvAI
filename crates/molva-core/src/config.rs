@@ -138,6 +138,10 @@ pub struct SttConfig {
     pub threads: u32,
     pub unload_after_secs: u32,
     pub no_speech_threshold: f32,
+    /// Распознавать реплику кусками прямо во время записи.
+    pub chunked: bool,
+    /// Пауза, по которой режется кусок при потоковой обработке.
+    pub chunk_pause_ms: u32,
     pub streaming_preview: bool,
     pub remote: RemoteSttConfig,
 }
@@ -155,7 +159,11 @@ impl Default for SttConfig {
             threads: 0,
             unload_after_secs: 600,
             no_speech_threshold: 0.6,
-            streaming_preview: false,
+            chunked: true,
+            // Пауза сегментации короче, чем `audio.vad_min_pause_ms`: там пауза решает, кончилась
+            // ли реплика, а здесь — можно ли уже отправить кусок в модель.
+            chunk_pause_ms: crate::app::audio::segmenter::DEFAULT_CHUNK_PAUSE_MS,
+            streaming_preview: true,
             remote: RemoteSttConfig::default(),
         }
     }
@@ -667,6 +675,13 @@ impl Config {
             0.0,
             1.0,
         );
+        in_range(
+            &mut issues,
+            "stt.chunk_pause_ms",
+            self.stt.chunk_pause_ms as f64,
+            100.0,
+            5_000.0,
+        );
         one_of(
             &mut issues,
             "stt.remote.api_key_source",
@@ -1047,6 +1062,29 @@ mod tests {
     #[test]
     fn defaults_pass_validation() {
         assert_eq!(Config::default().validate(), Ok(()));
+    }
+
+    #[test]
+    fn streaming_is_on_out_of_the_box() {
+        // Обещание продукта: черновик виден во время речи, а после отпускания остаётся хвост.
+        // Выключить можно только явно в файле настроек.
+        let stt = Config::default().stt;
+        assert!(stt.chunked, "потоковая обработка выключена по умолчанию");
+        assert!(stt.streaming_preview, "черновик выключен по умолчанию");
+        assert_eq!(stt.chunk_pause_ms, 700);
+    }
+
+    #[test]
+    fn an_impossible_chunk_pause_is_refused() {
+        let mut config = Config::default();
+        config.stt.chunk_pause_ms = 10;
+        let issues = config.validate().unwrap_err();
+        assert!(
+            issues
+                .iter()
+                .any(|i| i.to_string().contains("chunk_pause_ms")),
+            "{issues:?}"
+        );
     }
 
     #[test]
