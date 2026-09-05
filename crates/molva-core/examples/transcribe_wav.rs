@@ -14,6 +14,9 @@
 //!
 //! Печатает текст в stdout, тайминги и служебное — в stderr (Y-15).
 
+// Пример — это утилита командной строки: распознанный текст и есть её результат в stdout.
+#![allow(clippy::print_stdout)]
+
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Instant;

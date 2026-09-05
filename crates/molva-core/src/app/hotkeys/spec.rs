@@ -182,10 +182,11 @@ impl HotkeySpec {
             .map(|p| p.trim().to_ascii_lowercase())
             .filter(|p| !p.is_empty())
             .collect();
-        if parts.is_empty() {
+        // Пустой список и разбор последней части — одна и та же проверка: `split_last` уже
+        // отвечает на вопрос «есть ли что разбирать».
+        let Some((last, head)) = parts.split_last() else {
             return Err(HotkeyError::BadSpec(spec.to_string()));
-        }
-        let (last, head) = parts.split_last().expect("список не пуст");
+        };
         let mut modifiers = BTreeSet::new();
         for part in head {
             let modifier = Modifier::parse(part)

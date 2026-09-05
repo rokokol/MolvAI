@@ -8,6 +8,10 @@
 //!
 //! Объявления по одному на строку: файл общий для нескольких дорожек, так меньше конфликтов.
 
+// Печать в stdout — это работа слоя команд: сюда идут данные, ради которых `molva` и запускают.
+// Правило `print_stdout` остаётся в силе для ядра и GUI, где stdout принадлежит не им.
+#![allow(clippy::print_stdout)]
+
 pub(crate) mod bench;
 pub(crate) mod completions;
 pub(crate) mod config;

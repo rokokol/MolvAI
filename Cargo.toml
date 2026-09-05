@@ -22,6 +22,20 @@ unused_qualifications = "warn"
 [workspace.lints.rustdoc]
 broken_intra_doc_links = "deny"
 
+[workspace.lints.clippy]
+# Аварийные выходы в коде продукта: ошибка должна быть значением, а не паникой.
+# В `#[cfg(test)]` эти правила сняты через `cfg_attr` в корне каждого крейта.
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+# Данные идут в stdout, всё остальное — в stderr. Печать данных разрешена точечно,
+# `#[allow(clippy::print_stdout)]` на модуле команды; stderr не ограничен.
+print_stdout = "warn"
+print_stderr = "allow"
+
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

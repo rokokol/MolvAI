@@ -10,6 +10,8 @@ use std::sync::{Arc, Mutex};
 
 use thiserror::Error;
 
+use crate::lock;
+
 #[derive(Debug, Error)]
 pub enum SidecarError {
     #[error("исполняемый файл molva не найден: положите его рядом с GUI или в PATH")]
@@ -107,7 +109,7 @@ pub struct Transcriptions {
 impl Transcriptions {
     /// Отменить разбор по идентификатору. `false` — такой задачи уже нет.
     pub fn cancel(&self, id: &str) -> bool {
-        let mut running = self.running.lock().expect("реестр разборов отравлен");
+        let mut running = lock(&self.running);
         if let Some(pos) = running.iter().position(|(key, _)| key == id) {
             let (_, mut child) = running.remove(pos);
             let _ = child.kill();
@@ -118,7 +120,7 @@ impl Transcriptions {
     }
 
     fn forget(&self, id: &str) {
-        let mut running = self.running.lock().expect("реестр разборов отравлен");
+        let mut running = lock(&self.running);
         running.retain(|(key, _)| key != id);
     }
 }
@@ -150,7 +152,7 @@ pub fn transcribe(
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     {
-        let mut running = registry.running.lock().expect("реестр разборов отравлен");
+        let mut running = lock(&registry.running);
         running.push((id.to_string(), child));
     }
 
@@ -179,7 +181,7 @@ pub fn transcribe(
         .unwrap_or_default();
 
     let status = {
-        let mut running = registry.running.lock().expect("реестр разборов отравлен");
+        let mut running = lock(&registry.running);
         match running.iter().position(|(key, _)| key == id) {
             // Задачу вынули из реестра — значит её отменили.
             None => return Err(SidecarError::Cancelled),
