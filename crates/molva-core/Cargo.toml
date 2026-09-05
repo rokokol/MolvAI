@@ -8,6 +8,14 @@ repository.workspace = true
 rust-version.workspace = true
 authors.workspace = true
 
+[features]
+default = []
+# Ускорители whisper.cpp: включаются на стороне пользователя, код одинаковый.
+cuda = ["whisper-rs/cuda"]
+vulkan = ["whisper-rs/vulkan"]
+metal = ["whisper-rs/metal"]
+coreml = ["whisper-rs/coreml"]
+
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -17,6 +25,9 @@ uuid = { workspace = true }
 toml = { workspace = true }
 directories = { workspace = true }
 tracing = { workspace = true }
+whisper-rs = "0.16"
+cpal = "0.18"
+hound = "3.5"
 
 [dev-dependencies]
 tempfile = { workspace = true }

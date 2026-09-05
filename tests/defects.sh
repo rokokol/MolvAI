@@ -41,3 +41,28 @@ defect 'config/missing-file-is-default' 'crates/molva-core/src/config.rs' \
   '            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),' \
   '            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(ConfigError::Read { path: path.to_path_buf(), source: e }),' \
   'первый запуск без файла настроек падает вместо того, чтобы работать со значениями по умолчанию'
+
+defect 'audio/trim-silence-threshold' 'crates/molva-core/src/app/audio/trim.rs' \
+  '        .filter(|(_, chunk)| amplitude_to_db(rms(chunk)) >= threshold_db)' \
+  '        .filter(|(_, chunk)| !chunk.is_empty())' \
+  'тишина уходит в whisper целиком: модель галлюцинирует текст там, где никто не говорил'
+
+defect 'audio/trim-keep-ms' 'crates/molva-core/src/app/audio/trim.rs' \
+  '    let keep = (audio.sample_rate as u64 * keep_ms as u64 / 1000) as usize;' \
+  '    let keep = 0;' \
+  'запас keep_ms не оставлен: обрезка съедает первый слог реплики'
+
+defect 'stt/language-retry' 'crates/molva-core/src/infra/stt/mod.rs' \
+  '    if opts.language != LanguageHint::Auto {' \
+  '    if true {' \
+  'русская речь, принятая за украинскую, уходит в текст как есть: повтора с разрешённым языком нет'
+
+defect 'stt/model-missing-message' 'crates/molva-core/src/infra/stt/whisper.rs' \
+  '            if !self.model_path.exists() {' \
+  '            if false {' \
+  'вместо «скачайте модель» пользователь получает невнятную ошибку загрузки весов'
+
+defect 'audio/gain-clamp' 'crates/molva-core/src/infra/audio/cpal_source.rs' \
+  '        *sample = (*sample * gain).clamp(-1.0, 1.0);' \
+  '        *sample = *sample * gain;' \
+  'усиление входа выводит сигнал за пределы диапазона: клиппинг ломает распознавание'
