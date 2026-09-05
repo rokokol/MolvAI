@@ -119,16 +119,16 @@ impl SttEngine for WhisperEngine {
         params.set_print_progress(false);
         params.set_print_realtime(false);
         params.set_print_timestamps(false);
-        match language.as_deref() {
-            Some(code) => {
-                params.set_detect_language(false);
-                params.set_language(Some(code));
-            }
-            None => {
-                params.set_detect_language(true);
-                params.set_language(None);
-            }
-        }
+        // Откат по температуре оставлен по умолчанию: с `temperature_inc = 0` whisper.cpp 1.8
+        // перестаёт отдавать сегменты вовсе (проверено на фикстурах), а времени это не экономит.
+        // `detect_language = true` в whisper.cpp означает «только определить язык и выйти»:
+        // сегментов не будет вовсе. Автоопределение вместе с распознаванием — это язык "auto".
+        params.set_detect_language(false);
+        params.set_language(Some(language.as_deref().unwrap_or("auto")));
+        // Энкодер whisper всегда считает окно в 30 секунд, даже если реплика длилась четыре:
+        // 85 % работы уходит на дополненную тишину. Окно ужимается под длину реплики — это
+        // главный рычаг задержки на CPU.
+        params.set_audio_ctx(audio_ctx_for(samples.len(), TARGET_SAMPLE_RATE) as i32);
         if let Some(prompt) = opts.initial_prompt.as_deref() {
             // Нулевой байт внутри подсказки уронил бы CString в whisper-rs.
             if !prompt.is_empty() && !prompt.contains('\0') {
@@ -142,7 +142,10 @@ impl SttEngine for WhisperEngine {
             .map_err(|e| SttError::Inference(e.to_string()))?;
         let elapsed = started.elapsed();
 
-        let transcript = collect_transcript(&state)?;
+        let mut transcript = collect_transcript(&state)?;
+        if !opts.timestamps {
+            transcript.segments.clear();
+        }
         debug!(
             model = %self.model_name,
             threads,
@@ -199,6 +202,29 @@ fn centiseconds_to_ms(value: i64) -> u32 {
         .saturating_mul(10)
         .try_into()
         .unwrap_or(u32::MAX)
+}
+
+/// Полное окно энкодера whisper: 30 секунд аудио.
+const FULL_AUDIO_CTX: usize = 1500;
+
+/// Позиций энкодера на секунду звука.
+const AUDIO_CTX_PER_SEC: usize = FULL_AUDIO_CTX / 30;
+
+/// Запас поверх длины реплики: хвост слова не должен попасть на границу окна.
+const AUDIO_CTX_MARGIN: usize = 128;
+
+/// Размер окна энкодера под конкретную длину записи.
+///
+/// whisper дополняет вход до 30 секунд и честно считает свёртки по всей тишине. Для реплики в
+/// четыре секунды это впятеро больше работы, чем нужно. Ужимаем окно до длины реплики с запасом,
+/// но не меньше половины секунды: на совсем коротких окнах модель начинает ошибаться.
+fn audio_ctx_for(samples: usize, sample_rate: u32) -> usize {
+    if sample_rate == 0 {
+        return FULL_AUDIO_CTX;
+    }
+    let secs = samples.div_ceil(sample_rate as usize);
+    let needed = secs * AUDIO_CTX_PER_SEC + AUDIO_CTX_MARGIN;
+    needed.clamp(AUDIO_CTX_MARGIN, FULL_AUDIO_CTX)
 }
 
 /// Итоговая вероятность отсутствия речи — минимум по сегментам.
@@ -337,6 +363,31 @@ mod tests {
     }
 
     #[test]
+    fn audio_ctx_shrinks_with_the_utterance() {
+        // Четыре секунды речи: окно впятеро меньше полного, но с запасом.
+        let four_seconds = audio_ctx_for(4 * 16_000, 16_000);
+        assert!(
+            four_seconds < FULL_AUDIO_CTX / 3,
+            "окно не ужалось: {four_seconds}"
+        );
+        assert!(
+            four_seconds >= 4 * AUDIO_CTX_PER_SEC,
+            "окно короче самой реплики: {four_seconds}"
+        );
+    }
+
+    #[test]
+    fn audio_ctx_never_exceeds_the_full_window() {
+        assert_eq!(audio_ctx_for(60 * 16_000, 16_000), FULL_AUDIO_CTX);
+        assert_eq!(audio_ctx_for(1_000, 0), FULL_AUDIO_CTX);
+    }
+
+    #[test]
+    fn very_short_audio_keeps_a_workable_window() {
+        assert!(audio_ctx_for(160, 16_000) >= AUDIO_CTX_MARGIN);
+    }
+
+    #[test]
     fn centiseconds_become_milliseconds() {
         assert_eq!(centiseconds_to_ms(0), 0);
         assert_eq!(centiseconds_to_ms(123), 1230);
@@ -374,5 +425,86 @@ mod tests {
         );
         engine.unload();
         assert!(!engine.is_loaded());
+    }
+
+    /// Регрессия: при `LanguageHint::Auto` текст пропадал целиком.
+    ///
+    /// `detect_language = true` в whisper.cpp означает «определи язык и выйди»: язык в ответе
+    /// был, сегментов и текста — ни одного. Автоопределение вместе с распознаванием включается
+    /// языком `"auto"`, а не этим флагом.
+    #[test]
+    #[ignore = "нужна скачанная модель whisper: MOLVA_TEST_MODEL=<путь> --ignored"]
+    fn regression_auto_language_still_returns_text() {
+        let Ok(path) = std::env::var("MOLVA_TEST_MODEL") else {
+            panic!("задайте MOLVA_TEST_MODEL=<путь к ggml-*.bin>");
+        };
+        let wav = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../tests/fixtures/privet_ru.wav"
+        );
+        let audio = read_wav_fixture(wav);
+
+        let mut engine = WhisperEngine::new(PathBuf::from(path), "test".into(), 0);
+        let opts = SttOptions {
+            language: LanguageHint::Auto,
+            timestamps: true,
+            ..SttOptions::default()
+        };
+
+        let out = engine.transcribe(&audio, &opts).expect("речь распознаётся");
+
+        assert!(
+            !out.text.trim().is_empty(),
+            "при автоопределении языка текст пропал"
+        );
+        assert_eq!(out.detected_language.as_deref(), Some("ru"));
+        assert!(
+            !out.segments.is_empty(),
+            "таймкоды запрашивались, но не пришли"
+        );
+    }
+
+    /// Реплика без запроса таймкодов всё равно даёт текст, а сегменты наружу не идут.
+    #[test]
+    #[ignore = "нужна скачанная модель whisper: MOLVA_TEST_MODEL=<путь> --ignored"]
+    fn fixed_language_without_timestamps_returns_text_only() {
+        let Ok(path) = std::env::var("MOLVA_TEST_MODEL") else {
+            panic!("задайте MOLVA_TEST_MODEL=<путь к ggml-*.bin>");
+        };
+        let wav = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../tests/fixtures/privet_ru.wav"
+        );
+        let audio = read_wav_fixture(wav);
+
+        let mut engine = WhisperEngine::new(PathBuf::from(path), "test".into(), 0);
+        let opts = SttOptions {
+            language: LanguageHint::Fixed("ru".into()),
+            timestamps: false,
+            ..SttOptions::default()
+        };
+
+        let out = engine.transcribe(&audio, &opts).expect("речь распознаётся");
+
+        assert!(!out.text.trim().is_empty(), "текст пропал");
+        assert!(
+            out.segments.is_empty(),
+            "сегменты не запрашивались, но пришли"
+        );
+    }
+
+    /// Мини-чтение WAV для ручных прогонов: фикстуры записаны как 16-битный моно 16 кГц.
+    #[cfg(test)]
+    fn read_wav_fixture(path: &str) -> PcmAudio {
+        let mut reader = hound::WavReader::open(path).expect("фикстура на месте");
+        let spec = reader.spec();
+        let samples: Vec<f32> = reader
+            .samples::<i16>()
+            .map(|s| s.expect("отсчёт читается") as f32 / i16::MAX as f32)
+            .collect();
+        PcmAudio::new(
+            crate::domain::audio::downmix_to_mono(&samples, spec.channels),
+            spec.sample_rate,
+        )
     }
 }

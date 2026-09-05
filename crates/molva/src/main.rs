@@ -109,6 +109,11 @@ enum Commands {
         /// bash, zsh, fish, powershell, elvish
         shell: clap_complete::Shell,
     },
+    /// Список устройств ввода
+    Devices {
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -248,6 +253,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             let mut stdout = std::io::stdout().lock();
             Ok(cmd::completions::run::<Cli>(shell, "molva", &mut stdout)?)
         }
+        Commands::Devices { json } => cmd::devices::run(json),
     }
 }
 
@@ -275,6 +281,12 @@ fn exit_code_for(err: &anyhow::Error) -> u8 {
     }
     if err
         .downcast_ref::<molva_core::domain::inject::InjectError>()
+        .is_some()
+    {
+        return exit::ENGINE;
+    }
+    if err
+        .downcast_ref::<molva_core::domain::audio::AudioError>()
         .is_some()
     {
         return exit::ENGINE;

@@ -17,7 +17,9 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Sample, SampleFormat, SizedSample, StreamConfig};
 use tracing::{debug, info, warn};
 
+use crate::config::AudioConfig;
 use crate::domain::audio::{downmix_to_mono, AudioError, AudioSource, DeviceInfo, PcmAudio};
+use crate::infra::audio::level::ZeroLevelWatch;
 
 /// Имя устройства, означающее «системное по умолчанию».
 pub const DEFAULT_DEVICE: &str = "default";
@@ -40,7 +42,7 @@ pub fn list_input_devices() -> Result<Vec<DeviceInfo>, AudioError> {
         .input_devices()
         .map_err(|e| map_cpal_error(&e, DEFAULT_DEVICE))?;
 
-    let mut out = Vec::new();
+    let mut out: Vec<DeviceInfo> = Vec::new();
     for device in devices {
         let name = device.to_string();
         let sample_rates = match device.supported_input_configs() {
@@ -52,11 +54,29 @@ pub fn list_input_devices() -> Result<Vec<DeviceInfo>, AudioError> {
                 Vec::new()
             }
         };
-        out.push(DeviceInfo {
-            is_default: default_name.as_deref() == Some(name.as_str()),
-            name,
-            sample_rates,
-        });
+        merge_device(
+            &mut out,
+            DeviceInfo {
+                is_default: default_name.as_deref() == Some(name.as_str()),
+                name,
+                sample_rates,
+            },
+        );
+    }
+
+    // ALSA отдаёт устройство по умолчанию отдельной записью, которой нет в общем списке:
+    // без неё пользователь не увидит, куда на самом деле идёт запись.
+    if let Some(default_name) = default_name {
+        if !out.iter().any(|d| d.name == default_name) {
+            out.insert(
+                0,
+                DeviceInfo {
+                    name: default_name,
+                    is_default: true,
+                    sample_rates: Vec::new(),
+                },
+            );
+        }
     }
 
     if out.is_empty() {
@@ -65,12 +85,29 @@ pub fn list_input_devices() -> Result<Vec<DeviceInfo>, AudioError> {
     Ok(out)
 }
 
+/// Добавить устройство, объединив частоты с уже найденным одноимённым.
+///
+/// ALSA показывает одно физическое устройство несколько раз (hw, plughw, разные форматы):
+/// пользователю нужен один пункт списка, иначе выбирать не из чего.
+fn merge_device(devices: &mut Vec<DeviceInfo>, incoming: DeviceInfo) {
+    if let Some(existing) = devices.iter_mut().find(|d| d.name == incoming.name) {
+        existing.is_default |= incoming.is_default;
+        existing.sample_rates.extend(incoming.sample_rates);
+        existing.sample_rates.sort_unstable();
+        existing.sample_rates.dedup();
+        return;
+    }
+    devices.push(incoming);
+}
+
 /// Микрофон как источник записи.
 pub struct CpalSource {
     device: String,
     gain: f32,
     max_duration_secs: u32,
     active: Option<Active>,
+    /// Упёрлась ли в лимит последняя завершённая запись; читается уже после `stop`.
+    truncated: bool,
 }
 
 /// Состояние идущей записи: нить-хозяин потока и общий буфер.
@@ -100,14 +137,23 @@ impl CpalSource {
             gain,
             max_duration_secs,
             active: None,
+            truncated: false,
         }
     }
 
-    /// Упёрлась ли последняя запись в `max_duration_secs`.
+    /// Источник по настройкам пользователя.
+    pub fn from_config(cfg: &AudioConfig) -> Self {
+        Self::new(&cfg.device, cfg.gain, cfg.max_duration_secs)
+    }
+
+    /// Упёрлась ли запись в `max_duration_secs` — во время записи и после её остановки.
+    ///
+    /// Демону это нужно уже после `stop`, чтобы сказать пользователю, что хвост не сохранён.
     pub fn was_truncated(&self) -> bool {
-        self.active
-            .as_ref()
-            .is_some_and(|a| a.shared.truncated.load(Ordering::Relaxed))
+        match &self.active {
+            Some(active) => active.shared.truncated.load(Ordering::Relaxed),
+            None => self.truncated,
+        }
     }
 }
 
@@ -116,6 +162,7 @@ impl AudioSource for CpalSource {
         if self.active.is_some() {
             return Err(AudioError::AlreadyRecording);
         }
+        self.truncated = false;
 
         // Список устройств пересоставляется на каждый старт: микрофон могли переподключить.
         let devices = list_input_devices()?;
@@ -178,6 +225,7 @@ impl AudioSource for CpalSource {
 
         let lost = active.shared.lost.load(Ordering::Relaxed);
         let truncated = active.shared.truncated.load(Ordering::Relaxed);
+        self.truncated = truncated;
         let mut samples = match active.shared.samples.lock() {
             Ok(mut guard) => std::mem::take(&mut *guard),
             Err(poisoned) => std::mem::take(&mut *poisoned.into_inner()),
@@ -258,9 +306,12 @@ fn open_stream(
 ) -> Result<(cpal::Stream, u32, Arc<Shared>), AudioError> {
     let host = cpal::default_host();
     let device = match &selected {
+        // Устройство по умолчанию может не встречаться в общем списке (так делает ALSA), поэтому
+        // имя сверяется и с ним: иначе выбранный в GUI пункт списка не открылся бы.
         Some(name) => host
             .input_devices()
             .map_err(|e| map_cpal_error(&e, requested))?
+            .chain(host.default_input_device())
             .find(|d| d.to_string() == *name)
             .ok_or_else(|| AudioError::DeviceNotFound(name.clone()))?,
         None => host.default_input_device().ok_or(AudioError::NoDevices)?,
@@ -321,6 +372,7 @@ where
     let data_shared = Arc::clone(shared);
     let error_shared = Arc::clone(shared);
     let mut last_level = Instant::now() - LEVEL_INTERVAL;
+    let mut zero_level = ZeroLevelWatch::with_defaults();
 
     device
         .build_input_stream::<T, _, _>(
@@ -329,11 +381,16 @@ where
                 let floats: Vec<f32> = data.iter().map(|s| f32::from_sample(*s)).collect();
                 let mono = downmix_to_mono(&floats, channels);
 
-                if let Some(tx) = &level_tx {
-                    if last_level.elapsed() >= LEVEL_INTERVAL {
-                        last_level = Instant::now();
+                let now = Instant::now();
+                if now.duration_since(last_level) >= LEVEL_INTERVAL {
+                    last_level = now;
+                    let level = rms(&mono);
+                    if let Some(message) = zero_level.observe(level, now) {
+                        warn!("{message}");
+                    }
+                    if let Some(tx) = &level_tx {
                         // Слушателя может уже не быть — для записи это не сбой.
-                        let _ = tx.send(rms(&mono));
+                        let _ = tx.send(level);
                     }
                 }
 
@@ -400,12 +457,19 @@ pub fn apply_gain(samples: &mut [f32], gain: f32) {
     }
 }
 
+/// Похожа ли частота на реальный режим устройства.
+///
+/// ALSA сообщает границы «любой частоты» как 1 Гц и 4294967295 Гц: показывать их пользователю
+/// бессмысленно, выбрать их нельзя.
+fn is_plausible_rate(rate: &u32) -> bool {
+    (4_000..=768_000).contains(rate)
+}
+
 /// Частоты для показа пользователю: границы диапазонов плюс общеупотребимые значения внутри них.
 fn sample_rates_from_ranges(ranges: impl Iterator<Item = (u32, u32)>) -> Vec<u32> {
     let mut rates = Vec::new();
     for (min, max) in ranges {
-        rates.push(min);
-        rates.push(max);
+        rates.extend([min, max].into_iter().filter(is_plausible_rate));
         rates.extend(
             COMMON_RATES
                 .iter()
@@ -539,6 +603,38 @@ mod tests {
     }
 
     #[test]
+    fn absurd_alsa_bounds_are_not_shown_as_sample_rates() {
+        // ALSA отдаёт «любую частоту» как 1 … 4294967295: в списке остаются только реальные.
+        let rates = sample_rates_from_ranges([(1, u32::MAX)].into_iter());
+        assert_eq!(rates, COMMON_RATES.to_vec());
+    }
+
+    #[test]
+    fn duplicate_alsa_entries_collapse_into_one_device() {
+        let mut devices = Vec::new();
+        merge_device(
+            &mut devices,
+            DeviceInfo {
+                name: "ALC897 Analog".into(),
+                is_default: false,
+                sample_rates: vec![44_100],
+            },
+        );
+        merge_device(
+            &mut devices,
+            DeviceInfo {
+                name: "ALC897 Analog".into(),
+                is_default: true,
+                sample_rates: vec![16_000, 44_100],
+            },
+        );
+
+        assert_eq!(devices.len(), 1, "одно устройство — один пункт списка");
+        assert_eq!(devices[0].sample_rates, vec![16_000, 44_100]);
+        assert!(devices[0].is_default, "признак «по умолчанию» потерян");
+    }
+
+    #[test]
     fn sample_rates_are_deduplicated_across_ranges() {
         let rates = sample_rates_from_ranges([(44_100, 44_100), (48_000, 48_000)].into_iter());
         assert_eq!(rates, vec![44_100, 48_000]);
@@ -573,6 +669,22 @@ mod tests {
             ),
             AudioError::DeviceLost
         );
+    }
+
+    #[test]
+    fn source_takes_device_gain_and_limit_from_the_config() {
+        let cfg = AudioConfig {
+            device: "Yeti".into(),
+            gain: 1.5,
+            max_duration_secs: 42,
+            ..AudioConfig::default()
+        };
+
+        let source = CpalSource::from_config(&cfg);
+
+        assert_eq!(source.device, "Yeti");
+        assert_eq!(source.gain, 1.5);
+        assert_eq!(source.max_duration_secs, 42);
     }
 
     #[test]

@@ -10,6 +10,7 @@
 pub mod bench;
 pub mod completions;
 pub mod daemon;
+pub mod devices;
 pub mod doctor;
 pub mod models;
 pub mod record;

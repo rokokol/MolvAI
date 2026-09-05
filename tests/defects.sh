@@ -107,6 +107,11 @@ defect 'stt/model-missing-message' 'crates/molva-core/src/infra/stt/whisper.rs' 
   '            if false {' \
   'вместо «скачайте модель» пользователь получает невнятную ошибку загрузки весов'
 
+defect 'stt/silence-gate' 'crates/molva-core/src/infra/stt/mod.rs' \
+  '        .is_some_and(|p| p >= no_speech_threshold)' \
+  '        .is_some_and(|p| p >= 1.1)' \
+  'на тишине whisper галлюцинирует, и выдуманный текст вставляется в активное поле'
+
 defect 'audio/gain-clamp' 'crates/molva-core/src/infra/audio/cpal_source.rs' \
   '        *sample = (*sample * gain).clamp(-1.0, 1.0);' \
   '        *sample = *sample * gain;' \
