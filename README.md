@@ -63,6 +63,7 @@ molva model download small   # веса с Hugging Face, проверяются 
 molva devices                # список микрофонов
 molva test-inject            # проверить, что текст попадает в активное поле
 molva daemon                 # демон, слушающий горячие клавиши
+molva history paste --last   # вставить последнюю реплику заново, не диктуя её
 ```
 
 Горячие клавиши в Hyprland — две строки в `~/.config/hypr/hyprland.conf`, где `bindr` срабатывает на отпускание:

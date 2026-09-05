@@ -204,7 +204,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
     };
 
     match cli.command {
-        Commands::History(args) => cmd::history::run(args, &config()?),
+        Commands::History(args) => cmd::history::run(args, &config()?, &socket),
         Commands::Stats(args) => cmd::stats::run(args, &config()?),
         Commands::Styles { action } => cmd::styles::run(action, &config()?),
         Commands::Dictionary { action } => cmd::dictionary::run(action, &config()?, &config_path),

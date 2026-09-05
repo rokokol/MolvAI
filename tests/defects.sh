@@ -483,6 +483,16 @@ defect 'sound/stop-cue-on-record' 'crates/molva-core/src/app/daemon/mod.rs' \
   '                                        let _ = &sound;' \
   'конец записи не слышен: непонятно, отпустил ли ты клавишу и ушла ли реплика в обработку'
 
+defect 'daemon/inject-text-repeats-a-reply' 'crates/molva-core/src/app/daemon/mod.rs' \
+  '            Command::InjectText { text, mode } => self.inject_text(&text, mode),' \
+  '            Command::InjectText { text, mode } => { let _ = (text, mode); Err(internal("нет")) }' \
+  'реплику из истории нельзя вставить заново: демон отвечает отказом на inject.text'
+
+defect 'cli/paste-needs-an-id-or-last' 'crates/molva/src/cmd/history.rs' \
+  '    if !last {' \
+  '    if false {' \
+  '`molva history paste` без аргументов молча вставляет последнюю реплику вместо подсказки'
+
 defect 'llm/output-is-sanitized' 'crates/molva-core/src/app/pipeline.rs' \
   '                    let text = sanitize_llm_output(&response.text, &self.dictionary.prompt_hint());' \
   '                    let text = response.text.trim().to_string();' \

@@ -140,6 +140,9 @@ pub fn run(config_path: &Path, options: Options) -> anyhow::Result<()> {
     );
 
     let injector = ChainInjector::for_platform(&config.output, &detected, notifier.clone());
+    // Второй экземпляр — для повтора реплик из истории по `inject.text`: он не должен ждать,
+    // пока конвейер закончит свою реплику.
+    let repeat_injector = ChainInjector::for_platform(&config.output, &detected, notifier.clone());
     let mut pipeline = Pipeline::new(
         build_stt(&config)?,
         build_llm(&config),
@@ -157,6 +160,7 @@ pub fn run(config_path: &Path, options: Options) -> anyhow::Result<()> {
         notifier,
         // Звук начала и конца записи; `audio.sounds = false` даёт молчаливую реализацию.
         sound: sound::build_sound_cue(&config.audio),
+        injector: Some(Box::new(repeat_injector)),
         clock,
         config: config.clone(),
     });

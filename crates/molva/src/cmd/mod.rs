@@ -54,6 +54,8 @@ impl CmdError {
     pub const ENGINE: u8 = crate::exit::ENGINE;
     /// Не удалось прочитать или записать файл.
     pub const FILE: u8 = crate::exit::FILE;
+    /// Демон не запущен или не отвечает.
+    pub const NO_DAEMON: u8 = crate::exit::NO_DAEMON;
 
     pub fn args(message: impl Into<String>) -> Self {
         Self {
@@ -73,6 +75,14 @@ impl CmdError {
         Self {
             message: message.into(),
             code: Self::FILE,
+        }
+    }
+
+    /// Демон недоступен: команда сделала, что смогла, и честно об этом сообщает.
+    pub fn no_daemon(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            code: Self::NO_DAEMON,
         }
     }
 }

@@ -21,6 +21,7 @@ use crate::config::Config;
 use crate::domain::audio::{AudioSource, PcmAudio};
 use crate::domain::clock::Clock;
 use crate::domain::entry::Mode;
+use crate::domain::inject::{OutputMode, TextInjector};
 use crate::domain::notify::Notifier;
 use crate::domain::sound::{CueKind, SoundCue};
 use crate::infra::ipc::RequestHandler;
@@ -52,6 +53,11 @@ pub struct DaemonParts {
     pub notifier: Arc<dyn Notifier>,
     /// Звуковые метки начала и конца записи; тишину делает `NullSoundCue`, а не отсутствие вызова.
     pub sound: Arc<dyn SoundCue>,
+    /// Способ вставки для готового текста (`inject.text`): повтор реплики из истории.
+    ///
+    /// Отдельный от конвейера экземпляр: конвейер занят своей репликой, а повтор из истории
+    /// приходит по IPC в любой момент и не должен ждать распознавания.
+    pub injector: Option<Box<dyn TextInjector>>,
     pub clock: Arc<dyn Clock>,
     pub config: Config,
 }
@@ -65,6 +71,10 @@ struct Shared {
     started_at: DateTime<Utc>,
     /// Номер текущей записи: сторожевой таймер длительности не должен обрывать следующую.
     generation: AtomicU64,
+    /// Вставка готового текста по `inject.text`.
+    injector: Mutex<Option<Box<dyn TextInjector>>>,
+    /// Порог `output.auto_type_max_chars` для разрешения режима `auto`.
+    auto_type_max_chars: u32,
 }
 
 impl Shared {
@@ -110,6 +120,7 @@ impl Daemon {
             mut processor,
             notifier,
             sound,
+            injector,
             clock,
             config,
         } = parts;
@@ -125,6 +136,8 @@ impl Daemon {
             session_id: Uuid::new_v4(),
             started_at: clock.now_utc(),
             generation: AtomicU64::new(0),
+            injector: Mutex::new(injector),
+            auto_type_max_chars: config.output.auto_type_max_chars,
         });
 
         let mut machine = Machine::new(config.hotkeys.clone(), clock.clone());
@@ -371,6 +384,49 @@ impl DaemonHandle {
         rx
     }
 
+    /// Вставить готовый текст: повтор реплики из истории (`molva history paste`).
+    ///
+    /// Микрофон и распознавание здесь не участвуют вовсе: текст уже есть, нужен только тот же
+    /// способ вставки, что и у обычной реплики, вместе с поправкой на класс активного окна.
+    pub fn inject_text(
+        &self,
+        text: &str,
+        mode: Option<OutputMode>,
+    ) -> Result<serde_json::Value, IpcError> {
+        if text.trim().is_empty() {
+            return Err(IpcError {
+                code: ErrorCode::BadRequest,
+                message: "пустой текст вставлять нечего".into(),
+                hint: None,
+            });
+        }
+        let mut guard = self
+            .shared
+            .injector
+            .lock()
+            .map_err(|_| internal("способ вставки занят"))?;
+        let Some(injector) = guard.as_mut() else {
+            return Err(IpcError {
+                code: ErrorCode::InjectFailed,
+                message: "демон запущен без способа вставки".into(),
+                hint: Some("текст можно скопировать: molva history show <id>".into()),
+            });
+        };
+        let app = platform::active_window_class();
+        injector.set_window(app.as_deref());
+        let mode = mode
+            .unwrap_or(OutputMode::Auto)
+            .resolve(text, self.shared.auto_type_max_chars as usize);
+        match injector.inject(text, mode) {
+            Ok(report) => Ok(serde_json::json!({ "ok": true, "method": report.method })),
+            Err(err) => Err(IpcError {
+                code: ErrorCode::InjectFailed,
+                message: err.to_string(),
+                hint: Some("текст остался в буфере обмена, нажмите Ctrl+V".into()),
+            }),
+        }
+    }
+
     /// Сводка для `molva status`.
     pub fn status_json(&self) -> serde_json::Value {
         serde_json::json!({
@@ -413,6 +469,7 @@ impl RequestHandler for DaemonHandle {
                 outcome_to_result(self.send(Input::RecordToggle { mode, style })?)
             }
             Command::RecordCancel => outcome_to_result(self.send(Input::RecordCancel)?),
+            Command::InjectText { text, mode } => self.inject_text(&text, mode),
             Command::Shutdown => {
                 // Ответ должен уйти раньше, чем процесс исчезнет.
                 std::thread::spawn(|| {
@@ -518,6 +575,11 @@ mod tests {
             processor: Box::new(processor),
             notifier: notifier.clone(),
             sound: sound.clone(),
+            // Повтор из истории вставляется тем же фейком: тест видит и реплики, и повторы.
+            injector: Some(Box::new(SharedInjector {
+                injected: injected.clone(),
+                fail: fail_inject,
+            })),
             clock: clock.clone(),
             config,
         });
@@ -742,6 +804,55 @@ mod tests {
         assert_eq!(ping["pid"], std::process::id());
         let status = handler.handle(Command::Status).unwrap();
         assert_eq!(status["state"], "idle");
+        drop(h.daemon);
+    }
+
+    #[test]
+    fn inject_text_repeats_a_ready_text_through_the_injector() {
+        // Критерий AM-17: реплику из истории можно вставить заново, не диктуя её снова.
+        let h = harness("реплика");
+        let handler: &dyn RequestHandler = &h.handle;
+        let result = handler
+            .handle(Command::InjectText {
+                text: "собрание переносится".into(),
+                mode: None,
+            })
+            .unwrap();
+        assert_eq!(result["ok"], true);
+        assert_eq!(
+            *h.injected.lock().unwrap(),
+            vec!["собрание переносится".to_string()]
+        );
+        drop(h.daemon);
+    }
+
+    #[test]
+    fn inject_text_refuses_an_empty_text() {
+        let h = harness("реплика");
+        let handler: &dyn RequestHandler = &h.handle;
+        let err = handler
+            .handle(Command::InjectText {
+                text: "   ".into(),
+                mode: None,
+            })
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::BadRequest);
+        assert!(h.injected.lock().unwrap().is_empty());
+        drop(h.daemon);
+    }
+
+    #[test]
+    fn a_failed_repeat_is_an_honest_error_with_a_next_step() {
+        let h = harness_with("реплика", true, Config::default());
+        let handler: &dyn RequestHandler = &h.handle;
+        let err = handler
+            .handle(Command::InjectText {
+                text: "собрание переносится".into(),
+                mode: None,
+            })
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::InjectFailed);
+        assert!(err.hint.unwrap().contains("буфер"), "нужен следующий шаг");
         drop(h.daemon);
     }
 
