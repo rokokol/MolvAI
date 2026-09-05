@@ -242,7 +242,17 @@ pub fn run() {
         ])
         .setup(|app| {
             let handle = app.handle().clone();
-            tray::init(&handle)?;
+            // Значок в трее не должен уносить с собой окно: там, где нет
+            // libappindicator, зависимость паникует, а приложение обязано открыться.
+            let tray =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| tray::init(&handle)));
+            match tray {
+                Ok(Ok(())) => {}
+                Ok(Err(err)) => tracing::warn!(%err, "значок в трее не создан"),
+                Err(_) => tracing::warn!(
+                    "значок в трее недоступен: не загрузилась libayatana-appindicator3"
+                ),
+            }
             spawn_subscription(handle.clone());
 
             #[cfg(not(target_os = "linux"))]
