@@ -112,6 +112,8 @@ pub struct Pipeline {
     rules: RuleSet,
     styles: Styles,
     session_id: Uuid,
+    /// От отпускания клавиши до закрытия потока микрофона: демон меряет, конвейер записывает.
+    stop_after_release_ms: Option<u32>,
 }
 
 impl Pipeline {
@@ -136,7 +138,15 @@ impl Pipeline {
             rules,
             styles,
             session_id: Uuid::new_v4(),
+            stop_after_release_ms: None,
         }
+    }
+
+    /// Записать замер демона: за сколько микрофон освободился после отпускания клавиши.
+    ///
+    /// Значение расходуется одной репликой: следующая реплика получит свой замер, а не чужой.
+    pub fn set_stop_after_release(&mut self, ms: u32) {
+        self.stop_after_release_ms = Some(ms);
     }
 
     /// Подключить словарь терминов.
@@ -271,6 +281,7 @@ impl Pipeline {
             latency_ms: LatencyMs {
                 stt: stt_ms,
                 rules: rules_ms,
+                stop_after_release: self.stop_after_release_ms.take(),
                 ..Default::default()
             },
             tokens: None,
@@ -1109,6 +1120,24 @@ mod tests {
             harness.clock.slept(),
             vec![std::time::Duration::from_millis(1500)]
         );
+    }
+
+    #[test]
+    fn the_microphone_release_measurement_lands_in_the_entry_once() {
+        // Гарантия приватности микрофона должна быть видна в журнале: замер демона попадает
+        // в запись той реплики, к которой относится, и не переезжает в следующую.
+        let mut harness = build("привет мир", None, PipelineConfig::default());
+        harness.pipeline.set_stop_after_release(120);
+        let first = harness
+            .pipeline
+            .run(audio(4.0), Mode::Dictation, None, None)
+            .unwrap();
+        assert_eq!(first.latency_ms.stop_after_release, Some(120));
+        let second = harness
+            .pipeline
+            .run(audio(4.0), Mode::Dictation, None, None)
+            .unwrap();
+        assert_eq!(second.latency_ms.stop_after_release, None);
     }
 
     #[test]

@@ -55,6 +55,10 @@ impl Processor for crate::app::pipeline::Pipeline {
     ) -> Result<Entry, ProcessError> {
         Ok(self.run(audio, mode, style, app_hint)?)
     }
+
+    fn set_stop_after_release(&mut self, ms: u32) {
+        crate::app::pipeline::Pipeline::set_stop_after_release(self, ms);
+    }
 }
 
 /// Конвейер обработки одной реплики.
@@ -69,6 +73,12 @@ pub trait Processor: Send {
         style: Option<&str>,
         app_hint: Option<&str>,
     ) -> Result<Entry, ProcessError>;
+
+    /// Сколько прошло от отпускания клавиши до закрытия потока микрофона, миллисекунды.
+    ///
+    /// Меряет демон — только он знает обе точки. Значение уходит в `Entry.latency_ms
+    /// .stop_after_release`, поэтому гарантию приватности микрофона видно в журнале.
+    fn set_stop_after_release(&mut self, _ms: u32) {}
 }
 
 /// Настройки, которые обработчику нужны от конфига.
@@ -127,6 +137,8 @@ pub struct SimpleProcessor<I: TextInjector, J: Journal> {
     clock: Arc<dyn Clock>,
     notifier: Arc<dyn Notifier>,
     config: ProcessorConfig,
+    /// Замер демона: от отпускания клавиши до закрытия потока микрофона.
+    stop_after_release_ms: Option<u32>,
 }
 
 impl<I: TextInjector, J: Journal> SimpleProcessor<I, J> {
@@ -145,6 +157,7 @@ impl<I: TextInjector, J: Journal> SimpleProcessor<I, J> {
             clock,
             notifier,
             config,
+            stop_after_release_ms: None,
         }
     }
 }
@@ -230,7 +243,7 @@ impl<I: TextInjector, J: Journal> Processor for SimpleProcessor<I, J> {
                 inject: t_inject,
                 total: ms_between(started, self.clock.instant()),
                 first_hypothesis: None,
-                stop_after_release: None,
+                stop_after_release: self.stop_after_release_ms.take(),
             },
             tokens: None,
             error,
@@ -246,6 +259,10 @@ impl<I: TextInjector, J: Journal> Processor for SimpleProcessor<I, J> {
         };
         self.journal.append(&stored)?;
         Ok(entry)
+    }
+
+    fn set_stop_after_release(&mut self, ms: u32) {
+        self.stop_after_release_ms = Some(ms);
     }
 }
 

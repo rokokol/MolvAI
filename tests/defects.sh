@@ -483,6 +483,21 @@ defect 'sound/stop-cue-on-record' 'crates/molva-core/src/app/daemon/mod.rs' \
   '                                        let _ = &sound;' \
   'конец записи не слышен: непонятно, отпустил ли ты клавишу и ушла ли реплика в обработку'
 
+defect 'audio/mic-release-is-measured' 'crates/molva-core/src/app/daemon/mod.rs' \
+  '                                            stop_after_release_ms,' \
+  '                                            stop_after_release_ms: u32::MAX,' \
+  'время освобождения микрофона в журнале выдумано: проверить приватность нечем'
+
+defect 'audio/mic-release-reaches-the-entry' 'crates/molva-core/src/app/daemon/processor.rs' \
+  '                stop_after_release: self.stop_after_release_ms.take(),' \
+  '                stop_after_release: None,' \
+  'замер освобождения микрофона теряется по дороге в запись журнала'
+
+defect 'pipeline/mic-release-reaches-the-entry' 'crates/molva-core/src/app/pipeline.rs' \
+  '                stop_after_release: self.stop_after_release_ms.take(),' \
+  '                stop_after_release: None,' \
+  'в журнале конвейера нет времени освобождения микрофона: гарантия приватности недоказуема'
+
 defect 'daemon/inject-text-repeats-a-reply' 'crates/molva-core/src/app/daemon/mod.rs' \
   '            Command::InjectText { text, mode } => self.inject_text(&text, mode),' \
   '            Command::InjectText { text, mode } => { let _ = (text, mode); Err(internal("нет")) }' \

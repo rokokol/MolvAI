@@ -43,6 +43,13 @@ struct Job {
     mode: Mode,
     style: Option<String>,
     app: Option<String>,
+    /// От отпускания клавиши до фактического закрытия потока микрофона, миллисекунды.
+    stop_after_release_ms: u32,
+}
+
+/// Миллисекунды между двумя точками монотонного времени, без переполнения.
+fn millis_between(from: std::time::Instant, to: std::time::Instant) -> u32 {
+    u32::try_from(to.saturating_duration_since(from).as_millis()).unwrap_or(u32::MAX)
 }
 
 /// Всё, что демону нужно снаружи. Железо приходит трейтами, поэтому демон целиком проверяется
@@ -151,9 +158,13 @@ impl Daemon {
             let notifier = notifier.clone();
             let sound = sound.clone();
             let tx = tx.clone();
+            let control_clock = clock.clone();
             threads.push(std::thread::spawn(move || {
                 let mut pending: Option<(Mode, Option<String>, Option<String>)> = None;
                 while let Ok(message) = rx.recv() {
+                    // Отсчёт гарантии «микрофон освобождён после реплики»: от команды остановки
+                    // (то есть от отпускания клавиши) до закрытия потока (AG-03).
+                    let released_from = control_clock.instant();
                     let outcome = machine.on(message.input);
                     for action in &outcome.actions {
                         match action {
@@ -195,12 +206,19 @@ impl Daemon {
                                     Ok(pcm) => {
                                         // Второй и последний сигнал реплики: микрофон закрыт.
                                         sound.play(CueKind::RecordStop);
+                                        let stop_after_release_ms =
+                                            millis_between(released_from, control_clock.instant());
+                                        tracing::info!(
+                                            ms = stop_after_release_ms,
+                                            "микрофон освобождён"
+                                        );
                                         shared.set_state(DaemonState::Transcribing, Some(*mode));
                                         let job = Job {
                                             audio: pcm,
                                             mode: *mode,
                                             style: style.clone(),
                                             app,
+                                            stop_after_release_ms,
                                         };
                                         if work_tx.send(job).is_err() {
                                             machine.on(Input::ProcessingFailed);
@@ -249,6 +267,9 @@ impl Daemon {
             let tx = tx.clone();
             threads.push(std::thread::spawn(move || {
                 while let Ok(job) = work_rx.recv() {
+                    // Гарантия «микрофон освобождён после реплики» должна быть видна в журнале,
+                    // а не только в логе демона.
+                    processor.set_stop_after_release(job.stop_after_release_ms);
                     let result = processor.process(
                         job.audio,
                         job.mode,
@@ -537,6 +558,25 @@ mod tests {
         }
     }
 
+    /// Микрофон, за которым тест продолжает следить после того, как отдал его демону.
+    #[derive(Clone)]
+    struct SharedAudio(Arc<Mutex<FakeAudioSource>>);
+
+    impl crate::domain::audio::AudioSource for SharedAudio {
+        fn start(
+            &mut self,
+            level_tx: Option<std::sync::mpsc::Sender<f32>>,
+        ) -> Result<(), crate::domain::audio::AudioError> {
+            self.0.lock().unwrap().start(level_tx)
+        }
+        fn stop(&mut self) -> Result<PcmAudio, crate::domain::audio::AudioError> {
+            self.0.lock().unwrap().stop()
+        }
+        fn is_recording(&self) -> bool {
+            self.0.lock().unwrap().is_recording()
+        }
+    }
+
     struct Harness {
         daemon: Daemon,
         handle: DaemonHandle,
@@ -544,6 +584,7 @@ mod tests {
         injected: Arc<Mutex<Vec<String>>>,
         notifier: Arc<RecordingNotifier>,
         sound: Arc<RecordingSoundCue>,
+        audio: SharedAudio,
     }
 
     fn harness(text: &str) -> Harness {
@@ -570,8 +611,9 @@ mod tests {
             ProcessorConfig::from_config(&config, Uuid::nil()),
         );
         let sound = Arc::new(RecordingSoundCue::default());
+        let audio = SharedAudio(Arc::new(Mutex::new(FakeAudioSource::silence(2.0))));
         let daemon = Daemon::spawn(DaemonParts {
-            audio: Box::new(FakeAudioSource::silence(2.0)),
+            audio: Box::new(audio.clone()),
             processor: Box::new(processor),
             notifier: notifier.clone(),
             sound: sound.clone(),
@@ -591,6 +633,7 @@ mod tests {
             injected,
             notifier,
             sound,
+            audio,
         }
     }
 
@@ -629,6 +672,53 @@ mod tests {
             "текст должен дойти до инжектора"
         );
         assert_eq!(entry.words, 2);
+        drop(h.daemon);
+    }
+
+    #[test]
+    fn the_microphone_is_free_outside_a_recording_and_the_delay_lands_in_the_entry() {
+        // Критерий AG-01/AG-03: вне записи микрофон не занят, а время его освобождения после
+        // отпускания клавиши видно в журнале, а не только на слово разработчика.
+        let h = harness("реплика");
+        assert!(!h.audio.is_recording(), "до записи микрофон свободен");
+        let events = h.handle.subscribe();
+        h.handle
+            .send(Input::RecordStart {
+                mode: Mode::Dictation,
+                style: None,
+            })
+            .unwrap();
+        assert!(h.audio.is_recording(), "во время записи микрофон занят");
+        h.clock.advance(Duration::from_secs(2));
+        h.handle.send(Input::RecordStop).unwrap();
+        let entry = wait_for_entry(&events);
+        assert!(
+            !h.audio.is_recording(),
+            "после реплики микрофон обязан быть свободен"
+        );
+        let released = entry
+            .latency_ms
+            .stop_after_release
+            .expect("замер освобождения микрофона должен попасть в запись");
+        assert!(
+            released < 500,
+            "микрофон освобождается сразу: {released} мс"
+        );
+        drop(h.daemon);
+    }
+
+    #[test]
+    fn a_cancelled_recording_frees_the_microphone_too() {
+        let h = harness("реплика");
+        h.handle
+            .send(Input::RecordStart {
+                mode: Mode::Dictation,
+                style: None,
+            })
+            .unwrap();
+        h.clock.advance(Duration::from_secs(1));
+        h.handle.send(Input::RecordCancel).unwrap();
+        assert!(!h.audio.is_recording());
         drop(h.daemon);
     }
 
