@@ -113,25 +113,18 @@ impl SttEngine for WhisperEngine {
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
         params.set_n_threads(threads as i32);
         params.set_translate(false);
-        // no_timestamps НЕ выставляем никогда: с ним whisper.cpp 1.8 не отдаёт ни одного
-        // сегмента, а значит и текста. Таймкоды считаются всегда, а `opts.timestamps` решает
-        // только, отдавать ли сегменты наружу.
-        params.set_no_timestamps(false);
+        params.set_no_timestamps(!opts.timestamps);
         // Прогресс и текст whisper.cpp не должны попадать в stdout: там только данные (Y-15).
         params.set_print_special(false);
         params.set_print_progress(false);
         params.set_print_realtime(false);
         params.set_print_timestamps(false);
-        match language.as_deref() {
-            Some(code) => {
-                params.set_detect_language(false);
-                params.set_language(Some(code));
-            }
-            None => {
-                params.set_detect_language(true);
-                params.set_language(None);
-            }
-        }
+        // Откат по температуре оставлен по умолчанию: с `temperature_inc = 0` whisper.cpp 1.8
+        // перестаёт отдавать сегменты вовсе (проверено на фикстурах), а времени это не экономит.
+        // `detect_language = true` в whisper.cpp означает «только определить язык и выйти»:
+        // сегментов не будет вовсе. Автоопределение вместе с распознаванием — это язык "auto".
+        params.set_detect_language(false);
+        params.set_language(Some(language.as_deref().unwrap_or("auto")));
         if let Some(prompt) = opts.initial_prompt.as_deref() {
             // Нулевой байт внутри подсказки уронил бы CString в whisper-rs.
             if !prompt.is_empty() && !prompt.contains('\0') {
@@ -382,13 +375,47 @@ mod tests {
         assert!(!engine.is_loaded());
     }
 
-    /// Регрессия: с `timestamps = false` текст пропадал целиком.
+    /// Регрессия: при `LanguageHint::Auto` текст пропадал целиком.
     ///
-    /// whisper.cpp с `no_timestamps = true` не отдаёт ни одного сегмента, а текст мы собираем
-    /// именно из сегментов — распознавание молча возвращало пустую строку.
+    /// `detect_language = true` в whisper.cpp означает «определи язык и выйди»: язык в ответе
+    /// был, сегментов и текста — ни одного. Автоопределение вместе с распознаванием включается
+    /// языком `"auto"`, а не этим флагом.
     #[test]
     #[ignore = "нужна скачанная модель whisper: MOLVA_TEST_MODEL=<путь> --ignored"]
-    fn regression_speech_is_recognised_without_timestamps() {
+    fn regression_auto_language_still_returns_text() {
+        let Ok(path) = std::env::var("MOLVA_TEST_MODEL") else {
+            panic!("задайте MOLVA_TEST_MODEL=<путь к ggml-*.bin>");
+        };
+        let wav = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../tests/fixtures/privet_ru.wav"
+        );
+        let audio = read_wav_fixture(wav);
+
+        let mut engine = WhisperEngine::new(PathBuf::from(path), "test".into(), 0);
+        let opts = SttOptions {
+            language: LanguageHint::Auto,
+            timestamps: true,
+            ..SttOptions::default()
+        };
+
+        let out = engine.transcribe(&audio, &opts).expect("речь распознаётся");
+
+        assert!(
+            !out.text.trim().is_empty(),
+            "при автоопределении языка текст пропал"
+        );
+        assert_eq!(out.detected_language.as_deref(), Some("ru"));
+        assert!(
+            !out.segments.is_empty(),
+            "таймкоды запрашивались, но не пришли"
+        );
+    }
+
+    /// Реплика без запроса таймкодов всё равно даёт текст, а сегменты наружу не идут.
+    #[test]
+    #[ignore = "нужна скачанная модель whisper: MOLVA_TEST_MODEL=<путь> --ignored"]
+    fn fixed_language_without_timestamps_returns_text_only() {
         let Ok(path) = std::env::var("MOLVA_TEST_MODEL") else {
             panic!("задайте MOLVA_TEST_MODEL=<путь к ggml-*.bin>");
         };
@@ -407,10 +434,7 @@ mod tests {
 
         let out = engine.transcribe(&audio, &opts).expect("речь распознаётся");
 
-        assert!(
-            !out.text.trim().is_empty(),
-            "текст пропал при timestamps = false"
-        );
+        assert!(!out.text.trim().is_empty(), "текст пропал");
         assert!(
             out.segments.is_empty(),
             "сегменты не запрашивались, но пришли"
