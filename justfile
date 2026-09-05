@@ -64,6 +64,19 @@ deny:
 audit:
     cargo audit
 
+# Лицензии зависимостей в THIRD-PARTY.md: правила в about.toml, шаблон в about.hbs
+third-party:
+    cargo about generate about.hbs -o THIRD-PARTY.md
+
+# Ведомость состава (SBOM) в формате CycloneDX: sbom/molva*.cdx.json
+sbom:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p sbom
+    cargo cyclonedx --format json --all --spec-version 1.5
+    find crates -name '*.cdx.json' -exec mv {} sbom/ \;
+    ls sbom
+
 # Покрытие как карта, не как гейт: артефакт для CI
 cov:
     cargo llvm-cov --workspace --lcov --output-path coverage.lcov

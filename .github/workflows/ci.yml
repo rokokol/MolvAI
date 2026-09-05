@@ -1,0 +1,175 @@
+name: ci
+
+# Гейт: всё, что зависит только от репозитория. Детекторы мира (лицензии, уязвимости)
+# живут в deny.yml и на pull request не запускаются.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  # Автоматика (бамп зависимостей, релиз) проверяет ветку, вызывая этот workflow,
+  # а не копию его команд, которая разъедется с оригиналом
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Биндинги whisper-rs лежат в крейте, libclang в CI не нужен
+  WHISPER_DONT_GENERATE_BINDINGS: "1"
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  # Быстрый статус: политика workflow-файлов, отвечает за секунды рядом с долгой сборкой
+  lint:
+    name: lint workflows
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      # Незакреплённый вызов из реестра меняет поведение job без единого изменения
+      # в репозитории. Инструменты приходят из lock-файлов и закреплённых действий
+      - name: Инструменты CI берутся из lock-файлов, а не из реестра
+        run: |
+          if grep -rEn 'nix (run|shell) nixpkgs#|npx +[a-z@.-]|pip +install |go +install .*@latest|cargo +install ' .github/workflows; then
+            echo "незакреплённая установка инструмента в workflow — закрепи её через lock-файл репозитория" >&2
+            exit 1
+          fi
+
+      - name: actionlint
+        uses: raven-actions/actionlint@v2
+
+  gate:
+    name: gate (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      # Системные библиотеки Tauri 2, трея, аудио и сборки whisper.cpp
+      - name: Системные зависимости (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libasound2-dev libxkbcommon-dev libwayland-dev \
+            cmake patchelf
+
+      # Версия тулчейна живёт в rust-toolchain.toml и больше нигде: rustup читает
+      # именно этот файл, поэтому CI не может собраться другой версией, чем разработчик
+      - name: Тулчейн Rust из rust-toolchain.toml
+        shell: bash
+        run: |
+          rustup show
+          rustup component add rustfmt clippy
+          cargo --version
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just
+
+      # Фронтенд GUI появляется в crates/molva-gui/ui; до тех пор шаг пропускается
+      - uses: actions/setup-node@v4
+        if: hashFiles('crates/molva-gui/ui/package.json') != ''
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: crates/molva-gui/ui/package-lock.json
+
+      - name: Сборка фронтенда GUI
+        if: hashFiles('crates/molva-gui/ui/package.json') != ''
+        working-directory: crates/molva-gui/ui
+        run: |
+          npm ci
+          npm run build
+
+      # Шаги гейта — те же рецепты just, что разработчик запускает локально.
+      # Копий команд в CI нет: одна команда разъедется с другой за неделю
+      - name: just fmt
+        run: just fmt
+
+      - name: just clippy
+        run: just clippy
+
+      - name: just test
+        run: just test
+
+      - name: just spdx-check
+        run: just spdx-check
+
+      - name: just no-stubs
+        run: just no-stubs
+
+      # Логи харнесса нужны, когда сьют упал на чужой машине
+      - name: Логи прогона тестов
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ matrix.os }}
+          path: .test-logs/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Покрытие — карта, а не гейт: артефакт, по которому видно непроверенные места
+  coverage:
+    name: coverage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Системные зависимости (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libasound2-dev libxkbcommon-dev libwayland-dev \
+            cmake patchelf
+
+      - name: Тулчейн Rust из rust-toolchain.toml
+        run: |
+          rustup show
+          rustup component add llvm-tools-preview
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: coverage
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-llvm-cov
+
+      - name: just cov
+        run: just cov
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.lcov
+          retention-days: 14

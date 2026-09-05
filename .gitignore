@@ -19,11 +19,18 @@ result-*
 coverage.lcov
 lcov.info
 
+# SBOM пересобирается из Cargo.lock (`just sbom`) и уезжает в релизные артефакты
+sbom/
+*.cdx.json
+
 # Модели и локальные данные никогда не попадают в репозиторий
 *.bin
 *.gguf
 *.sqlite
 journal.jsonl
+
+# Worktree агентов Claude Code
+.claude/worktrees/
 
 # Редакторы
 .idea/
