@@ -41,3 +41,23 @@ defect 'config/missing-file-is-default' 'crates/molva-core/src/config.rs' \
   '            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),' \
   '            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(ConfigError::Read { path: path.to_path_buf(), source: e }),' \
   'первый запуск без файла настроек падает вместо того, чтобы работать со значениями по умолчанию'
+
+defect 'journal/privacy-strips-text' 'crates/molva-core/src/app/journal.rs' \
+  '            owned = entry.clone().without_text();' \
+  '            owned = entry.clone();' \
+  'в режиме приватности тексты реплик всё равно попадают в файл журнала'
+
+defect 'journal/corrupt-line-quarantined' 'crates/molva-core/src/app/journal.rs' \
+  '                    broken.push(line.to_string());' \
+  '                    let _ = &broken;' \
+  'битая строка молча теряется: пользователь не узнает, что часть истории не читается'
+
+defect 'journal/rotation-keeps-newest' 'crates/molva-core/src/app/journal.rs' \
+  '            kept = &kept[kept.len() - max_entries as usize..];' \
+  '            kept = &kept[..max_entries as usize];' \
+  'ротация оставляет самые старые реплики и выбрасывает свежие'
+
+defect 'journal/owner-only-permissions' 'crates/molva-core/src/app/journal.rs' \
+  '        perms.set_mode(0o600);' \
+  '        perms.set_mode(0o644);' \
+  'журнал с текстами реплик читается любым пользователем системы'
