@@ -136,6 +136,10 @@ export default function App() {
           lastSoundAt.current = Date.now();
           setZeroLevel(false);
           setHypothesis("");
+        } else {
+          // Вне записи уровня нет: полоска обязана опуститься, а не замереть
+          // на последнем значении, изображая живой микрофон.
+          setLevel(0);
         }
       }),
       listen<number>("molva://level", (event) => {
