@@ -127,7 +127,7 @@ jobs:
       # Логи харнесса нужны, когда сьют упал на чужой машине
       - name: Логи прогона тестов
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-logs-${{ matrix.os }}
           path: .test-logs/
@@ -168,7 +168,7 @@ jobs:
       - name: just cov
         run: just cov
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: coverage.lcov
