@@ -495,3 +495,30 @@ defect 'segmenter/chunks-overlap' 'crates/molva-core/src/app/audio/segmenter.rs'
   '            .saturating_sub(self.samples_for_ms(self.config.overlap_ms))' \
   '            .saturating_sub(0)' \
   'соседние куски стыкуются встык: звук на границе теряется, слог рвётся пополам'
+
+defect 'chunked/recognition-starts-during-the-recording' 'crates/molva-core/src/app/daemon/mod.rs' \
+  '                                        if feeder.is_enabled() {' \
+  '                                        if false {' \
+  'вся обработка снова начинается по отпусканию клавиши: реплику в пять секунд ждать пять секунд'
+
+defect 'chunked/chunks-keep-their-order' 'crates/molva-core/src/app/daemon/chunked.rs' \
+  '        self.texts.push(chunk.text);' \
+  '        self.texts.insert(0, chunk.text);' \
+  'куски склеиваются в обратном порядке: реплика читается задом наперёд'
+
+defect 'chunked/the-beginning-is-not-lost' 'crates/molva-core/src/app/pipeline.rs' \
+  '        self.chunk_prefix = (!prefix.is_empty()).then_some(prefix);' \
+  '        self.chunk_prefix = None;' \
+  'распознанное во время записи начало реплики выбрасывается, вставляется один хвост'
+
+defect 'chunked/reply-length-is-the-whole-recording' 'crates/molva-core/src/app/pipeline.rs' \
+  '        let audio_secs = prefix.audio_secs.unwrap_or_else(|| audio.duration_secs());' \
+  '        let audio_secs = audio.duration_secs();' \
+  'длительность реплики считается по хвосту: WPM и статистика завышены в разы'
+
+defect 'chunked/cancelled-chunks-are-forgotten' 'crates/molva-core/src/app/daemon/mod.rs' \
+  '                        Job::Discard => {
+                            chunks.reset();' \
+  '                        Job::Discard => {
+                            let _ = &chunks;' \
+  'куски отменённой записи прирастают к следующей реплике'
