@@ -300,6 +300,7 @@ impl Pipeline {
                 .resolve(&text, self.config.output.auto_type_max_chars as usize);
             // Способ вставки должен знать класс окна: в терминалах вставка идёт Ctrl+Shift+V.
             self.injector.set_window(app_hint);
+            self.wait_before_inject();
             let inject_started = self.clock.instant();
             match self.injector.inject(&text, resolved) {
                 Ok(report) => {
@@ -322,6 +323,20 @@ impl Pipeline {
         }
         self.journal.append(&entry)?;
         Ok(entry)
+    }
+
+    /// Пауза перед вставкой, задаваемая настройкой `output.pre_inject_delay_ms`.
+    ///
+    /// Между отпусканием клавиши и вставкой окно должно успеть вернуть фокус в поле ввода.
+    /// Локально хватает 50 мс по умолчанию; на удалённом рабочем столе и в медленных приложениях
+    /// пауза ставится вручную вплоть до 1500 мс, иначе первые символы уходят в никуда.
+    fn wait_before_inject(&self) {
+        let delay = self.config.output.pre_inject_delay_ms;
+        if delay == 0 {
+            return;
+        }
+        self.clock
+            .sleep(std::time::Duration::from_millis(u64::from(delay)));
     }
 
     /// Параметры распознавания из настроек и словаря.
@@ -532,6 +547,7 @@ mod tests {
         injector: Arc<Mutex<RecordingInjector>>,
         journal: Arc<Mutex<MemJournal>>,
         stt: Arc<Mutex<FakeStt>>,
+        clock: Arc<FakeClock>,
     }
 
     fn audio(secs: f32) -> PcmAudio {
@@ -550,12 +566,13 @@ mod tests {
         let stt = Arc::new(Mutex::new(FakeStt::returning(transcript)));
         let injector = Arc::new(Mutex::new(RecordingInjector::default()));
         let journal = Arc::new(Mutex::new(MemJournal::default()));
+        let clock = clock();
         let pipeline = Pipeline::new(
             Box::new(SharedStt(Arc::clone(&stt))),
             llm.map(|llm| llm as Arc<dyn LlmClient>),
             Box::new(SharedInjector(Arc::clone(&injector))),
             Box::new(SharedJournal(Arc::clone(&journal))),
-            clock(),
+            clock.clone(),
             config,
         );
         Harness {
@@ -563,6 +580,7 @@ mod tests {
             injector,
             journal,
             stt,
+            clock,
         }
     }
 
@@ -1003,6 +1021,57 @@ mod tests {
             .map(|(_, mode)| *mode)
             .collect();
         assert_eq!(modes, vec![OutputMode::Type], "короткий текст набирается");
+    }
+
+    #[test]
+    fn the_pause_before_the_injection_comes_from_the_configuration() {
+        // Критерий AM-20: пауза перед вставкой задаётся настройкой, а не зашита в код.
+        let mut harness = build("привет мир", None, PipelineConfig::default());
+        harness
+            .pipeline
+            .run(audio(4.0), Mode::Dictation, None, None)
+            .unwrap();
+        assert_eq!(
+            harness.clock.slept(),
+            vec![std::time::Duration::from_millis(50)],
+            "по умолчанию перед вставкой ждём 50 мс"
+        );
+
+        // Удалённому рабочему столу нужно больше времени на возврат фокуса.
+        let mut config = PipelineConfig::default();
+        config.output.pre_inject_delay_ms = 1500;
+        let mut harness = build("привет мир", None, config);
+        harness
+            .pipeline
+            .run(audio(4.0), Mode::Dictation, None, None)
+            .unwrap();
+        assert_eq!(
+            harness.clock.slept(),
+            vec![std::time::Duration::from_millis(1500)]
+        );
+    }
+
+    #[test]
+    fn a_zero_pause_does_not_wait_at_all() {
+        let mut config = PipelineConfig::default();
+        config.output.pre_inject_delay_ms = 0;
+        let mut harness = build("привет мир", None, config);
+        harness
+            .pipeline
+            .run(audio(4.0), Mode::Dictation, None, None)
+            .unwrap();
+        assert!(harness.clock.slept().is_empty());
+    }
+
+    #[test]
+    fn nothing_to_inject_means_nothing_to_wait_for() {
+        // Пустая реплика не вставляется — и паузы перед вставкой тоже быть не должно.
+        let mut harness = build("   ", None, PipelineConfig::default());
+        harness
+            .pipeline
+            .run(audio(4.0), Mode::Dictation, None, None)
+            .unwrap();
+        assert!(harness.clock.slept().is_empty());
     }
 
     #[test]

@@ -235,6 +235,8 @@ pub struct FakeClock {
     now: Mutex<DateTime<Utc>>,
     base: Instant,
     offset: Mutex<Duration>,
+    /// Каждая пауза, о которой попросил код продукта: тест проверяет её, не ожидая по-настоящему.
+    slept: Mutex<Vec<Duration>>,
 }
 
 impl FakeClock {
@@ -243,7 +245,13 @@ impl FakeClock {
             now: Mutex::new(now),
             base: Instant::now(),
             offset: Mutex::new(Duration::ZERO),
+            slept: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Паузы в порядке запроса.
+    pub fn slept(&self) -> Vec<Duration> {
+        self.slept.lock().map(|s| s.clone()).unwrap_or_default()
     }
 
     pub fn advance(&self, by: Duration) {
@@ -264,6 +272,14 @@ impl Clock for FakeClock {
     fn instant(&self) -> Instant {
         let offset = self.offset.lock().map(|o| *o).unwrap_or_default();
         self.base + offset
+    }
+
+    /// Пауза в тесте не ждёт: она записывается и двигает часы вперёд.
+    fn sleep(&self, duration: Duration) {
+        if let Ok(mut slept) = self.slept.lock() {
+            slept.push(duration);
+        }
+        self.advance(duration);
     }
 }
 

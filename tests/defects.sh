@@ -483,6 +483,16 @@ defect 'sound/stop-cue-on-record' 'crates/molva-core/src/app/daemon/mod.rs' \
   '                                        let _ = &sound;' \
   'конец записи не слышен: непонятно, отпустил ли ты клавишу и ушла ли реплика в обработку'
 
+defect 'pipeline/pause-before-injection' 'crates/molva-core/src/app/pipeline.rs' \
+  '            self.wait_before_inject();' \
+  '            let _ = self.config.output.pre_inject_delay_ms;' \
+  'вставка идёт сразу после отпускания клавиши: на удалённом рабочем столе текст уходит мимо поля'
+
+defect 'pipeline/pause-comes-from-the-config' 'crates/molva-core/src/app/pipeline.rs' \
+  '        let delay = self.config.output.pre_inject_delay_ms;' \
+  '        let delay = 50u32;' \
+  'настройка паузы перед вставкой ни на что не влияет: медленному приложению её не увеличить'
+
 defect 'sound/setting-turns-cues-off' 'crates/molva-core/src/infra/sound.rs' \
   '    if !audio.sounds {' \
   '    if false {' \

@@ -304,6 +304,12 @@ pub struct OutputConfig {
     pub paste_backend: String,
     pub type_backend: String,
     pub type_delay_ms: u32,
+    /// Пауза перед вставкой, миллисекунды.
+    ///
+    /// Между отпусканием клавиши и вставкой окно должно успеть вернуть фокус в поле ввода.
+    /// Локально хватает 50 мс; удалённому рабочему столу (RDP, VNC, xrdp) и тяжёлым Electron-окнам
+    /// нужно заметно больше — до 1500 мс.
+    pub pre_inject_delay_ms: u32,
     pub terminal_shortcut: bool,
     pub notify_on_fallback: bool,
 }
@@ -318,6 +324,7 @@ impl Default for OutputConfig {
             paste_backend: "auto".into(),
             type_backend: "auto".into(),
             type_delay_ms: 4,
+            pre_inject_delay_ms: 50,
             terminal_shortcut: false,
             notify_on_fallback: true,
         }
@@ -678,6 +685,13 @@ impl Config {
             "output.mode",
             &self.output.mode,
             &["auto", "paste", "type", "clipboard"],
+        );
+        in_range(
+            &mut issues,
+            "output.pre_inject_delay_ms",
+            self.output.pre_inject_delay_ms as f64,
+            0.0,
+            5000.0,
         );
         if self.output.auto_type_max_chars == 0 {
             issues.push(ConfigIssue::new(
