@@ -21,11 +21,18 @@ use super::notify::Notifier;
 use super::stt::{SttEngine, SttError, SttOptions, Transcript};
 
 /// Источник, отдающий заранее заданный буфер.
+///
+/// В режиме порций (`paced`) он ведёт себя как микрофон: во время записи звук снимается частями,
+/// а `stop` всё равно отдаёт запись целиком. Так проверяется потоковая обработка без железа.
 #[derive(Debug, Clone)]
 pub struct FakeAudioSource {
     audio: PcmAudio,
     recording: bool,
     pub start_calls: usize,
+    /// Сколько отсчётов отдавать за один `drain_new_samples`; `None` — не отдавать вовсе.
+    portion: Option<usize>,
+    /// Позиция чтения потоковой обработки.
+    drained: usize,
 }
 
 impl FakeAudioSource {
@@ -34,6 +41,8 @@ impl FakeAudioSource {
             audio,
             recording: false,
             start_calls: 0,
+            portion: None,
+            drained: 0,
         }
     }
 
@@ -41,6 +50,15 @@ impl FakeAudioSource {
     pub fn silence(secs: f32) -> Self {
         let n = (secs * 16_000.0) as usize;
         Self::from_pcm(PcmAudio::new(vec![0.0; n], 16_000))
+    }
+
+    /// Тот же буфер, но во время записи он снимается порциями по `portion_ms`.
+    pub fn paced(audio: PcmAudio, portion_ms: u32) -> Self {
+        let portion = (audio.sample_rate as u64 * portion_ms as u64 / 1000).max(1) as usize;
+        Self {
+            portion: Some(portion),
+            ..Self::from_pcm(audio)
+        }
     }
 }
 
@@ -51,6 +69,7 @@ impl AudioSource for FakeAudioSource {
         }
         self.recording = true;
         self.start_calls += 1;
+        self.drained = 0;
         if let Some(tx) = level_tx {
             // Ошибка отправки означает, что слушателя уже нет; для фейка это не сбой.
             let _ = tx.send(self.audio.rms());
@@ -68,6 +87,17 @@ impl AudioSource for FakeAudioSource {
 
     fn is_recording(&self) -> bool {
         self.recording
+    }
+
+    fn drain_new_samples(&mut self) -> Option<PcmAudio> {
+        let portion = self.portion?;
+        if !self.recording || self.drained >= self.audio.samples.len() {
+            return None;
+        }
+        let to = (self.drained + portion).min(self.audio.samples.len());
+        let samples = self.audio.samples[self.drained..to].to_vec();
+        self.drained = to;
+        Some(PcmAudio::new(samples, self.audio.sample_rate))
     }
 }
 
@@ -307,6 +337,38 @@ mod tests {
         assert_eq!(source.start(None), Err(AudioError::AlreadyRecording));
         let audio = source.stop().unwrap();
         assert_eq!(audio.samples.len(), 1600);
+    }
+
+    #[test]
+    fn a_paced_source_hands_out_portions_and_still_returns_everything_at_stop() {
+        let audio = PcmAudio::new((0..1_600).map(|i| i as f32).collect(), 16_000);
+        let mut source = FakeAudioSource::paced(audio.clone(), 50);
+        source.start(None).unwrap();
+
+        let first = source.drain_new_samples().expect("первая порция");
+        let second = source.drain_new_samples().expect("вторая порция");
+
+        assert_eq!(first.samples.len(), 800, "50 мс при 16 кГц — 800 отсчётов");
+        assert_eq!(
+            second.samples[0], 800.0,
+            "порции идут подряд, без пропусков"
+        );
+        assert!(
+            source.drain_new_samples().is_none(),
+            "буфер кончился, отдавать нечего"
+        );
+        assert_eq!(
+            source.stop().unwrap(),
+            audio,
+            "stop обязан вернуть запись целиком, а не хвост после снятых порций"
+        );
+    }
+
+    #[test]
+    fn a_plain_source_reports_that_it_cannot_stream() {
+        let mut source = FakeAudioSource::silence(1.0);
+        source.start(None).unwrap();
+        assert!(source.drain_new_samples().is_none());
     }
 
     #[test]
