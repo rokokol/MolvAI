@@ -58,3 +58,63 @@ defect 'decode/native-sample-rate' 'crates/molva-core/src/infra/audio/decode.rs'
   '    Ok(PcmAudio::new(mono, sample_rate))' \
   '    Ok(PcmAudio::new(mono, 16_000))' \
   'частота файла подменяется на 16 кГц без ресемплинга: длительность и скорость речи врут'
+# --- дорожка E: веса моделей ---
+
+defect 'models/checksum-checked' 'crates/molva-core/src/app/models.rs' \
+  '    if !actual.eq_ignore_ascii_case(sha256.trim()) {' \
+  '    if false {' \
+  'подменённый или недокачанный файл модели принимается как настоящий'
+
+defect 'models/checksum-mismatch-deletes' 'crates/molva-core/src/app/models.rs' \
+  '        let _ = std::fs::remove_file(&target);' \
+  '        let _ = &target;' \
+  'битый файл остаётся на диске и на следующем запуске выдаётся за модель'
+
+defect 'models/skip-download-when-valid' 'crates/molva-core/src/app/models.rs' \
+  '    if verify(&target, sha256)? {' \
+  '    if false {' \
+  'повторный pull качает гигабайты заново, хотя модель уже на месте'
+
+defect 'models/resume-from-part' 'crates/molva-core/src/app/models.rs' \
+  '        request = request.header(reqwest::header::RANGE, format!("bytes={already}-"));' \
+  '        request = request.header(reqwest::header::RANGE, "bytes=0-".to_string());' \
+  'прерванная загрузка начинается с нуля вместо докачки'
+
+defect 'models/missing-model-hint' 'crates/molva-core/src/app/models.rs' \
+  '    if path.is_file() {' \
+  '    if true {' \
+  'отсутствующая модель не сообщает команду скачивания, а падает где-то в движке'
+
+# --- дорожка E: метрики качества ---
+
+defect 'wer/normalization-lowercase' 'crates/molva-core/src/app/wer.rs' \
+  '            out.extend(ch.to_lowercase());' \
+  '            out.push(ch);' \
+  'разный регистр считается ошибкой распознавания: WER завышен на ровном месте'
+
+defect 'wer/levenshtein-substitution' 'crates/molva-core/src/app/wer.rs' \
+  '            let cost = usize::from(ai != bj);' \
+  '            let cost = 0usize;' \
+  'замена слова не считается ошибкой: WER занижен, чекер хвалит плохую модель'
+
+defect 'wer/empty-reference' 'crates/molva-core/src/app/wer.rs' \
+  '        return if hypothesis_len == 0 { 0.0 } else { 1.0 };' \
+  '        return 0.0;' \
+  'галлюцинация на тишине получает нулевой WER'
+
+# --- дорожка E: чекер bench ---
+
+defect 'bench/percentile-rank' 'crates/molva-core/src/app/bench.rs' \
+  '    let rank = (p / 100.0 * sorted.len() as f32).ceil().max(1.0) as usize;' \
+  '    let rank = 1;' \
+  'все перцентили задержки равны минимуму: p95 и p99 в отчёте выдуманы'
+
+defect 'bench/repeat-runs' 'crates/molva-core/src/app/bench.rs' \
+  '        for _ in 0..repeat {' \
+  '        for _ in 0..1 {' \
+  '--repeat N молча делает один прогон: разброс задержек не виден'
+
+defect 'bench/empty-set-detected' 'crates/molva-core/src/app/bench.rs' \
+  '        if manifest.case.is_empty() {' \
+  '        if false {' \
+  'пустой набор выдаёт отчёт с нулевым WER вместо ошибки'
