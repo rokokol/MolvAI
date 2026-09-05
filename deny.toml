@@ -20,12 +20,15 @@ allow = [
     "BSL-1.0",
     "0BSD",
     "OpenSSL",
+    "Unlicense",   # whisper-rs и whisper-rs-sys: общественное достояние, OSI-approved
 ]
 confidence-threshold = 0.8
 
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# Крейты workspace ссылаются друг на друга по path без версии — это не wildcard из реестра
+allow-wildcard-paths = true
 
 [advisories]
 yanked = "deny"

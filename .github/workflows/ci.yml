@@ -24,8 +24,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Биндинги whisper-rs лежат в крейте, libclang в CI не нужен
-  WHISPER_DONT_GENERATE_BINDINGS: "1"
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: "1"
 
@@ -84,6 +82,19 @@ jobs:
           rustup component add rustfmt clippy
           cargo --version
 
+      # Готовые биндинги whisper-rs совпадают по ABI с Linux и macOS, libclang там не нужен.
+      # На Windows их раскладка структур другая (static assert падает), поэтому биндинги
+      # генерируются на месте через LLVM, предустановленный на раннере
+      - name: Биндинги whisper-rs из крейта (Linux, macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: echo "WHISPER_DONT_GENERATE_BINDINGS=1" >> "$GITHUB_ENV"
+
+      - name: libclang для генерации биндингов whisper-rs (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: echo "LIBCLANG_PATH=C:\\Program Files\\LLVM\\bin" >> "$GITHUB_ENV"
+
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.os }}
@@ -139,6 +150,9 @@ jobs:
     name: coverage
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    env:
+      # Биндинги whisper-rs из крейта: на Linux libclang не нужен
+      WHISPER_DONT_GENERATE_BINDINGS: "1"
     steps:
       - uses: actions/checkout@v4
         with:
