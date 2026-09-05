@@ -155,11 +155,13 @@ impl ChainInjector {
 
         match platform {
             Platform::Wayland(Compositor::Hyprland) => {
-                // hyprctl не требует ни прав, ни протоколов: композитор синтезирует сам.
+                // wtype первым: он единственный из троих умеет и набор, и вставку, и проверен
+                // на Hyprland 0.56. hyprctl не требует ни прав, ни протоколов, но его
+                // sendshortcut доходит до клиента не всегда — поэтому он запасной, а не первый.
+                backends.push(wtype());
                 backends.push(Backend::Hyprctl(HyprctlInjector::new(
                     restore, delay, shortcut,
                 )));
-                backends.push(wtype());
                 #[cfg(target_os = "linux")]
                 backends.push(uinput());
                 backends.push(ydotool());
@@ -245,6 +247,10 @@ impl TextInjector for ChainInjector {
 
     fn available(&self) -> bool {
         true
+    }
+
+    fn set_window(&mut self, class: Option<&str>) {
+        self.apply_window(class);
     }
 
     fn inject(&mut self, text: &str, mode: OutputMode) -> Result<InjectReport, InjectError> {
@@ -526,7 +532,17 @@ mod tests {
     }
 
     #[test]
-    fn hyprland_chain_starts_with_hyprctl() {
+    fn the_window_from_the_trait_reaches_the_chain() {
+        // Конвейер зовёт `set_window` через контракт, а не через конкретный тип.
+        let (mut chain, _clip, _n) = chain(vec![]);
+        chain.terminal_shortcut = true;
+        let injector: &mut dyn TextInjector = &mut chain;
+        injector.set_window(Some("foot"));
+        assert!(chain.fallback.terminal);
+    }
+
+    #[test]
+    fn hyprland_chain_tries_wtype_first_and_keeps_hyprctl_as_a_spare() {
         let notifier = Arc::new(RecordingNotifier::default());
         let chain = ChainInjector::for_platform(
             &OutputConfig::default(),
@@ -535,8 +551,12 @@ mod tests {
         );
         let mut backends = chain.backends;
         let ids: Vec<&str> = backends.iter_mut().map(|b| b.as_injector().id()).collect();
-        assert_eq!(ids.first(), Some(&"hyprctl"), "{ids:?}");
-        assert!(ids.contains(&"wtype"), "{ids:?}");
+        assert_eq!(ids.first(), Some(&"wtype"), "{ids:?}");
+        assert!(ids.contains(&"hyprctl"), "{ids:?}");
+        assert!(
+            ids.iter().position(|id| *id == "wtype") < ids.iter().position(|id| *id == "hyprctl"),
+            "{ids:?}"
+        );
     }
 
     #[test]

@@ -62,6 +62,16 @@ defect 'inject/chain-falls-back-to-clipboard' 'crates/molva-core/src/infra/injec
   '        let mut report = InjectReport::default();' \
   'когда все способы вставки отказали, реплика теряется вместо того, чтобы лечь в буфер обмена'
 
+defect 'inject/terminal-needs-shift' 'crates/molva-core/src/infra/inject/chain.rs' \
+  '        let terminal = class.map(is_terminal_class).unwrap_or(false);' \
+  '        let terminal = false;' \
+  'в терминале уходит Ctrl+V, который там ничего не вставляет: реплика молча пропадает'
+
+defect 'daemon/window-reaches-injector' 'crates/molva-core/src/app/daemon/processor.rs' \
+  '            self.injector.set_window(app_hint);' \
+  '            self.injector.set_window(None);' \
+  'способ вставки не знает, куда вставляет: в терминалах и в браузере он одинаково неверный'
+
 defect 'inject/clipboard-is-restored' 'crates/molva-core/src/infra/inject/clipboard.rs' \
   '        self.backend.restore(&saved)' \
   '        Ok(())' \

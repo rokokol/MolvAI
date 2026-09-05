@@ -161,6 +161,8 @@ impl<I: TextInjector, J: Journal> Processor for SimpleProcessor<I, J> {
             let resolved = parse_output_mode(&self.config.output.mode)
                 .resolve(&text, self.config.output.auto_type_max_chars as usize);
             let before_inject = self.clock.instant();
+            // Способ вставки зависит от приложения: терминалу нужен Ctrl+Shift+V.
+            self.injector.set_window(app_hint);
             match self.injector.inject(&text, resolved) {
                 Ok(report) => inject_method = Some(report.method),
                 Err(err) => {
@@ -482,6 +484,58 @@ mod tests {
         assert_eq!(entry.text_final.as_deref(), Some("секрет"));
         assert_eq!(processor.journal.entries[0].text_final, None);
         assert_eq!(processor.journal.entries[0].words, 1);
+    }
+
+    /// Инжектор, который запоминает, какое окно ему назвали перед вставкой.
+    #[derive(Default)]
+    struct WindowAwareInjector {
+        window: Option<String>,
+        window_set_before_inject: bool,
+    }
+
+    impl TextInjector for WindowAwareInjector {
+        fn id(&self) -> &'static str {
+            "window-aware"
+        }
+        fn available(&self) -> bool {
+            true
+        }
+        fn set_window(&mut self, class: Option<&str>) {
+            self.window = class.map(str::to_string);
+        }
+        fn inject(&mut self, _text: &str, _mode: OutputMode) -> Result<InjectReport, InjectError> {
+            self.window_set_before_inject = self.window.is_some();
+            Ok(InjectReport {
+                method: "window-aware".into(),
+                attempts: Vec::new(),
+            })
+        }
+    }
+
+    #[test]
+    fn the_active_window_is_named_to_the_injector_before_the_paste() {
+        let clock = clock();
+        let stt = SlowStt {
+            inner: FakeStt::returning("текст"),
+            clock: clock.clone(),
+            takes: Duration::from_millis(5),
+        };
+        let mut processor = SimpleProcessor::new(
+            Box::new(stt),
+            WindowAwareInjector::default(),
+            MemJournal::default(),
+            clock.clone(),
+            Arc::new(RecordingNotifier::default()),
+            config(),
+        );
+        processor
+            .process(audio(), Mode::Dictation, None, Some("kitty"))
+            .unwrap();
+        assert_eq!(processor.injector.window.as_deref(), Some("kitty"));
+        assert!(
+            processor.injector.window_set_before_inject,
+            "окно должно быть известно до вставки, а не после"
+        );
     }
 
     #[test]
