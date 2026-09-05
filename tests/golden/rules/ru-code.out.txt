@@ -1,0 +1,1 @@
+Вызови getUserById, потом HTTPServer.

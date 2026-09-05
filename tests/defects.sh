@@ -96,3 +96,43 @@ defect 'stats/reset-marker-hides-old-entries' 'crates/molva-core/src/app/stats.r
   '        Some(at) => entries.iter().filter(|e| e.ts >= at).cloned().collect(),' \
   '        Some(_) => entries.to_vec(),' \
   'сброс статистики ничего не сбрасывает: старые реплики продолжают считаться'
+
+defect 'rules/spoken-full-stop' 'crates/molva-core/src/app/rules.rs' \
+  '    ("точка", "."),' \
+  '    ("точка", ""),' \
+  'продиктованная «точка» пропадает вместо того, чтобы стать знаком препинания'
+
+defect 'rules/point-of-view-is-not-a-command' 'crates/molva-core/src/app/rules.rs' \
+  '    if normalize(&tokens[index]) != "точка" && normalize(&tokens[index]) != "точки" {' \
+  '    if true {' \
+  '«моя точка зрения» превращается в «моя. зрения»'
+
+defect 'rules/intensifier-repeat-survives' 'crates/molva-core/src/app/rules.rs' \
+  '"очень", "чуть", "еле", "very"' \
+  '' \
+  '«очень очень важно» теряет усиление: снятие повторов режет смысл'
+
+defect 'rules/fillers-never-empty-the-text' 'crates/molva-core/src/app/rules.rs' \
+  '        if out.iter().all(|token| !token.chars().any(char::is_alphanumeric)) {' \
+  '        if false {' \
+  'реплика из одних заполнителей превращается в пустую строку: сказанное потеряно'
+
+defect 'rules/numerals-need-a-falling-rank' 'crates/molva-core/src/app/rules.rs' \
+  '            if found.class >= last_class {' \
+  '            if false {' \
+  '«три четыре» складывается в «7»: перечисление чисел ломается'
+
+defect 'rules/ordinals-stay-in-words' 'crates/molva-core/src/app/rules.rs' \
+  '    if followed_by_ordinal(tokens, at + len) {' \
+  '    if false {' \
+  '«две тысячи двадцать шестого года» превращается в «2020 шестого года»'
+
+defect 'rules/non-breaking-space-in-units' 'crates/molva-core/src/app/rules.rs' \
+  '            out.push(format!("{}\\u{a0}{}", tokens[index], tokens[index + 1]));' \
+  '            out.push(format!("{} {}", tokens[index], tokens[index + 1]));' \
+  '«5 кг» переносится по строкам: число отрывается от единицы измерения'
+
+defect 'rules/no-space-before-punctuation' 'crates/molva-core/src/app/rules.rs' \
+  "                    '.' | ',' | ';' | ':' | '!' | '?' | ')' | '»' | '…' | '\\u{201d}'" \
+  "                    '\\u{0}'" \
+  'перед точкой и запятой остаётся пробел: текст выглядит как машинный вывод'

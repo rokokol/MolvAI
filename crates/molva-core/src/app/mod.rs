@@ -5,4 +5,5 @@
 //! всё, что можно проверить фейками и временными каталогами.
 
 pub mod journal;
+pub mod rules;
 pub mod stats;
