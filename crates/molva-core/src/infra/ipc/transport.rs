@@ -90,6 +90,21 @@ fn current_uid() -> String {
 }
 
 fn name_for(path: &Path) -> Result<interprocess::local_socket::Name<'static>, std::io::Error> {
+    #[cfg(windows)]
+    {
+        // Windows принимает только имена каналов `\\.\pipe\…`. Любой другой путь (например,
+        // временный каталог в тестах или `--socket /tmp/x.sock` из чужой инструкции) отображается
+        // на имя канала детерминированно, чтобы клиент и сервер сошлись на одном и том же.
+        let text = path.to_string_lossy();
+        if !text.starts_with(r"\\.\pipe\") {
+            let sanitized: String = text
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                .collect();
+            return PathBuf::from(format!(r"\\.\pipe\molva-{sanitized}"))
+                .to_fs_name::<GenericFilePath>();
+        }
+    }
     path.to_path_buf().to_fs_name::<GenericFilePath>()
 }
 
