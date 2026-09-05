@@ -162,6 +162,127 @@ impl SttEngine for WhisperEngine {
             info!(model = %self.model_name, "модель whisper выгружена");
         }
     }
+
+    /// Определить язык по первым секундам, выбирая только среди разрешённых.
+    ///
+    /// Дешевле режима `auto` у самого распознавания примерно на порядок, и вот почему. whisper.cpp
+    /// определяет язык внутри `whisper_full` **до** того, как применит `audio_ctx`, то есть всегда
+    /// по полному окну в тридцать секунд: на процессоре это единственный самый дорогой прогон
+    /// энкодера, из-за него `auto` и стоит два десятка секунд. Обойти это можно только так: сперва
+    /// короткий прогон с известным языком — он и ужимает окно энкодера в состоянии, — а уже потом
+    /// определение языка по той же спектрограмме, теперь по ужатому окну.
+    ///
+    /// Из вероятностей берётся лучший язык **из списка пользователя**: whisper на короткой русской
+    /// фразе легко выбирает украинский или болгарский, а таких языков в списке нет.
+    fn detect_language(&mut self, audio: &PcmAudio, opts: &SttOptions) -> Option<String> {
+        let allowed = allowed_language_ids(&opts.allowed_languages);
+        match allowed.len() {
+            0 => return None,
+            // Разрешён ровно один язык — выбирать не из чего, и считать нечего.
+            1 => return Some(allowed[0].1.clone()),
+            _ => {}
+        }
+        let resampled;
+        let samples = if audio.sample_rate == TARGET_SAMPLE_RATE {
+            &audio.samples
+        } else {
+            resampled = audio.to_16k();
+            &resampled.samples
+        };
+        let samples = first_seconds(samples, TARGET_SAMPLE_RATE, DETECT_SECS);
+        if samples.is_empty() {
+            return None;
+        }
+
+        let threads = resolve_threads(opts.threads.max(self.threads));
+        let audio_ctx = detect_audio_ctx(samples.len(), TARGET_SAMPLE_RATE);
+        let started = Instant::now();
+        let mut state = self.context().ok()?.create_state().ok()?;
+
+        // Первый прогон нужен не текстом, а побочным действием: `whisper_full` записывает
+        // `audio_ctx` в состояние, и следующий энкодер посчитает короткое окно вместо полного.
+        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+        params.set_n_threads(threads as i32);
+        params.set_translate(false);
+        params.set_no_timestamps(true);
+        params.set_print_special(false);
+        params.set_print_progress(false);
+        params.set_print_realtime(false);
+        params.set_print_timestamps(false);
+        params.set_detect_language(false);
+        params.set_language(Some(allowed[0].1.as_str()));
+        params.set_audio_ctx(audio_ctx as i32);
+        // Текст этого прогона не нужен, поэтому декодирование урезается до предела: один сегмент,
+        // один токен и никакого отката по температуре. Иначе на речи «не того» языка whisper
+        // уходит в повторные попытки и прогон растягивается вчетверо.
+        params.set_single_segment(true);
+        params.set_max_tokens(1);
+        params.set_temperature_inc(0.0);
+        state.full(params, samples).ok()?;
+
+        let (_best, probs) = state.lang_detect(0, threads).ok()?;
+        let chosen = best_allowed_language(&probs, &allowed);
+        debug!(
+            detect_ms = started.elapsed().as_millis() as u64,
+            audio_ctx,
+            chosen = chosen.as_deref().unwrap_or("?"),
+            "язык определён по первым секундам"
+        );
+        chosen
+    }
+}
+
+/// Сколько секунд начала реплики хватает, чтобы узнать язык.
+const DETECT_SECS: f32 = 2.0;
+
+/// Окно энкодера для определения языка: ровно под фрагмент, без запаса.
+///
+/// Запас [`AUDIO_CTX_MARGIN`] бережёт хвост последнего слова, а языку хвост не нужен — нужна только
+/// узнаваемая фонетика. Каждая лишняя позиция окна здесь стоит времени дважды: и на прогоне,
+/// который ужимает окно, и на самом определении.
+fn detect_audio_ctx(samples: usize, sample_rate: u32) -> usize {
+    if sample_rate == 0 {
+        return FULL_AUDIO_CTX;
+    }
+    let secs = samples.div_ceil(sample_rate as usize);
+    (secs * AUDIO_CTX_PER_SEC).clamp(AUDIO_CTX_PER_SEC, FULL_AUDIO_CTX)
+}
+
+/// Первые `secs` секунд сигнала.
+fn first_seconds(samples: &[f32], sample_rate: u32, secs: f32) -> &[f32] {
+    let limit = (sample_rate as f32 * secs.max(0.0)) as usize;
+    &samples[..samples.len().min(limit.max(1))]
+}
+
+/// Разрешённые языки как пары «номер в таблице whisper — код».
+///
+/// Неизвестные коды выбрасываются молча: список приходит из настроек пользователя, а опечатка в нём
+/// не повод отказываться от определения по остальным.
+fn allowed_language_ids(allowed: &[String]) -> Vec<(usize, String)> {
+    let mut out: Vec<(usize, String)> = Vec::new();
+    for code in allowed {
+        let code = code.trim().to_lowercase();
+        let Some(id) = whisper_rs::get_lang_id(&code) else {
+            continue;
+        };
+        let Ok(id) = usize::try_from(id) else {
+            continue;
+        };
+        if !out.iter().any(|(known, _)| *known == id) {
+            out.push((id, code));
+        }
+    }
+    out
+}
+
+/// Самый вероятный язык из разрешённых.
+fn best_allowed_language(probs: &[f32], allowed: &[(usize, String)]) -> Option<String> {
+    allowed
+        .iter()
+        .filter_map(|(id, code)| probs.get(*id).map(|p| (*p, code)))
+        .filter(|(p, _)| p.is_finite())
+        .max_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(_, code)| code.clone())
 }
 
 /// Собрать текст, сегменты, язык и вероятность тишины из состояния whisper.
@@ -388,6 +509,63 @@ mod tests {
     }
 
     #[test]
+    fn the_best_language_is_chosen_only_among_the_allowed_ones() {
+        let allowed = allowed_language_ids(&["ru".into(), "en".into()]);
+        assert_eq!(allowed.len(), 2);
+        // Вероятности выдуманы: важно, что берётся максимум по разрешённым, а не по всем.
+        let mut probs = vec![0.0; 100];
+        for (id, code) in &allowed {
+            probs[*id] = if code == "en" { 0.7 } else { 0.2 };
+        }
+        // Украинский вероятнее обоих, но его в списке нет.
+        if let Some(uk) = whisper_rs::get_lang_id("uk") {
+            probs[uk as usize] = 0.9;
+        }
+
+        assert_eq!(
+            best_allowed_language(&probs, &allowed).as_deref(),
+            Some("en")
+        );
+    }
+
+    #[test]
+    fn an_unknown_language_code_is_skipped_not_fatal() {
+        let allowed = allowed_language_ids(&["ru".into(), "эльфийский".into(), "RU".into()]);
+        assert_eq!(
+            allowed.len(),
+            1,
+            "опечатка выбрасывается, дубль схлопывается"
+        );
+        assert_eq!(allowed[0].1, "ru");
+        assert_eq!(best_allowed_language(&[], &allowed), None);
+    }
+
+    #[test]
+    fn the_detection_window_has_no_margin() {
+        // Две секунды — сто позиций окна, в пятнадцать раз меньше полного: на нём и держится вся
+        // экономия против режима `auto`.
+        assert_eq!(detect_audio_ctx(2 * 16_000, 16_000), 100);
+        assert!(detect_audio_ctx(2 * 16_000, 16_000) < audio_ctx_for(2 * 16_000, 16_000));
+        assert_eq!(detect_audio_ctx(100, 0), FULL_AUDIO_CTX);
+        assert!(detect_audio_ctx(160, 16_000) >= AUDIO_CTX_PER_SEC);
+    }
+
+    #[test]
+    fn only_the_first_seconds_are_used_for_detection() {
+        let samples = vec![0.1; 16_000 * 10];
+        assert_eq!(
+            first_seconds(&samples, 16_000, DETECT_SECS).len(),
+            16_000 * DETECT_SECS as usize
+        );
+        // Запись короче окна берётся целиком.
+        assert_eq!(
+            first_seconds(&samples[..1_000], 16_000, DETECT_SECS).len(),
+            1_000
+        );
+        assert!(first_seconds(&[], 16_000, DETECT_SECS).is_empty());
+    }
+
+    #[test]
     fn centiseconds_become_milliseconds() {
         assert_eq!(centiseconds_to_ms(0), 0);
         assert_eq!(centiseconds_to_ms(123), 1230);
@@ -491,6 +669,74 @@ mod tests {
             out.segments.is_empty(),
             "сегменты не запрашивались, но пришли"
         );
+    }
+
+    /// Замер на настоящей модели: чего стоит выбор языка среди разрешённых.
+    ///
+    /// Печатает время `Fixed` и `DetectAmong` по трём речевым фикстурам и проверяет, что язык
+    /// выбран правильно. Числа из этого прогона решают, каким быть умолчанию `stt.language`.
+    #[test]
+    #[ignore = "нужна скачанная модель whisper: MOLVA_TEST_MODEL=<путь> --ignored"]
+    fn real_model_language_detection_is_cheap_and_right() {
+        let Ok(path) = std::env::var("MOLVA_TEST_MODEL") else {
+            panic!("задайте MOLVA_TEST_MODEL=<путь к ggml-*.bin>");
+        };
+        let fixtures = [
+            ("privet_ru.wav", "ru"),
+            ("hello_en.wav", "en"),
+            ("secret_ru_en.wav", "ru"),
+        ];
+        let mut engine = WhisperEngine::new(PathBuf::from(path), "test".into(), 0);
+        let allowed = vec!["ru".to_string(), "en".to_string()];
+
+        for (name, expected) in fixtures {
+            let audio = read_wav_fixture(&format!(
+                "{}/../../tests/fixtures/{name}",
+                env!("CARGO_MANIFEST_DIR")
+            ));
+
+            let fixed_opts = SttOptions {
+                language: LanguageHint::Fixed(expected.to_string()),
+                allowed_languages: allowed.clone(),
+                ..SttOptions::default()
+            };
+            let started = Instant::now();
+            let fixed = engine.transcribe(&audio, &fixed_opts).expect("речь");
+            let fixed_ms = started.elapsed().as_millis();
+
+            let auto_opts = SttOptions {
+                language: LanguageHint::Auto,
+                allowed_languages: allowed.clone(),
+                ..SttOptions::default()
+            };
+            let started = Instant::now();
+            let language = engine.detect_language(&audio, &auto_opts);
+            let detect_ms = started.elapsed().as_millis();
+
+            // Полный путь политики: одно определение языка плюс одно распознавание.
+            let started = Instant::now();
+            let detected =
+                crate::infra::stt::transcribe_with_language_policy(&mut engine, &audio, &auto_opts)
+                    .expect("речь");
+            let policy_ms = started.elapsed().as_millis();
+
+            println!(
+                "{name}: fixed {fixed_ms} мс | detect {detect_ms} мс | detect_among \
+                 {policy_ms} мс (+{} %) | язык {language:?}\n  fixed: {}\n  auto:  {}",
+                (policy_ms.saturating_sub(fixed_ms)) * 100 / fixed_ms.max(1),
+                fixed.text.trim(),
+                detected.text.trim()
+            );
+            assert_eq!(
+                language.as_deref(),
+                Some(expected),
+                "{name}: язык выбран неверно"
+            );
+            assert!(
+                !detected.text.trim().is_empty(),
+                "{name}: текст при выборе языка пропал"
+            );
+        }
     }
 
     /// Мини-чтение WAV для ручных прогонов: фикстуры записаны как 16-битный моно 16 кГц.
