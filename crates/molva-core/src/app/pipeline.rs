@@ -31,6 +31,7 @@ use crate::domain::stt::{LanguageHint, SttEngine, SttError, SttOptions};
 use crate::domain::text::word_count;
 
 use super::dictionary::Dictionary;
+use super::llm_output::sanitize_llm_output;
 use super::rules::RuleSet;
 use super::styles::Styles;
 use crate::infra::stt::{is_silence_hallucination, transcribe_with_language_policy};
@@ -450,7 +451,9 @@ impl Pipeline {
                             completion: completion.unwrap_or(0),
                         }),
                     };
-                    let text = response.text.trim().to_string();
+                    // Служебные теги, ограждения, вводные фразы и эхо словаря не должны
+                    // попасть в поле пользователя (AM-19).
+                    let text = sanitize_llm_output(&response.text, &self.dictionary.prompt_hint());
                     if text.is_empty() {
                         last = LlmError::BadResponse("модель вернула пустой текст".into());
                         continue;
@@ -1021,6 +1024,63 @@ mod tests {
             .map(|(_, mode)| *mode)
             .collect();
         assert_eq!(modes, vec![OutputMode::Type], "короткий текст набирается");
+    }
+
+    #[test]
+    fn service_tags_from_the_model_never_reach_the_injector() {
+        // Критерий AM-19: рассуждения и ограждения остаются у модели, в поле идёт текст.
+        let llm = Arc::new(FakeLlm::echoing(
+            "<think>подумаю ещё</think>\n```\nСобрание переносится на среду.\n```",
+        ));
+        let text = "это достаточно длинная реплика из более чем десяти слов чтобы модель \
+                    точно вызвалась";
+        let mut harness = build(text, Some(llm), with_llm());
+        let entry = harness
+            .pipeline
+            .run(audio(8.0), Mode::Dictation, None, None)
+            .unwrap();
+        assert_eq!(injected(&harness), vec!["Собрание переносится на среду."]);
+        assert_eq!(
+            entry.text_final.as_deref(),
+            Some("Собрание переносится на среду.")
+        );
+    }
+
+    #[test]
+    fn command_mode_output_is_cleaned_up_too() {
+        let llm = Arc::new(FakeLlm::echoing(
+            "Вот исправленный текст: \"Добрый день, коллеги.\"",
+        ));
+        let mut harness = build("сделай официальным", Some(llm), with_llm());
+        harness.injector.lock().unwrap().selection = Some("привет как сам".into());
+        harness
+            .pipeline
+            .run(audio(3.0), Mode::Command, None, None)
+            .unwrap();
+        assert_eq!(injected(&harness), vec!["Добрый день, коллеги."]);
+    }
+
+    #[test]
+    fn a_model_that_echoes_the_dictionary_is_treated_as_a_failure() {
+        // Ответ, состоящий из одной подсказки словаря, — это не реплика: остаётся текст правил.
+        let llm = Arc::new(FakeLlm::echoing("MolvAI"));
+        let text = "это достаточно длинная реплика из более чем десяти слов чтобы модель \
+                    точно вызвалась";
+        let mut harness = build(text, Some(Arc::clone(&llm)), with_llm());
+        harness.pipeline.set_dictionary(Dictionary::from_terms(
+            vec![Term::new("MolvAI", &["молва"])],
+            false,
+        ));
+        let entry = harness
+            .pipeline
+            .run(audio(8.0), Mode::Dictation, None, None)
+            .unwrap();
+        assert!(!entry.llm_used, "эхо словаря — не ответ модели");
+        assert!(
+            injected(&harness)[0].starts_with("Это достаточно длинная"),
+            "{:?}",
+            injected(&harness)
+        );
     }
 
     #[test]

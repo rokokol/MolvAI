@@ -483,6 +483,26 @@ defect 'sound/stop-cue-on-record' 'crates/molva-core/src/app/daemon/mod.rs' \
   '                                        let _ = &sound;' \
   'конец записи не слышен: непонятно, отпустил ли ты клавишу и ушла ли реплика в обработку'
 
+defect 'llm/output-is-sanitized' 'crates/molva-core/src/app/pipeline.rs' \
+  '                    let text = sanitize_llm_output(&response.text, &self.dictionary.prompt_hint());' \
+  '                    let text = response.text.trim().to_string();' \
+  'ответ модели уходит в поле как есть: рассуждения и ограждения вставляются пользователю'
+
+defect 'llm/thinking-tags-are-stripped' 'crates/molva-core/src/app/llm_output.rs' \
+  '        out = strip_tag_block(&out, tag);' \
+  '        let _ = tag;' \
+  '<think>…</think> остаётся в тексте: рассуждение модели вставляется вместе с репликой'
+
+defect 'llm/code-fences-are-stripped' 'crates/molva-core/src/app/llm_output.rs' \
+  '    out = strip_code_fences(&out);' \
+  '    out = out.trim().to_string();' \
+  'ответ приезжает в ```-ограждении: в поле ввода попадают три обратные кавычки'
+
+defect 'llm/dictionary-echo-is-not-a-reply' 'crates/molva-core/src/app/llm_output.rs' \
+  '    out = strip_dictionary_echo(&out, dictionary_prompt);' \
+  '    let _ = dictionary_prompt;' \
+  'модель возвращает подсказку словаря, и список терминов вставляется вместо реплики'
+
 defect 'pipeline/pause-before-injection' 'crates/molva-core/src/app/pipeline.rs' \
   '            self.wait_before_inject();' \
   '            let _ = self.config.output.pre_inject_delay_ms;' \
