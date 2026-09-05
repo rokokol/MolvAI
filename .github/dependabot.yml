@@ -1,0 +1,31 @@
+# Закрепления двигаются pull request-ом, а не сюрпризом: dependabot следит за версиями
+# действий в uses: и за крейтами в Cargo.lock. Бамп попадает в main только через зелёный
+# гейт ci.yml, потому что pull request проверяется тем же workflow, что и всё остальное.
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: Europe/Moscow
+    commit-message:
+      prefix: "ci"
+    labels: ["зависимости"]
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: Europe/Moscow
+    commit-message:
+      prefix: "build"
+    labels: ["зависимости"]
+    # Патчи крейтов приходят пачками и по одному pull request на каждый читать невозможно
+    groups:
+      patch-updates:
+        update-types: ["patch"]

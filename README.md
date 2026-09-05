@@ -25,6 +25,10 @@
 ### С Nix
 
 ```sh
+nix run github:rokokol/MolvAI -- --help   # собрать и запустить не клонируя
+```
+
+```sh
 nix develop                        # тулчейн и системные библиотеки, ничего в систему не ставится
 cargo build --release --bin molva
 ./install.sh                       # бинарник в ~/.local/bin, права администратора не нужны

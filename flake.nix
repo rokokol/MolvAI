@@ -9,6 +9,41 @@
       forAll = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
     in
     {
+      # `nix run github:rokokol/MolvAI` — сборка и запуск CLI одной командой,
+      # без клонирования и без установки тулчейна в систему
+      packages = forAll (pkgs:
+        let
+          isLinux = pkgs.stdenv.hostPlatform.isLinux;
+          molva = pkgs.rustPlatform.buildRustPackage {
+            pname = "molva";
+            # Версия читается из Cargo.toml, а не повторяется здесь: два источника
+            # разъезжаются, и первым это замечает пользователь
+            version = (builtins.fromTOML (builtins.readFile ./Cargo.toml))
+              .workspace.package.version;
+            src = self;
+            cargoLock.lockFile = ./Cargo.lock;
+            cargoBuildFlags = [ "--bin" "molva" ];
+
+            nativeBuildInputs = with pkgs; [ cmake pkg-config ];
+            buildInputs = with pkgs; [ openssl ]
+              ++ pkgs.lib.optionals isLinux [ alsa-lib libxkbcommon ];
+
+            # Биндинги whisper-rs лежат в крейте — libclang при сборке не нужен
+            WHISPER_DONT_GENERATE_BINDINGS = "1";
+
+            meta = {
+              description = "Системный голосовой ввод с обработкой на своём компьютере";
+              homepage = "https://github.com/rokokol/MolvAI";
+              license = pkgs.lib.licenses.mit;
+              mainProgram = "molva";
+            };
+          };
+        in
+        {
+          inherit molva;
+          default = molva;
+        });
+
       devShells = forAll (pkgs:
         let
           isLinux = pkgs.stdenv.hostPlatform.isLinux;
