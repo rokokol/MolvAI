@@ -77,15 +77,40 @@ fn dir_for(cfg: &Config) -> Result<std::path::PathBuf, CmdError> {
     models::models_dir(cfg).map_err(|e| CmdError::file(e.to_string()))
 }
 
-/// Скачать модель с полоской прогресса в stderr.
-fn pull(name: &str, dir: &Path, force: bool, quiet: bool) -> Result<std::path::PathBuf, CmdError> {
-    let info = models::find(name).map_err(|e| CmdError::args(e.to_string()))?;
+/// Что сделал `pull`: скачал или обошёлся тем, что уже лежит на диске.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PullReport {
+    pub path: std::path::PathBuf,
+    /// `false` — модель уже была на месте и прошла проверку, сеть не понадобилась (A-09).
+    pub downloaded: bool,
+}
+
+/// Нужно ли вообще качать: `false`, если файл уже на месте и хеш сходится.
+///
+/// `--force` удаляет то, что лежит, и всегда возвращает `true`.
+pub fn needs_download(target: &Path, sha256: &str, force: bool) -> Result<bool, CmdError> {
     if force {
-        let target = dir.join(info.file_name);
         if target.exists() {
-            std::fs::remove_file(&target)
+            std::fs::remove_file(target)
                 .map_err(|e| CmdError::file(format!("{}: {e}", target.display())))?;
         }
+        return Ok(true);
+    }
+    let ok = models::verify(target, sha256).map_err(|e| CmdError::file(e.to_string()))?;
+    Ok(!ok)
+}
+
+/// Скачать модель с полоской прогресса в stderr.
+fn pull(name: &str, dir: &Path, force: bool, quiet: bool) -> Result<PullReport, CmdError> {
+    let info = models::find(name).map_err(|e| CmdError::args(e.to_string()))?;
+    let target = dir.join(info.file_name);
+    if !needs_download(&target, info.sha256, force)? {
+        // Ничего не качаем и честно об этом говорим: «скачиваю» на уже готовый файл вводит
+        // в заблуждение, особенно когда моделей несколько гигабайт.
+        return Ok(PullReport {
+            path: target,
+            downloaded: false,
+        });
     }
 
     let bar = (!quiet).then(|| {
@@ -110,7 +135,12 @@ fn pull(name: &str, dir: &Path, force: bool, quiet: bool) -> Result<std::path::P
     if let Some(bar) = bar {
         bar.finish_and_clear();
     }
-    result.map_err(|e| CmdError::file(e.to_string()))
+    result
+        .map(|path| PullReport {
+            path,
+            downloaded: true,
+        })
+        .map_err(|e| CmdError::file(e.to_string()))
 }
 
 pub fn run(action: &Action, cfg: &Config, stdout: &mut dyn Write) -> Result<(), CmdError> {
@@ -132,9 +162,13 @@ pub fn run(action: &Action, cfg: &Config, stdout: &mut dyn Write) -> Result<(), 
             }
         }
         Action::Pull { name, force } => {
-            let path = pull(name, &dir, *force, !progress_enabled(false))?;
-            eprintln!("готово: контрольная сумма совпала");
-            write(stdout, &path.display().to_string())?;
+            let report = pull(name, &dir, *force, !progress_enabled(false))?;
+            if report.downloaded {
+                eprintln!("готово: контрольная сумма совпала");
+            } else {
+                eprintln!("{name} уже установлена, контрольная сумма совпадает");
+            }
+            write(stdout, &report.path.display().to_string())?;
         }
         Action::Verify { name } => {
             let info = models::find(name).map_err(|e| CmdError::args(e.to_string()))?;
@@ -265,6 +299,38 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.message.contains("--force"), "{}", err.message);
+    }
+
+    #[test]
+    fn installed_and_valid_model_is_not_downloaded_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ggml-tiny.bin");
+        std::fs::write(&path, "содержимое").unwrap();
+        let sha = models::sha256_file(&path).unwrap();
+
+        assert!(!needs_download(&path, &sha, false).unwrap());
+        // Испорченный файл качается заново.
+        assert!(needs_download(&path, &"0".repeat(64), false).unwrap());
+        assert!(path.exists(), "проверка не должна ничего удалять");
+    }
+
+    #[test]
+    fn force_removes_the_file_and_demands_a_download() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ggml-tiny.bin");
+        std::fs::write(&path, "содержимое").unwrap();
+        let sha = models::sha256_file(&path).unwrap();
+
+        assert!(needs_download(&path, &sha, true).unwrap());
+        assert!(!path.exists(), "--force должен убрать старый файл");
+    }
+
+    #[test]
+    fn absent_model_needs_a_download() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ggml-tiny.bin");
+        assert!(needs_download(&path, &"0".repeat(64), false).unwrap());
+        assert!(needs_download(&path, &"0".repeat(64), true).unwrap());
     }
 
     #[test]

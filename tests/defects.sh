@@ -161,3 +161,8 @@ defect 'cli/output-name-collision' 'crates/molva/src/cmd/transcribe.rs' \
   '            if counts.get(&stem).copied().unwrap_or(0) > 1 {' \
   '            if false {' \
   'tone.mp3 и tone.ogg пишутся в один tone.txt: половина работы теряется молча'
+
+defect 'cli/pull-skips-installed' 'crates/molva/src/cmd/models.rs' \
+  '    let ok = models::verify(target, sha256).map_err(|e| CmdError::file(e.to_string()))?;' \
+  '    let ok = false;' \
+  'молва каждый раз перекачивает уже установленную модель'
