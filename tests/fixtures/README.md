@@ -20,5 +20,5 @@ WAV-фикстуры тесты создают сами через `hound`, по
 
 ## Речь
 
-`privet_ru.wav` и `hello_en.wav` — 16 кГц моно, записаны автором проекта 05.09.2026.
+`privet_ru.wav`, `hello_en.wav` и `secret_ru_en.wav` (русский с английскими вставками) — 16 кГц моно, записаны автором проекта 05.09.2026.
 Эталонные тексты лежат в `transcripts.toml` и используются как `reference` для WER/CER в `bench/manifest.toml`.

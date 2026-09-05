@@ -118,3 +118,40 @@ defect 'bench/empty-set-detected' 'crates/molva-core/src/app/bench.rs' \
   '        if manifest.case.is_empty() {' \
   '        if false {' \
   'пустой набор выдаёт отчёт с нулевым WER вместо ошибки'
+
+# --- дорожка E: командная строка ---
+
+defect 'cli/directory-order-stable' 'crates/molva/src/cmd/transcribe.rs' \
+  '    entries.sort();' \
+  '    entries.sort_unstable_by(|a, b| b.cmp(a));' \
+  'файлы каталога обрабатываются в обратном порядке: вывод пакета непредсказуем'
+
+defect 'cli/timecode-minutes' 'crates/molva/src/cmd/transcribe.rs' \
+  '        total_secs / 60,' \
+  '        0,' \
+  'таймкоды длиннее минуты показывают 90 секунд вместо 01:30'
+
+defect 'cli/postprocess-applied' 'crates/molva/src/cmd/transcribe.rs' \
+  '        let text = postprocess(&raw);' \
+  '        let text = raw.clone();' \
+  'постобработка текста молча отключается: словарь и правила не применяются'
+
+defect 'cli/journal-source-file' 'crates/molva/src/cmd/transcribe.rs' \
+  '            source: Source::File,' \
+  '            source: Source::Mic,' \
+  'пакетная расшифровка попадает в статистику как диктовка с микрофона'
+
+defect 'cli/output-directory' 'crates/molva/src/cmd/transcribe.rs' \
+  '        Some(path) if path.is_dir() => {' \
+  '        Some(path) if false => {' \
+  'при выводе в каталог всё сливается в один файл с именем каталога'
+
+defect 'cli/exit-code-file' 'crates/molva/src/cmd/mod.rs' \
+  '    pub const FILE: u8 = crate::exit::FILE;' \
+  '    pub const FILE: u8 = crate::exit::BAD_ARGS;' \
+  'ошибка файла отдаёт код аргументов: скрипты не отличают одно от другого'
+
+defect 'cli/bench-repeat-validated' 'crates/molva/src/cmd/bench.rs' \
+  '    if args.repeat == 0 {' \
+  '    if false {' \
+  '--repeat 0 молча делает один прогон вместо понятной ошибки'
