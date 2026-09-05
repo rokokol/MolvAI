@@ -17,6 +17,7 @@
           rustTools = with pkgs; [
             cargo rustc rustfmt clippy rust-analyzer
             cargo-tauri cargo-deny cargo-about cargo-llvm-cov cargo-audit cargo-machete
+            cargo-cyclonedx
             just
           ];
 

@@ -1,0 +1,36 @@
+# cargo-about: из чего собирается THIRD-PARTY.md.
+# Список разрешённых лицензий держится в согласии с deny.toml: там он гейт,
+# здесь — фильтр отчёта.
+
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "CC0-1.0",
+    "BSL-1.0",
+    "0BSD",
+    "OpenSSL",
+]
+
+# Отчёт про то, что реально попадает в бинарник, а не про dev-зависимости
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
+ignore-transitive-dependencies = false
+
+# Целевые платформы: лицензии зависят от того, что вообще собирается на платформе
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+]
+
+workarounds = ["ring"]

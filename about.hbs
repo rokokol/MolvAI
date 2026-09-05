@@ -1,0 +1,24 @@
+# THIRD-PARTY
+
+Файл собран командой `just third-party` (cargo-about) и описывает лицензии зависимостей, попадающих в бинарники MolvAI. Правила отбора — в `about.toml`, гейт по лицензиям — в `deny.toml`
+
+Лицензии весов моделей распознавания здесь не перечислены: веса в репозиторий не входят, их условия описаны в [docs/model-licenses.md](docs/model-licenses.md)
+
+{{#each overview}}
+- {{name}} — зависимостей: {{count}}
+{{/each}}
+
+{{#each licenses}}
+## {{name}}
+
+Под этой лицензией распространяются:
+
+{{#each used_by}}
+- [{{crate.name}} {{crate.version}}]({{#if crate.repository}}{{{crate.repository}}}{{else}}https://crates.io/crates/{{crate.name}}{{/if}})
+{{/each}}
+
+```
+{{{text}}}
+```
+
+{{/each}}
