@@ -10,3 +10,9 @@ text = "Привет, как дела, Солнышко?"
 file = "hello_en.wav"
 language = "en"
 text = "What's up, guys! How is it doing? It is cold today"
+
+# Смешанная речь: русский с английскими вставками (критерии I-01, I-04)
+[[fixture]]
+file = "secret_ru_en.wav"
+language = "ru"
+text = "Hello, это очень very мега секретная информация"
