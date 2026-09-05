@@ -349,14 +349,32 @@ pub fn parse_status(value: &serde_json::Value) -> (Option<DaemonState>, Option<S
     (state, style)
 }
 
+/// Запрос к демону вне основного потока.
+///
+/// Синхронная команда Tauri выполняется в главном потоке, а чтение из сокета блокирующее:
+/// занятый моделью демон отвечает не сразу, и окно замирало бы вместе с ним.
+async fn ask_daemon(cmd: Command) -> Result<serde_json::Value, CommandError> {
+    tauri::async_runtime::spawn_blocking(move || ipc::request(cmd))
+        .await
+        .map_err(|e| CommandError::new("internal", format!("запрос к демону прерван: {e}")))?
+        .map_err(CommandError::from)
+}
+
+/// Команда демону, ответ которой интересен только фактом успеха.
+async fn tell_daemon(cmd: Command) -> Result<(), CommandError> {
+    ask_daemon(cmd).await?;
+    Ok(())
+}
+
 #[tauri::command]
-pub fn get_status(state: State<'_, AppState>) -> Status {
+pub async fn get_status(state: State<'_, AppState>) -> Result<Status, CommandError> {
+    // Замок берётся и отпускается до ожидания: держать его через `await` нельзя.
     let daemon_ours = state.daemon.lock().expect("демон отравлен").is_ours();
-    match ipc::request(Command::Status) {
+    match ask_daemon(Command::Status).await {
         Ok(value) => {
             let (daemon_state, style) = parse_status(&value);
             state.remember_state(daemon_state);
-            Status {
+            Ok(Status {
                 daemon_running: true,
                 daemon_ours,
                 state: daemon_state.or(Some(DaemonState::Idle)),
@@ -364,20 +382,19 @@ pub fn get_status(state: State<'_, AppState>) -> Status {
                 hotkeys_paused: state.hotkeys_paused(),
                 message: None,
                 hint: None,
-            }
+            })
         }
         Err(err) => {
             state.remember_state(None);
-            let hint = err.hint();
-            Status {
+            Ok(Status {
                 daemon_running: false,
                 daemon_ours,
                 state: None,
                 style: None,
                 hotkeys_paused: state.hotkeys_paused(),
-                message: Some(err.to_string()),
-                hint,
-            }
+                message: Some(err.message),
+                hint: err.hint,
+            })
         }
     }
 }
@@ -390,70 +407,74 @@ fn mode_from(name: Option<&str>) -> Mode {
 }
 
 #[tauri::command]
-pub fn record_start(mode: Option<String>, style: Option<String>) -> Result<(), CommandError> {
-    ipc::request(Command::RecordStart {
+pub async fn record_start(mode: Option<String>, style: Option<String>) -> Result<(), CommandError> {
+    tell_daemon(Command::RecordStart {
         mode: mode_from(mode.as_deref()),
         style,
-    })?;
-    Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn record_stop() -> Result<(), CommandError> {
-    ipc::request(Command::RecordStop)?;
-    Ok(())
+pub async fn record_stop() -> Result<(), CommandError> {
+    tell_daemon(Command::RecordStop).await
 }
 
 #[tauri::command]
-pub fn record_toggle(mode: Option<String>, style: Option<String>) -> Result<(), CommandError> {
-    ipc::request(Command::RecordToggle {
+pub async fn record_toggle(
+    mode: Option<String>,
+    style: Option<String>,
+) -> Result<(), CommandError> {
+    tell_daemon(Command::RecordToggle {
         mode: mode_from(mode.as_deref()),
         style,
-    })?;
-    Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn record_cancel() -> Result<(), CommandError> {
-    ipc::request(Command::RecordCancel)?;
-    Ok(())
+pub async fn record_cancel() -> Result<(), CommandError> {
+    tell_daemon(Command::RecordCancel).await
 }
 
 #[tauri::command]
-pub fn set_style(style: String) -> Result<(), CommandError> {
-    ipc::request(Command::StyleSet { style })?;
-    Ok(())
+pub async fn set_style(style: String) -> Result<(), CommandError> {
+    tell_daemon(Command::StyleSet { style }).await
 }
 
-/// Запросить у демона список устройств. Результат кэшируется для меню трея.
-pub fn fetch_devices(state: &AppState) -> Result<Vec<DeviceInfo>, CommandError> {
-    let value = ipc::request(Command::DevicesList)?;
+/// Разбор ответа `devices.list`: отсутствующий список — пустой, а не ошибка.
+fn parse_devices(value: &serde_json::Value) -> Result<Vec<DeviceInfo>, CommandError> {
     let devices = value
         .get("devices")
         .cloned()
         .unwrap_or(serde_json::Value::Array(Vec::new()));
-    let devices: Vec<DeviceInfo> = serde_json::from_value(devices)
-        .map_err(|e| CommandError::new("daemon", format!("список устройств не разобран: {e}")))?;
+    serde_json::from_value(devices)
+        .map_err(|e| CommandError::new("daemon", format!("список устройств не разобран: {e}")))
+}
+
+/// Спросить у демона устройства из обычного потока: так делает подписка на события.
+pub fn fetch_devices(state: &AppState) -> Result<Vec<DeviceInfo>, CommandError> {
+    let devices = parse_devices(&ipc::request(Command::DevicesList)?)?;
     state.set_devices(devices.clone());
     Ok(devices)
 }
 
 #[tauri::command]
-pub fn list_devices(state: State<'_, AppState>) -> Result<Vec<DeviceInfo>, CommandError> {
-    fetch_devices(&state)
+pub async fn list_devices(state: State<'_, AppState>) -> Result<Vec<DeviceInfo>, CommandError> {
+    let devices = parse_devices(&ask_daemon(Command::DevicesList).await?)?;
+    state.set_devices(devices.clone());
+    Ok(devices)
 }
 
 #[tauri::command]
-pub fn inject_text(text: String, mode: Option<String>) -> Result<(), CommandError> {
+pub async fn inject_text(text: String, mode: Option<String>) -> Result<(), CommandError> {
     let mode = mode.and_then(|m| serde_json::from_value::<OutputMode>(m.into()).ok());
-    ipc::request(Command::InjectText { text, mode })?;
-    Ok(())
+    tell_daemon(Command::InjectText { text, mode }).await
 }
 
 #[tauri::command]
-pub fn reload_config() -> Result<(), CommandError> {
-    ipc::request(Command::ConfigReload)?;
-    Ok(())
+pub async fn reload_config() -> Result<(), CommandError> {
+    tell_daemon(Command::ConfigReload).await
 }
 
 #[tauri::command]
@@ -479,6 +500,18 @@ pub fn get_config(state: State<'_, AppState>) -> Config {
     state.config()
 }
 
+/// Сообщить демону о новых настройках, не дожидаясь ответа.
+///
+/// Файл уже записан, так что для пользователя сохранение состоялось; незапущенный или
+/// занятый демон не должен ни задерживать окно, ни превращать успех в ошибку.
+fn notify_config_reload() {
+    std::thread::spawn(|| {
+        if let Err(err) = ipc::request(Command::ConfigReload) {
+            tracing::info!(%err, "настройки сохранены, но демон о них ещё не знает");
+        }
+    });
+}
+
 #[tauri::command]
 pub fn get_config_path(state: State<'_, AppState>) -> String {
     state.config_path().display().to_string()
@@ -497,10 +530,7 @@ pub fn save_config(
 ) -> Result<(), CommandError> {
     validate_config(&config)?;
     state.replace_config(config)?;
-    // Демон может быть не запущен — это не повод считать сохранение неудачным.
-    if let Err(err) = ipc::request(Command::ConfigReload) {
-        tracing::info!(%err, "настройки сохранены, но демон о них ещё не знает");
-    }
+    notify_config_reload();
     #[cfg(not(target_os = "linux"))]
     if !state.hotkeys_paused() {
         crate::hotkeys::register(&app, &state.config().hotkeys);
@@ -530,7 +560,7 @@ pub fn import_config(state: State<'_, AppState>, path: String) -> Result<Config,
     validate_config(&config)?;
     config.save(state.config_path())?;
     *state.config.lock().expect("настройки отравлены") = config.clone();
-    let _ = ipc::request(Command::ConfigReload);
+    notify_config_reload();
     Ok(config)
 }
 
@@ -539,7 +569,7 @@ pub fn reset_config(state: State<'_, AppState>) -> Result<Config, CommandError> 
     let config = Config::default();
     config.save(state.config_path())?;
     *state.config.lock().expect("настройки отравлены") = config.clone();
-    let _ = ipc::request(Command::ConfigReload);
+    notify_config_reload();
     Ok(config)
 }
 
