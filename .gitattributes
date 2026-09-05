@@ -1,0 +1,14 @@
+# Все текстовые файлы хранятся и выкачиваются с LF: харнесс t.sh читает markers/*.txt
+# построчно, и CRLF на Windows превращал пустую строку в маркер "\r", совпадающий с каждой
+# строкой лога (гейт падал на здоровом прогоне).
+* text=auto eol=lf
+
+# Бинарные фикстуры и иконки не трогать
+*.wav binary
+*.mp3 binary
+*.ogg binary
+*.flac binary
+*.m4a binary
+*.png binary
+*.ico binary
+*.icns binary
