@@ -63,6 +63,11 @@ pub trait TextInjector: Send {
     fn copy_selection(&mut self) -> Result<String, InjectError> {
         Err(InjectError::Unsupported)
     }
+    /// Класс окна, в которое пойдёт следующая вставка.
+    ///
+    /// Нужен там, где способ вставки зависит от приложения: в терминале Ctrl+V ничего не
+    /// вставляет, ему нужен Ctrl+Shift+V. Реализации, которым окно безразлично, ничего не делают.
+    fn set_window(&mut self, _class: Option<&str>) {}
 }
 
 #[cfg(test)]

@@ -119,8 +119,11 @@ impl TextInjector for HyprctlInjector {
         let arg = self.shortcut_arg();
         paste_via_clipboard(&mut self.clipboard, text, || {
             run("hyprctl", &["dispatch", "sendshortcut", arg])?;
-            // Hyprland 0.4x–0.5x иногда оставляет модификатор «нажатым» после sendshortcut
-            // (issue #6407): следующий ввод пользователя уходит с Ctrl. Снимаем явно.
+            // Hyprland оставляет модификатор нажатым после sendshortcut (issue #6407), и клиент
+            // отрабатывает сочетание только когда модификатор отпущен. Поэтому «отпускание» —
+            // это не уборка за собой, а обязательный шаг вставки. Паузу между ними проверяли
+            // на 0.56.2: без неё композитор успевает склеить события и вставка не происходит.
+            std::thread::sleep(MODIFIER_RELEASE_DELAY);
             release_modifiers();
             Ok(())
         })?;
@@ -130,6 +133,9 @@ impl TextInjector for HyprctlInjector {
         })
     }
 }
+
+/// Пауза между сочетанием и отпусканием модификаторов.
+const MODIFIER_RELEASE_DELAY: Duration = Duration::from_millis(80);
 
 /// Отпустить модификаторы, которые мог оставить нажатыми `sendshortcut`.
 fn release_modifiers() {
