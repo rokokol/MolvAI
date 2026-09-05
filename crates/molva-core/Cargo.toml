@@ -17,6 +17,10 @@ uuid = { workspace = true }
 toml = { workspace = true }
 directories = { workspace = true }
 tracing = { workspace = true }
+symphonia = { workspace = true }
+reqwest = { workspace = true }
+sha2 = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+hound = { workspace = true }

@@ -41,3 +41,20 @@ defect 'config/missing-file-is-default' 'crates/molva-core/src/config.rs' \
   '            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),' \
   '            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(ConfigError::Read { path: path.to_path_buf(), source: e }),' \
   'первый запуск без файла настроек падает вместо того, чтобы работать со значениями по умолчанию'
+
+# --- дорожка E: декодирование файлов ---
+
+defect 'decode/downmix-to-mono' 'crates/molva-core/src/infra/audio/decode.rs' \
+  '                mono.extend_from_slice(&downmix_to_mono(buf.samples(), channels));' \
+  '                mono.extend_from_slice(buf.samples());' \
+  'стерео-файл уходит в whisper как чередующиеся каналы: вдвое длиннее и звучит как каша'
+
+defect 'decode/empty-file-rejected' 'crates/molva-core/src/infra/audio/decode.rs' \
+  '    if meta.len() == 0 {' \
+  '    if false {' \
+  'пустой файл вместо понятного «0 байт» даёт ошибку разбора формата'
+
+defect 'decode/native-sample-rate' 'crates/molva-core/src/infra/audio/decode.rs' \
+  '    Ok(PcmAudio::new(mono, sample_rate))' \
+  '    Ok(PcmAudio::new(mono, 16_000))' \
+  'частота файла подменяется на 16 кГц без ресемплинга: длительность и скорость речи врут'
