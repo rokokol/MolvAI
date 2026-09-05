@@ -7,7 +7,14 @@
 //! аудио — поэтому края режутся, а внутренние паузы сохраняются как есть: пауза внутри реплики
 //! это часть речи, и вырезать её значит склеить слова и завысить темп.
 
+use crate::config::AudioConfig;
 use crate::domain::audio::PcmAudio;
+
+/// Запас, который остаётся до первого и после последнего звука.
+///
+/// Ноль обрезал бы атаку первого согласного, а полсекунды вернули бы тишину, ради которой всё и
+/// затевалось.
+pub const DEFAULT_KEEP_MS: u32 = 200;
 
 /// Окно анализа: 20 мс — компромисс между реакцией на короткие звуки и устойчивостью к шуму.
 const WINDOW_MS: u32 = 20;
@@ -60,6 +67,18 @@ pub fn trim_silence(audio: &PcmAudio, threshold_db: f32, keep_ms: u32) -> PcmAud
     let end = ((last + 1) * window + keep).min(audio.samples.len());
 
     PcmAudio::new(audio.samples[start..end].to_vec(), audio.sample_rate)
+}
+
+/// Обрезка по настройкам пользователя.
+///
+/// При `audio.trim_silence = false` запись возвращается как есть. Внутренние паузы не режутся
+/// никогда, поэтому `audio.vad_min_pause_ms` соблюдается по построению: пауза любой длины внутри
+/// реплики остаётся на месте (E-01/02).
+pub fn trim_for_config(audio: &PcmAudio, cfg: &AudioConfig) -> PcmAudio {
+    if !cfg.trim_silence {
+        return audio.clone();
+    }
+    trim_silence(audio, cfg.silence_threshold_db, DEFAULT_KEEP_MS)
 }
 
 /// Уровень самого громкого окна; для пустого буфера — [`SILENCE_FLOOR_DB`].
@@ -210,6 +229,35 @@ mod tests {
         assert!(is_silent(&audio(silence(500)), -45.0));
         assert!(is_silent(&audio(tone(500, 0.001)), -45.0));
         assert!(!is_silent(&audio(tone(500, 0.5)), -45.0));
+    }
+
+    #[test]
+    fn disabled_trimming_returns_the_recording_untouched() {
+        let cfg = AudioConfig {
+            trim_silence: false,
+            ..AudioConfig::default()
+        };
+        let input = audio(silence(1000));
+
+        assert_eq!(trim_for_config(&input, &cfg), input);
+    }
+
+    #[test]
+    fn config_threshold_is_used_for_trimming() {
+        let mut samples = silence(500);
+        samples.extend(tone(300, 0.5));
+        let input = audio(samples);
+
+        // Порог −45 дБ: речь громче, её оставляем.
+        let normal = AudioConfig::default();
+        assert!(!trim_for_config(&input, &normal).samples.is_empty());
+
+        // Порог 0 дБ: громче нет ничего, значит тишина целиком.
+        let deaf = AudioConfig {
+            silence_threshold_db: 0.0,
+            ..AudioConfig::default()
+        };
+        assert!(trim_for_config(&input, &deaf).samples.is_empty());
     }
 
     #[test]
