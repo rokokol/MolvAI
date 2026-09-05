@@ -6,6 +6,12 @@
 //!     [--model PATH] [--language ru] [--threads N] [--timecodes] [--no-trim]
 //! ```
 //!
+//! С микрофона (сквозная проверка захвата вместе с распознаванием):
+//!
+//! ```text
+//! cargo run -p molva-core --example transcribe_wav -- --mic 5 [--device NAME] --language ru
+//! ```
+//!
 //! Печатает текст в stdout, тайминги и служебное — в stderr (Y-15).
 
 use std::path::PathBuf;
@@ -13,8 +19,9 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 use molva_core::app::audio::trim_silence;
-use molva_core::domain::audio::{downmix_to_mono, PcmAudio};
+use molva_core::domain::audio::{downmix_to_mono, AudioSource, PcmAudio};
 use molva_core::domain::stt::{LanguageHint, SttEngine, SttOptions};
+use molva_core::infra::audio::CpalSource;
 use molva_core::infra::stt::{transcribe_with_language_policy, WhisperEngine};
 
 fn main() -> ExitCode {
@@ -28,7 +35,10 @@ fn main() -> ExitCode {
 }
 
 struct Args {
-    wav: PathBuf,
+    wav: Option<PathBuf>,
+    /// Записать столько секунд с микрофона вместо чтения файла.
+    mic_secs: Option<u32>,
+    device: String,
     model: PathBuf,
     language: String,
     threads: usize,
@@ -45,13 +55,22 @@ fn run() -> Result<(), String> {
 
     let args = parse_args()?;
 
-    let audio = read_wav(&args.wav)?;
-    eprintln!(
-        "файл: {} — {:.2} с, {} Гц",
-        args.wav.display(),
-        audio.duration_secs(),
-        audio.sample_rate
-    );
+    let audio = match args.mic_secs {
+        Some(secs) => record_from_mic(&args.device, secs)?,
+        None => {
+            let wav = args.wav.as_ref().ok_or(
+                "укажите WAV-файл или --mic СЕКУНДЫ: transcribe_wav file.wav [--model PATH]",
+            )?;
+            let audio = read_wav(wav)?;
+            eprintln!(
+                "файл: {} — {:.2} с, {} Гц",
+                wav.display(),
+                audio.duration_secs(),
+                audio.sample_rate
+            );
+            audio
+        }
+    };
 
     let ready = audio.to_16k();
     let ready = if args.trim {
@@ -135,6 +154,8 @@ fn parse_args() -> Result<Args, String> {
     let mut threads = 0usize;
     let mut timecodes = false;
     let mut trim = true;
+    let mut mic_secs = None;
+    let mut device = "default".to_string();
 
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -144,6 +165,15 @@ fn parse_args() -> Result<Args, String> {
                     it.next().ok_or("--model требует путь к файлу модели")?,
                 ))
             }
+            "--mic" => {
+                mic_secs = Some(
+                    it.next()
+                        .ok_or("--mic требует число секунд")?
+                        .parse()
+                        .map_err(|_| "--mic: ожидалось число секунд")?,
+                )
+            }
+            "--device" => device = it.next().ok_or("--device требует имя устройства")?,
             "--language" => language = it.next().ok_or("--language требует код языка")?,
             "--threads" => {
                 threads = it
@@ -160,13 +190,36 @@ fn parse_args() -> Result<Args, String> {
     }
 
     Ok(Args {
-        wav: wav.ok_or("укажите WAV-файл: transcribe_wav file.wav [--model PATH]")?,
+        wav,
+        mic_secs,
+        device,
         model: model.unwrap_or_else(default_model_path),
         language,
         threads,
         timecodes,
         trim,
     })
+}
+
+/// Записать заданное число секунд с микрофона — сквозная проверка `CpalSource`.
+fn record_from_mic(device: &str, secs: u32) -> Result<PcmAudio, String> {
+    let (level_tx, level_rx) = std::sync::mpsc::channel();
+    let mut source = CpalSource::new(device, 1.0, secs.max(1));
+
+    source.start(Some(level_tx)).map_err(|e| e.to_string())?;
+    eprintln!("говорите… запись {secs} с");
+    std::thread::sleep(std::time::Duration::from_secs(secs.max(1) as u64));
+    let audio = source.stop().map_err(|e| e.to_string())?;
+
+    let levels: Vec<f32> = level_rx.try_iter().collect();
+    let peak = levels.iter().copied().fold(0.0_f32, f32::max);
+    eprintln!(
+        "записано {:.2} с при {} Гц, замеров уровня {}, пиковый RMS {peak:.4}",
+        audio.duration_secs(),
+        audio.sample_rate,
+        levels.len()
+    );
+    Ok(audio)
 }
 
 /// Модель по умолчанию — `small` в каталоге данных пользователя.
