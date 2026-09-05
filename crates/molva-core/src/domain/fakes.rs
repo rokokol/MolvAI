@@ -18,6 +18,7 @@ use super::inject::{InjectError, InjectReport, OutputMode, TextInjector};
 use super::journal::{Journal, JournalError};
 use super::llm::{ChatRequest, ChatResponse, LlmClient, LlmError};
 use super::notify::Notifier;
+use super::sound::{CueKind, SoundCue};
 use super::stt::{SttEngine, SttError, SttOptions, Transcript};
 
 /// Источник, отдающий заранее заданный буфер.
@@ -276,6 +277,31 @@ impl Notifier for RecordingNotifier {
     fn notify(&self, title: &str, body: &str) {
         if let Ok(mut messages) = self.messages.lock() {
             messages.push((title.to_string(), body.to_string()));
+        }
+    }
+}
+
+/// Запоминает сыгранные сигналы: тест считает, сколько их было на реплику.
+#[derive(Debug, Default)]
+pub struct RecordingSoundCue {
+    played: Mutex<Vec<CueKind>>,
+}
+
+impl RecordingSoundCue {
+    /// Сигналы в порядке воспроизведения.
+    pub fn played(&self) -> Vec<CueKind> {
+        self.played.lock().map(|p| p.clone()).unwrap_or_default()
+    }
+}
+
+impl SoundCue for RecordingSoundCue {
+    fn id(&self) -> &'static str {
+        "recording"
+    }
+
+    fn play(&self, kind: CueKind) {
+        if let Ok(mut played) = self.played.lock() {
+            played.push(kind);
         }
     }
 }

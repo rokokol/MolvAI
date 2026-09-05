@@ -471,6 +471,23 @@ defect 'config/validation-collects-every-issue' 'crates/molva-core/src/config.rs
   '                let _ = (key, value, allowed);' \
   'неверное значение из списка допустимых проходит проверку молча'
 
+# --- дорожка H: признаки для чекера ---
+
+defect 'sound/start-cue-on-record' 'crates/molva-core/src/app/daemon/mod.rs' \
+  '                                        sound.play(CueKind::RecordStart);' \
+  '                                        let _ = &sound;' \
+  'начало записи ничем не отмечено: пользователь говорит в закрытый микрофон и узнаёт об этом потом'
+
+defect 'sound/stop-cue-on-record' 'crates/molva-core/src/app/daemon/mod.rs' \
+  '                                        sound.play(CueKind::RecordStop);' \
+  '                                        let _ = &sound;' \
+  'конец записи не слышен: непонятно, отпустил ли ты клавишу и ушла ли реплика в обработку'
+
+defect 'sound/setting-turns-cues-off' 'crates/molva-core/src/infra/sound.rs' \
+  '    if !audio.sounds {' \
+  '    if false {' \
+  'настройка audio.sounds = false не выключает звук: молчания добиться нечем'
+
 defect 'cli/history-limit-keeps-the-newest' 'crates/molva/src/cmd/history.rs' \
   '        selected = selected.split_off(selected.len() - args.limit);' \
   '        selected.truncate(args.limit);' \

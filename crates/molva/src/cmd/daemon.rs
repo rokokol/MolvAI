@@ -25,6 +25,7 @@ use molva_core::infra::ipc::{self, Server};
 use molva_core::infra::llm::openai_compat::OpenAiCompatClient;
 use molva_core::infra::notify::{LogNotifier, SystemNotifier};
 use molva_core::infra::platform;
+use molva_core::infra::sound;
 use uuid::Uuid;
 
 /// Путь к сокету: флаг важнее переменной окружения, переменная — умолчания.
@@ -154,6 +155,8 @@ pub fn run(config_path: &Path, options: Options) -> anyhow::Result<()> {
         audio: build_audio(&config),
         processor: Box::new(pipeline),
         notifier,
+        // Звук начала и конца записи; `audio.sounds = false` даёт молчаливую реализацию.
+        sound: sound::build_sound_cue(&config.audio),
         clock,
         config: config.clone(),
     });

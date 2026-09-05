@@ -87,7 +87,8 @@ bindr = , Control_R, exec, molva stop
 | `audio` | `silence_threshold_db` | `-45.0` | порог, ниже которого сигнал считается тишиной |
 | `audio` | `vad_min_pause_ms` | `1500` | пауза короче этой не режет реплику |
 | `audio` | `noise_suppression` | `false` | шумоподавление |
-| `audio` | `sounds` | `true` | звуковые метки начала и конца записи |
+| `audio` | `sounds` | `true` | звуковые метки начала и конца записи; `false` — полная тишина |
+| `audio` | `sound_volume` | `0.4` | громкость этих сигналов, 0…1 |
 | `audio` | `warn_zero_level` | `true` | предупреждать о нулевом уровне сигнала |
 | `stt` | `engine` | `whisper-cpp` | `whisper-cpp` локально или `remote-openai` |
 | `stt` | `model` | `small` | какие веса использовать |

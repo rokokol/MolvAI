@@ -22,6 +22,7 @@ use crate::domain::audio::{AudioSource, PcmAudio};
 use crate::domain::clock::Clock;
 use crate::domain::entry::Mode;
 use crate::domain::notify::Notifier;
+use crate::domain::sound::{CueKind, SoundCue};
 use crate::infra::ipc::RequestHandler;
 use crate::infra::platform;
 use crate::ipc::protocol::{Command, DaemonState, ErrorCode, Event, IpcError};
@@ -49,6 +50,8 @@ pub struct DaemonParts {
     pub audio: Box<dyn AudioSource>,
     pub processor: Box<dyn Processor>,
     pub notifier: Arc<dyn Notifier>,
+    /// Звуковые метки начала и конца записи; тишину делает `NullSoundCue`, а не отсутствие вызова.
+    pub sound: Arc<dyn SoundCue>,
     pub clock: Arc<dyn Clock>,
     pub config: Config,
 }
@@ -106,6 +109,7 @@ impl Daemon {
             mut audio,
             mut processor,
             notifier,
+            sound,
             clock,
             config,
         } = parts;
@@ -132,6 +136,7 @@ impl Daemon {
         {
             let shared = shared.clone();
             let notifier = notifier.clone();
+            let sound = sound.clone();
             let tx = tx.clone();
             threads.push(std::thread::spawn(move || {
                 let mut pending: Option<(Mode, Option<String>, Option<String>)> = None;
@@ -144,6 +149,8 @@ impl Daemon {
                                 match audio.start(Some(level_tx.clone())) {
                                     Ok(()) => {
                                         pending = Some((*mode, style.clone(), app));
+                                        // Первый из двух сигналов реплики: микрофон открыт.
+                                        sound.play(CueKind::RecordStart);
                                         shared.set_state(DaemonState::Recording, Some(*mode));
                                         let generation =
                                             shared.generation.fetch_add(1, Ordering::SeqCst) + 1;
@@ -156,6 +163,7 @@ impl Daemon {
                                     }
                                     Err(err) => {
                                         // Микрофон не открылся — машину нельзя оставить в записи.
+                                        sound.play(CueKind::Error);
                                         machine.on(Input::RecordCancel);
                                         shared.set_state(DaemonState::Idle, None);
                                         shared.publish(Event::Error {
@@ -172,6 +180,8 @@ impl Daemon {
                                 let app = pending.take().and_then(|(_, _, app)| app);
                                 match audio.stop() {
                                     Ok(pcm) => {
+                                        // Второй и последний сигнал реплики: микрофон закрыт.
+                                        sound.play(CueKind::RecordStop);
                                         shared.set_state(DaemonState::Transcribing, Some(*mode));
                                         let job = Job {
                                             audio: pcm,
@@ -185,6 +195,7 @@ impl Daemon {
                                         }
                                     }
                                     Err(err) => {
+                                        sound.play(CueKind::Error);
                                         machine.on(Input::ProcessingFailed);
                                         shared.set_state(DaemonState::Idle, None);
                                         shared.publish(Event::Error {
@@ -200,6 +211,9 @@ impl Daemon {
                                 pending = None;
                                 // Микрофон мог и не открыться: отказ здесь ничего не меняет.
                                 let _ = audio.stop();
+                                // Реплики не будет, поэтому и сигнала конца записи нет: слышно,
+                                // что нажатие пропало впустую.
+                                sound.play(CueKind::Error);
                                 shared.set_state(DaemonState::Idle, None);
                                 tracing::info!(reason = reason.message(), "запись отброшена");
                             }
@@ -435,7 +449,7 @@ fn command_name(cmd: &Command) -> String {
 mod tests {
     use super::*;
     use crate::domain::fakes::{
-        FakeAudioSource, FakeClock, FakeStt, MemJournal, RecordingNotifier,
+        FakeAudioSource, FakeClock, FakeStt, MemJournal, RecordingNotifier, RecordingSoundCue,
     };
     use crate::domain::inject::{InjectError, InjectReport, OutputMode, TextInjector};
     use std::time::Duration;
@@ -472,6 +486,7 @@ mod tests {
         clock: Arc<FakeClock>,
         injected: Arc<Mutex<Vec<String>>>,
         notifier: Arc<RecordingNotifier>,
+        sound: Arc<RecordingSoundCue>,
     }
 
     fn harness(text: &str) -> Harness {
@@ -497,10 +512,12 @@ mod tests {
             notifier.clone(),
             ProcessorConfig::from_config(&config, Uuid::nil()),
         );
+        let sound = Arc::new(RecordingSoundCue::default());
         let daemon = Daemon::spawn(DaemonParts {
             audio: Box::new(FakeAudioSource::silence(2.0)),
             processor: Box::new(processor),
             notifier: notifier.clone(),
+            sound: sound.clone(),
             clock: clock.clone(),
             config,
         });
@@ -511,6 +528,7 @@ mod tests {
             clock,
             injected,
             notifier,
+            sound,
         }
     }
 
@@ -549,6 +567,47 @@ mod tests {
             "текст должен дойти до инжектора"
         );
         assert_eq!(entry.words, 2);
+        drop(h.daemon);
+    }
+
+    #[test]
+    fn a_reply_is_framed_by_exactly_two_sound_cues() {
+        // Критерий AG-05: сигнал начала записи и сигнал конца записи — ровно два на реплику.
+        let h = harness("реплика");
+        let events = h.handle.subscribe();
+        h.handle
+            .send(Input::RecordStart {
+                mode: Mode::Dictation,
+                style: None,
+            })
+            .unwrap();
+        h.clock.advance(Duration::from_secs(2));
+        h.handle.send(Input::RecordStop).unwrap();
+        wait_for_entry(&events);
+        assert_eq!(
+            h.sound.played(),
+            vec![CueKind::RecordStart, CueKind::RecordStop],
+            "на реплику должно приходиться ровно два сигнала"
+        );
+        drop(h.daemon);
+    }
+
+    #[test]
+    fn a_cancelled_recording_never_sounds_the_end_of_a_reply() {
+        let h = harness("реплика");
+        h.handle
+            .send(Input::RecordStart {
+                mode: Mode::Dictation,
+                style: None,
+            })
+            .unwrap();
+        h.clock.advance(Duration::from_secs(1));
+        h.handle.send(Input::RecordCancel).unwrap();
+        assert_eq!(
+            h.sound.played(),
+            vec![CueKind::RecordStart, CueKind::Error],
+            "отменённая запись не должна звучать как законченная реплика"
+        );
         drop(h.daemon);
     }
 
