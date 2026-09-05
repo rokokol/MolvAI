@@ -113,7 +113,9 @@
             packages = base.packages ++ pkgs.lib.optionals isLinux [ pkgsUnfree.cudaPackages.cudatoolkit ];
             CUDA_PATH = pkgs.lib.optionalString isLinux "${pkgsUnfree.cudaPackages.cudatoolkit}";
             CUDAToolkit_ROOT = pkgs.lib.optionalString isLinux "${pkgsUnfree.cudaPackages.cudatoolkit}";
-            RUSTFLAGS = "-L native=/run/opengl-driver/lib";
+            # rpath: бинарь находит libcuda и libcudart сам, без LD_LIBRARY_PATH, — бинды композитора
+            # и GUI запускают его вне этой оболочки
+            RUSTFLAGS = "-L native=/run/opengl-driver/lib -C link-arg=-Wl,-rpath,/run/opengl-driver/lib -C link-arg=-Wl,-rpath,${pkgsUnfree.cudaPackages.cudatoolkit}/lib";
             shellHook = base.shellHook + pkgs.lib.optionalString isLinux ''
               export LD_LIBRARY_PATH="/run/opengl-driver/lib:${pkgsUnfree.cudaPackages.cudatoolkit}/lib:$LD_LIBRARY_PATH"
               export LIBRARY_PATH="/run/opengl-driver/lib:$LIBRARY_PATH"
