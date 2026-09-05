@@ -62,7 +62,7 @@ pub fn trim_silence(audio: &PcmAudio, threshold_db: f32, keep_ms: u32) -> PcmAud
         return PcmAudio::new(Vec::new(), audio.sample_rate);
     };
 
-    let keep = (audio.sample_rate as u64 * keep_ms as u64 / 1000) as usize;
+    let keep = (u64::from(audio.sample_rate) * u64::from(keep_ms) / 1000) as usize;
     let start = (first * window).saturating_sub(keep);
     let end = ((last + 1) * window + keep).min(audio.samples.len());
 
@@ -96,7 +96,7 @@ fn loudest_window_db(audio: &PcmAudio) -> f32 {
 
 /// Длина окна анализа в отсчётах; нулевая частота даёт 0 и трактуется вызывающим как «нет данных».
 fn window_len(sample_rate: u32) -> usize {
-    (sample_rate as u64 * WINDOW_MS as u64 / 1000) as usize
+    (u64::from(sample_rate) * u64::from(WINDOW_MS) / 1000) as usize
 }
 
 fn rms(samples: &[f32]) -> f32 {
@@ -123,12 +123,12 @@ mod tests {
 
     /// Отрезок синуса заданной амплитуды: ровный сигнал, у которого RMS предсказуем.
     fn tone(ms: u32, amplitude: f32) -> Vec<f32> {
-        let n = (RATE as u64 * ms as u64 / 1000) as usize;
+        let n = (u64::from(RATE) * u64::from(ms) / 1000) as usize;
         (0..n).map(|i| amplitude * (i as f32 * 0.3).sin()).collect()
     }
 
     fn silence(ms: u32) -> Vec<f32> {
-        vec![0.0; (RATE as u64 * ms as u64 / 1000) as usize]
+        vec![0.0; (u64::from(RATE) * u64::from(ms) / 1000) as usize]
     }
 
     fn audio(samples: Vec<f32>) -> PcmAudio {

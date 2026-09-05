@@ -202,7 +202,7 @@ impl ChainInjector {
         if !self.terminal_shortcut {
             return;
         }
-        let terminal = class.map(is_terminal_class).unwrap_or(false);
+        let terminal = class.is_some_and(is_terminal_class);
         let shortcut = if terminal {
             PasteShortcut::CtrlShiftV
         } else {
@@ -341,38 +341,47 @@ mod tests {
     }
 
     impl FakeInjector {
-        fn working(id: &'static str, seen: Arc<Mutex<Vec<(String, OutputMode)>>>) -> Box<Self> {
-            Box::new(Self {
+        /// Общая заготовка: остальные конструкторы отличаются ровно одним полем.
+        fn new(id: &'static str, seen: Arc<Mutex<Vec<(String, OutputMode)>>>) -> Self {
+            Self {
                 id,
                 available: true,
                 error: None,
                 refuse_type: false,
                 seen,
-            })
+            }
         }
-        fn failing(id: &'static str, error: InjectError) -> Box<Self> {
+
+        fn working(
+            id: &'static str,
+            seen: Arc<Mutex<Vec<(String, OutputMode)>>>,
+        ) -> Box<dyn TextInjector> {
+            Box::new(Self::new(id, seen))
+        }
+
+        fn failing(id: &'static str, error: InjectError) -> Box<dyn TextInjector> {
             Box::new(Self {
-                id,
-                available: true,
                 error: Some(error),
-                refuse_type: false,
-                seen: Arc::new(Mutex::new(Vec::new())),
+                ..Self::new(id, Arc::new(Mutex::new(Vec::new())))
             })
         }
-        fn missing(id: &'static str) -> Box<Self> {
+
+        fn missing(id: &'static str) -> Box<dyn TextInjector> {
             Box::new(Self {
-                id,
                 available: false,
-                error: None,
-                refuse_type: false,
-                seen: Arc::new(Mutex::new(Vec::new())),
+                ..Self::new(id, Arc::new(Mutex::new(Vec::new())))
             })
         }
+
         /// Способ, который вставляет, но не набирает.
-        fn paste_only(id: &'static str, seen: Arc<Mutex<Vec<(String, OutputMode)>>>) -> Box<Self> {
-            let mut injector = Self::working(id, seen);
-            injector.refuse_type = true;
-            injector
+        fn paste_only(
+            id: &'static str,
+            seen: Arc<Mutex<Vec<(String, OutputMode)>>>,
+        ) -> Box<dyn TextInjector> {
+            Box::new(Self {
+                refuse_type: true,
+                ..Self::new(id, seen)
+            })
         }
     }
 

@@ -169,8 +169,8 @@ impl Connection {
         loop {
             match self.recv()? {
                 None => return Err(IpcClientError::Disconnected),
-                Some(Message::Event(_)) => continue,
-                Some(Message::Response(resp)) if resp.id != id => continue,
+                Some(Message::Event(_)) => {}
+                Some(Message::Response(resp)) if resp.id != id => {}
                 Some(Message::Response(resp)) => return unwrap_response(resp),
             }
         }
@@ -233,7 +233,7 @@ mod tests {
         let msg = parse_message(r#"{"event":"state","state":"recording"}"#).unwrap();
         match msg {
             Message::Event(Event::State { state, .. }) => {
-                assert_eq!(state, DaemonState::Recording)
+                assert_eq!(state, DaemonState::Recording);
             }
             other => panic!("ожидалось событие состояния, получено {other:?}"),
         }
@@ -247,7 +247,7 @@ mod tests {
                 assert_eq!(resp.id, 3);
                 assert!(resp.ok);
             }
-            other => panic!("ожидался ответ, получено {other:?}"),
+            other @ Message::Event(_) => panic!("ожидался ответ, получено {other:?}"),
         }
     }
 

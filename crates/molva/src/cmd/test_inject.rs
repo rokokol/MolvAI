@@ -52,9 +52,7 @@ pub(crate) fn run(
 
 /// Режим вставки для проверки: аргумент важнее конфига, `auto` разрешается по длине текста.
 pub(crate) fn resolve_mode(config: &Config, mode: Option<&str>, text: &str) -> OutputMode {
-    let requested = mode
-        .map(parse_output_mode)
-        .unwrap_or_else(|| parse_output_mode(&config.output.mode));
+    let requested = mode.map_or_else(|| parse_output_mode(&config.output.mode), parse_output_mode);
     requested.resolve(text, config.output.auto_type_max_chars as usize)
 }
 

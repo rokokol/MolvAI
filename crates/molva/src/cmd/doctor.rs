@@ -115,6 +115,8 @@ fn tool_detail(found: bool) -> &'static str {
     }
 }
 
+// Общая для всех подкоманд сигнатура: диспетчер в `main` вызывает их одинаково.
+#[allow(clippy::unnecessary_wraps)]
 pub(crate) fn run(socket: &Path) -> anyhow::Result<()> {
     for check in checks(socket) {
         println!("{}", check.line());

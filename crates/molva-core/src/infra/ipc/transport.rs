@@ -161,7 +161,7 @@ impl Server {
     }
 
     /// Принимать соединения, пока не попросят остановиться.
-    pub fn serve(self, handler: Arc<dyn RequestHandler>) -> Result<(), IpcServerError> {
+    pub fn serve(self, handler: &Arc<dyn RequestHandler>) -> Result<(), IpcServerError> {
         for incoming in self.listener.incoming() {
             if self.stop.load(Ordering::SeqCst) {
                 break;
@@ -172,7 +172,7 @@ impl Server {
                     // Поток на соединение: подписчик держит своё соединение часами, и он не
                     // должен мешать `molva status` получить ответ.
                     std::thread::spawn(move || {
-                        if let Err(err) = serve_connection(stream, handler) {
+                        if let Err(err) = serve_connection(stream, &handler) {
                             tracing::debug!(%err, "соединение закрыто");
                         }
                     });
@@ -204,7 +204,7 @@ impl Stopper {
 
 fn serve_connection(
     stream: Stream,
-    handler: Arc<dyn RequestHandler>,
+    handler: &Arc<dyn RequestHandler>,
 ) -> Result<(), IpcServerError> {
     let (recv, mut send) = stream.split();
     let mut reader = BufReader::new(recv);
@@ -292,7 +292,9 @@ pub struct Client {
 
 impl std::fmt::Debug for Client {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Client").field("path", &self.path).finish()
+        f.debug_struct("Client")
+            .field("path", &self.path)
+            .finish_non_exhaustive()
     }
 }
 
@@ -462,7 +464,7 @@ mod tests {
         let server = Server::bind(&path).unwrap();
         let stopper = server.stopper();
         std::thread::spawn(move || {
-            let _ = server.serve(handler);
+            let _ = server.serve(&handler);
         });
         // Дать серверу дойти до accept: connect до этого момента получит отказ.
         for _ in 0..100 {
@@ -574,8 +576,9 @@ mod tests {
         // Файл есть, слушателя нет: сервер обязан подняться, а не сказать «адрес занят».
         let server = Server::bind(&path).expect("мёртвый сокет должен быть удалён");
         let stopper = server.stopper();
+        let handler: Arc<dyn RequestHandler> = EchoHandler::new();
         std::thread::spawn(move || {
-            let _ = server.serve(EchoHandler::new());
+            let _ = server.serve(&handler);
         });
         for _ in 0..100 {
             if Client::connect(&path).is_ok() {

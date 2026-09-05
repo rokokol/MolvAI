@@ -27,7 +27,7 @@ struct Header {
     created: DateTime<Utc>,
 }
 
-fn io_err(path: &Path, err: std::io::Error) -> JournalError {
+fn io_err(path: &Path, err: &std::io::Error) -> JournalError {
     JournalError::Io(format!("{}: {err}", path.display()))
 }
 
@@ -49,7 +49,7 @@ impl FileJournal {
     pub fn open_with(path: &Path, include_text: bool) -> Result<Self, JournalError> {
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
-                std::fs::create_dir_all(parent).map_err(|e| io_err(parent, e))?;
+                std::fs::create_dir_all(parent).map_err(|e| io_err(parent, &e))?;
             }
         }
         let existed = path.exists();
@@ -57,7 +57,7 @@ impl FileJournal {
             .create(true)
             .append(true)
             .open(path)
-            .map_err(|e| io_err(path, e))?;
+            .map_err(|e| io_err(path, &e))?;
         restrict_permissions(&file, path)?;
         if !existed {
             let header = Header {
@@ -67,8 +67,8 @@ impl FileJournal {
             let line = serde_json::to_string(&header)
                 .map_err(|e| JournalError::Serialize(e.to_string()))?;
             let mut file = file;
-            writeln!(file, "{line}").map_err(|e| io_err(path, e))?;
-            file.sync_all().map_err(|e| io_err(path, e))?;
+            writeln!(file, "{line}").map_err(|e| io_err(path, &e))?;
+            file.sync_all().map_err(|e| io_err(path, &e))?;
         }
         Ok(Self {
             path: path.to_path_buf(),
@@ -100,7 +100,7 @@ impl FileJournal {
         let text = match std::fs::read_to_string(&self.path) {
             Ok(text) => text,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(e) => return Err(io_err(&self.path, e)),
+            Err(e) => return Err(io_err(&self.path, &e)),
         };
         let mut entries = Vec::new();
         let mut broken = Vec::new();
@@ -135,12 +135,12 @@ impl FileJournal {
             .create(true)
             .append(true)
             .open(&path)
-            .map_err(|e| io_err(&path, e))?;
+            .map_err(|e| io_err(&path, &e))?;
         restrict_permissions(&file, &path)?;
         for line in lines {
-            writeln!(file, "{line}").map_err(|e| io_err(&path, e))?;
+            writeln!(file, "{line}").map_err(|e| io_err(&path, &e))?;
         }
-        file.sync_all().map_err(|e| io_err(&path, e))
+        file.sync_all().map_err(|e| io_err(&path, &e))
     }
 
     /// Поиск по подстроке в текстах реплики, без учёта регистра.
@@ -175,7 +175,7 @@ impl FileJournal {
             kept = &kept[kept.len() - max_entries as usize..];
         }
         if max_size_mb > 0 {
-            let limit = max_size_mb as u64 * 1024 * 1024;
+            let limit = u64::from(max_size_mb) * 1024 * 1024;
             while !kept.is_empty() && serialized_size(kept)? > limit {
                 // Режем самые старые: свежая история ценнее для пользователя.
                 let drop = (kept.len() / 10).max(1);
@@ -200,14 +200,14 @@ impl FileJournal {
             out.push_str(&line);
             out.push('\n');
         }
-        std::fs::write(path, out).map_err(|e| io_err(path, e))?;
+        std::fs::write(path, out).map_err(|e| io_err(path, &e))?;
         Ok(entries.len())
     }
 
     /// Экспорт всех записей в CSV.
     pub fn export_csv(&self, path: &Path) -> Result<usize, JournalError> {
         let entries = self.load_all()?;
-        std::fs::write(path, entries_to_csv(&entries)).map_err(|e| io_err(path, e))?;
+        std::fs::write(path, entries_to_csv(&entries)).map_err(|e| io_err(path, &e))?;
         Ok(entries.len())
     }
 
@@ -217,7 +217,7 @@ impl FileJournal {
         tmp_name.push(".tmp");
         let tmp = PathBuf::from(tmp_name);
         {
-            let file = File::create(&tmp).map_err(|e| io_err(&tmp, e))?;
+            let file = File::create(&tmp).map_err(|e| io_err(&tmp, &e))?;
             restrict_permissions(&file, &tmp)?;
             let mut writer = BufWriter::new(file);
             let header = Header {
@@ -226,18 +226,18 @@ impl FileJournal {
             };
             let line = serde_json::to_string(&header)
                 .map_err(|e| JournalError::Serialize(e.to_string()))?;
-            writeln!(writer, "{line}").map_err(|e| io_err(&tmp, e))?;
+            writeln!(writer, "{line}").map_err(|e| io_err(&tmp, &e))?;
             for entry in entries {
                 let line = serde_json::to_string(entry)
                     .map_err(|e| JournalError::Serialize(e.to_string()))?;
-                writeln!(writer, "{line}").map_err(|e| io_err(&tmp, e))?;
+                writeln!(writer, "{line}").map_err(|e| io_err(&tmp, &e))?;
             }
             let file = writer
                 .into_inner()
                 .map_err(|e| JournalError::Io(format!("{}: {}", tmp.display(), e.error())))?;
-            file.sync_all().map_err(|e| io_err(&tmp, e))?;
+            file.sync_all().map_err(|e| io_err(&tmp, &e))?;
         }
-        std::fs::rename(&tmp, &self.path).map_err(|e| io_err(&self.path, e))
+        std::fs::rename(&tmp, &self.path).map_err(|e| io_err(&self.path, &e))
     }
 }
 
@@ -260,11 +260,11 @@ impl Journal for FileJournal {
             .create(true)
             .append(true)
             .open(&self.path)
-            .map_err(|e| io_err(&self.path, e))?;
+            .map_err(|e| io_err(&self.path, &e))?;
         restrict_permissions(&file, &self.path)?;
-        writeln!(file, "{line}").map_err(|e| io_err(&self.path, e))?;
-        file.flush().map_err(|e| io_err(&self.path, e))?;
-        file.sync_all().map_err(|e| io_err(&self.path, e))
+        writeln!(file, "{line}").map_err(|e| io_err(&self.path, &e))?;
+        file.flush().map_err(|e| io_err(&self.path, &e))?;
+        file.sync_all().map_err(|e| io_err(&self.path, &e))
     }
 }
 
@@ -287,10 +287,10 @@ fn is_header(line: &str) -> bool {
 #[cfg(unix)]
 fn restrict_permissions(file: &File, path: &Path) -> Result<(), JournalError> {
     use std::os::unix::fs::PermissionsExt;
-    let mut perms = file.metadata().map_err(|e| io_err(path, e))?.permissions();
+    let mut perms = file.metadata().map_err(|e| io_err(path, &e))?.permissions();
     if perms.mode() & 0o777 != 0o600 {
         perms.set_mode(0o600);
-        file.set_permissions(perms).map_err(|e| io_err(path, e))?;
+        file.set_permissions(perms).map_err(|e| io_err(path, &e))?;
     }
     Ok(())
 }
@@ -322,8 +322,7 @@ pub fn search_entries(entries: &[Entry], substring: &str) -> Vec<Entry> {
             let hit = |field: &Option<String>| {
                 field
                     .as_deref()
-                    .map(|text| text.to_lowercase().contains(&needle))
-                    .unwrap_or(false)
+                    .is_some_and(|text| text.to_lowercase().contains(&needle))
             };
             hit(&entry.text_final) || hit(&entry.text_raw)
         })
@@ -339,8 +338,7 @@ pub fn filter_by_app(entries: &[Entry], app: &str) -> Vec<Entry> {
             entry
                 .app
                 .as_deref()
-                .map(|value| value.eq_ignore_ascii_case(app))
-                .unwrap_or(false)
+                .is_some_and(|value| value.eq_ignore_ascii_case(app))
         })
         .cloned()
         .collect()
@@ -354,8 +352,8 @@ pub fn filter_by_date(
 ) -> Vec<Entry> {
     entries
         .iter()
-        .filter(|entry| since.map(|from| entry.ts >= from).unwrap_or(true))
-        .filter(|entry| until.map(|to| entry.ts <= to).unwrap_or(true))
+        .filter(|entry| since.is_none_or(|from| entry.ts >= from))
+        .filter(|entry| until.is_none_or(|to| entry.ts <= to))
         .cloned()
         .collect()
 }

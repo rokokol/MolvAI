@@ -80,7 +80,7 @@ impl Term {
     pub fn new(word: &str, aliases: &[&str]) -> Self {
         Self {
             word: word.to_string(),
-            aliases: aliases.iter().map(|a| a.to_string()).collect(),
+            aliases: aliases.iter().map(ToString::to_string).collect(),
             case: CaseMode::Keep,
         }
     }
@@ -265,21 +265,18 @@ impl Dictionary {
         let mut hits = 0u32;
         let mut index = 0;
         while index < tokens.len() {
-            match self.match_at(&tokens, index) {
-                Some((len, term)) => {
-                    let tail = trailing_punctuation(&tokens[index + len - 1]);
-                    let replacement = format!("{}{tail}", term.rendered());
-                    let original: Vec<String> = tokens[index..index + len].to_vec();
-                    if join(&original) != replacement {
-                        hits += 1;
-                    }
-                    out.push(replacement);
-                    index += len;
+            if let Some((len, term)) = self.match_at(&tokens, index) {
+                let tail = trailing_punctuation(&tokens[index + len - 1]);
+                let replacement = format!("{}{tail}", term.rendered());
+                let original: Vec<String> = tokens[index..index + len].to_vec();
+                if join(&original) != replacement {
+                    hits += 1;
                 }
-                None => {
-                    out.push(tokens[index].clone());
-                    index += 1;
-                }
+                out.push(replacement);
+                index += len;
+            } else {
+                out.push(tokens[index].clone());
+                index += 1;
             }
         }
         (join(&out), hits)
@@ -317,7 +314,7 @@ impl Dictionary {
             };
             for (alias, term) in candidates {
                 let score = strsim::normalized_levenshtein(word, alias);
-                if score >= FUZZY_THRESHOLD && best.map(|(top, _)| score > top).unwrap_or(true) {
+                if score >= FUZZY_THRESHOLD && best.is_none_or(|(top, _)| score > top) {
                     best = Some((score, *term));
                 }
             }

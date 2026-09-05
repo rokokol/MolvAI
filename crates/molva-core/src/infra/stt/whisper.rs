@@ -82,7 +82,7 @@ impl WhisperEngine {
 }
 
 impl SttEngine for WhisperEngine {
-    fn id(&self) -> &str {
+    fn id(&self) -> &'static str {
         "whisper-cpp"
     }
 
@@ -269,9 +269,7 @@ fn resolve_threads(requested: usize) -> usize {
     if requested > 0 {
         return requested;
     }
-    let cores = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(1);
+    let cores = std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
     (cores / 2).max(1)
 }
 
@@ -342,7 +340,7 @@ mod tests {
     fn broken_language_code_is_an_error_not_a_panic() {
         // Нулевой байт и мусор из конфига не должны доходить до CString в whisper-rs.
         assert!(whisper_language(&LanguageHint::Fixed("ru\0".into())).is_err());
-        assert!(whisper_language(&LanguageHint::Fixed("".into())).is_err());
+        assert!(whisper_language(&LanguageHint::Fixed(String::new())).is_err());
         assert!(whisper_language(&LanguageHint::Fixed("русский".into())).is_err());
     }
 
@@ -501,7 +499,7 @@ mod tests {
         let spec = reader.spec();
         let samples: Vec<f32> = reader
             .samples::<i16>()
-            .map(|s| s.expect("отсчёт читается") as f32 / i16::MAX as f32)
+            .map(|s| f32::from(s.expect("отсчёт читается")) / f32::from(i16::MAX))
             .collect();
         PcmAudio::new(
             crate::domain::audio::downmix_to_mono(&samples, spec.channels),

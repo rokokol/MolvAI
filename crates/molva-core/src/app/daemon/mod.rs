@@ -68,7 +68,7 @@ struct Shared {
 
 impl Shared {
     /// Разослать событие подписчикам; отвалившиеся отписываются сами.
-    fn publish(&self, event: Event) {
+    fn publish(&self, event: &Event) {
         let Ok(mut subscribers) = self.subscribers.lock() else {
             return;
         };
@@ -84,7 +84,7 @@ impl Shared {
             _ => false,
         };
         if changed {
-            self.publish(Event::State { state, mode });
+            self.publish(&Event::State { state, mode });
         }
     }
 }
@@ -161,7 +161,7 @@ impl Daemon {
                                         // Микрофон не открылся — машину нельзя оставить в записи.
                                         machine.on(Input::RecordCancel);
                                         shared.set_state(DaemonState::Idle, None);
-                                        shared.publish(Event::Error {
+                                        shared.publish(&Event::Error {
                                             code: ErrorCode::NoDevice,
                                             message: err.to_string(),
                                             hint: Some("проверьте устройство: molva doctor".into()),
@@ -190,7 +190,7 @@ impl Daemon {
                                     Err(err) => {
                                         machine.on(Input::ProcessingFailed);
                                         shared.set_state(DaemonState::Idle, None);
-                                        shared.publish(Event::Error {
+                                        shared.publish(&Event::Error {
                                             code: ErrorCode::NoDevice,
                                             message: err.to_string(),
                                             hint: None,
@@ -233,7 +233,7 @@ impl Daemon {
                     );
                     let input = match result {
                         Ok(entry) => {
-                            shared.publish(Event::Entry {
+                            shared.publish(&Event::Entry {
                                 entry: Box::new(entry),
                             });
                             Input::ProcessingDone
@@ -241,7 +241,7 @@ impl Daemon {
                         Err(err) => {
                             tracing::error!(%err, "обработка не удалась");
                             notifier.notify("MolvAI", &err.to_string());
-                            shared.publish(Event::Error {
+                            shared.publish(&Event::Error {
                                 code: error_code_for(&err),
                                 message: err.to_string(),
                                 hint: Some("подробности: molva doctor".into()),
@@ -259,7 +259,7 @@ impl Daemon {
             let shared = shared.clone();
             threads.push(std::thread::spawn(move || {
                 while let Ok(rms) = level_rx.recv() {
-                    shared.publish(Event::Level { rms });
+                    shared.publish(&Event::Level { rms });
                 }
             }));
         }
@@ -336,11 +336,7 @@ impl DaemonHandle {
     }
 
     pub fn state(&self) -> DaemonState {
-        self.shared
-            .state
-            .lock()
-            .map(|s| *s)
-            .unwrap_or(DaemonState::Idle)
+        self.shared.state.lock().map_or(DaemonState::Idle, |s| *s)
     }
 
     pub fn session_id(&self) -> Uuid {
@@ -523,8 +519,7 @@ mod tests {
             match events.recv_timeout(Duration::from_millis(200)) {
                 Ok(Event::Entry { entry }) => return *entry,
                 Ok(Event::Error { message, .. }) => panic!("демон сообщил об ошибке: {message}"),
-                Ok(_) => continue,
-                Err(_) => continue,
+                Ok(_) | Err(_) => {}
             }
         }
         panic!("реплика так и не появилась");
@@ -655,7 +650,7 @@ mod tests {
                     seen.push(state);
                     break;
                 }
-                Ok(_) => continue,
+                Ok(_) => {}
                 Err(_) => break,
             }
         }

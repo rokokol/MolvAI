@@ -180,40 +180,40 @@ pub enum Event {
 mod tests {
     use super::*;
 
-    fn round_trip(cmd: Command) {
+    fn round_trip(cmd: &Command) {
         let req = Request::new(1, cmd.clone());
         let json = serde_json::to_string(&req).unwrap();
         let back: Request = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.cmd, cmd, "не совпало после round-trip: {json}");
+        assert_eq!(&back.cmd, cmd, "не совпало после round-trip: {json}");
     }
 
     #[test]
     fn every_command_round_trips() {
-        round_trip(Command::Ping);
-        round_trip(Command::Status);
-        round_trip(Command::RecordStart {
+        round_trip(&Command::Ping);
+        round_trip(&Command::Status);
+        round_trip(&Command::RecordStart {
             mode: Mode::Dictation,
             style: Some("cleanup".into()),
         });
-        round_trip(Command::RecordStop);
-        round_trip(Command::RecordToggle {
+        round_trip(&Command::RecordStop);
+        round_trip(&Command::RecordToggle {
             mode: Mode::Command,
             style: None,
         });
-        round_trip(Command::RecordCancel);
-        round_trip(Command::StyleSet {
+        round_trip(&Command::RecordCancel);
+        round_trip(&Command::StyleSet {
             style: "formal".into(),
         });
-        round_trip(Command::StyleNext);
-        round_trip(Command::ConfigReload);
-        round_trip(Command::DevicesList);
-        round_trip(Command::DictionaryReload);
-        round_trip(Command::InjectText {
+        round_trip(&Command::StyleNext);
+        round_trip(&Command::ConfigReload);
+        round_trip(&Command::DevicesList);
+        round_trip(&Command::DictionaryReload);
+        round_trip(&Command::InjectText {
             text: "текст".into(),
             mode: Some(crate::domain::inject::OutputMode::Paste),
         });
-        round_trip(Command::Subscribe { levels: true });
-        round_trip(Command::Shutdown);
+        round_trip(&Command::Subscribe { levels: true });
+        round_trip(&Command::Shutdown);
     }
 
     #[test]

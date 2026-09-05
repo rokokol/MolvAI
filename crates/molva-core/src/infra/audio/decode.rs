@@ -16,7 +16,7 @@ use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
 use symphonia::core::errors::Error as SymphoniaError;
 use symphonia::core::formats::FormatOptions;
-use symphonia::core::io::{MediaSource, MediaSourceStream};
+use symphonia::core::io::{MediaSource, MediaSourceStream, MediaSourceStreamOptions};
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 
@@ -37,7 +37,7 @@ pub const STDIN_LABEL: &str = "<stdin>";
 pub fn is_supported_audio(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
-        .map(|e| e.to_ascii_lowercase())
+        .map(str::to_ascii_lowercase)
         .is_some_and(|e| SUPPORTED_EXTENSIONS.contains(&e.as_str()))
 }
 
@@ -66,7 +66,7 @@ pub fn decode_file(path: &Path) -> Result<PcmAudio, AudioError> {
     if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
         hint.with_extension(ext);
     }
-    decode_source(Box::new(file), hint, &label)
+    decode_source(Box::new(file), &hint, &label)
 }
 
 /// Декодировать произвольный источник: используется для stdin и тестов.
@@ -82,7 +82,7 @@ pub fn decode_reader(
     if let Some(ext) = extension {
         hint.with_extension(ext);
     }
-    decode_source(source, hint, label)
+    decode_source(source, &hint, label)
 }
 
 /// Прочитать stdin целиком в память и декодировать.
@@ -103,10 +103,10 @@ pub fn decode_stdin(extension: Option<&str>) -> Result<PcmAudio, AudioError> {
 
 fn decode_source(
     source: Box<dyn MediaSource>,
-    hint: Hint,
+    hint: &Hint,
     label: &str,
 ) -> Result<PcmAudio, AudioError> {
-    let stream = MediaSourceStream::new(source, Default::default());
+    let stream = MediaSourceStream::new(source, MediaSourceStreamOptions::default());
     // enable_gapless убирает служебные отсчёты кодировщика (задержка mp3 и priming AAC),
     // иначе длительность файла заметно расходится с исходной.
     let format_opts = FormatOptions {
@@ -114,7 +114,7 @@ fn decode_source(
         ..FormatOptions::default()
     };
     let probed = symphonia::default::get_probe()
-        .format(&hint, stream, &format_opts, &MetadataOptions::default())
+        .format(hint, stream, &format_opts, &MetadataOptions::default())
         .map_err(|e| decode_error(label, format!("формат не распознан: {e}")))?;
     let mut format = probed.format;
 
@@ -151,18 +151,18 @@ fn decode_source(
             continue;
         }
         match decoder.decode(&packet) {
-            Ok(decoded) => {
-                let spec = *decoded.spec();
+            Ok(frames) => {
+                let spec = *frames.spec();
                 sample_rate = spec.rate;
                 let channels = spec.channels.count() as u16;
                 let buf = buffer.get_or_insert_with(|| {
-                    SampleBuffer::<f32>::new(decoded.capacity() as u64, spec)
+                    SampleBuffer::<f32>::new(frames.capacity() as u64, spec)
                 });
-                buf.copy_interleaved_ref(decoded);
+                buf.copy_interleaved_ref(frames);
                 mono.extend_from_slice(&downmix_to_mono(buf.samples(), channels));
             }
             // Битый пакет посреди файла — пропускаем: остальная запись всё ещё полезна.
-            Err(SymphoniaError::DecodeError(_)) => continue,
+            Err(SymphoniaError::DecodeError(_)) => {}
             Err(SymphoniaError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                 break
             }

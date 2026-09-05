@@ -21,7 +21,7 @@ use molva_core::domain::notify::Notifier;
 use molva_core::domain::stt::SttEngine;
 use molva_core::infra::audio::CpalSource;
 use molva_core::infra::inject::ChainInjector;
-use molva_core::infra::ipc::{self, Server};
+use molva_core::infra::ipc::{self, RequestHandler, Server};
 use molva_core::infra::llm::openai_compat::OpenAiCompatClient;
 use molva_core::infra::notify::{LogNotifier, SystemNotifier};
 use molva_core::infra::platform;
@@ -110,7 +110,7 @@ pub(crate) struct Options {
     pub foreground: bool,
 }
 
-pub(crate) fn run(config_path: &Path, options: Options) -> anyhow::Result<()> {
+pub(crate) fn run(config_path: &Path, options: &Options) -> anyhow::Result<()> {
     let config = Config::load_or_create(config_path)
         .with_context(|| format!("настройки {}", config_path.display()))?;
 
@@ -162,7 +162,8 @@ pub(crate) fn run(config_path: &Path, options: Options) -> anyhow::Result<()> {
     let server = Server::bind(&options.socket)
         .with_context(|| format!("сокет {}", options.socket.display()))?;
     println!("MolvAI: демон слушает {}", options.socket.display());
-    server.serve(Arc::new(handle))?;
+    let handler: Arc<dyn RequestHandler> = Arc::new(handle);
+    server.serve(&handler)?;
     daemon.join();
     Ok(())
 }

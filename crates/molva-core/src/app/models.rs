@@ -122,7 +122,7 @@ pub enum ModelError {
     },
 }
 
-fn io_err(path: &Path, e: std::io::Error) -> ModelError {
+fn io_err(path: &Path, e: &std::io::Error) -> ModelError {
     ModelError::Io {
         path: path.to_path_buf(),
         reason: e.to_string(),
@@ -195,7 +195,7 @@ pub fn list(dir: &Path) -> Vec<ModelStatus> {
         .iter()
         .map(|info| {
             let path = dir.join(info.file_name);
-            let size_on_disk = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            let size_on_disk = std::fs::metadata(&path).map_or(0, |m| m.len());
             ModelStatus {
                 info: *info,
                 installed: size_on_disk > 0,
@@ -216,17 +216,17 @@ pub fn remove(name: &str, dir: &Path) -> Result<PathBuf, ModelError> {
             path,
         });
     }
-    std::fs::remove_file(&path).map_err(|e| io_err(&path, e))?;
+    std::fs::remove_file(&path).map_err(|e| io_err(&path, &e))?;
     Ok(path)
 }
 
 /// SHA-256 файла в нижнем регистре.
 pub fn sha256_file(path: &Path) -> Result<String, ModelError> {
-    let mut file = std::fs::File::open(path).map_err(|e| io_err(path, e))?;
+    let mut file = std::fs::File::open(path).map_err(|e| io_err(path, &e))?;
     let mut hasher = Sha256::new();
     let mut buf = vec![0u8; CHUNK];
     loop {
-        let read = file.read(&mut buf).map_err(|e| io_err(path, e))?;
+        let read = file.read(&mut buf).map_err(|e| io_err(path, &e))?;
         if read == 0 {
             break;
         }
@@ -276,18 +276,18 @@ pub fn download_verified(
 ) -> Result<PathBuf, ModelError> {
     let target = dir.join(file_name);
     if verify(&target, sha256)? {
-        let size = std::fs::metadata(&target).map(|m| m.len()).unwrap_or(0);
+        let size = std::fs::metadata(&target).map_or(0, |m| m.len());
         progress(size, size);
         return Ok(target);
     }
     if target.exists() {
         // Файл есть, но битый: качаем заново, чтобы не выдавать мусор за модель.
-        std::fs::remove_file(&target).map_err(|e| io_err(&target, e))?;
+        std::fs::remove_file(&target).map_err(|e| io_err(&target, &e))?;
     }
-    std::fs::create_dir_all(dir).map_err(|e| io_err(dir, e))?;
+    std::fs::create_dir_all(dir).map_err(|e| io_err(dir, &e))?;
 
     let part = dir.join(format!("{file_name}.part"));
-    let already = std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
+    let already = std::fs::metadata(&part).map_or(0, |m| m.len());
 
     let client = reqwest::blocking::Client::builder()
         .user_agent(concat!("molva/", env!("CARGO_PKG_VERSION")))
@@ -326,9 +326,9 @@ pub fn download_verified(
         .write(true)
         .truncate(!resuming)
         .open(&part)
-        .map_err(|e| io_err(&part, e))?;
+        .map_err(|e| io_err(&part, &e))?;
     let mut downloaded = if resuming {
-        file.seek(SeekFrom::End(0)).map_err(|e| io_err(&part, e))?;
+        file.seek(SeekFrom::End(0)).map_err(|e| io_err(&part, &e))?;
         already
     } else {
         0
@@ -344,14 +344,15 @@ pub fn download_verified(
         if read == 0 {
             break;
         }
-        file.write_all(&buf[..read]).map_err(|e| io_err(&part, e))?;
+        file.write_all(&buf[..read])
+            .map_err(|e| io_err(&part, &e))?;
         downloaded += read as u64;
         progress(downloaded, total.max(downloaded));
     }
-    file.flush().map_err(|e| io_err(&part, e))?;
+    file.flush().map_err(|e| io_err(&part, &e))?;
     drop(file);
 
-    std::fs::rename(&part, &target).map_err(|e| io_err(&part, e))?;
+    std::fs::rename(&part, &target).map_err(|e| io_err(&part, &e))?;
 
     let actual = sha256_file(&target)?;
     if !actual.eq_ignore_ascii_case(sha256.trim()) {
@@ -506,7 +507,7 @@ mod tests {
 
         let mut seen: Vec<(u64, u64)> = Vec::new();
         let path = download_verified(&url, dir.path(), "m.bin", &sha, "m", &mut |d, t| {
-            seen.push((d, t))
+            seen.push((d, t));
         })
         .unwrap();
 

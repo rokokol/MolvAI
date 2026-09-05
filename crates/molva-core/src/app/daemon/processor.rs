@@ -283,10 +283,10 @@ mod tests {
     }
 
     impl SttEngine for SlowStt {
-        fn id(&self) -> &str {
+        fn id(&self) -> &'static str {
             "fake"
         }
-        fn model_name(&self) -> &str {
+        fn model_name(&self) -> &'static str {
             "fake"
         }
         fn transcribe(

@@ -3,8 +3,18 @@
 //!
 //! Подкоманды живут в `cmd/`, здесь только разбор аргументов и коды выхода.
 
-// В тестах паника — это способ сообщить о провале, а не необработанная ошибка.
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
+// В тестах паника — это способ сообщить о провале, а не необработанная ошибка, а точное
+// сравнение чисел с плавающей точкой законно: тест сверяет вычисленное значение с константой,
+// которую сам же и задал.
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::float_cmp
+    )
+)]
 
 use std::process::ExitCode;
 
@@ -215,7 +225,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         Commands::Daemon { foreground } => {
             let config = Config::load(&config_path)?;
             init_logging(&config.log.level);
-            cmd::daemon::run(&config_path, cmd::daemon::Options { socket, foreground })
+            cmd::daemon::run(&config_path, &cmd::daemon::Options { socket, foreground })
         }
         Commands::Record { action } => {
             let (action, mode, style) = match action {
@@ -288,7 +298,6 @@ fn exit_code_for(err: &anyhow::Error) -> u8 {
     }
     if let Some(ipc) = err.downcast_ref::<IpcClientError>() {
         return match ipc {
-            IpcClientError::NotRunning { .. } => exit::NO_DAEMON,
             IpcClientError::Daemon(inner) => match inner.code {
                 ErrorCode::Busy => exit::BUSY,
                 ErrorCode::SttFailed | ErrorCode::LlmFailed | ErrorCode::NoDevice => exit::ENGINE,

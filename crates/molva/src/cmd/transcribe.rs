@@ -337,10 +337,10 @@ pub(crate) fn render_all(results: &[FileResult], timecodes: bool) -> String {
 pub(crate) fn out_file_names(results: &[FileResult], json: bool) -> Vec<String> {
     let ext = if json { "json" } else { "txt" };
     let stem_of = |result: &FileResult| {
-        Path::new(&result.file)
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "transcript".to_string())
+        Path::new(&result.file).file_stem().map_or_else(
+            || "transcript".to_string(),
+            |stem| stem.to_string_lossy().to_string(),
+        )
     };
     let mut counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for result in results {

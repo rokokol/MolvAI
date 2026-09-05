@@ -4,6 +4,7 @@
 //! Все поля имеют значения по умолчанию, поэтому пустой файл — валидный конфиг, а частичный
 //! файл дополняется. Ключи API в файле не хранятся: только имя переменной окружения или keystore.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -268,7 +269,7 @@ impl Default for LlmConfig {
 pub struct StyleConfig {
     pub default: String,
     /// Класс окна → идентификатор стиля.
-    pub by_app: std::collections::BTreeMap<String, String>,
+    pub by_app: BTreeMap<String, String>,
     pub custom: Vec<CustomStyle>,
 }
 
@@ -276,7 +277,7 @@ impl Default for StyleConfig {
     fn default() -> Self {
         Self {
             default: "cleanup".into(),
-            by_app: Default::default(),
+            by_app: BTreeMap::default(),
             custom: Vec::new(),
         }
     }
@@ -462,6 +463,20 @@ fn default_true() -> bool {
     true
 }
 
+/// Значение из закрытого списка; регистр не важен.
+fn one_of(issues: &mut Vec<ConfigIssue>, key: &str, value: &str, allowed: &[&str]) {
+    if !allowed.iter().any(|a| a.eq_ignore_ascii_case(value)) {
+        issues.push(ConfigIssue::allowed(key, value, allowed));
+    }
+}
+
+/// Число в закрытом диапазоне, границы включительно.
+fn in_range(issues: &mut Vec<ConfigIssue>, key: &str, value: f64, lo: f64, hi: f64) {
+    if value < lo || value > hi {
+        issues.push(ConfigIssue::range(key, &format!("{value}"), lo, hi));
+    }
+}
+
 impl Config {
     /// Каталог настроек пользователя: `~/.config/molva` на Linux и аналоги на других ОС.
     pub fn default_dir() -> Result<PathBuf, ConfigError> {
@@ -616,37 +631,54 @@ impl Config {
     }
 
     /// Проверить настройки целиком. Ошибки собираются все сразу, а не по одной за запуск.
+    ///
+    /// Порядок замечаний повторяет порядок секций в файле настроек: так их проще
+    /// сопоставить с тем, что пользователь видит в редакторе.
     pub fn validate(&self) -> Result<(), Vec<ConfigIssue>> {
         let mut issues = Vec::new();
-        let one_of = |issues: &mut Vec<ConfigIssue>, key: &str, value: &str, allowed: &[&str]| {
-            if !allowed.iter().any(|a| a.eq_ignore_ascii_case(value)) {
-                issues.push(ConfigIssue::allowed(key, value, allowed));
-            }
-        };
-        let in_range = |issues: &mut Vec<ConfigIssue>, key: &str, value: f64, lo: f64, hi: f64| {
-            if value < lo || value > hi {
-                issues.push(ConfigIssue::range(key, &format!("{value}"), lo, hi));
-            }
-        };
+        self.validate_general(&mut issues);
+        self.validate_audio(&mut issues);
+        self.validate_stt(&mut issues);
+        self.validate_output(&mut issues);
+        self.validate_llm(&mut issues);
+        self.validate_styles(&mut issues);
+        self.validate_limits(&mut issues);
 
-        one_of(&mut issues, "ui_language", &self.ui_language, &["ru", "en"]);
-        in_range(&mut issues, "audio.gain", self.audio.gain as f64, 0.1, 10.0);
+        if issues.is_empty() {
+            Ok(())
+        } else {
+            Err(issues)
+        }
+    }
+
+    /// Общие настройки приложения.
+    fn validate_general(&self, issues: &mut Vec<ConfigIssue>) {
+        one_of(issues, "ui_language", &self.ui_language, &["ru", "en"]);
+    }
+
+    /// Захват звука: усиление, длительность, громкость сигналов.
+    fn validate_audio(&self, issues: &mut Vec<ConfigIssue>) {
+        in_range(issues, "audio.gain", f64::from(self.audio.gain), 0.1, 10.0);
         in_range(
-            &mut issues,
+            issues,
             "audio.max_duration_secs",
-            self.audio.max_duration_secs as f64,
+            f64::from(self.audio.max_duration_secs),
             1.0,
             7200.0,
         );
         in_range(
-            &mut issues,
+            issues,
             "audio.sound_volume",
-            self.audio.sound_volume as f64,
+            f64::from(self.audio.sound_volume),
             0.0,
             1.0,
         );
+    }
+
+    /// Распознавание: движок, язык, пороги, ключ удалённого API.
+    fn validate_stt(&self, issues: &mut Vec<ConfigIssue>) {
         one_of(
-            &mut issues,
+            issues,
             "stt.engine",
             &self.stt.engine,
             &["whisper-cpp", "remote-openai"],
@@ -659,20 +691,24 @@ impl Config {
             ));
         }
         in_range(
-            &mut issues,
+            issues,
             "stt.no_speech_threshold",
-            self.stt.no_speech_threshold as f64,
+            f64::from(self.stt.no_speech_threshold),
             0.0,
             1.0,
         );
         one_of(
-            &mut issues,
+            issues,
             "stt.remote.api_key_source",
             &self.stt.remote.api_key_source,
             &["keyring", "env", "none"],
         );
+    }
+
+    /// Доставка текста в активное окно.
+    fn validate_output(&self, issues: &mut Vec<ConfigIssue>) {
         one_of(
-            &mut issues,
+            issues,
             "output.mode",
             &self.output.mode,
             &["auto", "paste", "type", "clipboard"],
@@ -684,8 +720,12 @@ impl Config {
                 "ожидается положительное число символов",
             ));
         }
+    }
+
+    /// Постобработка моделью: провайдер, ключ, лимиты, таймауты.
+    fn validate_llm(&self, issues: &mut Vec<ConfigIssue>) {
         one_of(
-            &mut issues,
+            issues,
             "llm.provider",
             &self.llm.provider,
             &[
@@ -699,36 +739,36 @@ impl Config {
             ],
         );
         one_of(
-            &mut issues,
+            issues,
             "llm.api_key_source",
             &self.llm.api_key_source,
             &["keyring", "env", "none"],
         );
         in_range(
-            &mut issues,
+            issues,
             "llm.temperature",
-            self.llm.temperature as f64,
+            f64::from(self.llm.temperature),
             0.0,
             2.0,
         );
         in_range(
-            &mut issues,
+            issues,
             "llm.max_tokens",
-            self.llm.max_tokens as f64,
+            f64::from(self.llm.max_tokens),
             1.0,
             32_768.0,
         );
         in_range(
-            &mut issues,
+            issues,
             "llm.timeout_secs",
             self.llm.timeout_secs as f64,
             1.0,
             600.0,
         );
         in_range(
-            &mut issues,
+            issues,
             "llm.max_retries",
-            self.llm.max_retries as f64,
+            f64::from(self.llm.max_retries),
             0.0,
             10.0,
         );
@@ -739,6 +779,10 @@ impl Config {
                 "постобработка включена, но адрес модели не задан",
             ));
         }
+    }
+
+    /// Стили постобработки: и умолчание, и привязки к приложениям.
+    fn validate_styles(&self, issues: &mut Vec<ConfigIssue>) {
         let styles = crate::app::styles::Styles::from_config(&self.style);
         if styles.get(&self.style.default).is_none() {
             let known: Vec<&str> = styles.all().iter().map(|s| s.id.as_str()).collect();
@@ -757,22 +801,26 @@ impl Config {
                 ));
             }
         }
+    }
+
+    /// Оставшиеся числовые пороги, уровень логов и горячие клавиши.
+    fn validate_limits(&self, issues: &mut Vec<ConfigIssue>) {
         in_range(
-            &mut issues,
+            issues,
             "rules.llm_min_words",
-            self.rules.llm_min_words as f64,
+            f64::from(self.rules.llm_min_words),
             0.0,
             1000.0,
         );
         in_range(
-            &mut issues,
+            issues,
             "stats.typing_baseline_wpm",
-            self.stats.typing_baseline_wpm as f64,
+            f64::from(self.stats.typing_baseline_wpm),
             1.0,
             400.0,
         );
         one_of(
-            &mut issues,
+            issues,
             "log.level",
             &self.log.level,
             &["error", "warn", "info", "debug", "trace"],
@@ -783,12 +831,6 @@ impl Config {
                 "",
                 "клавиша удержания не задана: диктовать будет нечем",
             ));
-        }
-
-        if issues.is_empty() {
-            Ok(())
-        } else {
-            Err(issues)
         }
     }
 
@@ -966,11 +1008,11 @@ fn parse_like(existing: &toml::Value, raw: &str, key: &str) -> Result<toml::Valu
         toml::Value::Array(_) => Ok(toml::Value::Array(
             raw.split(',')
                 .map(|item| toml::Value::String(item.trim().to_string()))
-                .filter(|item| item.as_str().map(|s| !s.is_empty()).unwrap_or(false))
+                .filter(|item| item.as_str().is_some_and(|s| !s.is_empty()))
                 .collect(),
         )),
         toml::Value::Table(_) => Err(bad("это секция настроек, а не значение")),
-        _ => Err(bad(
+        toml::Value::Datetime(_) => Err(bad(
             "значение такого типа менять из командной строки нельзя",
         )),
     }

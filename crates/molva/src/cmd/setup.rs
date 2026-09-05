@@ -44,8 +44,7 @@ impl Combo {
             .collect();
         let (key, mods) = parts
             .split_last()
-            .map(|(k, m)| (*k, m))
-            .unwrap_or(("", &[]));
+            .map_or(("", &[] as &[&str]), |(k, m)| (*k, m));
         Combo {
             mods: mods.iter().map(|m| normalize_mod(m)).collect(),
             key: key.to_string(),
@@ -204,6 +203,8 @@ fn gnome(toggle: &Combo) -> String {
     )
 }
 
+// Общая для всех подкоманд сигнатура: диспетчер в `main` вызывает их одинаково.
+#[allow(clippy::unnecessary_wraps)]
 pub(crate) fn run(
     target: Target,
     hotkeys: &HotkeysConfig,

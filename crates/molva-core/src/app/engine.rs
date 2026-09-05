@@ -48,6 +48,7 @@ impl EngineChoice {
         }
     }
 
+    #[must_use]
     pub fn with_model(mut self, model: Option<&str>) -> Self {
         self.model = model.map(str::to_string);
         self

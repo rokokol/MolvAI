@@ -209,7 +209,7 @@ fn subscription_streams_events_until_the_daemon_closes() {
     while events.len() < 3 {
         match connection.recv().expect("чтение") {
             Some(Message::Event(event)) => events.push(event),
-            Some(Message::Response(_)) => continue,
+            Some(Message::Response(_)) => {}
             None => break,
         }
     }
@@ -265,9 +265,9 @@ fn garbage_from_the_daemon_does_not_crash_the_client() {
 #[test]
 fn stream_type_is_the_one_the_client_uses() {
     // Тест держит связь с реализацией: если транспорт сменится, это перестанет компилироваться.
-    fn _assert_stream_is_used(
+    fn assert_stream_is_used(
         _: fn(interprocess::local_socket::Name<'_>) -> std::io::Result<Stream>,
     ) {
     }
-    _assert_stream_is_used(Stream::connect);
+    assert_stream_is_used(Stream::connect);
 }

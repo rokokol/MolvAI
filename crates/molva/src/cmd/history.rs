@@ -146,7 +146,7 @@ pub(crate) fn line(entry: &Entry) -> String {
 
 fn wpm_cell(entry: &Entry) -> String {
     match entry.wpm {
-        Some(wpm) => format!("{:.0} wpm", wpm),
+        Some(wpm) => format!("{wpm:.0} wpm"),
         None => "— wpm".to_string(),
     }
 }
@@ -222,8 +222,7 @@ fn clear(journal: &FileJournal, yes: bool) -> anyhow::Result<()> {
 fn export(journal: &FileJournal, file: &std::path::Path) -> anyhow::Result<()> {
     let is_csv = file
         .extension()
-        .map(|ext| ext.eq_ignore_ascii_case("csv"))
-        .unwrap_or(false);
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("csv"));
     let count = if is_csv {
         journal.export_csv(file)?
     } else {

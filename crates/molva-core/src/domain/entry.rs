@@ -105,6 +105,7 @@ impl Entry {
     }
 
     /// Копия без текстов и пути к аудио — для журнала в режиме приватности.
+    #[must_use]
     pub fn without_text(mut self) -> Self {
         self.text_raw = None;
         self.text_final = None;

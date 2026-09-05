@@ -55,8 +55,7 @@ fn keyboards() -> Vec<(PathBuf, Device)> {
         .filter(|(_, device)| {
             device
                 .supported_keys()
-                .map(|keys| keys.contains(KeyCode::KEY_A) && keys.contains(KeyCode::KEY_Z))
-                .unwrap_or(false)
+                .is_some_and(|keys| keys.contains(KeyCode::KEY_A) && keys.contains(KeyCode::KEY_Z))
         })
         .collect()
 }

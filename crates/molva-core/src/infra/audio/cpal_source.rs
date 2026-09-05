@@ -186,7 +186,7 @@ impl AudioSource for CpalSource {
                     level_tx,
                     ready_tx,
                     stop_rx,
-                )
+                );
             })
             .map_err(|e| AudioError::Backend(format!("не удалось запустить поток записи: {e}")))?;
 
@@ -277,6 +277,10 @@ impl Drop for CpalSource {
 }
 
 /// Тело нити-хозяина потока: строит поток, отвечает на `ready`, ждёт команды остановки.
+///
+/// Концы каналов и имя устройства приходят по значению намеренно: нить обязана ими владеть,
+/// иначе они не закроются вместе с ней и владелец не узнает, что запись кончилась.
+#[allow(clippy::needless_pass_by_value)]
 fn run_stream(
     selected: Option<String>,
     requested: String,
@@ -301,6 +305,8 @@ fn run_stream(
 }
 
 /// Открыть поток на выбранном устройстве и начать накопление отсчётов.
+// `level_tx` уходит внутрь колбэка cpal и живёт там: владение обязательно.
+#[allow(clippy::needless_pass_by_value)]
 fn open_stream(
     selected: Option<String>,
     requested: &str,
@@ -374,7 +380,8 @@ where
 {
     let data_shared = Arc::clone(shared);
     let error_shared = Arc::clone(shared);
-    let mut last_level = Instant::now() - LEVEL_INTERVAL;
+    // `None` — замера уровня ещё не было: первый же блок данных отдаёт уровень сразу.
+    let mut last_level: Option<Instant> = None;
     let mut zero_level = ZeroLevelWatch::with_defaults();
 
     device
@@ -385,8 +392,8 @@ where
                 let mono = downmix_to_mono(&floats, channels);
 
                 let now = Instant::now();
-                if now.duration_since(last_level) >= LEVEL_INTERVAL {
-                    last_level = now;
+                if last_level.is_none_or(|last| now.duration_since(last) >= LEVEL_INTERVAL) {
+                    last_level = Some(now);
                     let level = rms(&mono);
                     if let Some(message) = zero_level.observe(level, now) {
                         warn!("{message}");
@@ -464,15 +471,19 @@ pub fn apply_gain(samples: &mut [f32], gain: f32) {
 ///
 /// ALSA сообщает границы «любой частоты» как 1 Гц и 4294967295 Гц: показывать их пользователю
 /// бессмысленно, выбрать их нельзя.
-fn is_plausible_rate(rate: &u32) -> bool {
-    (4_000..=768_000).contains(rate)
+fn is_plausible_rate(rate: u32) -> bool {
+    (4_000..=768_000).contains(&rate)
 }
 
 /// Частоты для показа пользователю: границы диапазонов плюс общеупотребимые значения внутри них.
 fn sample_rates_from_ranges(ranges: impl Iterator<Item = (u32, u32)>) -> Vec<u32> {
     let mut rates = Vec::new();
     for (min, max) in ranges {
-        rates.extend([min, max].into_iter().filter(is_plausible_rate));
+        rates.extend(
+            [min, max]
+                .into_iter()
+                .filter(|rate| is_plausible_rate(*rate)),
+        );
         rates.extend(
             COMMON_RATES
                 .iter()

@@ -9,8 +9,18 @@
 //!
 //! Железо тестируется через фейки трейтов из `domain::fakes`, а не через feature flags.
 
-// В тестах паника — это способ сообщить о провале, а не необработанная ошибка.
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
+// В тестах паника — это способ сообщить о провале, а не необработанная ошибка, а точное
+// сравнение чисел с плавающей точкой законно: тест сверяет вычисленное значение с константой,
+// которую сам же и задал.
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::float_cmp
+    )
+)]
 
 pub mod app;
 pub mod config;

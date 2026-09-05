@@ -4,6 +4,10 @@
 //! Всё, что можно посчитать в Rust, считается здесь: фронтенд получает готовые структуры,
 //! а не повторяет логику ядра на TypeScript.
 
+// Сигнатуру команды задаёт Tauri: `State` и разобранные из JSON аргументы приходят по
+// значению, ссылку `invoke_handler` принять не умеет.
+#![allow(clippy::needless_pass_by_value)]
+
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
@@ -47,6 +51,7 @@ impl CommandError {
         }
     }
 
+    #[must_use]
     pub fn with_hint(mut self, hint: Option<String>) -> Self {
         self.hint = hint;
         self
@@ -118,7 +123,7 @@ fn one_of(field: &str, value: &str, allowed: &[&str]) -> Result<(), ValidationEr
     Err(ValidationError {
         field: field.into(),
         message: format!("недопустимое значение «{value}»"),
-        allowed: allowed.iter().map(|s| s.to_string()).collect(),
+        allowed: allowed.iter().map(ToString::to_string).collect(),
     })
 }
 

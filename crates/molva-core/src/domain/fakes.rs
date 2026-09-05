@@ -99,11 +99,11 @@ impl FakeStt {
 }
 
 impl SttEngine for FakeStt {
-    fn id(&self) -> &str {
+    fn id(&self) -> &'static str {
         "fake"
     }
 
-    fn model_name(&self) -> &str {
+    fn model_name(&self) -> &'static str {
         "fake"
     }
 
@@ -181,7 +181,7 @@ impl FakeLlm {
 }
 
 impl LlmClient for FakeLlm {
-    fn id(&self) -> &str {
+    fn id(&self) -> &'static str {
         "fake"
     }
 
@@ -269,7 +269,7 @@ impl FakeClock {
 
 impl Clock for FakeClock {
     fn now_utc(&self) -> DateTime<Utc> {
-        self.now.lock().map(|n| *n).unwrap_or_else(|_| Utc::now())
+        self.now.lock().map_or_else(|_| Utc::now(), |n| *n)
     }
 
     fn instant(&self) -> Instant {

@@ -188,7 +188,7 @@ impl UinputInjector {
                     b.name("MolvAI virtual keyboard")
                         .with_keys(&declared_keys())
                 })
-                .and_then(|b| b.build())
+                .and_then(evdev::uinput::VirtualDeviceBuilder::build)
                 .map_err(|e| InjectError::Unavailable(format!("{UINPUT_PATH}: {e}")))?;
             // Композитору нужно мгновение, чтобы заметить новое устройство ввода.
             std::thread::sleep(Duration::from_millis(200));

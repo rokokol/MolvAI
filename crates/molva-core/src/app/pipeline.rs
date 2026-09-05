@@ -96,7 +96,7 @@ fn output_mode(value: &str) -> OutputMode {
 fn millis_since(start: Instant, now: Instant) -> u32 {
     now.saturating_duration_since(start)
         .as_millis()
-        .min(u32::MAX as u128) as u32
+        .min(u128::from(u32::MAX)) as u32
 }
 
 /// Конвейер одной реплики.
@@ -140,6 +140,7 @@ impl Pipeline {
     }
 
     /// Подключить словарь терминов.
+    #[must_use]
     pub fn with_dictionary(mut self, dictionary: Dictionary) -> Self {
         self.dictionary = dictionary;
         self
@@ -188,6 +189,10 @@ impl Pipeline {
     }
 
     /// Прогнать реплику через конвейер целиком.
+    ///
+    /// Запись приходит по значению: дальше она конвейеру и принадлежит, а вызывающему
+    /// незачем держать в памяти второй такой буфер.
+    #[allow(clippy::needless_pass_by_value)]
     pub fn run(
         &mut self,
         audio: PcmAudio,
@@ -254,7 +259,7 @@ impl Pipeline {
             session_id: self.session_id,
             mode,
             source: Source::Mic,
-            app: app_hint.map(|app| app.to_string()),
+            app: app_hint.map(ToString::to_string),
             language,
             audio_secs,
             words: 0,
@@ -265,7 +270,7 @@ impl Pipeline {
             llm_provider: None,
             llm_model: None,
             llm_used: false,
-            local_llm: self.llm.as_ref().map(|llm| llm.is_local()).unwrap_or(true),
+            local_llm: self.llm.as_ref().is_none_or(|llm| llm.is_local()),
             dict_hits,
             inject_method: None,
             latency_ms: LatencyMs {
@@ -458,7 +463,7 @@ impl Pipeline {
         entry.llm_used = true;
         entry.llm_provider = self.llm.as_ref().map(|llm| llm.id().to_string());
         entry.llm_model = Some(self.config.llm.model.clone());
-        entry.local_llm = self.llm.as_ref().map(|llm| llm.is_local()).unwrap_or(false);
+        entry.local_llm = self.llm.as_ref().is_some_and(|llm| llm.is_local());
         entry.tokens = tokens;
         entry.latency_ms.llm = Some(elapsed_ms);
     }
@@ -510,11 +515,11 @@ mod tests {
     struct SharedStt(Arc<Mutex<FakeStt>>);
 
     impl SttEngine for SharedStt {
-        fn id(&self) -> &str {
+        fn id(&self) -> &'static str {
             "fake"
         }
 
-        fn model_name(&self) -> &str {
+        fn model_name(&self) -> &'static str {
             "fake"
         }
 

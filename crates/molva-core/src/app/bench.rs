@@ -224,8 +224,7 @@ pub fn run(
             language: case
                 .language
                 .as_deref()
-                .map(LanguageHint::parse)
-                .unwrap_or(LanguageHint::Auto),
+                .map_or(LanguageHint::Auto, LanguageHint::parse),
             threads: opts.threads,
             ..SttOptions::default()
         };
@@ -319,7 +318,7 @@ pub fn format_summary(report: &BenchReport) -> String {
     for case in &report.cases {
         let id: String = case.id.chars().take(width).collect();
         if let Some(err) = &case.error {
-            let _ = writeln!(out, "{id:<width$}  ошибка: {err}", width = width);
+            let _ = writeln!(out, "{id:<width$}  ошибка: {err}");
             continue;
         }
         let mut latencies = case.latency_ms.clone();

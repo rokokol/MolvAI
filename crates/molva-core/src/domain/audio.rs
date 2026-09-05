@@ -45,6 +45,7 @@ impl PcmAudio {
     }
 
     /// Приведение к 16 кГц; если частота уже целевая — копия без изменений.
+    #[must_use]
     pub fn to_16k(&self) -> PcmAudio {
         resample_linear(self, TARGET_SAMPLE_RATE)
     }
@@ -75,7 +76,7 @@ pub fn resample_linear(audio: &PcmAudio, target_rate: u32) -> PcmAudio {
     if audio.sample_rate == target_rate || audio.samples.is_empty() || audio.sample_rate == 0 {
         return PcmAudio::new(audio.samples.clone(), target_rate);
     }
-    let ratio = audio.sample_rate as f64 / target_rate as f64;
+    let ratio = f64::from(audio.sample_rate) / f64::from(target_rate);
     let out_len = ((audio.samples.len() as f64) / ratio).round().max(1.0) as usize;
     let last = audio.samples.len() - 1;
     let samples = (0..out_len)

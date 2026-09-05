@@ -4,8 +4,18 @@
 //! GUI — обычный клиент демона: микрофоном и моделью он не владеет и без демона
 //! честно показывает, что демон не запущен, вместо пустого окна.
 
-// В тестах паника — это способ сообщить о провале, а не необработанная ошибка.
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
+// В тестах паника — это способ сообщить о провале, а не необработанная ошибка, а точное
+// сравнение чисел с плавающей точкой законно: тест сверяет вычисленное значение с константой,
+// которую сам же и задал.
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::float_cmp
+    )
+)]
 
 pub mod commands;
 pub mod history;
@@ -149,7 +159,7 @@ fn spawn_subscription(app: AppHandle) {
                     loop {
                         match connection.recv() {
                             Ok(Some(Message::Event(event))) => handle_event(&app, event),
-                            Ok(Some(Message::Response(_))) => continue,
+                            Ok(Some(Message::Response(_))) => {}
                             Ok(None) => break,
                             Err(err) => {
                                 tracing::info!(%err, "подписка прервана");
