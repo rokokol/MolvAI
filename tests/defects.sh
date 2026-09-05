@@ -41,3 +41,13 @@ defect 'config/missing-file-is-default' 'crates/molva-core/src/config.rs' \
   '            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),' \
   '            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(ConfigError::Read { path: path.to_path_buf(), source: e }),' \
   'первый запуск без файла настроек падает вместо того, чтобы работать со значениями по умолчанию'
+
+defect 'audio/trim-silence-threshold' 'crates/molva-core/src/app/audio/trim.rs' \
+  '        .filter(|(_, chunk)| amplitude_to_db(rms(chunk)) >= threshold_db)' \
+  '        .filter(|(_, chunk)| !chunk.is_empty())' \
+  'тишина уходит в whisper целиком: модель галлюцинирует текст там, где никто не говорил'
+
+defect 'audio/trim-keep-ms' 'crates/molva-core/src/app/audio/trim.rs' \
+  '    let keep = (audio.sample_rate as u64 * keep_ms as u64 / 1000) as usize;' \
+  '    let keep = 0;' \
+  'запас keep_ms не оставлен: обрезка съедает первый слог реплики'
