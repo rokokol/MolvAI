@@ -860,9 +860,11 @@ name = "molva"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "clap",
  "molva-core",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]

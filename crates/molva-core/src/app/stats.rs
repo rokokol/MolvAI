@@ -145,6 +145,16 @@ fn day_key(ts: DateTime<Utc>) -> NaiveDate {
     ts.date_naive()
 }
 
+/// Убрать минус у нуля: сумма пустого итератора в Rust равна `-0.0`, а «-0.0 мин» в отчёте
+/// выглядит как ошибка вычислений.
+fn no_minus_zero(value: f32) -> f32 {
+    if value == 0.0 {
+        0.0
+    } else {
+        value
+    }
+}
+
 /// Сводка по журналу. `range_days` — окно рядов и разбивок; `0` — все дни, где что-то было.
 pub fn summary(
     entries: &[Entry],
@@ -194,8 +204,8 @@ pub fn summary(
         record_wpm,
         record_at,
         streak_days: streak_days(&all, today),
-        minutes_recorded: total_secs / 60.0,
-        saved_minutes: saved_minutes(&all, cfg),
+        minutes_recorded: no_minus_zero(total_secs / 60.0),
+        saved_minutes: no_minus_zero(saved_minutes(&all, cfg)),
         latency_ms: latency_summary(&range),
         tokens: token_summary(&range),
         series: series(&range, range_start, today),
@@ -345,7 +355,7 @@ pub fn series(
                 day: day.format("%Y-%m-%d").to_string(),
                 entries: day_entries.len() as u32,
                 words: day_entries.iter().map(|e| e.words as u64).sum(),
-                audio_secs: day_entries.iter().map(|e| e.audio_secs).sum(),
+                audio_secs: no_minus_zero(day_entries.iter().map(|e| e.audio_secs).sum()),
                 avg_wpm: weighted_wpm(day_entries),
                 avg_latency_ms: latency_summary(day_entries).total,
             }
@@ -698,6 +708,13 @@ mod tests {
         assert_eq!(summary.series.len(), 7);
         assert!(summary.by_app.is_empty());
         assert_eq!(summary.latency_ms.total, 0);
+        // Ноль без минуса: «-0.0 мин» в отчёте выглядит как ошибка вычислений.
+        assert!(summary.minutes_recorded.is_sign_positive(), "минус у нуля");
+        assert!(summary.saved_minutes.is_sign_positive(), "минус у нуля");
+        assert!(
+            summary.series[0].audio_secs.is_sign_positive(),
+            "минус у нуля"
+        );
     }
 
     #[test]

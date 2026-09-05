@@ -8,6 +8,8 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 use molva_core::Config;
 
+mod cmd;
+
 /// Коды выхода, общие для всех подкоманд: 0 ok, 2 аргументы, 3 демон недоступен, 4 занят,
 /// 5 ошибка движка, 6 ошибка файла. Константы добавляются по мере появления подкоманд.
 mod exit {
@@ -33,17 +35,25 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// История реплик
+    History(cmd::history::HistoryArgs),
+    /// Статистика диктовки
+    Stats(cmd::stats::StatsArgs),
+    /// Профили постобработки
+    Styles {
+        #[command(subcommand)]
+        action: cmd::styles::StylesAction,
+    },
+    /// Словарь терминов
+    Dictionary {
+        #[command(subcommand)]
+        action: cmd::dictionary::DictionaryAction,
+    },
     /// Настройки
     Config {
         #[command(subcommand)]
-        action: ConfigAction,
+        action: cmd::config::ConfigAction,
     },
-}
-
-#[derive(Subcommand)]
-enum ConfigAction {
-    /// Показать путь к файлу настроек
-    Path,
 }
 
 fn main() -> ExitCode {
@@ -62,13 +72,21 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         Some(path) => path,
         None => Config::default_path()?,
     };
-    match cli.command {
-        Commands::Config {
-            action: ConfigAction::Path,
-        } => {
-            println!("{}", config_path.display());
-            Ok(())
+    // Настройки читаются мягко: повреждённый файл не должен мешать посмотреть историю.
+    let config = || -> anyhow::Result<Config> {
+        let (config, warning) = Config::load_lenient(&config_path)?;
+        if let Some(warning) = warning {
+            eprintln!("предупреждение: {warning}");
         }
+        Ok(config)
+    };
+
+    match cli.command {
+        Commands::History(args) => cmd::history::run(args, &config()?),
+        Commands::Stats(args) => cmd::stats::run(args, &config()?),
+        Commands::Styles { action } => cmd::styles::run(action, &config()?),
+        Commands::Dictionary { action } => cmd::dictionary::run(action, &config()?, &config_path),
+        Commands::Config { action } => cmd::config::run(action, &config_path),
     }
 }
 

@@ -544,12 +544,21 @@ impl Config {
         Ok(Self::data_dir()?.join("journal.jsonl"))
     }
 
-    /// Путь к словарю: из настроек или `dictionary.toml` рядом с конфигом.
+    /// Путь к словарю: из настроек или `dictionary.toml` рядом с файлом настроек.
     pub fn dictionary_path(&self) -> Result<PathBuf, ConfigError> {
+        self.dictionary_path_near(&Self::default_path()?)
+    }
+
+    /// То же, но рядом с конкретным файлом настроек: `--config` должен уводить и словарь.
+    pub fn dictionary_path_near(&self, config_path: &Path) -> Result<PathBuf, ConfigError> {
         if !self.dictionary.path.trim().is_empty() {
             return Ok(PathBuf::from(&self.dictionary.path));
         }
-        Ok(Self::default_dir()?.join("dictionary.toml"))
+        let dir = match config_path.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),
+            _ => Self::default_dir()?,
+        };
+        Ok(dir.join("dictionary.toml"))
     }
 
     /// Прочитать файл, а повреждённый — отложить в `<path>.broken` и начать с умолчаний.
@@ -1242,6 +1251,29 @@ mod tests {
         std::fs::write(&path, "[output]\nmode = \"телепатия\"\n").unwrap();
         let err = Config::import(&path).unwrap_err();
         assert!(err.to_string().contains("output.mode"), "{err}");
+    }
+
+    #[test]
+    fn the_dictionary_lives_next_to_the_settings_file_it_belongs_to() {
+        let config = Config::default();
+        assert_eq!(
+            config
+                .dictionary_path_near(Path::new("/opt/profiles/work/config.toml"))
+                .unwrap(),
+            Path::new("/opt/profiles/work/dictionary.toml")
+        );
+    }
+
+    #[test]
+    fn an_explicit_dictionary_path_wins_over_the_settings_directory() {
+        let mut config = Config::default();
+        config.dictionary.path = "/srv/terms.toml".into();
+        assert_eq!(
+            config
+                .dictionary_path_near(Path::new("/opt/profiles/work/config.toml"))
+                .unwrap(),
+            Path::new("/srv/terms.toml")
+        );
     }
 
     #[test]

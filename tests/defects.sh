@@ -243,3 +243,13 @@ defect 'config/validation-collects-every-issue' 'crates/molva-core/src/config.rs
   '                issues.push(ConfigIssue::allowed(key, value, allowed));' \
   '                let _ = (key, value, allowed);' \
   'неверное значение из списка допустимых проходит проверку молча'
+
+defect 'cli/history-limit-keeps-the-newest' 'crates/molva/src/cmd/history.rs' \
+  '        selected = selected.split_off(selected.len() - args.limit);' \
+  '        selected.truncate(args.limit);' \
+  '`molva history --limit 20` показывает двадцать самых старых реплик вместо свежих'
+
+defect 'cli/plain-line-carries-the-id' 'crates/molva/src/cmd/history.rs' \
+  '        "{}  {}  {}  {ID_SEPARATOR}{}",' \
+  '        "{}  {}  {}  {}",' \
+  'строка для rofi теряет метку идентификатора: выбранную реплику не найти по id'
