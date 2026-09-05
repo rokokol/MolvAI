@@ -306,6 +306,7 @@ fn error_code_for(err: &ProcessError) -> ErrorCode {
         ProcessError::Stt(_) => ErrorCode::SttFailed,
         ProcessError::Inject(_) => ErrorCode::InjectFailed,
         ProcessError::Journal(_) => ErrorCode::Internal,
+        ProcessError::Pipeline(_) => ErrorCode::BadRequest,
     }
 }
 

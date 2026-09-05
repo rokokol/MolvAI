@@ -5,15 +5,24 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{anyhow, Context};
-use molva_core::app::daemon::{Daemon, DaemonParts, ProcessorConfig, SimpleProcessor};
+use molva_core::app::daemon::{Daemon, DaemonParts};
+use molva_core::app::dictionary::Dictionary;
+use molva_core::app::engine;
+use molva_core::app::journal::{FileJournal, NullJournal};
+use molva_core::app::pipeline::{Pipeline, PipelineConfig};
+use molva_core::app::secrets;
 use molva_core::config::Config;
 use molva_core::domain::audio::AudioSource;
 use molva_core::domain::clock::SystemClock;
-use molva_core::domain::fakes::{FakeAudioSource, FakeStt, MemJournal};
+use molva_core::domain::fakes::FakeAudioSource;
+use molva_core::domain::journal::Journal;
+use molva_core::domain::llm::LlmClient;
 use molva_core::domain::notify::Notifier;
 use molva_core::domain::stt::SttEngine;
+use molva_core::infra::audio::CpalSource;
 use molva_core::infra::inject::ChainInjector;
 use molva_core::infra::ipc::{self, Server};
+use molva_core::infra::llm::openai_compat::OpenAiCompatClient;
 use molva_core::infra::notify::{LogNotifier, SystemNotifier};
 use molva_core::infra::platform;
 use uuid::Uuid;
@@ -35,25 +44,64 @@ pub fn resolve_socket(flag: Option<PathBuf>) -> PathBuf {
     ipc::socket_path()
 }
 
-/// Движок распознавания по настройкам.
-///
-/// Пока собран только `fake`: настоящий whisper приносит дорожка A, и подключается он здесь же,
-/// одной веткой — поэтому ошибка называет, что именно нужно поставить, а не «не поддерживается».
+/// Движок распознавания по настройкам: единая фабрика ядра, та же, что у `transcribe` и `bench`.
 pub fn build_stt(config: &Config) -> anyhow::Result<Box<dyn SttEngine>> {
-    match config.stt.engine.as_str() {
-        "fake" => Ok(Box::new(FakeStt::returning("тестовая реплика"))),
-        other => Err(anyhow!(
-            "движок распознавания «{other}» в этой сборке недоступен; \
-             поставьте stt.engine = \"fake\" в конфиге для проверки сквозного пути"
-        )),
+    engine::build_stt(config, None).map_err(|err| anyhow!("{err}"))
+}
+
+/// Источник звука: микрофон через cpal, а для фейкового движка — две секунды тишины,
+/// чтобы сквозной путь проверялся без оборудования.
+fn build_audio(config: &Config) -> Box<dyn AudioSource> {
+    if config.stt.engine == engine::FAKE_ENGINE {
+        return Box::new(FakeAudioSource::silence(2.0));
+    }
+    Box::new(CpalSource::new(
+        &config.audio.device,
+        config.audio.gain,
+        config.audio.max_duration_secs,
+    ))
+}
+
+/// Журнал реплик: файл JSONL или «никуда» в режиме без записи.
+fn build_journal(config: &Config) -> anyhow::Result<Box<dyn Journal>> {
+    if config.privacy.no_record_mode || !config.journal.enabled {
+        return Ok(Box::new(NullJournal));
+    }
+    let path = config.journal_path()?;
+    let journal = FileJournal::open_with(&path, config.journal.include_text)
+        .with_context(|| format!("журнал {}", path.display()))?;
+    Ok(Box::new(journal))
+}
+
+/// Модель постобработки, если она включена; ключ берётся из окружения по имени из настроек.
+fn build_llm(config: &Config) -> Option<Arc<dyn LlmClient>> {
+    if !config.llm.enabled || !config.privacy.send_to_llm {
+        return None;
+    }
+    match OpenAiCompatClient::from_config(&config.llm, secrets::api_key(&config.llm)) {
+        Ok(client) => Some(Arc::new(client)),
+        Err(err) => {
+            tracing::warn!(error = %err, "модель постобработки недоступна, работаем без неё");
+            None
+        }
     }
 }
 
-/// Источник звука. Настоящий захват через cpal приносит дорожка A.
-fn build_audio(config: &Config) -> anyhow::Result<Box<dyn AudioSource>> {
-    match config.stt.engine.as_str() {
-        "fake" => Ok(Box::new(FakeAudioSource::silence(2.0))),
-        other => Err(anyhow!("для движка «{other}» нужен захват с микрофона")),
+/// Словарь терминов; отсутствующий файл — пустой словарь, а не ошибка.
+fn build_dictionary(config: &Config, config_path: &Path) -> Dictionary {
+    let path = match config.dictionary_path_near(config_path) {
+        Ok(path) => path,
+        Err(err) => {
+            tracing::warn!(error = %err, "путь к словарю не определён, словарь пустой");
+            return Dictionary::empty();
+        }
+    };
+    match Dictionary::load(&path, config.dictionary.fuzzy) {
+        Ok(dictionary) => dictionary,
+        Err(err) => {
+            tracing::warn!(error = %err, path = %path.display(), "словарь не прочитан, словарь пустой");
+            Dictionary::empty()
+        }
     }
 }
 
@@ -85,23 +133,26 @@ pub fn run(config_path: &Path, options: Options) -> anyhow::Result<()> {
     tracing::info!(
         platform = %detected.label(),
         socket = %options.socket.display(),
+        engine = %config.stt.engine,
+        model = %config.stt.model,
         "демон запускается"
     );
 
     let injector = ChainInjector::for_platform(&config.output, &detected, notifier.clone());
-    let processor = SimpleProcessor::new(
+    let mut pipeline = Pipeline::new(
         build_stt(&config)?,
-        injector,
-        // Файловый журнал приносит дорожка C; до этого записи живут в памяти процесса.
-        MemJournal::default(),
+        build_llm(&config),
+        Box::new(injector),
+        build_journal(&config)?,
         clock.clone(),
-        notifier.clone(),
-        ProcessorConfig::from_config(&config, session_id),
-    );
+        PipelineConfig::from_config(&config),
+    )
+    .with_dictionary(build_dictionary(&config, config_path));
+    pipeline.set_session_id(session_id);
 
     let daemon = Daemon::spawn(DaemonParts {
-        audio: build_audio(&config)?,
-        processor: Box::new(processor),
+        audio: build_audio(&config),
+        processor: Box::new(pipeline),
         notifier,
         clock,
         config: config.clone(),
@@ -134,7 +185,8 @@ mod tests {
     }
 
     #[test]
-    fn the_fake_engine_is_available_and_the_rest_say_what_to_do() {
+    fn the_fake_engine_is_available_and_missing_weights_say_how_to_get_them() {
+        let dir = tempfile::tempdir().unwrap();
         let mut config = Config::default();
         config.stt.engine = "fake".into();
         match build_stt(&config) {
@@ -142,11 +194,40 @@ mod tests {
             Err(err) => panic!("движок fake обязан собираться: {err}"),
         }
         config.stt.engine = "whisper-cpp".into();
+        config.stt.model_path = dir.path().display().to_string();
         let err = match build_stt(&config) {
             Err(err) => err.to_string(),
-            Ok(_) => panic!("движка whisper-cpp в этой сборке нет"),
+            Ok(_) => panic!("без файла весов движок собираться не должен"),
         };
-        assert!(err.contains("whisper-cpp"), "{err}");
-        assert!(err.contains("stt.engine"), "{err}");
+        assert!(err.contains("molva models pull"), "{err}");
+    }
+
+    #[test]
+    fn journal_is_silent_in_no_record_mode_and_a_file_otherwise() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::default();
+        config.journal.path = dir.path().join("journal.jsonl").display().to_string();
+        config.privacy.no_record_mode = true;
+        build_journal(&config).unwrap();
+        assert!(!dir.path().join("journal.jsonl").exists());
+
+        config.privacy.no_record_mode = false;
+        build_journal(&config).unwrap();
+        assert!(dir.path().join("journal.jsonl").exists());
+    }
+
+    #[test]
+    fn llm_is_absent_unless_enabled() {
+        let config = Config::default();
+        assert!(build_llm(&config).is_none());
+    }
+
+    #[test]
+    fn missing_dictionary_file_gives_an_empty_dictionary() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("config.toml");
+        let config = Config::default();
+        let dictionary = build_dictionary(&config, &config_path);
+        assert_eq!(dictionary.apply("привет").1, 0);
     }
 }

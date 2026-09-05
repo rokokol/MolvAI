@@ -29,6 +29,32 @@ pub enum ProcessError {
     Inject(#[from] InjectError),
     #[error("не удалось записать в журнал: {0}")]
     Journal(#[from] JournalError),
+    #[error("{0}")]
+    Pipeline(String),
+}
+
+impl From<crate::app::pipeline::PipelineError> for ProcessError {
+    fn from(err: crate::app::pipeline::PipelineError) -> Self {
+        use crate::app::pipeline::PipelineError as P;
+        match err {
+            P::Stt(inner) => ProcessError::Stt(inner),
+            P::Journal(inner) => ProcessError::Journal(inner),
+            other => ProcessError::Pipeline(other.to_string()),
+        }
+    }
+}
+
+/// Полный конвейер (словарь, правила, модель) на месте обработчика демона.
+impl Processor for crate::app::pipeline::Pipeline {
+    fn process(
+        &mut self,
+        audio: PcmAudio,
+        mode: Mode,
+        style: Option<&str>,
+        app_hint: Option<&str>,
+    ) -> Result<Entry, ProcessError> {
+        Ok(self.run(audio, mode, style, app_hint)?)
+    }
 }
 
 /// Конвейер обработки одной реплики.

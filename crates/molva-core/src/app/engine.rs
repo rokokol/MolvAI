@@ -10,6 +10,7 @@ use crate::app::models::{self, ModelError};
 use crate::config::Config;
 use crate::domain::fakes::FakeStt;
 use crate::domain::stt::SttEngine;
+use crate::infra::stt::WhisperEngine;
 
 /// Текст, который отдаёт фейковый движок, если не задан свой.
 pub const DEFAULT_FAKE_TEXT: &str = "тестовая расшифровка";
@@ -75,14 +76,13 @@ pub fn build_stt_with(
         ))),
         "whisper-cpp" => {
             // Файл модели проверяем до попытки загрузки: пользователю нужна команда `pull`,
-            // а не ошибка библиотеки о нечитаемом файле.
-            let _path = models::installed_path(cfg, model)?;
-            // Точка подключения дорожки A: здесь появится
-            //   Ok(Box::new(WhisperEngine::new(&_path, model, cfg.stt.threads as usize)?))
-            // Пока движок не собран, честно об этом сообщаем — заглушки на его месте нет.
-            Err(EngineError::NotAvailable(format!(
-                "whisper.cpp подключается дорожкой A; модель {model} на месте, \
-                 для проверки конвейера используйте MOLVA_STT=fake"
+            // а не ошибка библиотеки о нечитаемом файле. Сам контекст whisper грузится лениво,
+            // при первой реплике.
+            let path = models::installed_path(cfg, model)?;
+            Ok(Box::new(WhisperEngine::new(
+                path,
+                model.to_string(),
+                cfg.stt.threads as usize,
             )))
         }
         "remote-openai" => Err(EngineError::NotAvailable(
@@ -162,13 +162,18 @@ mod tests {
     }
 
     #[test]
-    fn present_weights_lead_to_the_whisper_slot() {
+    fn present_weights_build_a_lazy_whisper_engine() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("ggml-tiny.bin"), "не настоящие веса").unwrap();
         let cfg = cfg_with_models_dir(dir.path());
-        let err = expect_err(build_stt(&cfg, Some("tiny")));
-        assert!(matches!(err, EngineError::NotAvailable(_)), "{err}");
-        assert!(err.to_string().contains("MOLVA_STT=fake"), "{err}");
+        // Веса ненастоящие, но контекст грузится лениво: сборка движка обязана пройти,
+        // а ошибка про битый файл придёт только при первой реплике.
+        let engine = match build_stt(&cfg, Some("tiny")) {
+            Ok(engine) => engine,
+            Err(err) => panic!("движок whisper обязан собираться: {err}"),
+        };
+        assert_eq!(engine.id(), "whisper-cpp");
+        assert_eq!(engine.model_name(), "tiny");
     }
 
     #[test]

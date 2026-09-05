@@ -33,6 +33,7 @@ use crate::domain::text::word_count;
 use super::dictionary::Dictionary;
 use super::rules::RuleSet;
 use super::styles::Styles;
+use crate::infra::stt::{is_silence_hallucination, transcribe_with_language_policy};
 
 #[derive(Debug, Error)]
 pub enum PipelineError {
@@ -216,10 +217,17 @@ impl Pipeline {
 
         let options = self.stt_options();
         let stt_started = self.clock.instant();
-        let transcript = self.stt.transcribe(&audio, &options)?;
+        let transcript = transcribe_with_language_policy(self.stt.as_mut(), &audio, &options)?;
         let stt_ms = millis_since(stt_started, self.clock.instant());
 
-        let text_raw = transcript.text.trim().to_string();
+        // Тишина и шум: whisper уверенно печатает «Продолжение следует» на пустом входе.
+        // Такую реплику не вставляем и не отдаём в модель, но в журнал она попадает (F-22).
+        let text_raw = if is_silence_hallucination(&transcript, self.config.stt.no_speech_threshold)
+        {
+            String::new()
+        } else {
+            transcript.text.trim().to_string()
+        };
         let language = transcript
             .detected_language
             .clone()
@@ -290,6 +298,8 @@ impl Pipeline {
         } else {
             let resolved = output_mode(&self.config.output.mode)
                 .resolve(&text, self.config.output.auto_type_max_chars as usize);
+            // Способ вставки должен знать класс окна: в терминалах вставка идёт Ctrl+Shift+V.
+            self.injector.set_window(app_hint);
             let inject_started = self.clock.instant();
             match self.injector.inject(&text, resolved) {
                 Ok(report) => {
