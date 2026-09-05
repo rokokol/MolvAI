@@ -196,3 +196,30 @@ defect 'secrets/key-is-masked-in-logs' 'crates/molva-core/src/app/secrets.rs' \
   '    format!("{head}…{tail}")' \
   '    format!("{head}{}{tail}", &key[VISIBLE_HEAD..key.len() - VISIBLE_TAIL])' \
   'ключ печатается в логах целиком'
+
+defect 'pipeline/rules-instead-of-the-model-on-short-utterances' 'crates/molva-core/src/app/pipeline.rs' \
+  '            && word_count(text) > self.config.rules.llm_min_words' \
+  '            && word_count(text) > 0' \
+  'реплика в три слова уходит в модель: лишние токены и лишняя секунда задержки'
+
+defect 'pipeline/model-failure-does-not-lose-the-utterance' 'crates/molva-core/src/app/pipeline.rs' \
+  '                warn!(error = %err, "постобработка не удалась, отдаю текст после правил");
+                after_rules' \
+  '                warn!(error = %err, "постобработка не удалась");
+                String::new()' \
+  'отказ модели съедает реплику: пользователь теряет сказанное целиком'
+
+defect 'pipeline/injection-failure-is-recorded' 'crates/molva-core/src/app/pipeline.rs' \
+  '                    entry.error = Some(err.to_string());' \
+  '                    let _ = &err;' \
+  'неудачная вставка выглядит в истории как успешная'
+
+defect 'pipeline/no-record-mode-writes-nothing' 'crates/molva-core/src/app/pipeline.rs' \
+  '        if self.config.privacy.no_record_mode {' \
+  '        if false {' \
+  'режим «не записывать» всё равно пишет реплику в журнал'
+
+defect 'pipeline/auth-error-is-not-retried' 'crates/molva-core/src/app/pipeline.rs' \
+  '                Err(LlmError::Auth) => return Err(LlmError::Auth),' \
+  '                Err(LlmError::Auth) => last = LlmError::Auth,' \
+  'протухший ключ бьётся в провайдера столько раз, сколько настроено повторов'
