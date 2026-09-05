@@ -23,7 +23,11 @@ pub enum Action {
     /// Скачать модель по HTTPS с проверкой SHA-256
     Pull {
         /// Имя модели: tiny, base, small, large-v3-turbo…
-        name: String,
+        #[arg(required_unless_present = "all_small")]
+        name: Option<String>,
+        /// Скачать все модели легче 500 МБ — набор для слабой машины и для демо
+        #[arg(long, conflicts_with = "name")]
+        all_small: bool,
         /// Скачать заново, даже если файл уже на месте
         #[arg(long)]
         force: bool,
@@ -34,6 +38,19 @@ pub enum Action {
     Remove { name: String },
     /// Напечатать путь к файлу модели
     Path { name: String },
+}
+
+/// Граница «лёгкой» модели для `--all-small`: столько весит небольшая или квантованная модель.
+pub const SMALL_MODEL_LIMIT_BYTES: u64 = 500 * 1_048_576;
+
+/// Модели, которые скачивает `--all-small`, в порядке возрастания размера.
+pub fn small_models() -> Vec<&'static models::ModelInfo> {
+    let mut small: Vec<_> = models::CATALOG
+        .iter()
+        .filter(|m| m.size_bytes <= SMALL_MODEL_LIMIT_BYTES)
+        .collect();
+    small.sort_by_key(|m| m.size_bytes);
+    small
 }
 
 /// Человекочитаемый размер: гигабайты для весов, мегабайты для мелочи.
@@ -161,14 +178,26 @@ pub fn run(action: &Action, cfg: &Config, stdout: &mut dyn Write) -> Result<(), 
                 write(stdout, render_list(&statuses).trim_end())?;
             }
         }
-        Action::Pull { name, force } => {
-            let report = pull(name, &dir, *force, !progress_enabled(false))?;
-            if report.downloaded {
-                eprintln!("готово: контрольная сумма совпала");
+        Action::Pull {
+            name,
+            all_small,
+            force,
+        } => {
+            let names: Vec<String> = if *all_small {
+                small_models().iter().map(|m| m.name.to_string()).collect()
             } else {
-                eprintln!("{name} уже установлена, контрольная сумма совпадает");
+                // clap не пропустит вызов без имени и без --all-small.
+                name.iter().cloned().collect()
+            };
+            for name in &names {
+                let report = pull(name, &dir, *force, !progress_enabled(false))?;
+                if report.downloaded {
+                    eprintln!("готово: контрольная сумма {name} совпала");
+                } else {
+                    eprintln!("{name} уже установлена, контрольная сумма совпадает");
+                }
+                write(stdout, &report.path.display().to_string())?;
             }
-            write(stdout, &report.path.display().to_string())?;
         }
         Action::Verify { name } => {
             let info = models::find(name).map_err(|e| CmdError::args(e.to_string()))?;
@@ -331,6 +360,22 @@ mod tests {
         let path = dir.path().join("ggml-tiny.bin");
         assert!(needs_download(&path, &"0".repeat(64), false).unwrap());
         assert!(needs_download(&path, &"0".repeat(64), true).unwrap());
+    }
+
+    #[test]
+    fn all_small_covers_only_light_models_smallest_first() {
+        let names: Vec<&str> = small_models().iter().map(|m| m.name).collect();
+        assert_eq!(names, vec!["tiny", "base", "small-q5_1", "small"]);
+        assert!(
+            !names.contains(&"large-v3"),
+            "тяжёлые модели сюда не попадают"
+        );
+        for pair in small_models().windows(2) {
+            assert!(
+                pair[0].size_bytes <= pair[1].size_bytes,
+                "порядок по размеру"
+            );
+        }
     }
 
     #[test]

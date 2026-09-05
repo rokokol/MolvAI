@@ -157,6 +157,15 @@ mod tests {
     }
 
     #[test]
+    fn models_pull_needs_a_name_or_all_small() {
+        assert!(Cli::try_parse_from(["molva", "models", "pull"]).is_err());
+        assert!(Cli::try_parse_from(["molva", "models", "pull", "small"]).is_ok());
+        assert!(Cli::try_parse_from(["molva", "models", "pull", "--all-small"]).is_ok());
+        // Имя и --all-small вместе — противоречие, а не «оба».
+        assert!(Cli::try_parse_from(["molva", "models", "pull", "small", "--all-small"]).is_err());
+    }
+
+    #[test]
     fn bench_defaults_to_the_bench_directory() {
         let cli = Cli::try_parse_from(["molva", "bench"]).unwrap();
         match cli.command {
