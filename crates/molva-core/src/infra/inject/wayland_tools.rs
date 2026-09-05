@@ -54,10 +54,10 @@ fn paste_via_clipboard(
             clipboard.restore()?;
             Ok(())
         }
-        Err(err) => {
+        Err(error) => {
             // Сочетание не дошло — текст обязан остаться в буфере, иначе он потерян.
             clipboard.keep();
-            Err(err)
+            Err(error)
         }
     }
 }
@@ -319,15 +319,15 @@ mod tests {
 
     #[test]
     fn missing_program_is_unavailable_not_a_panic() {
-        let err = run("molva-no-such-program", &["--version"]).unwrap_err();
-        assert!(matches!(err, InjectError::Unavailable(_)), "{err}");
+        let error = run("molva-no-such-program", &["--version"]).unwrap_err();
+        assert!(matches!(error, InjectError::Unavailable(_)), "{error}");
     }
 
     #[test]
     fn nonzero_exit_is_a_failure_with_the_command_in_the_message() {
-        let err = run("false", &[]).unwrap_err();
-        assert!(matches!(err, InjectError::Failed(_)), "{err}");
-        assert!(err.to_string().contains("false"), "{err}");
+        let error = run("false", &[]).unwrap_err();
+        assert!(matches!(error, InjectError::Failed(_)), "{error}");
+        assert!(error.to_string().contains("false"), "{error}");
     }
 
     #[test]

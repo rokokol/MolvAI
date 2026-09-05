@@ -82,10 +82,10 @@ pub fn resample_linear(audio: &PcmAudio, target_rate: u32) -> PcmAudio {
     let samples = (0..out_len)
         .map(|i| {
             let pos = i as f64 * ratio;
-            let idx = (pos.floor() as usize).min(last);
-            let next = (idx + 1).min(last);
-            let frac = (pos - idx as f64) as f32;
-            audio.samples[idx] * (1.0 - frac) + audio.samples[next] * frac
+            let index = (pos.floor() as usize).min(last);
+            let next = (index + 1).min(last);
+            let frac = (pos - index as f64) as f32;
+            audio.samples[index] * (1.0 - frac) + audio.samples[next] * frac
         })
         .collect();
     PcmAudio::new(samples, target_rate)

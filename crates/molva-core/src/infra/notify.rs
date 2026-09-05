@@ -20,13 +20,13 @@ impl Notifier for SystemNotifier {
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     fn notify(&self, title: &str, body: &str) {
         // Отсутствие службы уведомлений не должно ронять диктовку: пишем в лог и живём дальше.
-        if let Err(err) = notify_rust::Notification::new()
+        if let Err(error) = notify_rust::Notification::new()
             .summary(title)
             .body(body)
             .appname("MolvAI")
             .show()
         {
-            tracing::debug!(%err, title, body, "уведомление не показано");
+            tracing::debug!(%error, title, body, "уведомление не показано");
         }
     }
 

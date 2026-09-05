@@ -543,8 +543,8 @@ impl Config {
     ///
     /// `MOLVA_DATA_DIR` переопределяет — так удобно гонять несколько профилей и тесты руками.
     pub fn data_dir() -> Result<PathBuf, ConfigError> {
-        if let Some(dir) = std::env::var_os("MOLVA_DATA_DIR") {
-            return Ok(PathBuf::from(dir));
+        if let Some(directory) = std::env::var_os("MOLVA_DATA_DIR") {
+            return Ok(PathBuf::from(directory));
         }
         directories::ProjectDirs::from("", "", "molva")
             .map(|dirs| dirs.data_dir().to_path_buf())
@@ -569,11 +569,11 @@ impl Config {
         if !self.dictionary.path.trim().is_empty() {
             return Ok(PathBuf::from(&self.dictionary.path));
         }
-        let dir = match config_path.parent() {
+        let directory = match config_path.parent() {
             Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),
             _ => Self::default_dir()?,
         };
-        Ok(dir.join("dictionary.toml"))
+        Ok(directory.join("dictionary.toml"))
     }
 
     /// Прочитать файл, а повреждённый — отложить в `<path>.broken` и начать с умолчаний.
@@ -1057,8 +1057,8 @@ mod tests {
 
     #[test]
     fn load_or_create_writes_defaults_once() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("nested").join("config.toml");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("nested").join("config.toml");
         let created = Config::load_or_create(&path).unwrap();
         assert!(path.exists());
         assert_eq!(created, Config::default());
@@ -1068,8 +1068,8 @@ mod tests {
 
     #[test]
     fn missing_file_loads_as_defaults_without_writing() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("absent.toml");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("absent.toml");
         assert_eq!(Config::load(&path).unwrap(), Config::default());
         assert!(!path.exists());
     }
@@ -1225,8 +1225,8 @@ mod tests {
 
     #[test]
     fn a_broken_file_is_moved_aside_and_replaced_by_defaults() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("config.toml");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
         std::fs::write(&path, "[llm]\nenabled = = true\n").unwrap();
 
         let (config, warning) = Config::load_lenient(&path).unwrap();
@@ -1234,7 +1234,7 @@ mod tests {
         let warning = warning.expect("пользователь должен узнать о подмене");
         assert!(warning.contains("повреждён"), "{warning}");
 
-        let broken = dir.path().join("config.toml.broken");
+        let broken = directory.path().join("config.toml.broken");
         assert!(broken.exists(), "испорченный файл должен сохраниться");
         assert!(std::fs::read_to_string(&broken)
             .unwrap()
@@ -1245,13 +1245,13 @@ mod tests {
 
     #[test]
     fn a_healthy_file_is_left_alone_by_load_lenient() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("config.toml");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
         std::fs::write(&path, "version = 1\n[stt]\nmodel = \"large-v3-turbo\"\n").unwrap();
         let (config, warning) = Config::load_lenient(&path).unwrap();
         assert_eq!(config.stt.model, "large-v3-turbo");
         assert_eq!(warning, None);
-        assert!(!dir.path().join("config.toml.broken").exists());
+        assert!(!directory.path().join("config.toml.broken").exists());
     }
 
     #[test]
@@ -1275,8 +1275,8 @@ mod tests {
 
     #[test]
     fn a_profile_round_trips_through_export_and_import() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("profile.toml");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("profile.toml");
         let mut config = Config::default();
         config.stt.model = "large-v3-turbo".into();
         config.output.mode = "paste".into();
@@ -1288,8 +1288,8 @@ mod tests {
 
     #[test]
     fn an_invalid_profile_is_not_imported() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("profile.toml");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("profile.toml");
         std::fs::write(&path, "[output]\nmode = \"телепатия\"\n").unwrap();
         let err = Config::import(&path).unwrap_err();
         assert!(err.to_string().contains("output.mode"), "{err}");

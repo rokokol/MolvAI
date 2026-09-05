@@ -108,7 +108,7 @@ defect 'audio/trim-keep-ms' 'crates/molva-core/src/app/audio/trim.rs' \
   'запас keep_ms не оставлен: обрезка съедает первый слог реплики'
 
 defect 'stt/language-retry' 'crates/molva-core/src/infra/stt/mod.rs' \
-  '    if opts.language != LanguageHint::Auto {' \
+  '    if options.language != LanguageHint::Auto {' \
   '    if true {' \
   'русская речь, принятая за украинскую, уходит в текст как есть: повтора с разрешённым языком нет'
 

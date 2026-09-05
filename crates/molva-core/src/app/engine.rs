@@ -100,9 +100,9 @@ mod tests {
     use crate::domain::audio::PcmAudio;
     use crate::domain::stt::SttOptions;
 
-    fn cfg_with_models_dir(dir: &std::path::Path) -> Config {
+    fn cfg_with_models_dir(directory: &std::path::Path) -> Config {
         let mut cfg = Config::default();
-        cfg.stt.model_path = dir.display().to_string();
+        cfg.stt.model_path = directory.display().to_string();
         cfg
     }
 
@@ -143,25 +143,25 @@ mod tests {
 
     #[test]
     fn missing_weights_tell_the_user_how_to_get_them() {
-        let dir = tempfile::tempdir().unwrap();
-        let cfg = cfg_with_models_dir(dir.path());
+        let directory = tempfile::tempdir().unwrap();
+        let cfg = cfg_with_models_dir(directory.path());
         let err = build_stt(&cfg, Some("small")).unwrap_err();
         assert!(err.to_string().contains("molva models pull small"), "{err}");
     }
 
     #[test]
     fn unknown_model_name_is_reported_before_anything_else() {
-        let dir = tempfile::tempdir().unwrap();
-        let cfg = cfg_with_models_dir(dir.path());
+        let directory = tempfile::tempdir().unwrap();
+        let cfg = cfg_with_models_dir(directory.path());
         let err = build_stt(&cfg, Some("gigantic")).unwrap_err();
         assert!(err.to_string().contains("gigantic"), "{err}");
     }
 
     #[test]
     fn present_weights_build_a_lazy_whisper_engine() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("ggml-tiny.bin"), "не настоящие веса").unwrap();
-        let cfg = cfg_with_models_dir(dir.path());
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("ggml-tiny.bin"), "не настоящие веса").unwrap();
+        let cfg = cfg_with_models_dir(directory.path());
         // Веса ненастоящие, но контекст грузится лениво: сборка движка обязана пройти,
         // а ошибка про битый файл придёт только при первой реплике.
         let engine = match build_stt(&cfg, Some("tiny")) {

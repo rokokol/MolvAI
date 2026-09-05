@@ -366,7 +366,7 @@ mod tests {
             ..FakeClipboard::default()
         };
         let mut guard = ClipboardGuard::new(backend, true, Duration::ZERO);
-        let err = guard.stage("реплика").unwrap_err();
-        assert!(matches!(err, InjectError::ClipboardDenied(_)), "{err}");
+        let error = guard.stage("реплика").unwrap_err();
+        assert!(matches!(error, InjectError::ClipboardDenied(_)), "{error}");
     }
 }

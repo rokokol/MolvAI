@@ -41,10 +41,10 @@ pub(crate) fn uinput_check() -> Check {
     }
     match std::fs::OpenOptions::new().write(true).open(path) {
         Ok(_) => Check::new("/dev/uinput", true, "открывается на запись"),
-        Err(err) => Check::new(
+        Err(error) => Check::new(
             "/dev/uinput",
             false,
-            format!("{err}; нужно правило udev на группу input"),
+            format!("{error}; нужно правило udev на группу input"),
         ),
     }
 }
@@ -139,8 +139,8 @@ mod tests {
 
     #[test]
     fn the_report_covers_session_tools_and_the_daemon() {
-        let dir = tempfile::tempdir().unwrap();
-        let checks = checks(&dir.path().join("absent.sock"));
+        let directory = tempfile::tempdir().unwrap();
+        let checks = checks(&directory.path().join("absent.sock"));
         let names: Vec<&str> = checks.iter().map(|c| c.name.as_str()).collect();
         for expected in ["сессия", "hyprctl", "wtype", "/dev/uinput", "демон"] {
             assert!(names.contains(&expected), "{names:?}");
@@ -149,8 +149,8 @@ mod tests {
 
     #[test]
     fn a_missing_daemon_is_reported_with_the_socket_path_and_what_to_do() {
-        let dir = tempfile::tempdir().unwrap();
-        let socket = dir.path().join("absent.sock");
+        let directory = tempfile::tempdir().unwrap();
+        let socket = directory.path().join("absent.sock");
         let checks = checks(&socket);
         let daemon = checks.iter().find(|c| c.name == "демон").unwrap();
         assert!(!daemon.ok);

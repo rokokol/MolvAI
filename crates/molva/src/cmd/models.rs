@@ -90,8 +90,8 @@ pub(crate) fn render_list(statuses: &[ModelStatus]) -> String {
     out
 }
 
-fn dir_for(cfg: &Config) -> Result<std::path::PathBuf, CmdError> {
-    models::models_dir(cfg).map_err(|e| CmdError::file(e.to_string()))
+fn dir_for(config: &Config) -> Result<std::path::PathBuf, CmdError> {
+    models::models_dir(config).map_err(|e| CmdError::file(e.to_string()))
 }
 
 /// Что сделал `pull`: скачал или обошёлся тем, что уже лежит на диске.
@@ -118,9 +118,9 @@ pub(crate) fn needs_download(target: &Path, sha256: &str, force: bool) -> Result
 }
 
 /// Скачать модель с полоской прогресса в stderr.
-fn pull(name: &str, dir: &Path, force: bool, quiet: bool) -> Result<PullReport, CmdError> {
+fn pull(name: &str, directory: &Path, force: bool, quiet: bool) -> Result<PullReport, CmdError> {
     let info = models::find(name).map_err(|e| CmdError::args(e.to_string()))?;
-    let target = dir.join(info.file_name);
+    let target = directory.join(info.file_name);
     if !needs_download(&target, info.sha256, force)? {
         // Ничего не качаем и честно об этом говорим: «скачиваю» на уже готовый файл вводит
         // в заблуждение, особенно когда моделей несколько гигабайт.
@@ -141,7 +141,7 @@ fn pull(name: &str, dir: &Path, force: bool, quiet: bool) -> Result<PullReport, 
     });
     eprintln!("скачиваю {name} ({})", human_size(info.size_bytes));
 
-    let result = models::pull(name, dir, &mut |downloaded, total| {
+    let result = models::pull(name, directory, &mut |downloaded, total| {
         if let Some(bar) = &bar {
             if total > 0 {
                 bar.set_length(total);
@@ -160,21 +160,25 @@ fn pull(name: &str, dir: &Path, force: bool, quiet: bool) -> Result<PullReport, 
         .map_err(|e| CmdError::file(e.to_string()))
 }
 
-pub(crate) fn run(action: &Action, cfg: &Config, stdout: &mut dyn Write) -> Result<(), CmdError> {
-    let dir = dir_for(cfg)?;
+pub(crate) fn run(
+    action: &Action,
+    config: &Config,
+    stdout: &mut dyn Write,
+) -> Result<(), CmdError> {
+    let directory = dir_for(config)?;
     let write = |stdout: &mut dyn Write, text: &str| -> Result<(), CmdError> {
         writeln!(stdout, "{text}").map_err(|e| CmdError::file(e.to_string()))
     };
 
     match action {
         Action::List { json } => {
-            let statuses = models::list(&dir);
+            let statuses = models::list(&directory);
             if *json {
                 let text = serde_json::to_string_pretty(&statuses)
                     .map_err(|e| CmdError::file(e.to_string()))?;
                 write(stdout, &text)?;
             } else {
-                eprintln!("каталог моделей: {}", dir.display());
+                eprintln!("каталог моделей: {}", directory.display());
                 write(stdout, render_list(&statuses).trim_end())?;
             }
         }
@@ -190,7 +194,7 @@ pub(crate) fn run(action: &Action, cfg: &Config, stdout: &mut dyn Write) -> Resu
                 name.iter().cloned().collect()
             };
             for name in &names {
-                let report = pull(name, &dir, *force, !progress_enabled(false))?;
+                let report = pull(name, &directory, *force, !progress_enabled(false))?;
                 if report.downloaded {
                     eprintln!("готово: контрольная сумма {name} совпала");
                 } else {
@@ -201,7 +205,7 @@ pub(crate) fn run(action: &Action, cfg: &Config, stdout: &mut dyn Write) -> Resu
         }
         Action::Verify { name } => {
             let info = models::find(name).map_err(|e| CmdError::args(e.to_string()))?;
-            let path = dir.join(info.file_name);
+            let path = directory.join(info.file_name);
             if !path.is_file() {
                 return Err(CmdError::file(format!(
                     "модель {name} не установлена. Скачайте: molva models pull {name}"
@@ -218,11 +222,13 @@ pub(crate) fn run(action: &Action, cfg: &Config, stdout: &mut dyn Write) -> Resu
             write(stdout, &format!("{name}: SHA-256 совпадает"))?;
         }
         Action::Remove { name } => {
-            let path = models::remove(name, &dir).map_err(|e| CmdError::file(e.to_string()))?;
+            let path =
+                models::remove(name, &directory).map_err(|e| CmdError::file(e.to_string()))?;
             write(stdout, &format!("удалено: {}", path.display()))?;
         }
         Action::Path { name } => {
-            let path = models::model_path(cfg, name).map_err(|e| CmdError::args(e.to_string()))?;
+            let path =
+                models::model_path(config, name).map_err(|e| CmdError::args(e.to_string()))?;
             write(stdout, &path.display().to_string())?;
         }
     }
@@ -233,10 +239,10 @@ pub(crate) fn run(action: &Action, cfg: &Config, stdout: &mut dyn Write) -> Resu
 mod tests {
     use super::*;
 
-    fn cfg_in(dir: &Path) -> Config {
-        let mut cfg = Config::default();
-        cfg.stt.model_path = dir.display().to_string();
-        cfg
+    fn cfg_in(directory: &Path) -> Config {
+        let mut config = Config::default();
+        config.stt.model_path = directory.display().to_string();
+        config
     }
 
     #[test]
@@ -247,18 +253,23 @@ mod tests {
 
     #[test]
     fn list_marks_installed_models_and_offers_a_command_for_the_rest() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("ggml-tiny.bin"), "x").unwrap();
-        let text = render_list(&models::list(dir.path()));
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("ggml-tiny.bin"), "x").unwrap();
+        let text = render_list(&models::list(directory.path()));
         assert!(text.contains("✓ tiny"), "{text}");
         assert!(text.contains("molva models pull small"), "{text}");
     }
 
     #[test]
     fn list_json_is_machine_readable() {
-        let dir = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir().unwrap();
         let mut out = Vec::new();
-        run(&Action::List { json: true }, &cfg_in(dir.path()), &mut out).unwrap();
+        run(
+            &Action::List { json: true },
+            &cfg_in(directory.path()),
+            &mut out,
+        )
+        .unwrap();
         let value: serde_json::Value = serde_json::from_slice(&out).unwrap();
         let array = value.as_array().unwrap();
         assert_eq!(array.len(), models::CATALOG.len());
@@ -268,13 +279,13 @@ mod tests {
 
     #[test]
     fn path_prints_where_the_file_would_live() {
-        let dir = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir().unwrap();
         let mut out = Vec::new();
         run(
             &Action::Path {
                 name: "small".into(),
             },
-            &cfg_in(dir.path()),
+            &cfg_in(directory.path()),
             &mut out,
         )
         .unwrap();
@@ -284,56 +295,56 @@ mod tests {
 
     #[test]
     fn unknown_name_is_an_argument_error() {
-        let dir = tempfile::tempdir().unwrap();
-        let err = run(
+        let directory = tempfile::tempdir().unwrap();
+        let error = run(
             &Action::Path {
                 name: "нетакой".into(),
             },
-            &cfg_in(dir.path()),
+            &cfg_in(directory.path()),
             &mut Vec::new(),
         )
         .unwrap_err();
-        assert_eq!(err.code, CmdError::BAD_ARGS);
+        assert_eq!(error.code, CmdError::BAD_ARGS);
     }
 
     #[test]
     fn verify_of_absent_model_suggests_pull() {
-        let dir = tempfile::tempdir().unwrap();
-        let err = run(
+        let directory = tempfile::tempdir().unwrap();
+        let error = run(
             &Action::Verify {
                 name: "small".into(),
             },
-            &cfg_in(dir.path()),
+            &cfg_in(directory.path()),
             &mut Vec::new(),
         )
         .unwrap_err();
         assert!(
-            err.message.contains("molva models pull small"),
+            error.message.contains("molva models pull small"),
             "{}",
-            err.message
+            error.message
         );
-        assert_eq!(err.code, CmdError::FILE);
+        assert_eq!(error.code, CmdError::FILE);
     }
 
     #[test]
     fn verify_of_corrupted_model_tells_how_to_fix_it() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("ggml-tiny.bin"), "подделка").unwrap();
-        let err = run(
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("ggml-tiny.bin"), "подделка").unwrap();
+        let error = run(
             &Action::Verify {
                 name: "tiny".into(),
             },
-            &cfg_in(dir.path()),
+            &cfg_in(directory.path()),
             &mut Vec::new(),
         )
         .unwrap_err();
-        assert!(err.message.contains("--force"), "{}", err.message);
+        assert!(error.message.contains("--force"), "{}", error.message);
     }
 
     #[test]
     fn installed_and_valid_model_is_not_downloaded_again() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("ggml-tiny.bin");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("ggml-tiny.bin");
         std::fs::write(&path, "содержимое").unwrap();
         let sha = models::sha256_file(&path).unwrap();
 
@@ -345,8 +356,8 @@ mod tests {
 
     #[test]
     fn force_removes_the_file_and_demands_a_download() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("ggml-tiny.bin");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("ggml-tiny.bin");
         std::fs::write(&path, "содержимое").unwrap();
         let sha = models::sha256_file(&path).unwrap();
 
@@ -356,8 +367,8 @@ mod tests {
 
     #[test]
     fn absent_model_needs_a_download() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("ggml-tiny.bin");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("ggml-tiny.bin");
         assert!(needs_download(&path, &"0".repeat(64), false).unwrap());
         assert!(needs_download(&path, &"0".repeat(64), true).unwrap());
     }
@@ -380,14 +391,14 @@ mod tests {
 
     #[test]
     fn remove_deletes_the_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("ggml-tiny.bin");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("ggml-tiny.bin");
         std::fs::write(&path, "x").unwrap();
         run(
             &Action::Remove {
                 name: "tiny".into(),
             },
-            &cfg_in(dir.path()),
+            &cfg_in(directory.path()),
             &mut Vec::new(),
         )
         .unwrap();

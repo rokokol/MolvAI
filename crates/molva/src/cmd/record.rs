@@ -80,9 +80,12 @@ mod tests {
 
     #[test]
     fn a_missing_daemon_is_reported_as_not_running() {
-        let dir = tempfile::tempdir().unwrap();
-        let socket = dir.path().join("absent.sock");
-        let err = run(&socket, Action::Stop, Mode::Dictation, None).unwrap_err();
-        assert!(matches!(err, IpcClientError::NotRunning { .. }), "{err}");
+        let directory = tempfile::tempdir().unwrap();
+        let socket = directory.path().join("absent.sock");
+        let error = run(&socket, Action::Stop, Mode::Dictation, None).unwrap_err();
+        assert!(
+            matches!(error, IpcClientError::NotRunning { .. }),
+            "{error}"
+        );
     }
 }

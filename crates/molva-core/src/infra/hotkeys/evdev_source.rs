@@ -78,8 +78,8 @@ impl HotkeySource for EvdevHotkeys {
             let modifiers = modifiers.clone();
             let specs = specs.clone();
             threads.push(std::thread::spawn(move || {
-                if let Err(err) = pump(device, &tx, &modifiers, &specs) {
-                    tracing::warn!(device = %path.display(), %err, "чтение устройства прекращено");
+                if let Err(error) = pump(device, &tx, &modifiers, &specs) {
+                    tracing::warn!(device = %path.display(), %error, "чтение устройства прекращено");
                 }
             }));
         }

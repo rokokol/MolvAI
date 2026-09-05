@@ -279,9 +279,9 @@ impl TextInjector for UinputInjector {
                             attempts: Vec::new(),
                         })
                     }
-                    Err(err) => {
+                    Err(error) => {
                         self.clipboard.keep();
-                        Err(err)
+                        Err(error)
                     }
                 }
             }

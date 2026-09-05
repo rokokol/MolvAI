@@ -103,7 +103,7 @@ pub(crate) fn run(
                         entries.len()
                     );
                 }
-                Err(err) => println!("История недоступна: {err}"),
+                Err(error) => println!("История недоступна: {error}"),
             }
             Ok(())
         }

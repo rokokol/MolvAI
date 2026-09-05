@@ -439,10 +439,10 @@ mod tests {
     use super::*;
 
     fn journal() -> (tempfile::TempDir, FileJournal) {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("data").join("journal.jsonl");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("data").join("journal.jsonl");
         let journal = FileJournal::open(&path).unwrap();
-        (dir, journal)
+        (directory, journal)
     }
 
     #[test]
@@ -462,8 +462,8 @@ mod tests {
 
     #[test]
     fn entries_survive_reopening_the_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("journal.jsonl");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("journal.jsonl");
         {
             let mut journal = FileJournal::open(&path).unwrap();
             journal
@@ -510,8 +510,8 @@ mod tests {
 
     #[test]
     fn privacy_mode_keeps_metrics_and_drops_texts() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("journal.jsonl");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("journal.jsonl");
         let mut journal = FileJournal::open_with(&path, false).unwrap();
         journal
             .append(&test_entry("2026-09-05T10:00:00Z", 10, 4.0, "kitty"))
@@ -657,18 +657,18 @@ mod tests {
 
     #[test]
     fn export_writes_jsonl_and_csv() {
-        let (dir, mut journal) = journal();
+        let (directory, mut journal) = journal();
         let mut entry = test_entry("2026-09-05T10:00:00Z", 10, 4.0, "kitty");
         entry.text_final = Some("Привет, \"мир\"".into());
         journal.append(&entry).unwrap();
 
-        let jsonl = dir.path().join("out.jsonl");
+        let jsonl = directory.path().join("out.jsonl");
         assert_eq!(journal.export_jsonl(&jsonl).unwrap(), 1);
         let text = std::fs::read_to_string(&jsonl).unwrap();
         assert_eq!(text.lines().count(), 1);
         assert!(serde_json::from_str::<Entry>(text.trim()).is_ok());
 
-        let csv = dir.path().join("out.csv");
+        let csv = directory.path().join("out.csv");
         assert_eq!(journal.export_csv(&csv).unwrap(), 1);
         let csv = std::fs::read_to_string(&csv).unwrap();
         let mut lines = csv.lines();
@@ -702,9 +702,9 @@ mod tests {
 
     #[test]
     fn loading_a_missing_file_is_an_empty_history() {
-        let dir = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir().unwrap();
         let journal = FileJournal {
-            path: dir.path().join("absent.jsonl"),
+            path: directory.path().join("absent.jsonl"),
             include_text: true,
         };
         assert!(journal.load_all().unwrap().is_empty());

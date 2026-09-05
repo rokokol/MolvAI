@@ -63,17 +63,17 @@ pub fn socket_path() -> PathBuf {
     }
     #[cfg(target_os = "macos")]
     {
-        let dir = std::env::var_os("TMPDIR")
+        let directory = std::env::var_os("TMPDIR")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("/tmp"));
-        dir.join("molva.sock")
+        directory.join("molva.sock")
     }
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
-        if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR") {
-            let dir = PathBuf::from(dir);
-            if dir.is_dir() {
-                return dir.join("molva.sock");
+        if let Some(directory) = std::env::var_os("XDG_RUNTIME_DIR") {
+            let directory = PathBuf::from(directory);
+            if directory.is_dir() {
+                return directory.join("molva.sock");
             }
         }
         PathBuf::from(format!("/tmp/molva-{}.sock", current_uid()))
@@ -459,8 +459,8 @@ mod tests {
 
     /// Сокет живёт во временном каталоге: тесты не трогают ни `$XDG_RUNTIME_DIR`, ни `/tmp`.
     fn started(handler: Arc<dyn RequestHandler>) -> (PathBuf, tempfile::TempDir, Stopper) {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("molva.sock");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("molva.sock");
         let server = Server::bind(&path).unwrap();
         let stopper = server.stopper();
         std::thread::spawn(move || {
@@ -473,7 +473,7 @@ mod tests {
             }
             std::thread::sleep(Duration::from_millis(10));
         }
-        (path, dir, stopper)
+        (path, directory, stopper)
     }
 
     #[test]
@@ -561,8 +561,8 @@ mod tests {
 
     #[test]
     fn there_is_no_daemon_on_a_path_nobody_listens_to() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("absent.sock");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("absent.sock");
         assert_eq!(ping(&path), None);
         let err = Client::connect(&path).unwrap_err();
         assert!(matches!(err, IpcClientError::NotRunning { .. }), "{err}");
@@ -570,8 +570,8 @@ mod tests {
 
     #[test]
     fn a_dead_socket_file_does_not_block_a_restart() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("molva.sock");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("molva.sock");
         std::fs::write(&path, b"").unwrap();
         // Файл есть, слушателя нет: сервер обязан подняться, а не сказать «адрес занят».
         let server = Server::bind(&path).expect("мёртвый сокет должен быть удалён");

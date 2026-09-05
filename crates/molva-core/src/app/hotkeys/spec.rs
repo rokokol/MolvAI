@@ -275,9 +275,9 @@ mod tests {
 
     #[test]
     fn an_unknown_name_is_reported_with_the_whole_spec() {
-        let err = HotkeySpec::parse("Ctrl+Телепатия").unwrap_err();
-        assert!(matches!(err, HotkeyError::BadSpec(_)), "{err}");
-        assert!(err.to_string().contains("Ctrl+Телепатия"), "{err}");
+        let error = HotkeySpec::parse("Ctrl+Телепатия").unwrap_err();
+        assert!(matches!(error, HotkeyError::BadSpec(_)), "{error}");
+        assert!(error.to_string().contains("Ctrl+Телепатия"), "{error}");
         assert!(HotkeySpec::parse("").is_err());
         assert!(HotkeySpec::parse("Хтоних+Space").is_err());
     }

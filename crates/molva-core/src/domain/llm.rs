@@ -40,5 +40,5 @@ pub trait LlmClient: std::fmt::Debug + Send + Sync {
     fn id(&self) -> &str;
     /// Локальная ли модель: попадает в журнал полем `local_llm`.
     fn is_local(&self) -> bool;
-    fn complete(&self, req: &ChatRequest) -> Result<ChatResponse, LlmError>;
+    fn complete(&self, request: &ChatRequest) -> Result<ChatResponse, LlmError>;
 }

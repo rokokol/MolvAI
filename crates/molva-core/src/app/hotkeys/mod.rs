@@ -65,7 +65,7 @@ mod tests {
             toggle: "Ctrl+Хтоних".into(),
             ..HotkeysConfig::default()
         };
-        let err = specs_from_config(&config).unwrap_err();
-        assert!(err.to_string().contains("Ctrl+Хтоних"), "{err}");
+        let error = specs_from_config(&config).unwrap_err();
+        assert!(error.to_string().contains("Ctrl+Хтоних"), "{error}");
     }
 }

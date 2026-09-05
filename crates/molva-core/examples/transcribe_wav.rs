@@ -30,8 +30,8 @@ use molva_core::infra::stt::{transcribe_with_language_policy, WhisperEngine};
 fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
-        Err(err) => {
-            eprintln!("ошибка: {err}");
+        Err(error) => {
+            eprintln!("ошибка: {error}");
             ExitCode::FAILURE
         }
     }
@@ -100,7 +100,7 @@ fn run() -> Result<(), String> {
         .to_string();
     let mut engine = WhisperEngine::new(args.model.clone(), model_name, args.threads);
 
-    let opts = SttOptions {
+    let options = SttOptions {
         language: LanguageHint::parse(&args.language),
         timestamps: args.timecodes,
         threads: args.threads,
@@ -108,14 +108,14 @@ fn run() -> Result<(), String> {
     };
 
     let load_started = Instant::now();
-    let first =
-        transcribe_with_language_policy(&mut engine, &ready, &opts).map_err(|e| e.to_string())?;
+    let first = transcribe_with_language_policy(&mut engine, &ready, &options)
+        .map_err(|e| e.to_string())?;
     let first_elapsed = load_started.elapsed();
 
     // Второй прогон показывает задержку на уже загруженной модели — так работает демон.
     let warm_started = Instant::now();
-    let second =
-        transcribe_with_language_policy(&mut engine, &ready, &opts).map_err(|e| e.to_string())?;
+    let second = transcribe_with_language_policy(&mut engine, &ready, &options)
+        .map_err(|e| e.to_string())?;
     let warm_elapsed = warm_started.elapsed();
 
     println!("{}", second.text);

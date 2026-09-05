@@ -41,7 +41,7 @@ pub(crate) struct Args {
     pub model: Option<String>,
 }
 
-pub(crate) fn run(args: &Args, cfg: &Config, stdout: &mut dyn Write) -> Result<(), CmdError> {
+pub(crate) fn run(args: &Args, config: &Config, stdout: &mut dyn Write) -> Result<(), CmdError> {
     if args.repeat == 0 {
         return Err(CmdError::args("--repeat должен быть не меньше 1"));
     }
@@ -53,13 +53,14 @@ pub(crate) fn run(args: &Args, cfg: &Config, stdout: &mut dyn Write) -> Result<(
         // а не подгоняется под ответ.
         fake_text: None,
     };
-    let mut engine = build_stt_with(cfg, &choice).map_err(|e| CmdError::engine(e.to_string()))?;
+    let mut engine =
+        build_stt_with(config, &choice).map_err(|e| CmdError::engine(e.to_string()))?;
 
-    let opts = BenchOptions {
+    let options = BenchOptions {
         repeat: args.repeat,
-        threads: cfg.stt.threads as usize,
+        threads: config.stt.threads as usize,
     };
-    let report = bench::run(&args.set, &opts, engine.as_mut()).map_err(|e| match e {
+    let report = bench::run(&args.set, &options, engine.as_mut()).map_err(|e| match e {
         bench::BenchError::SetMissing(_) | bench::BenchError::Empty(_) => {
             CmdError::file(e.to_string())
         }
@@ -97,19 +98,19 @@ mod tests {
     }
 
     fn make_set() -> tempfile::TempDir {
-        let dir = tempfile::tempdir().unwrap();
-        write_wav(&dir.path().join("a.wav"), 0.4);
+        let directory = tempfile::tempdir().unwrap();
+        write_wav(&directory.path().join("a.wav"), 0.4);
         std::fs::write(
-            dir.path().join("manifest.toml"),
+            directory.path().join("manifest.toml"),
             "[[case]]\naudio = \"a.wav\"\nreference = \"тестовая расшифровка\"\nlanguage = \"ru\"\n",
         )
         .unwrap();
-        dir
+        directory
     }
 
-    fn args_for(dir: &Path, json: bool) -> Args {
+    fn args_for(directory: &Path, json: bool) -> Args {
         Args {
-            set: dir.to_path_buf(),
+            set: directory.to_path_buf(),
             json,
             summary: false,
             repeat: 1,
@@ -120,9 +121,14 @@ mod tests {
 
     #[test]
     fn fake_engine_runs_the_set_and_prints_a_summary() {
-        let dir = make_set();
+        let directory = make_set();
         let mut out = Vec::new();
-        run(&args_for(dir.path(), false), &Config::default(), &mut out).unwrap();
+        run(
+            &args_for(directory.path(), false),
+            &Config::default(),
+            &mut out,
+        )
+        .unwrap();
         let text = String::from_utf8(out).unwrap();
         assert!(text.contains("a.wav"), "{text}");
         assert!(text.contains("WER"), "{text}");
@@ -131,9 +137,14 @@ mod tests {
 
     #[test]
     fn json_report_is_machine_readable() {
-        let dir = make_set();
+        let directory = make_set();
         let mut out = Vec::new();
-        run(&args_for(dir.path(), true), &Config::default(), &mut out).unwrap();
+        run(
+            &args_for(directory.path(), true),
+            &Config::default(),
+            &mut out,
+        )
+        .unwrap();
         let value: serde_json::Value = serde_json::from_slice(&out).unwrap();
         assert!(value["wer_avg"].is_number());
         assert_eq!(value["cases"].as_array().unwrap().len(), 1);
@@ -142,7 +153,7 @@ mod tests {
 
     #[test]
     fn two_runs_report_the_same_score() {
-        let dir = make_set();
+        let directory = make_set();
         let score = |json: &serde_json::Value| {
             (
                 json["wer_avg"].as_f64().unwrap(),
@@ -151,9 +162,19 @@ mod tests {
             )
         };
         let mut first = Vec::new();
-        run(&args_for(dir.path(), true), &Config::default(), &mut first).unwrap();
+        run(
+            &args_for(directory.path(), true),
+            &Config::default(),
+            &mut first,
+        )
+        .unwrap();
         let mut second = Vec::new();
-        run(&args_for(dir.path(), true), &Config::default(), &mut second).unwrap();
+        run(
+            &args_for(directory.path(), true),
+            &Config::default(),
+            &mut second,
+        )
+        .unwrap();
         let a: serde_json::Value = serde_json::from_slice(&first).unwrap();
         let b: serde_json::Value = serde_json::from_slice(&second).unwrap();
         assert_eq!(score(&a), score(&b));
@@ -161,44 +182,49 @@ mod tests {
 
     #[test]
     fn missing_set_is_a_file_error() {
-        let dir = tempfile::tempdir().unwrap();
-        let err = run(
-            &args_for(&dir.path().join("нет"), false),
+        let directory = tempfile::tempdir().unwrap();
+        let error = run(
+            &args_for(&directory.path().join("нет"), false),
             &Config::default(),
             &mut Vec::new(),
         )
         .unwrap_err();
-        assert_eq!(err.code, CmdError::FILE);
+        assert_eq!(error.code, CmdError::FILE);
     }
 
     #[test]
     fn bad_wer_is_still_a_successful_run() {
-        let dir = tempfile::tempdir().unwrap();
-        write_wav(&dir.path().join("a.wav"), 0.3);
+        let directory = tempfile::tempdir().unwrap();
+        write_wav(&directory.path().join("a.wav"), 0.3);
         std::fs::write(
-            dir.path().join("manifest.toml"),
+            directory.path().join("manifest.toml"),
             "[[case]]\naudio = \"a.wav\"\nreference = \"совершенно другой текст\"\n",
         )
         .unwrap();
         let mut out = Vec::new();
-        run(&args_for(dir.path(), true), &Config::default(), &mut out).unwrap();
+        run(
+            &args_for(directory.path(), true),
+            &Config::default(),
+            &mut out,
+        )
+        .unwrap();
         let value: serde_json::Value = serde_json::from_slice(&out).unwrap();
         assert!(value["wer_avg"].as_f64().unwrap() > 0.5);
     }
 
     #[test]
     fn zero_repeat_is_an_argument_error() {
-        let dir = make_set();
-        let mut args = args_for(dir.path(), false);
+        let directory = make_set();
+        let mut args = args_for(directory.path(), false);
         args.repeat = 0;
-        let err = run(&args, &Config::default(), &mut Vec::new()).unwrap_err();
-        assert_eq!(err.code, CmdError::BAD_ARGS);
+        let error = run(&args, &Config::default(), &mut Vec::new()).unwrap_err();
+        assert_eq!(error.code, CmdError::BAD_ARGS);
     }
 
     #[test]
     fn repeat_is_reflected_in_the_report() {
-        let dir = make_set();
-        let mut args = args_for(dir.path(), true);
+        let directory = make_set();
+        let mut args = args_for(directory.path(), true);
         args.repeat = 3;
         let mut out = Vec::new();
         run(&args, &Config::default(), &mut out).unwrap();

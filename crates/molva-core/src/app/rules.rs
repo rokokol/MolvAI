@@ -1424,15 +1424,18 @@ mod tests {
 
     #[test]
     fn golden_cases_match_the_recorded_output() {
-        let dir = golden_dir();
+        let directory = golden_dir();
         let update = std::env::var("UPDATE_GOLDEN").is_ok();
-        let mut cases: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
+        let mut cases: Vec<std::path::PathBuf> = std::fs::read_dir(&directory)
             .expect("golden-каталог читается")
             .filter_map(|entry| entry.ok().map(|e| e.path()))
             .filter(|path| path.to_string_lossy().ends_with(".in.txt"))
             .collect();
         cases.sort();
-        assert!(!cases.is_empty(), "нет ни одного golden-случая в {dir:?}");
+        assert!(
+            !cases.is_empty(),
+            "нет ни одного golden-случая в {directory:?}"
+        );
 
         let mut failures = Vec::new();
         for input_path in cases {

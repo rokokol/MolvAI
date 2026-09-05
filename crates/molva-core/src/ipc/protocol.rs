@@ -181,8 +181,8 @@ mod tests {
     use super::*;
 
     fn round_trip(cmd: &Command) {
-        let req = Request::new(1, cmd.clone());
-        let json = serde_json::to_string(&req).unwrap();
+        let request = Request::new(1, cmd.clone());
+        let json = serde_json::to_string(&request).unwrap();
         let back: Request = serde_json::from_str(&json).unwrap();
         assert_eq!(&back.cmd, cmd, "не совпало после round-trip: {json}");
     }
@@ -218,14 +218,14 @@ mod tests {
 
     #[test]
     fn request_wire_format_matches_documentation() {
-        let req = Request::new(
+        let request = Request::new(
             7,
             Command::RecordStart {
                 mode: Mode::Dictation,
                 style: None,
             },
         );
-        let json = serde_json::to_value(&req).unwrap();
+        let json = serde_json::to_value(&request).unwrap();
         assert_eq!(json["v"], 1);
         assert_eq!(json["id"], 7);
         assert_eq!(json["cmd"], "record.start");
@@ -242,18 +242,18 @@ mod tests {
 
     #[test]
     fn error_response_carries_code_and_hint() {
-        let resp = Response::err(
+        let response = Response::err(
             3,
             ErrorCode::Busy,
             "запись уже идёт",
             Some("нажмите клавишу ещё раз, чтобы остановить".into()),
         );
-        let json = serde_json::to_value(&resp).unwrap();
+        let json = serde_json::to_value(&response).unwrap();
         assert_eq!(json["ok"], false);
         assert_eq!(json["error"]["code"], "busy");
         assert!(json.get("result").is_none());
         let back: Response = serde_json::from_value(json).unwrap();
-        assert_eq!(back, resp);
+        assert_eq!(back, response);
     }
 
     #[test]

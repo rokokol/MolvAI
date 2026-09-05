@@ -507,16 +507,16 @@ mod tests {
 
     #[test]
     fn a_missing_file_is_an_empty_dictionary_not_an_error() {
-        let dir = tempfile::tempdir().unwrap();
-        let dictionary = Dictionary::load(&dir.path().join("absent.toml"), true).unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let dictionary = Dictionary::load(&directory.path().join("absent.toml"), true).unwrap();
         assert!(dictionary.is_empty());
         assert_eq!(dictionary.apply("текст").0, "текст");
     }
 
     #[test]
     fn a_broken_file_reports_the_path_and_the_reason() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("dictionary.toml");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("dictionary.toml");
         std::fs::write(&path, "[[term]]\nword = 12\n").unwrap();
         let err = Dictionary::load(&path, false).unwrap_err().to_string();
         assert!(err.contains("dictionary.toml"), "{err}");
@@ -525,8 +525,8 @@ mod tests {
 
     #[test]
     fn adding_a_term_writes_the_file_and_takes_effect_without_a_restart() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("dictionary.toml");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("dictionary.toml");
         let mut dictionary = Dictionary::load(&path, false).unwrap();
         dictionary
             .add(Term::new("Кубернетес", &["кубер", "k8s"]))
@@ -543,8 +543,8 @@ mod tests {
 
     #[test]
     fn reload_picks_up_a_changed_file_and_ignores_an_unchanged_one() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("dictionary.toml");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("dictionary.toml");
         std::fs::write(
             &path,
             "[[term]]\nword = \"MolvAI\"\naliases = [\"молва\"]\n",

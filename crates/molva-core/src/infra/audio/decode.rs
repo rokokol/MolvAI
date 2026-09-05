@@ -208,8 +208,8 @@ mod tests {
 
     #[test]
     fn stereo_wav_becomes_mono_with_native_rate_and_duration() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("stereo.wav");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("stereo.wav");
         write_stereo_wav(&path, 44_100, 0.5);
 
         let audio = decode_file(&path).unwrap();
@@ -222,8 +222,8 @@ mod tests {
 
     #[test]
     fn mono_wav_keeps_samples_as_is() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("mono.wav");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("mono.wav");
         let spec = hound::WavSpec {
             channels: 1,
             sample_rate: 16_000,
@@ -244,37 +244,40 @@ mod tests {
 
     #[test]
     fn empty_file_is_rejected_with_reason() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("empty.wav");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("empty.wav");
         std::fs::write(&path, b"").unwrap();
 
-        let err = decode_file(&path).unwrap_err();
-        let text = err.to_string();
+        let error = decode_file(&path).unwrap_err();
+        let text = error.to_string();
         assert!(text.contains("0 байт"), "{text}");
         assert!(text.contains("empty.wav"), "{text}");
     }
 
     #[test]
     fn garbage_bytes_are_rejected() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("broken.wav");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("broken.wav");
         std::fs::write(&path, b"RIFFxxxxWAVEnot-a-real-header-at-all").unwrap();
 
-        let err = decode_file(&path).unwrap_err();
-        assert!(matches!(err, AudioError::Decode { .. }), "{err}");
+        let error = decode_file(&path).unwrap_err();
+        assert!(matches!(error, AudioError::Decode { .. }), "{error}");
     }
 
     #[test]
     fn missing_file_is_rejected() {
-        let err = decode_file(Path::new("/nonexistent/molva/none.wav")).unwrap_err();
-        assert!(err.to_string().contains("не удалось открыть файл"), "{err}");
+        let error = decode_file(Path::new("/nonexistent/molva/none.wav")).unwrap_err();
+        assert!(
+            error.to_string().contains("не удалось открыть файл"),
+            "{error}"
+        );
     }
 
     #[test]
     fn directory_is_not_an_audio_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let err = decode_file(dir.path()).unwrap_err();
-        assert!(err.to_string().contains("каталог"), "{err}");
+        let directory = tempfile::tempdir().unwrap();
+        let error = decode_file(directory.path()).unwrap_err();
+        assert!(error.to_string().contains("каталог"), "{error}");
     }
 
     /// Фикстуры — тон 440 Гц длительностью ровно 1 с (см. `tests/fixtures/README.md`).
@@ -347,8 +350,8 @@ mod tests {
 
     #[test]
     fn reader_reports_label_in_error() {
-        let err = decode_reader(Box::new(Cursor::new(vec![0u8; 64])), None, "поток").unwrap_err();
-        assert!(err.to_string().contains("поток"), "{err}");
+        let error = decode_reader(Box::new(Cursor::new(vec![0u8; 64])), None, "поток").unwrap_err();
+        assert!(error.to_string().contains("поток"), "{error}");
     }
 
     #[test]

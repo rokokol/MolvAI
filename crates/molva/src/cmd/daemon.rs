@@ -187,7 +187,7 @@ mod tests {
 
     #[test]
     fn the_fake_engine_is_available_and_missing_weights_say_how_to_get_them() {
-        let dir = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir().unwrap();
         let mut config = Config::default();
         config.stt.engine = "fake".into();
         match build_stt(&config) {
@@ -195,7 +195,7 @@ mod tests {
             Err(err) => panic!("движок fake обязан собираться: {err}"),
         }
         config.stt.engine = "whisper-cpp".into();
-        config.stt.model_path = dir.path().display().to_string();
+        config.stt.model_path = directory.path().display().to_string();
         let err = match build_stt(&config) {
             Err(err) => err.to_string(),
             Ok(_) => panic!("без файла весов движок собираться не должен"),
@@ -205,16 +205,16 @@ mod tests {
 
     #[test]
     fn journal_is_silent_in_no_record_mode_and_a_file_otherwise() {
-        let dir = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir().unwrap();
         let mut config = Config::default();
-        config.journal.path = dir.path().join("journal.jsonl").display().to_string();
+        config.journal.path = directory.path().join("journal.jsonl").display().to_string();
         config.privacy.no_record_mode = true;
         build_journal(&config).unwrap();
-        assert!(!dir.path().join("journal.jsonl").exists());
+        assert!(!directory.path().join("journal.jsonl").exists());
 
         config.privacy.no_record_mode = false;
         build_journal(&config).unwrap();
-        assert!(dir.path().join("journal.jsonl").exists());
+        assert!(directory.path().join("journal.jsonl").exists());
     }
 
     #[test]
@@ -225,8 +225,8 @@ mod tests {
 
     #[test]
     fn missing_dictionary_file_gives_an_empty_dictionary() {
-        let dir = tempfile::tempdir().unwrap();
-        let config_path = dir.path().join("config.toml");
+        let directory = tempfile::tempdir().unwrap();
+        let config_path = directory.path().join("config.toml");
         let config = Config::default();
         let dictionary = build_dictionary(&config, &config_path);
         assert_eq!(dictionary.apply("привет").1, 0);

@@ -796,8 +796,8 @@ mod tests {
 
     #[test]
     fn reset_marker_hides_older_entries_without_deleting_them() {
-        let dir = tempfile::tempdir().unwrap();
-        let journal_path = dir.path().join("journal.jsonl");
+        let directory = tempfile::tempdir().unwrap();
+        let journal_path = directory.path().join("journal.jsonl");
         assert_eq!(read_reset_marker(&journal_path), None);
 
         let entries = vec![
@@ -822,8 +822,8 @@ mod tests {
 
     #[test]
     fn corrupt_reset_marker_is_treated_as_no_reset() {
-        let dir = tempfile::tempdir().unwrap();
-        let journal_path = dir.path().join("journal.jsonl");
+        let directory = tempfile::tempdir().unwrap();
+        let journal_path = directory.path().join("journal.jsonl");
         std::fs::write(reset_marker_path(&journal_path), "не json").unwrap();
         assert_eq!(read_reset_marker(&journal_path), None);
     }

@@ -26,10 +26,10 @@ impl Default for Normalization {
 }
 
 /// Привести текст к сравнимому виду: регистр, пунктуация, пробелы.
-pub fn normalize(text: &str, opts: Normalization) -> String {
+pub fn normalize(text: &str, options: Normalization) -> String {
     let mut out = String::with_capacity(text.len());
     for ch in text.chars() {
-        let ch = if opts.fold_yo {
+        let ch = if options.fold_yo {
             match ch {
                 'ё' => 'е',
                 'Ё' => 'Е',
@@ -40,14 +40,14 @@ pub fn normalize(text: &str, opts: Normalization) -> String {
         };
         if ch.is_whitespace() {
             out.push(' ');
-        } else if opts.strip_punctuation && !ch.is_alphanumeric() {
+        } else if options.strip_punctuation && !ch.is_alphanumeric() {
             // Апостроф внутри слова (don't) не должен разрывать слово на два.
             if ch == '\'' || ch == '\u{2019}' {
                 out.push('\'');
             } else {
                 out.push(' ');
             }
-        } else if opts.lowercase {
+        } else if options.lowercase {
             out.extend(ch.to_lowercase());
         } else {
             out.push(ch);
@@ -57,8 +57,8 @@ pub fn normalize(text: &str, opts: Normalization) -> String {
 }
 
 /// Слова нормализованного текста.
-pub fn words(text: &str, opts: Normalization) -> Vec<String> {
-    normalize(text, opts)
+pub fn words(text: &str, options: Normalization) -> Vec<String> {
+    normalize(text, options)
         .split_whitespace()
         .map(str::to_string)
         .collect()
@@ -98,9 +98,9 @@ pub fn wer(reference: &str, hypothesis: &str) -> f32 {
     wer_with(reference, hypothesis, Normalization::default())
 }
 
-pub fn wer_with(reference: &str, hypothesis: &str, opts: Normalization) -> f32 {
-    let r = words(reference, opts);
-    let h = words(hypothesis, opts);
+pub fn wer_with(reference: &str, hypothesis: &str, options: Normalization) -> f32 {
+    let r = words(reference, options);
+    let h = words(hypothesis, options);
     ratio(levenshtein(&r, &h), r.len(), h.len())
 }
 
@@ -109,9 +109,9 @@ pub fn cer(reference: &str, hypothesis: &str) -> f32 {
     cer_with(reference, hypothesis, Normalization::default())
 }
 
-pub fn cer_with(reference: &str, hypothesis: &str, opts: Normalization) -> f32 {
-    let r: Vec<char> = normalize(reference, opts).chars().collect();
-    let h: Vec<char> = normalize(hypothesis, opts).chars().collect();
+pub fn cer_with(reference: &str, hypothesis: &str, options: Normalization) -> f32 {
+    let r: Vec<char> = normalize(reference, options).chars().collect();
+    let h: Vec<char> = normalize(hypothesis, options).chars().collect();
     ratio(levenshtein(&r, &h), r.len(), h.len())
 }
 

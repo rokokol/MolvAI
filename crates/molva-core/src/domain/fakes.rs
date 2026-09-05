@@ -107,8 +107,12 @@ impl SttEngine for FakeStt {
         "fake"
     }
 
-    fn transcribe(&mut self, audio: &PcmAudio, opts: &SttOptions) -> Result<Transcript, SttError> {
-        self.calls.push(opts.clone());
+    fn transcribe(
+        &mut self,
+        audio: &PcmAudio,
+        options: &SttOptions,
+    ) -> Result<Transcript, SttError> {
+        self.calls.push(options.clone());
         if audio.samples.is_empty() {
             return Err(SttError::EmptyAudio);
         }
@@ -171,8 +175,8 @@ impl FakeLlm {
     }
 
     /// Всегда падает — для проверки fallback на сырой текст.
-    pub fn failing(err: LlmError) -> Self {
-        Self::new(move |_| Err(err.clone()))
+    pub fn failing(error: LlmError) -> Self {
+        Self::new(move |_| Err(error.clone()))
     }
 
     pub fn calls(&self) -> usize {
@@ -189,12 +193,12 @@ impl LlmClient for FakeLlm {
         true
     }
 
-    fn complete(&self, req: &ChatRequest) -> Result<ChatResponse, LlmError> {
+    fn complete(&self, request: &ChatRequest) -> Result<ChatResponse, LlmError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         if let Ok(mut last) = self.last_request.lock() {
-            *last = Some(req.clone());
+            *last = Some(request.clone());
         }
-        (self.handler)(req)
+        (self.handler)(request)
     }
 }
 
@@ -225,8 +229,8 @@ impl TextInjector for RecordingInjector {
     }
 
     fn inject(&mut self, text: &str, mode: OutputMode) -> Result<InjectReport, InjectError> {
-        if let Some(err) = &self.fail_with {
-            return Err(err.clone());
+        if let Some(error) = &self.fail_with {
+            return Err(error.clone());
         }
         self.injected.push((text.to_string(), mode));
         Ok(InjectReport {
@@ -325,12 +329,12 @@ mod tests {
     fn fake_stt_records_options_and_replays_last_answer() {
         let mut stt = FakeStt::returning("привет");
         let audio = PcmAudio::new(vec![0.1; 16_000], 16_000);
-        let opts = SttOptions {
+        let options = SttOptions {
             language: LanguageHint::Fixed("ru".into()),
             ..SttOptions::default()
         };
-        assert_eq!(stt.transcribe(&audio, &opts).unwrap().text, "привет");
-        assert_eq!(stt.transcribe(&audio, &opts).unwrap().text, "привет");
+        assert_eq!(stt.transcribe(&audio, &options).unwrap().text, "привет");
+        assert_eq!(stt.transcribe(&audio, &options).unwrap().text, "привет");
         assert_eq!(stt.calls.len(), 2);
         assert_eq!(stt.calls[0].language, LanguageHint::Fixed("ru".into()));
     }
@@ -338,27 +342,27 @@ mod tests {
     #[test]
     fn fake_stt_rejects_empty_audio() {
         let mut stt = FakeStt::returning("x");
-        let err = stt
+        let error = stt
             .transcribe(&PcmAudio::default(), &SttOptions::default())
             .unwrap_err();
-        assert_eq!(err, SttError::EmptyAudio);
+        assert_eq!(error, SttError::EmptyAudio);
     }
 
     #[test]
     fn fake_llm_counts_calls_and_keeps_last_request() {
         let llm = FakeLlm::echoing("ok");
-        let req = ChatRequest {
+        let request = ChatRequest {
             model: "m".into(),
             system: "s".into(),
             user: "u".into(),
             temperature: 0.0,
             max_tokens: 10,
         };
-        assert_eq!(llm.complete(&req).unwrap().text, "ok");
+        assert_eq!(llm.complete(&request).unwrap().text, "ok");
         assert_eq!(llm.calls(), 1);
         assert_eq!(llm.last_request.lock().unwrap().as_ref().unwrap().user, "u");
         let failing = FakeLlm::failing(LlmError::Timeout(20));
-        assert_eq!(failing.complete(&req), Err(LlmError::Timeout(20)));
+        assert_eq!(failing.complete(&request), Err(LlmError::Timeout(20)));
     }
 
     #[test]

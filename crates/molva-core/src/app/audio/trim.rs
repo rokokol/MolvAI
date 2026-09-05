@@ -55,7 +55,7 @@ pub fn trim_silence(audio: &PcmAudio, threshold_db: f32, keep_ms: u32) -> PcmAud
         .chunks(window)
         .enumerate()
         .filter(|(_, chunk)| amplitude_to_db(rms(chunk)) >= threshold_db)
-        .map(|(idx, _)| idx)
+        .map(|(index, _)| index)
         .collect();
 
     let (Some(&first), Some(&last)) = (voiced.first(), voiced.last()) else {

@@ -150,9 +150,9 @@ pub(crate) fn collect_jobs(inputs: &[PathBuf], recursive: bool) -> Result<Vec<Jo
     Ok(jobs)
 }
 
-fn collect_dir(dir: &Path, recursive: bool, jobs: &mut Vec<Job>) -> Result<(), CmdError> {
-    let mut entries: Vec<PathBuf> = std::fs::read_dir(dir)
-        .map_err(|e| CmdError::file(format!("{}: {e}", dir.display())))?
+fn collect_dir(directory: &Path, recursive: bool, jobs: &mut Vec<Job>) -> Result<(), CmdError> {
+    let mut entries: Vec<PathBuf> = std::fs::read_dir(directory)
+        .map_err(|e| CmdError::file(format!("{}: {e}", directory.display())))?
         .filter_map(Result::ok)
         .map(|e| e.path())
         .collect();
@@ -182,7 +182,7 @@ fn collect_dir(dir: &Path, recursive: bool, jobs: &mut Vec<Job>) -> Result<(), C
 pub(crate) fn transcribe_jobs(
     jobs: &[Job],
     engine: &mut dyn SttEngine,
-    opts: &SttOptions,
+    options: &SttOptions,
     stdin_format: Option<&str>,
     postprocess: &dyn Fn(&str) -> String,
     journal: &mut dyn Journal,
@@ -211,7 +211,7 @@ pub(crate) fn transcribe_jobs(
         let ready = audio.to_16k();
 
         let started = Instant::now();
-        let transcript = match engine.transcribe(&ready, opts) {
+        let transcript = match engine.transcribe(&ready, options) {
             Ok(transcript) => transcript,
             Err(e) => {
                 outcome.errors.push((job.label.clone(), e.to_string()));
@@ -415,7 +415,7 @@ pub(crate) fn write_output(
 }
 
 /// Точка входа подкоманды.
-pub(crate) fn run(args: &Args, cfg: &Config) -> Result<(), CmdError> {
+pub(crate) fn run(args: &Args, config: &Config) -> Result<(), CmdError> {
     let jobs = collect_jobs(&args.input, args.recursive)?;
 
     let choice = EngineChoice {
@@ -423,21 +423,22 @@ pub(crate) fn run(args: &Args, cfg: &Config) -> Result<(), CmdError> {
         model: args.model.clone(),
         fake_text: None,
     };
-    let mut engine = build_stt_with(cfg, &choice).map_err(|e| CmdError::engine(e.to_string()))?;
+    let mut engine =
+        build_stt_with(config, &choice).map_err(|e| CmdError::engine(e.to_string()))?;
 
-    let language = args.language.as_deref().unwrap_or(&cfg.stt.language);
-    let opts = SttOptions {
+    let language = args.language.as_deref().unwrap_or(&config.stt.language);
+    let options = SttOptions {
         language: LanguageHint::parse(language),
-        allowed_languages: cfg.stt.allowed_languages.clone(),
+        allowed_languages: config.stt.allowed_languages.clone(),
         initial_prompt: None,
-        threads: cfg.stt.threads as usize,
+        threads: config.stt.threads as usize,
         timestamps: args.timecodes,
     };
 
     let style = args
         .style
         .as_deref()
-        .unwrap_or(&cfg.style.default)
+        .unwrap_or(&config.style.default)
         .to_string();
     // Файловый журнал подключает конвейер дорожки D; здесь запись собирается и уходит
     // в приёмник, который передали.
@@ -456,7 +457,7 @@ pub(crate) fn run(args: &Args, cfg: &Config) -> Result<(), CmdError> {
     let outcome = transcribe_jobs(
         &jobs,
         engine.as_mut(),
-        &opts,
+        &options,
         args.stdin_format.as_deref(),
         &identity,
         &mut journal,
@@ -537,8 +538,8 @@ mod tests {
 
     #[test]
     fn single_file_is_transcribed() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("a.wav");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("a.wav");
         write_wav(&path, 1.0);
 
         let outcome = run_fake(&jobs_for(std::slice::from_ref(&path)), "привет мир");
@@ -550,8 +551,8 @@ mod tests {
 
     #[test]
     fn two_runs_on_the_same_file_give_the_same_text() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("a.wav");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("a.wav");
         write_wav(&path, 0.5);
         let jobs = jobs_for(&[path]);
 
@@ -564,10 +565,10 @@ mod tests {
 
     #[test]
     fn broken_file_does_not_stop_the_batch() {
-        let dir = tempfile::tempdir().unwrap();
-        let good = dir.path().join("good.wav");
+        let directory = tempfile::tempdir().unwrap();
+        let good = directory.path().join("good.wav");
         write_wav(&good, 0.3);
-        let bad = dir.path().join("bad.wav");
+        let bad = directory.path().join("bad.wav");
         std::fs::write(&bad, "не аудио").unwrap();
 
         let outcome = run_fake(&jobs_for(&[bad, good]), "текст");
@@ -579,13 +580,13 @@ mod tests {
 
     #[test]
     fn directory_is_walked_in_alphabetical_order() {
-        let dir = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir().unwrap();
         for name in ["c.wav", "a.wav", "b.wav"] {
-            write_wav(&dir.path().join(name), 0.1);
+            write_wav(&directory.path().join(name), 0.1);
         }
-        std::fs::write(dir.path().join("notes.txt"), "не аудио").unwrap();
+        std::fs::write(directory.path().join("notes.txt"), "не аудио").unwrap();
 
-        let jobs = collect_jobs(&[dir.path().to_path_buf()], false).unwrap();
+        let jobs = collect_jobs(&[directory.path().to_path_buf()], false).unwrap();
         let names: Vec<String> = jobs
             .iter()
             .map(|j| {
@@ -601,20 +602,20 @@ mod tests {
 
     #[test]
     fn nested_directories_need_recursive() {
-        let dir = tempfile::tempdir().unwrap();
-        let nested = dir.path().join("вложенный");
+        let directory = tempfile::tempdir().unwrap();
+        let nested = directory.path().join("вложенный");
         std::fs::create_dir(&nested).unwrap();
         write_wav(&nested.join("a.wav"), 0.1);
-        write_wav(&dir.path().join("b.wav"), 0.1);
+        write_wav(&directory.path().join("b.wav"), 0.1);
 
         assert_eq!(
-            collect_jobs(&[dir.path().to_path_buf()], false)
+            collect_jobs(&[directory.path().to_path_buf()], false)
                 .unwrap()
                 .len(),
             1
         );
         assert_eq!(
-            collect_jobs(&[dir.path().to_path_buf()], true)
+            collect_jobs(&[directory.path().to_path_buf()], true)
                 .unwrap()
                 .len(),
             2
@@ -630,8 +631,8 @@ mod tests {
 
     #[test]
     fn empty_directory_is_an_error_not_a_silent_success() {
-        let dir = tempfile::tempdir().unwrap();
-        let err = collect_jobs(&[dir.path().to_path_buf()], false).unwrap_err();
+        let directory = tempfile::tempdir().unwrap();
+        let err = collect_jobs(&[directory.path().to_path_buf()], false).unwrap_err();
         assert_eq!(err.code, CmdError::FILE);
     }
 
@@ -644,8 +645,8 @@ mod tests {
 
     #[test]
     fn journal_records_the_file_source() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("a.wav");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("a.wav");
         write_wav(&path, 1.5);
         let mut stt = FakeStt::returning("привет мир друзья");
         let mut journal = MemJournal::default();
@@ -671,8 +672,8 @@ mod tests {
 
     #[test]
     fn postprocess_hook_is_applied_to_the_text() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("a.wav");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("a.wav");
         write_wav(&path, 0.2);
         let mut stt = FakeStt::returning("привет");
         let mut journal = MemJournal::default();
@@ -783,8 +784,8 @@ mod tests {
 
     #[test]
     fn output_directory_gets_one_file_per_input() {
-        let dir = tempfile::tempdir().unwrap();
-        let out = dir.path().join("out");
+        let directory = tempfile::tempdir().unwrap();
+        let out = directory.path().join("out");
         std::fs::create_dir(&out).unwrap();
         let outcome = Outcome {
             results: vec![
@@ -851,8 +852,8 @@ mod tests {
 
     #[test]
     fn output_file_collects_everything_and_stdout_stays_empty() {
-        let dir = tempfile::tempdir().unwrap();
-        let target = dir.path().join("всё.txt");
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("всё.txt");
         let outcome = Outcome {
             results: vec![FileResult {
                 file: "a.wav".into(),
@@ -921,8 +922,8 @@ mod tests {
 
     #[test]
     fn engine_error_is_recorded_per_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("a.wav");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("a.wav");
         write_wav(&path, 0.2);
         let mut stt = FakeStt::with_responses(vec![Err(
             molva_core::domain::stt::SttError::Inference("сломалось".into()),
@@ -945,8 +946,8 @@ mod tests {
 
     #[test]
     fn segments_from_the_engine_reach_the_result() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("a.wav");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("a.wav");
         write_wav(&path, 0.5);
         let mut stt = FakeStt::with_responses(vec![Ok(Transcript {
             text: "привет".into(),
