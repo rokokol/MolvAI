@@ -8,22 +8,22 @@
 //!
 //! Объявления по одному на строку: файл общий для нескольких дорожек, так меньше конфликтов.
 
-pub mod bench;
-pub mod completions;
-pub mod config;
-pub mod daemon;
-pub mod devices;
-pub mod dictionary;
-pub mod doctor;
-pub mod history;
-pub mod models;
-pub mod record;
-pub mod setup;
-pub mod stats;
-pub mod status;
-pub mod styles;
-pub mod test_inject;
-pub mod transcribe;
+pub(crate) mod bench;
+pub(crate) mod completions;
+pub(crate) mod config;
+pub(crate) mod daemon;
+pub(crate) mod devices;
+pub(crate) mod dictionary;
+pub(crate) mod doctor;
+pub(crate) mod history;
+pub(crate) mod models;
+pub(crate) mod record;
+pub(crate) mod setup;
+pub(crate) mod stats;
+pub(crate) mod status;
+pub(crate) mod styles;
+pub(crate) mod test_inject;
+pub(crate) mod transcribe;
 
 use std::io::{IsTerminal, Write};
 
@@ -34,42 +34,42 @@ use molva_core::Config;
 use thiserror::Error;
 
 /// Разделитель идентификатора в форматах `plain` и `rofi`: печатный знак разделителя записей.
-pub const ID_SEPARATOR: char = '␟';
+pub(crate) const ID_SEPARATOR: char = '␟';
 
 /// Сколько символов текста показывать в однострочных форматах.
-pub const LINE_TEXT_LIMIT: usize = 120;
+pub(crate) const LINE_TEXT_LIMIT: usize = 120;
 
 /// Ошибка подкоманды вместе с кодом выхода, который она должна дать.
 #[derive(Debug, Error)]
 #[error("{message}")]
-pub struct CmdError {
+pub(crate) struct CmdError {
     pub message: String,
     pub code: u8,
 }
 
 impl CmdError {
     /// Неверные аргументы или неизвестное имя.
-    pub const BAD_ARGS: u8 = crate::exit::BAD_ARGS;
+    pub(crate) const BAD_ARGS: u8 = crate::exit::BAD_ARGS;
     /// Движок распознавания не собрался или упал.
-    pub const ENGINE: u8 = crate::exit::ENGINE;
+    pub(crate) const ENGINE: u8 = crate::exit::ENGINE;
     /// Не удалось прочитать или записать файл.
-    pub const FILE: u8 = crate::exit::FILE;
+    pub(crate) const FILE: u8 = crate::exit::FILE;
 
-    pub fn args(message: impl Into<String>) -> Self {
+    pub(crate) fn args(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
             code: Self::BAD_ARGS,
         }
     }
 
-    pub fn engine(message: impl Into<String>) -> Self {
+    pub(crate) fn engine(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
             code: Self::ENGINE,
         }
     }
 
-    pub fn file(message: impl Into<String>) -> Self {
+    pub(crate) fn file(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
             code: Self::FILE,
@@ -80,12 +80,12 @@ impl CmdError {
 /// Показывать ли полоску прогресса: только живому терминалу и только при человеческом выводе.
 ///
 /// В пайпе и при `--json` прогресс молчит, иначе он попадёт в лог прогона и в глаза жюри.
-pub fn progress_enabled(machine_output: bool) -> bool {
+pub(crate) fn progress_enabled(machine_output: bool) -> bool {
     !machine_output && std::io::stderr().is_terminal()
 }
 
 /// Открыть журнал по настройкам, создав его при необходимости.
-pub fn open_journal(config: &Config) -> anyhow::Result<FileJournal> {
+pub(crate) fn open_journal(config: &Config) -> anyhow::Result<FileJournal> {
     let path = config.journal_path()?;
     let journal = FileJournal::open_with(&path, config.journal.include_text)
         .with_context(|| format!("журнал {}", path.display()))?;
@@ -93,12 +93,12 @@ pub fn open_journal(config: &Config) -> anyhow::Result<FileJournal> {
 }
 
 /// Текст в одну строку: переводы строк становятся пробелами.
-pub fn one_line(text: &str) -> String {
+pub(crate) fn one_line(text: &str) -> String {
     text.split_whitespace().collect::<Vec<&str>>().join(" ")
 }
 
 /// Обрезать до `max` символов, добавив многоточие.
-pub fn truncate(text: &str, max: usize) -> String {
+pub(crate) fn truncate(text: &str, max: usize) -> String {
     if text.chars().count() <= max {
         return text.to_string();
     }
@@ -109,7 +109,7 @@ pub fn truncate(text: &str, max: usize) -> String {
 /// Разбор границы периода: `7d`, `24h`, `30m`, `2026-09-01` или полная метка RFC 3339.
 ///
 /// Для голой даты `end_of_day` решает, брать начало дня или его конец.
-pub fn parse_moment(
+pub(crate) fn parse_moment(
     value: &str,
     now: DateTime<Utc>,
     end_of_day: bool,
@@ -147,7 +147,7 @@ pub fn parse_moment(
 }
 
 /// Спросить подтверждение, если его не дали флагом `--yes`.
-pub fn confirm(question: &str, yes: bool) -> anyhow::Result<bool> {
+pub(crate) fn confirm(question: &str, yes: bool) -> anyhow::Result<bool> {
     if yes {
         return Ok(true);
     }

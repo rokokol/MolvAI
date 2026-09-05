@@ -14,10 +14,10 @@ use molva_core::infra::inject::{parse_output_mode, ChainInjector};
 use molva_core::infra::notify::LogNotifier;
 use molva_core::infra::platform;
 
-pub const DEFAULT_TEXT: &str = "MolvAI: проверка вставки";
-pub const DEFAULT_DELAY: Duration = Duration::from_secs(3);
+pub(crate) const DEFAULT_TEXT: &str = "MolvAI: проверка вставки";
+pub(crate) const DEFAULT_DELAY: Duration = Duration::from_secs(3);
 
-pub fn run(
+pub(crate) fn run(
     config: &Config,
     mode: Option<&str>,
     text: Option<&str>,
@@ -51,7 +51,7 @@ pub fn run(
 }
 
 /// Режим вставки для проверки: аргумент важнее конфига, `auto` разрешается по длине текста.
-pub fn resolve_mode(config: &Config, mode: Option<&str>, text: &str) -> OutputMode {
+pub(crate) fn resolve_mode(config: &Config, mode: Option<&str>, text: &str) -> OutputMode {
     let requested = mode
         .map(parse_output_mode)
         .unwrap_or_else(|| parse_output_mode(&config.output.mode));

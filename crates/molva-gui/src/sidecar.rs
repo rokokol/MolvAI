@@ -45,7 +45,7 @@ pub fn locate() -> Result<PathBuf, SidecarError> {
 }
 
 /// Демон, запущенный этим процессом.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Daemon {
     child: Option<Child>,
 }
@@ -99,7 +99,7 @@ impl Daemon {
 pub type ProgressSink = Arc<dyn Fn(&str) + Send + Sync>;
 
 /// Запущенные разборы файлов: ключ — идентификатор задачи из фронтенда.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Transcriptions {
     running: Mutex<Vec<(String, Child)>>,
 }

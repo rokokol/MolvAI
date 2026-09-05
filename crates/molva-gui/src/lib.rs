@@ -4,6 +4,9 @@
 //! GUI — обычный клиент демона: микрофоном и моделью он не владеет и без демона
 //! честно показывает, что демон не запущен, вместо пустого окна.
 
+// В тестах паника — это способ сообщить о провале, а не необработанная ошибка.
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
+
 pub mod commands;
 pub mod history;
 pub mod hotkeys;

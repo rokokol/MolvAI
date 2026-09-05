@@ -19,6 +19,7 @@ use crate::domain::hotkeys::{HotkeyAction, HotkeyError, HotkeyEvent, HotkeySourc
 const VALUE_RELEASE: i32 = 0;
 const VALUE_PRESS: i32 = 1;
 
+#[derive(Debug)]
 pub struct EvdevHotkeys {
     specs: HashMap<HotkeyAction, HotkeySpec>,
 }

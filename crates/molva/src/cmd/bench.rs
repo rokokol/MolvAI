@@ -15,7 +15,7 @@ use molva_core::Config;
 use super::CmdError;
 
 #[derive(Debug, clap::Args)]
-pub struct Args {
+pub(crate) struct Args {
     /// Каталог набора с manifest.toml
     #[arg(long, value_name = "DIR", default_value = "bench")]
     pub set: PathBuf,
@@ -41,7 +41,7 @@ pub struct Args {
     pub model: Option<String>,
 }
 
-pub fn run(args: &Args, cfg: &Config, stdout: &mut dyn Write) -> Result<(), CmdError> {
+pub(crate) fn run(args: &Args, cfg: &Config, stdout: &mut dyn Write) -> Result<(), CmdError> {
     if args.repeat == 0 {
         return Err(CmdError::args("--repeat должен быть не меньше 1"));
     }

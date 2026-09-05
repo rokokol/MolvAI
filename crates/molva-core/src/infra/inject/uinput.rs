@@ -138,6 +138,7 @@ fn declared_keys() -> AttributeSet<KeyCode> {
     keys
 }
 
+#[derive(Debug)]
 pub struct UinputInjector {
     device: Option<VirtualDevice>,
     clipboard: ClipboardGuard<SystemClipboard>,

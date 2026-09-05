@@ -499,8 +499,8 @@ mod tests {
 
     #[test]
     fn a_dictionary_file_is_read_from_toml() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/fixtures/dictionary.toml");
+        let path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/dictionary.toml");
         let dictionary = Dictionary::load(&path, true).unwrap();
         assert!(dictionary.len() >= 3, "{}", dictionary.len());
         let (text, hits) = dictionary.apply("проект молва работает на гипрланде");

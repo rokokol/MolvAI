@@ -53,7 +53,7 @@ pub enum InjectError {
 }
 
 /// Доставка текста в активное окно.
-pub trait TextInjector: Send {
+pub trait TextInjector: std::fmt::Debug + Send {
     fn id(&self) -> &'static str;
     /// Доступен ли способ в текущем окружении (есть ли утилита, права, сессия).
     fn available(&self) -> bool;

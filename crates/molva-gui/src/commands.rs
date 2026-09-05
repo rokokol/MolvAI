@@ -237,6 +237,7 @@ pub fn available_styles(state: State<'_, AppState>) -> Vec<StyleOption> {
 }
 
 /// Общее состояние: настройки, запущенный нами демон, разборы файлов, пауза хоткеев.
+#[derive(Debug)]
 pub struct AppState {
     config: Mutex<Config>,
     config_path: PathBuf,

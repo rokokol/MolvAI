@@ -121,7 +121,7 @@ pub enum AudioError {
 /// Источник аудио: микрофон в проде, WAV-фикстура в тестах.
 ///
 /// Поток открывается в `start` и закрывается в `stop` — вне записи микрофон свободен.
-pub trait AudioSource: Send {
+pub trait AudioSource: std::fmt::Debug + Send {
     /// Начать захват. `level_tx` получает RMS-уровень не чаще ~10 раз в секунду.
     fn start(&mut self, level_tx: Option<Sender<f32>>) -> Result<(), AudioError>;
     /// Остановить захват и вернуть всё записанное.

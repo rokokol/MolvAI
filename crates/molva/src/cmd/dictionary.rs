@@ -8,7 +8,7 @@ use molva_core::Config;
 use super::{open_journal, truncate};
 
 #[derive(Debug, Subcommand)]
-pub enum DictionaryAction {
+pub(crate) enum DictionaryAction {
     /// Показать термины и их алиасы
     List,
     /// Добавить термин
@@ -26,7 +26,7 @@ pub enum DictionaryAction {
 }
 
 /// Словарь лежит рядом с тем файлом настроек, с которым запущена команда.
-pub fn run(
+pub(crate) fn run(
     action: DictionaryAction,
     config: &Config,
     config_path: &std::path::Path,

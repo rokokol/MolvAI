@@ -11,7 +11,7 @@ use molva_core::infra::ipc::{Client, IpcClientError};
 use molva_core::ipc::protocol::Command;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Action {
+pub(crate) enum Action {
     Start,
     Stop,
     Toggle,
@@ -19,7 +19,7 @@ pub enum Action {
 }
 
 /// Команда протокола для действия CLI.
-pub fn command_for(action: Action, mode: Mode, style: Option<String>) -> Command {
+pub(crate) fn command_for(action: Action, mode: Mode, style: Option<String>) -> Command {
     match action {
         Action::Start => Command::RecordStart { mode, style },
         Action::Stop => Command::RecordStop,
@@ -28,7 +28,7 @@ pub fn command_for(action: Action, mode: Mode, style: Option<String>) -> Command
     }
 }
 
-pub fn run(
+pub(crate) fn run(
     socket: &Path,
     action: Action,
     mode: Mode,

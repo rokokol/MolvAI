@@ -24,6 +24,7 @@ use crate::infra::inject::uinput::UinputInjector;
 
 /// Способ вставки внутри цепочки. Конкретный enum, а не `Box<dyn TextInjector>`, потому что
 /// сочетание вставки приходится менять между репликами: терминалу нужен Ctrl+Shift+V.
+#[derive(Debug)]
 enum Backend {
     Hyprctl(HyprctlInjector),
     Wtype(WtypeInjector),
@@ -63,6 +64,7 @@ impl Backend {
 }
 
 /// Последний способ: положить текст в буфер и сказать пользователю нажать Ctrl+V.
+#[derive(Debug)]
 pub struct ClipboardOnlyInjector {
     backend: Box<dyn ClipboardBackend>,
     notifier: Arc<dyn Notifier>,
@@ -115,6 +117,7 @@ impl TextInjector for ClipboardOnlyInjector {
 }
 
 /// Перебор способов вставки в порядке, который зависит от платформы.
+#[derive(Debug)]
 pub struct ChainInjector {
     backends: Vec<Backend>,
     fallback: ClipboardOnlyInjector,
@@ -301,13 +304,13 @@ mod tests {
     use crate::domain::fakes::RecordingNotifier;
     use std::sync::Mutex;
 
-    #[derive(Default)]
+    #[derive(Debug, Default)]
     struct FakeClipboard {
         text: Mutex<Option<String>>,
     }
 
     /// Тесту нужно видеть, что попало в буфер, поэтому содержимое живёт за `Arc`.
-    #[derive(Clone, Default)]
+    #[derive(Debug, Clone, Default)]
     struct SharedClipboard(Arc<FakeClipboard>);
 
     impl ClipboardBackend for SharedClipboard {
@@ -326,6 +329,7 @@ mod tests {
         }
     }
 
+    #[derive(Debug)]
     struct FakeInjector {
         id: &'static str,
         available: bool,

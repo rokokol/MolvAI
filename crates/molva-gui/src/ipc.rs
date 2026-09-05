@@ -100,6 +100,7 @@ pub enum Message {
 }
 
 /// Одно соединение с демоном. Разовый запрос закрывает его сразу, подписка — держит.
+#[derive(Debug)]
 pub struct Connection {
     reader: BufReader<Stream>,
 }

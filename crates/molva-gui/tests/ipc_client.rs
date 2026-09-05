@@ -5,6 +5,9 @@
 //! говорит ровно тем протоколом, что заморожен в `molva_core::ipc`. Проверяется то,
 //! что нельзя проверить модульным тестом: соединение, порядок строк, обрыв связи.
 
+// Весь крейт — тест: паника здесь сообщает о провале, а не о необработанной ошибке.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;

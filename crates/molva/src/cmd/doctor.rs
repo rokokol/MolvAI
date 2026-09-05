@@ -12,7 +12,7 @@ use molva_core::infra::platform::{self, Platform, Tools};
 
 /// Одна строка отчёта.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Check {
+pub(crate) struct Check {
     pub name: String,
     pub ok: bool,
     pub detail: String,
@@ -27,14 +27,14 @@ impl Check {
         }
     }
 
-    pub fn line(&self) -> String {
+    pub(crate) fn line(&self) -> String {
         let mark = if self.ok { "да" } else { "нет" };
         format!("{:<24} {:<4} {}", self.name, mark, self.detail)
     }
 }
 
 /// Доступность `/dev/uinput` на запись: файл может существовать и быть закрытым.
-pub fn uinput_check() -> Check {
+pub(crate) fn uinput_check() -> Check {
     let path = Path::new("/dev/uinput");
     if !path.exists() {
         return Check::new("/dev/uinput", false, "нет модуля uinput в ядре");
@@ -50,7 +50,7 @@ pub fn uinput_check() -> Check {
 }
 
 /// Клавиатуры в `/dev/input`, которые нам разрешено читать.
-pub fn input_devices_check() -> Check {
+pub(crate) fn input_devices_check() -> Check {
     #[cfg(target_os = "linux")]
     {
         use molva_core::infra::hotkeys::evdev_source::EvdevHotkeys;
@@ -71,7 +71,7 @@ pub fn input_devices_check() -> Check {
 }
 
 /// Полный отчёт: строки в том порядке, в котором их читают.
-pub fn checks(socket: &Path) -> Vec<Check> {
+pub(crate) fn checks(socket: &Path) -> Vec<Check> {
     let platform = platform::detect();
     let tools = Tools::detect();
     let mut checks = vec![
@@ -115,7 +115,7 @@ fn tool_detail(found: bool) -> &'static str {
     }
 }
 
-pub fn run(socket: &Path) -> anyhow::Result<()> {
+pub(crate) fn run(socket: &Path) -> anyhow::Result<()> {
     for check in checks(socket) {
         println!("{}", check.line());
     }

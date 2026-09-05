@@ -14,7 +14,7 @@ use super::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-pub enum Format {
+pub(crate) enum Format {
     /// Таблица для человека.
     Table,
     /// Массив записей журнала как есть.
@@ -26,7 +26,7 @@ pub enum Format {
 }
 
 #[derive(Debug, Args)]
-pub struct HistoryArgs {
+pub(crate) struct HistoryArgs {
     /// Сколько последних записей показать
     #[arg(long, default_value_t = 20)]
     pub limit: usize,
@@ -49,7 +49,7 @@ pub struct HistoryArgs {
 }
 
 #[derive(Debug, Subcommand)]
-pub enum HistoryAction {
+pub(crate) enum HistoryAction {
     /// Показать одну запись целиком
     Show {
         /// Идентификатор или его начало
@@ -66,7 +66,7 @@ pub enum HistoryAction {
     Export { file: PathBuf },
 }
 
-pub fn run(args: HistoryArgs, config: &Config) -> anyhow::Result<()> {
+pub(crate) fn run(args: HistoryArgs, config: &Config) -> anyhow::Result<()> {
     let journal = open_journal(config)?;
     match args.action {
         None => list(&journal, &args, config),
@@ -78,7 +78,7 @@ pub fn run(args: HistoryArgs, config: &Config) -> anyhow::Result<()> {
 }
 
 /// Отобрать записи по фильтрам и вернуть последние `limit` в хронологическом порядке.
-pub fn select(entries: &[Entry], args: &HistoryArgs) -> anyhow::Result<Vec<Entry>> {
+pub(crate) fn select(entries: &[Entry], args: &HistoryArgs) -> anyhow::Result<Vec<Entry>> {
     let now = Utc::now();
     let mut selected = entries.to_vec();
     if let Some(needle) = &args.search {
@@ -122,7 +122,7 @@ fn list(journal: &FileJournal, args: &HistoryArgs, config: &Config) -> anyhow::R
 }
 
 /// Отрисовать записи в выбранном формате.
-pub fn render(entries: &[Entry], format: Format) -> anyhow::Result<String> {
+pub(crate) fn render(entries: &[Entry], format: Format) -> anyhow::Result<String> {
     Ok(match format {
         Format::Json => format!("{}\n", serde_json::to_string_pretty(entries)?),
         Format::Plain | Format::Rofi => {
@@ -133,7 +133,7 @@ pub fn render(entries: &[Entry], format: Format) -> anyhow::Result<String> {
 }
 
 /// Строка формата `plain`/`rofi`: время, скорость, текст и идентификатор в хвосте.
-pub fn line(entry: &Entry) -> String {
+pub(crate) fn line(entry: &Entry) -> String {
     let text = one_line(entry.text_final.as_deref().unwrap_or(""));
     format!(
         "{}  {}  {}  {ID_SEPARATOR}{}",
@@ -172,7 +172,7 @@ fn table(entries: &[Entry]) -> String {
 }
 
 /// Найти запись по идентификатору или его началу.
-pub fn find<'a>(entries: &'a [Entry], id: &str) -> anyhow::Result<&'a Entry> {
+pub(crate) fn find<'a>(entries: &'a [Entry], id: &str) -> anyhow::Result<&'a Entry> {
     let id = id.trim_start_matches(ID_SEPARATOR);
     let matches: Vec<&Entry> = entries
         .iter()

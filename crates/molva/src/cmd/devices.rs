@@ -5,7 +5,7 @@ use molva_core::domain::audio::DeviceInfo;
 use molva_core::infra::audio::list_input_devices;
 
 /// Напечатать устройства ввода: таблица для человека, JSON для скриптов (Y-15 — всё в stdout).
-pub fn run(json: bool) -> anyhow::Result<()> {
+pub(crate) fn run(json: bool) -> anyhow::Result<()> {
     let devices = list_input_devices()?;
     if json {
         println!("{}", serde_json::to_string_pretty(&devices)?);

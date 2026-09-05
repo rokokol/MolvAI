@@ -20,6 +20,7 @@ use crate::domain::stt::{LanguageHint, Segment, SttEngine, SttError, SttOptions,
 static LOGGING_HOOKS: Once = Once::new();
 
 /// Распознаватель на whisper.cpp: локальный, без сети.
+#[derive(Debug)]
 pub struct WhisperEngine {
     model_path: PathBuf,
     model_name: String,

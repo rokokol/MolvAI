@@ -13,7 +13,7 @@ use molva_core::Config;
 use super::{progress_enabled, CmdError};
 
 #[derive(Debug, clap::Subcommand)]
-pub enum Action {
+pub(crate) enum Action {
     /// Показать каталог моделей и что из него скачано
     List {
         /// Машинный вывод
@@ -41,10 +41,10 @@ pub enum Action {
 }
 
 /// Граница «лёгкой» модели для `--all-small`: столько весит небольшая или квантованная модель.
-pub const SMALL_MODEL_LIMIT_BYTES: u64 = 500 * 1_048_576;
+pub(crate) const SMALL_MODEL_LIMIT_BYTES: u64 = 500 * 1_048_576;
 
 /// Модели, которые скачивает `--all-small`, в порядке возрастания размера.
-pub fn small_models() -> Vec<&'static models::ModelInfo> {
+pub(crate) fn small_models() -> Vec<&'static models::ModelInfo> {
     let mut small: Vec<_> = models::CATALOG
         .iter()
         .filter(|m| m.size_bytes <= SMALL_MODEL_LIMIT_BYTES)
@@ -54,7 +54,7 @@ pub fn small_models() -> Vec<&'static models::ModelInfo> {
 }
 
 /// Человекочитаемый размер: гигабайты для весов, мегабайты для мелочи.
-pub fn human_size(bytes: u64) -> String {
+pub(crate) fn human_size(bytes: u64) -> String {
     const MB: f64 = 1_048_576.0;
     const GB: f64 = 1_073_741_824.0;
     if bytes >= 1_073_741_824 {
@@ -65,7 +65,7 @@ pub fn human_size(bytes: u64) -> String {
 }
 
 /// Таблица `models list`.
-pub fn render_list(statuses: &[ModelStatus]) -> String {
+pub(crate) fn render_list(statuses: &[ModelStatus]) -> String {
     let width = statuses
         .iter()
         .map(|s| s.info.name.len())
@@ -96,7 +96,7 @@ fn dir_for(cfg: &Config) -> Result<std::path::PathBuf, CmdError> {
 
 /// Что сделал `pull`: скачал или обошёлся тем, что уже лежит на диске.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PullReport {
+pub(crate) struct PullReport {
     pub path: std::path::PathBuf,
     /// `false` — модель уже была на месте и прошла проверку, сеть не понадобилась (A-09).
     pub downloaded: bool,
@@ -105,7 +105,7 @@ pub struct PullReport {
 /// Нужно ли вообще качать: `false`, если файл уже на месте и хеш сходится.
 ///
 /// `--force` удаляет то, что лежит, и всегда возвращает `true`.
-pub fn needs_download(target: &Path, sha256: &str, force: bool) -> Result<bool, CmdError> {
+pub(crate) fn needs_download(target: &Path, sha256: &str, force: bool) -> Result<bool, CmdError> {
     if force {
         if target.exists() {
             std::fs::remove_file(target)
@@ -160,7 +160,7 @@ fn pull(name: &str, dir: &Path, force: bool, quiet: bool) -> Result<PullReport, 
         .map_err(|e| CmdError::file(e.to_string()))
 }
 
-pub fn run(action: &Action, cfg: &Config, stdout: &mut dyn Write) -> Result<(), CmdError> {
+pub(crate) fn run(action: &Action, cfg: &Config, stdout: &mut dyn Write) -> Result<(), CmdError> {
     let dir = dir_for(cfg)?;
     let write = |stdout: &mut dyn Write, text: &str| -> Result<(), CmdError> {
         writeln!(stdout, "{text}").map_err(|e| CmdError::file(e.to_string()))

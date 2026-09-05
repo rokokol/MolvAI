@@ -121,6 +121,7 @@ enum Phase {
 }
 
 /// Машина состояний. Один экземпляр на демон, живёт в управляющем потоке.
+#[derive(Debug)]
 pub struct Machine {
     phase: Phase,
     hotkeys: HotkeysConfig,

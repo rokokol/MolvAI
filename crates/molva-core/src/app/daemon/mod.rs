@@ -45,6 +45,7 @@ struct Job {
 
 /// Всё, что демону нужно снаружи. Железо приходит трейтами, поэтому демон целиком проверяется
 /// фейками.
+#[derive(Debug)]
 pub struct DaemonParts {
     pub audio: Box<dyn AudioSource>,
     pub processor: Box<dyn Processor>,
@@ -54,6 +55,7 @@ pub struct DaemonParts {
 }
 
 /// Общее состояние демона, видимое всем ручкам.
+#[derive(Debug)]
 struct Shared {
     tx: Mutex<Sender<Message>>,
     state: Mutex<DaemonState>,
@@ -88,13 +90,14 @@ impl Shared {
 }
 
 /// Работающий демон. Пока значение живо, живы и его потоки.
+#[derive(Debug)]
 pub struct Daemon {
     shared: Arc<Shared>,
     threads: Vec<std::thread::JoinHandle<()>>,
 }
 
 /// Ручка демона: её раздают серверу IPC и источникам горячих клавиш.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct DaemonHandle {
     shared: Arc<Shared>,
 }
@@ -441,7 +444,7 @@ mod tests {
     use std::time::Duration;
 
     /// Инжектор, чей результат виден тесту после того, как он уехал в демон.
-    #[derive(Clone, Default)]
+    #[derive(Debug, Clone, Default)]
     struct SharedInjector {
         injected: Arc<Mutex<Vec<String>>>,
         fail: bool,

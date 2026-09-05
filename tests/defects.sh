@@ -343,8 +343,8 @@ defect 'cli/output-directory' 'crates/molva/src/cmd/transcribe.rs' \
   'при выводе в каталог всё сливается в один файл с именем каталога'
 
 defect 'cli/exit-code-file' 'crates/molva/src/cmd/mod.rs' \
-  '    pub const FILE: u8 = crate::exit::FILE;' \
-  '    pub const FILE: u8 = crate::exit::BAD_ARGS;' \
+  '    pub(crate) const FILE: u8 = crate::exit::FILE;' \
+  '    pub(crate) const FILE: u8 = crate::exit::BAD_ARGS;' \
   'ошибка файла отдаёт код аргументов: скрипты не отличают одно от другого'
 
 defect 'cli/bench-repeat-validated' 'crates/molva/src/cmd/bench.rs' \

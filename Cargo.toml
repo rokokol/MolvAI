@@ -10,6 +10,18 @@ repository = "https://github.com/rokokol/MolvAI"
 rust-version = "1.85"
 authors = ["rokokol"]
 
+# Единый набор правил для всех крейтов: каждый подключает его через `[lints] workspace = true`.
+# Гейт `just clippy` запускает линтер с `-D warnings`, поэтому «warn» здесь означает «сборка
+# падает». Уровень «allow» стоит только у педантичных правил про вкус, а не про качество.
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+unused_qualifications = "warn"
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

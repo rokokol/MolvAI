@@ -71,6 +71,7 @@ fn guard(restore: bool, delay_ms: u32) -> ClipboardGuard<SystemClipboard> {
 }
 
 /// Вставка средствами самого Hyprland: композитор синтезирует сочетание активному окну.
+#[derive(Debug)]
 pub struct HyprctlInjector {
     clipboard: ClipboardGuard<SystemClipboard>,
     shortcut: PasteShortcut,
@@ -152,6 +153,7 @@ fn release_modifiers() {
 }
 
 /// Синтез ввода через протокол `virtual-keyboard`: единственный способ *набрать* текст на wlroots.
+#[derive(Debug)]
 pub struct WtypeInjector {
     clipboard: ClipboardGuard<SystemClipboard>,
     shortcut: PasteShortcut,
@@ -226,6 +228,7 @@ impl TextInjector for WtypeInjector {
 }
 
 /// Синтез ввода через `/dev/uinput` сторонним демоном.
+#[derive(Debug)]
 pub struct YdotoolInjector {
     clipboard: ClipboardGuard<SystemClipboard>,
     shortcut: PasteShortcut,

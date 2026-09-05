@@ -13,6 +13,7 @@ use crate::domain::inject::{InjectError, InjectReport, OutputMode, TextInjector}
 use crate::infra::inject::clipboard::{ClipboardGuard, SystemClipboard};
 use crate::infra::inject::wayland_tools::PasteShortcut;
 
+#[derive(Debug)]
 pub struct EnigoInjector {
     enigo: Option<Enigo>,
     clipboard: ClipboardGuard<SystemClipboard>,

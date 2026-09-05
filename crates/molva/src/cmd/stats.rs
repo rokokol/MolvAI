@@ -12,7 +12,7 @@ use molva_core::Config;
 use super::{confirm, open_journal, truncate};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-pub enum Period {
+pub(crate) enum Period {
     Today,
     Week,
     Month,
@@ -21,7 +21,7 @@ pub enum Period {
 
 impl Period {
     /// Ширина окна в днях; `0` — всё время.
-    pub fn range_days(self) -> u32 {
+    pub(crate) fn range_days(self) -> u32 {
         match self {
             Period::Today => 1,
             Period::Week => 7,
@@ -30,7 +30,7 @@ impl Period {
         }
     }
 
-    pub fn title(self) -> &'static str {
+    pub(crate) fn title(self) -> &'static str {
         match self {
             Period::Today => "сегодня",
             Period::Week => "за неделю",
@@ -41,14 +41,14 @@ impl Period {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-pub enum Series {
+pub(crate) enum Series {
     Day,
     Session,
     App,
 }
 
 #[derive(Debug, Args)]
-pub struct StatsArgs {
+pub(crate) struct StatsArgs {
     #[arg(long, value_enum, default_value_t = Period::Week)]
     pub period: Period,
     /// Что показать разбивкой: по дням, по сессиям или по приложениям
@@ -65,7 +65,7 @@ pub struct StatsArgs {
 }
 
 #[derive(Debug, Subcommand)]
-pub enum StatsAction {
+pub(crate) enum StatsAction {
     /// Выгрузить реплики в CSV
     Export { file: PathBuf },
     /// Начать статистику заново; история при этом сохраняется
@@ -75,7 +75,7 @@ pub enum StatsAction {
     },
 }
 
-pub fn run(args: StatsArgs, config: &Config) -> anyhow::Result<()> {
+pub(crate) fn run(args: StatsArgs, config: &Config) -> anyhow::Result<()> {
     let journal = open_journal(config)?;
     let journal_path = journal.path().to_path_buf();
     let all = journal.load_all()?;
@@ -128,7 +128,7 @@ fn optional_wpm(value: Option<f32>) -> String {
 }
 
 /// Человекочитаемый отчёт: сводка, спарклайн и выбранная разбивка.
-pub fn report(summary: &StatsSummary, entries: &[Entry], args: &StatsArgs) -> String {
+pub(crate) fn report(summary: &StatsSummary, entries: &[Entry], args: &StatsArgs) -> String {
     let mut out = String::new();
     out.push_str(&format!("Статистика {}\n\n", args.period.title()));
     out.push_str(&format!("  Слов сегодня      {}\n", summary.words_today));

@@ -3,6 +3,9 @@
 //!
 //! Подкоманды живут в `cmd/`, здесь только разбор аргументов и коды выхода.
 
+// В тестах паника — это способ сообщить о провале, а не необработанная ошибка.
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
+
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
@@ -16,12 +19,12 @@ mod cmd;
 /// Коды выхода, общие для всех подкоманд: 0 ok, 2 аргументы, 3 демон недоступен, 4 занят,
 /// 5 ошибка движка, 6 ошибка файла.
 mod exit {
-    pub const OK: u8 = 0;
-    pub const BAD_ARGS: u8 = 2;
-    pub const NO_DAEMON: u8 = 3;
-    pub const BUSY: u8 = 4;
-    pub const ENGINE: u8 = 5;
-    pub const FILE: u8 = 6;
+    pub(crate) const OK: u8 = 0;
+    pub(crate) const BAD_ARGS: u8 = 2;
+    pub(crate) const NO_DAEMON: u8 = 3;
+    pub(crate) const BUSY: u8 = 4;
+    pub(crate) const ENGINE: u8 = 5;
+    pub(crate) const FILE: u8 = 6;
 }
 
 #[derive(Parser)]

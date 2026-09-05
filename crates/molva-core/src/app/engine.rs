@@ -105,11 +105,6 @@ mod tests {
         cfg
     }
 
-    /// `Box<dyn SttEngine>` не реализует `Debug`, поэтому `unwrap_err` тут неприменим.
-    fn expect_err(result: Result<Box<dyn SttEngine>, EngineError>) -> EngineError {
-        result.err().expect("ожидалась ошибка сборки движка")
-    }
-
     #[test]
     fn fake_engine_is_built_from_config() {
         let mut cfg = Config::default();
@@ -149,7 +144,7 @@ mod tests {
     fn missing_weights_tell_the_user_how_to_get_them() {
         let dir = tempfile::tempdir().unwrap();
         let cfg = cfg_with_models_dir(dir.path());
-        let err = expect_err(build_stt(&cfg, Some("small")));
+        let err = build_stt(&cfg, Some("small")).unwrap_err();
         assert!(err.to_string().contains("molva models pull small"), "{err}");
     }
 
@@ -157,7 +152,7 @@ mod tests {
     fn unknown_model_name_is_reported_before_anything_else() {
         let dir = tempfile::tempdir().unwrap();
         let cfg = cfg_with_models_dir(dir.path());
-        let err = expect_err(build_stt(&cfg, Some("gigantic")));
+        let err = build_stt(&cfg, Some("gigantic")).unwrap_err();
         assert!(err.to_string().contains("gigantic"), "{err}");
     }
 
@@ -180,7 +175,7 @@ mod tests {
     fn unknown_engine_name_is_rejected() {
         let mut cfg = Config::default();
         cfg.stt.engine = "vosk".into();
-        let err = expect_err(build_stt(&cfg, None));
+        let err = build_stt(&cfg, None).unwrap_err();
         assert!(matches!(err, EngineError::Unknown(_)), "{err}");
     }
 }

@@ -117,6 +117,7 @@ pub trait RequestHandler: Send + Sync + 'static {
 }
 
 /// Сервер локального сокета: поток на соединение.
+#[derive(Debug)]
 pub struct Server {
     listener: interprocess::local_socket::Listener,
     path: PathBuf,
@@ -185,6 +186,7 @@ impl Server {
 }
 
 /// Ручка остановки сервера.
+#[derive(Debug)]
 pub struct Stopper {
     stop: Arc<AtomicBool>,
     path: PathBuf,
@@ -363,6 +365,7 @@ impl Client {
 }
 
 /// Поток событий демона.
+#[derive(Debug)]
 pub struct Events {
     reader: BufReader<RecvHalf>,
 }

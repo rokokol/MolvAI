@@ -100,6 +100,7 @@ fn millis_since(start: Instant, now: Instant) -> u32 {
 }
 
 /// Конвейер одной реплики.
+#[derive(Debug)]
 pub struct Pipeline {
     stt: Box<dyn SttEngine>,
     llm: Option<Arc<dyn LlmClient>>,
@@ -475,6 +476,7 @@ mod tests {
     use crate::domain::stt::Transcript;
 
     /// Фейк, к которому у теста остаётся доступ после передачи в конвейер.
+    #[derive(Debug)]
     struct SharedInjector(Arc<Mutex<RecordingInjector>>);
 
     impl TextInjector for SharedInjector {
@@ -495,6 +497,7 @@ mod tests {
         }
     }
 
+    #[derive(Debug)]
     struct SharedJournal(Arc<Mutex<MemJournal>>);
 
     impl JournalTrait for SharedJournal {
@@ -503,6 +506,7 @@ mod tests {
         }
     }
 
+    #[derive(Debug)]
     struct SharedStt(Arc<Mutex<FakeStt>>);
 
     impl SttEngine for SharedStt {

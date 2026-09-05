@@ -31,7 +31,7 @@ use uuid::Uuid;
 ///
 /// Ядро про окружение не знает специально: тест на сокете во временном каталоге не должен
 /// зависеть от того, что кто-то экспортировал `MOLVA_SOCKET`.
-pub fn resolve_socket(flag: Option<PathBuf>) -> PathBuf {
+pub(crate) fn resolve_socket(flag: Option<PathBuf>) -> PathBuf {
     if let Some(path) = flag {
         return path;
     }
@@ -45,7 +45,7 @@ pub fn resolve_socket(flag: Option<PathBuf>) -> PathBuf {
 }
 
 /// Движок распознавания по настройкам: единая фабрика ядра, та же, что у `transcribe` и `bench`.
-pub fn build_stt(config: &Config) -> anyhow::Result<Box<dyn SttEngine>> {
+pub(crate) fn build_stt(config: &Config) -> anyhow::Result<Box<dyn SttEngine>> {
     engine::build_stt(config, None).map_err(|err| anyhow!("{err}"))
 }
 
@@ -105,12 +105,12 @@ fn build_dictionary(config: &Config, config_path: &Path) -> Dictionary {
     }
 }
 
-pub struct Options {
+pub(crate) struct Options {
     pub socket: PathBuf,
     pub foreground: bool,
 }
 
-pub fn run(config_path: &Path, options: Options) -> anyhow::Result<()> {
+pub(crate) fn run(config_path: &Path, options: Options) -> anyhow::Result<()> {
     let config = Config::load_or_create(config_path)
         .with_context(|| format!("настройки {}", config_path.display()))?;
 

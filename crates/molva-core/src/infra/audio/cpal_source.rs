@@ -101,6 +101,7 @@ fn merge_device(devices: &mut Vec<DeviceInfo>, incoming: DeviceInfo) {
 }
 
 /// Микрофон как источник записи.
+#[derive(Debug)]
 pub struct CpalSource {
     device: String,
     gain: f32,
@@ -111,6 +112,7 @@ pub struct CpalSource {
 }
 
 /// Состояние идущей записи: нить-хозяин потока и общий буфер.
+#[derive(Debug)]
 struct Active {
     stop_tx: Sender<()>,
     thread: JoinHandle<()>,
@@ -119,6 +121,7 @@ struct Active {
 }
 
 /// То, что callback пишет, а `stop` читает.
+#[derive(Debug)]
 struct Shared {
     samples: Mutex<Vec<f32>>,
     /// Сколько отсчётов моно помещается в `max_duration_secs`.

@@ -61,7 +61,7 @@ impl Processor for crate::app::pipeline::Pipeline {
 ///
 /// Реализация обязана вернуть `Entry` даже когда вставка не удалась: неудача вставки — это поле
 /// `error` в записи, а не отказ всей обработки, иначе пользователь теряет распознанный текст.
-pub trait Processor: Send {
+pub trait Processor: std::fmt::Debug + Send {
     fn process(
         &mut self,
         audio: PcmAudio,
@@ -120,6 +120,7 @@ impl ProcessorConfig {
 ///
 /// Этого достаточно для сквозного демо и для тестов демона; конвейер с правилами и LLM встаёт
 /// на то же место, реализуя `Processor`.
+#[derive(Debug)]
 pub struct SimpleProcessor<I: TextInjector, J: Journal> {
     stt: Box<dyn SttEngine>,
     injector: I,
@@ -274,6 +275,7 @@ mod tests {
     use std::time::Duration;
 
     /// Распознаватель, который «тратит» время фейковых часов: так тайминги в записи не нули.
+    #[derive(Debug)]
     struct SlowStt {
         inner: FakeStt,
         clock: Arc<FakeClock>,
@@ -513,7 +515,7 @@ mod tests {
     }
 
     /// Инжектор, который запоминает, какое окно ему назвали перед вставкой.
-    #[derive(Default)]
+    #[derive(Debug, Default)]
     struct WindowAwareInjector {
         window: Option<String>,
         window_set_before_inject: bool,

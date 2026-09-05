@@ -96,7 +96,7 @@ pub enum SttError {
 }
 
 /// Движок распознавания: whisper.cpp в проде, `FakeStt` в тестах.
-pub trait SttEngine: Send {
+pub trait SttEngine: std::fmt::Debug + Send {
     /// Идентификатор движка для журнала, например `whisper-cpp`.
     fn id(&self) -> &str;
     /// Имя модели для журнала, например `small`.

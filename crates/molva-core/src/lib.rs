@@ -9,6 +9,9 @@
 //!
 //! Железо тестируется через фейки трейтов из `domain::fakes`, а не через feature flags.
 
+// В тестах паника — это способ сообщить о провале, а не необработанная ошибка.
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
+
 pub mod app;
 pub mod config;
 pub mod domain;

@@ -72,6 +72,7 @@ impl AudioSource for FakeAudioSource {
 }
 
 /// Распознаватель с очередью заранее заданных ответов; запоминает параметры каждого вызова.
+#[derive(Debug)]
 pub struct FakeStt {
     responses: VecDeque<Result<Transcript, SttError>>,
     pub calls: Vec<SttOptions>,
@@ -134,6 +135,16 @@ pub struct FakeLlm {
     handler: LlmHandler,
     calls: AtomicUsize,
     pub last_request: Mutex<Option<ChatRequest>>,
+}
+
+// У замыкания-обработчика нет `Debug`, поэтому в отчёт идёт то, что тесту и нужно видеть.
+impl std::fmt::Debug for FakeLlm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FakeLlm")
+            .field("calls", &self.calls)
+            .field("last_request", &self.last_request)
+            .finish_non_exhaustive()
+    }
 }
 
 impl FakeLlm {
@@ -230,6 +241,7 @@ impl TextInjector for RecordingInjector {
 }
 
 /// Часы, которыми управляет тест.
+#[derive(Debug)]
 pub struct FakeClock {
     now: Mutex<DateTime<Utc>>,
     base: Instant,

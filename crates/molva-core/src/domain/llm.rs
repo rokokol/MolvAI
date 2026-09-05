@@ -35,7 +35,7 @@ pub enum LlmError {
 }
 
 /// Клиент языковой модели. Ошибка клиента никогда не теряет реплику: конвейер отдаёт сырой текст.
-pub trait LlmClient: Send + Sync {
+pub trait LlmClient: std::fmt::Debug + Send + Sync {
     /// Идентификатор провайдера для журнала, например `ollama`.
     fn id(&self) -> &str;
     /// Локальная ли модель: попадает в журнал полем `local_llm`.

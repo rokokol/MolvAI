@@ -24,12 +24,12 @@ use super::{progress_enabled, CmdError};
 
 /// Постобработка распознанного текста: словарь, правила и модель подключаются конвейером
 /// дорожки D. Пока по умолчанию — тождественная функция, точка вызова уже на месте.
-pub fn identity(text: &str) -> String {
+pub(crate) fn identity(text: &str) -> String {
     text.to_string()
 }
 
 #[derive(Debug, clap::Args)]
-pub struct Args {
+pub(crate) struct Args {
     /// Аудиофайлы, каталоги или `-` для чтения потока со стандартного ввода
     #[arg(value_name = "PATH", required = true)]
     pub input: Vec<PathBuf>,
@@ -81,13 +81,13 @@ pub struct Args {
 
 /// Что расшифровываем: файл на диске или поток на входе.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum JobSource {
+pub(crate) enum JobSource {
     File(PathBuf),
     Stdin,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Job {
+pub(crate) struct Job {
     /// Имя для вывода и журнала.
     pub label: String,
     pub source: JobSource,
@@ -95,7 +95,7 @@ pub struct Job {
 
 /// Результат по одному входу.
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct FileResult {
+pub(crate) struct FileResult {
     pub file: String,
     pub text: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -108,20 +108,20 @@ pub struct FileResult {
 
 /// Итог пакета: что получилось и что нет.
 #[derive(Debug, Default)]
-pub struct Outcome {
+pub(crate) struct Outcome {
     pub results: Vec<FileResult>,
     /// Пары «вход → причина отказа».
     pub errors: Vec<(String, String)>,
 }
 
 impl Outcome {
-    pub fn ok(&self) -> bool {
+    pub(crate) fn ok(&self) -> bool {
         self.errors.is_empty()
     }
 }
 
 /// Собрать список входов: файлы по порядку аргументов, содержимое каталогов — по алфавиту.
-pub fn collect_jobs(inputs: &[PathBuf], recursive: bool) -> Result<Vec<Job>, CmdError> {
+pub(crate) fn collect_jobs(inputs: &[PathBuf], recursive: bool) -> Result<Vec<Job>, CmdError> {
     let mut jobs = Vec::new();
     for input in inputs {
         if input.as_os_str() == "-" {
@@ -179,7 +179,7 @@ fn collect_dir(dir: &Path, recursive: bool, jobs: &mut Vec<Job>) -> Result<(), C
 /// `postprocess` — точка подключения конвейера обработки текста; `progress` вызывается
 /// перед каждым входом и пишет только в stderr.
 #[allow(clippy::too_many_arguments)]
-pub fn transcribe_jobs(
+pub(crate) fn transcribe_jobs(
     jobs: &[Job],
     engine: &mut dyn SttEngine,
     opts: &SttOptions,
@@ -278,7 +278,7 @@ pub fn transcribe_jobs(
 }
 
 /// `12345` мс → `00:12.345`.
-pub fn format_timecode(ms: u32) -> String {
+pub(crate) fn format_timecode(ms: u32) -> String {
     let total_secs = ms / 1000;
     format!(
         "{:02}:{:02}.{:03}",
@@ -289,7 +289,7 @@ pub fn format_timecode(ms: u32) -> String {
 }
 
 /// Текст одного результата: либо сплошняком, либо строками с таймкодами.
-pub fn render_text(result: &FileResult, timecodes: bool) -> String {
+pub(crate) fn render_text(result: &FileResult, timecodes: bool) -> String {
     if !timecodes {
         return result.text.clone();
     }
@@ -319,7 +319,7 @@ pub fn render_text(result: &FileResult, timecodes: bool) -> String {
 }
 
 /// Собрать вывод для нескольких входов: перед каждым — заголовок с именем, если входов больше одного.
-pub fn render_all(results: &[FileResult], timecodes: bool) -> String {
+pub(crate) fn render_all(results: &[FileResult], timecodes: bool) -> String {
     if results.len() == 1 {
         return render_text(&results[0], timecodes);
     }
@@ -334,7 +334,7 @@ pub fn render_all(results: &[FileResult], timecodes: bool) -> String {
 ///
 /// Если в пакете есть `tone.mp3` и `tone.ogg`, одно имя `tone.txt` на двоих молча потеряло бы
 /// половину работы, поэтому при совпадении основы в имя добавляется исходное расширение.
-pub fn out_file_names(results: &[FileResult], json: bool) -> Vec<String> {
+pub(crate) fn out_file_names(results: &[FileResult], json: bool) -> Vec<String> {
     let ext = if json { "json" } else { "txt" };
     let stem_of = |result: &FileResult| {
         Path::new(&result.file)
@@ -364,7 +364,7 @@ pub fn out_file_names(results: &[FileResult], json: bool) -> Vec<String> {
 }
 
 /// Записать результаты туда, куда просил пользователь.
-pub fn write_output(
+pub(crate) fn write_output(
     outcome: &Outcome,
     args: &Args,
     stdout: &mut dyn Write,
@@ -415,7 +415,7 @@ pub fn write_output(
 }
 
 /// Точка входа подкоманды.
-pub fn run(args: &Args, cfg: &Config) -> Result<(), CmdError> {
+pub(crate) fn run(args: &Args, cfg: &Config) -> Result<(), CmdError> {
     let jobs = collect_jobs(&args.input, args.recursive)?;
 
     let choice = EngineChoice {

@@ -49,3 +49,6 @@ tauri-plugin-global-shortcut = "2.3"
 
 [dev-dependencies]
 tempfile = { workspace = true }
+
+[lints]
+workspace = true

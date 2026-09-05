@@ -31,3 +31,6 @@ uuid = { workspace = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 hound = { workspace = true }
+
+[lints]
+workspace = true

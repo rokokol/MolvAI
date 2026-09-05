@@ -53,7 +53,7 @@ pub enum HotkeyError {
 /// Источник событий клавиш: evdev на Linux, плагин Tauri на Windows/macOS.
 ///
 /// Бинды композитора на Wayland не реализуют этот трейт: они вызывают CLI, а тот шлёт IPC.
-pub trait HotkeySource: Send {
+pub trait HotkeySource: std::fmt::Debug + Send {
     /// Блокирующий цикл, шлёт события в `tx` до закрытия канала или ошибки.
     fn run(self: Box<Self>, tx: Sender<HotkeyEvent>) -> Result<(), HotkeyError>;
 }
