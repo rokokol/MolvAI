@@ -1,0 +1,31 @@
+# Набор для `molva bench`. Пути к аудио — относительно этого каталога.
+#
+# Кейсы ниже используют речевые фикстуры репозитория; свои записи удобнее класть рядом,
+# в `bench/audio/`, и ссылаться на них как `audio/имя.wav` (см. README.md).
+
+[[case]]
+id = "ru-короткая-фраза"
+audio = "../tests/fixtures/privet_ru.wav"
+reference = "Привет, как дела, Солнышко?"
+language = "ru"
+
+[[case]]
+id = "en-короткая-фраза"
+audio = "../tests/fixtures/hello_en.wav"
+reference = "What's up, guys! How is it doing? It is cold today"
+language = "en"
+
+# Смешанная речь: русский с английскими вставками — проверка, что модель не «переводит»
+# и не теряет иноязычные слова.
+[[case]]
+id = "ru-en-смешанная"
+audio = "../tests/fixtures/secret_ru_en.wav"
+reference = "Hello, это очень very мега секретная информация"
+language = "ru"
+
+# Тишина: эталон пустой, поэтому любая «расшифровка» здесь — галлюцинация, и WER = 1.
+[[case]]
+id = "тишина-без-речи"
+audio = "silence.wav"
+reference = ""
+language = "ru"
