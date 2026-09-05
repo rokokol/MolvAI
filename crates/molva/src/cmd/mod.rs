@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! Подкоманды `molva`.
+//! Подкоманды `molva`. Каждая — отдельный файл, чтобы дорожки не дрались за один модуль.
 //!
 //! Общее правило вывода: данные — в stdout, всё остальное (прогресс, предупреждения,
 //! сообщения об ошибках) — в stderr. Поэтому `molva transcribe ... | wc -w` считает слова,
@@ -9,7 +9,13 @@
 
 pub mod bench;
 pub mod completions;
+pub mod daemon;
+pub mod doctor;
 pub mod models;
+pub mod record;
+pub mod setup;
+pub mod status;
+pub mod test_inject;
 pub mod transcribe;
 
 use std::io::IsTerminal;
