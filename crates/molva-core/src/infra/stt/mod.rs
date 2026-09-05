@@ -42,6 +42,57 @@ pub fn model_file_path(cfg: &SttConfig, models_dir: &Path) -> PathBuf {
     models_dir.join(format!("ggml-{}.bin", cfg.model.trim()))
 }
 
+/// Фразы, которые whisper выдаёт на тишине и шуме, независимо от того, что записали.
+///
+/// Модель обучалась на субтитрах, поэтому на пустом входе уверенно печатает концовку ролика.
+/// Сравнение идёт по нормализованной форме: без регистра, знаков препинания и лишних пробелов.
+const SILENCE_HALLUCINATIONS: [&str; 10] = [
+    "продолжение следует",
+    "субтитры сделал dimatorzok",
+    "субтитры создавал dimatorzok",
+    "редактор субтитров а синецкая корректор а егорова",
+    "спасибо за просмотр",
+    "подписывайтесь на канал",
+    "thank you for watching",
+    "thanks for watching",
+    "subscribe to my channel",
+    "you",
+];
+
+/// Похоже ли, что распознана тишина, а не речь.
+///
+/// Две проверки: собственная оценка модели `no_speech_prob` (порог из настроек,
+/// `stt.no_speech_threshold`) и список фраз, которые whisper печатает на пустом входе. Пустой
+/// текст — тоже тишина. Вызывающий по `true` не вставляет ничего (F-22).
+pub fn is_silence_hallucination(transcript: &Transcript, no_speech_threshold: f32) -> bool {
+    if transcript.text.trim().is_empty() {
+        return true;
+    }
+    if transcript
+        .no_speech_prob
+        .is_some_and(|p| p >= no_speech_threshold)
+    {
+        return true;
+    }
+    let normalised = normalise_for_match(&transcript.text);
+    SILENCE_HALLUCINATIONS
+        .iter()
+        .any(|phrase| normalised == *phrase)
+}
+
+/// Нормализация для сравнения с образцами: нижний регистр, только буквы и цифры, один пробел.
+fn normalise_for_match(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for ch in text.chars() {
+        if ch.is_alphanumeric() {
+            out.extend(ch.to_lowercase());
+        } else if !out.ends_with(' ') {
+            out.push(' ');
+        }
+    }
+    out.trim().to_string()
+}
+
 /// Распознать с одним повтором, если автоопределение выдало язык вне списка разрешённых.
 ///
 /// Типичная ошибка whisper на коротких репликах — принять русскую речь за украинскую или
@@ -196,6 +247,66 @@ mod tests {
             retry_language(&opts_auto(&["ru", "en"]), Some("uk")),
             Some("ru".into())
         );
+    }
+
+    #[test]
+    fn confident_silence_is_not_inserted() {
+        let transcript = Transcript {
+            text: "Привет".into(),
+            no_speech_prob: Some(0.9),
+            ..Transcript::default()
+        };
+        assert!(is_silence_hallucination(&transcript, 0.6));
+    }
+
+    #[test]
+    fn real_speech_passes_the_gate() {
+        let transcript = Transcript {
+            text: "Привет, как дела".into(),
+            no_speech_prob: Some(0.05),
+            ..Transcript::default()
+        };
+        assert!(!is_silence_hallucination(&transcript, 0.6));
+    }
+
+    #[test]
+    fn subtitle_boilerplate_is_recognised_as_hallucination() {
+        // Уверенность модели высокая, а текст — концовка ролика из обучающей выборки.
+        for text in ["Продолжение следует...", "Субтитры сделал DimaTorzok"]
+        {
+            let transcript = Transcript {
+                text: text.into(),
+                no_speech_prob: Some(0.01),
+                ..Transcript::default()
+            };
+            assert!(
+                is_silence_hallucination(&transcript, 0.6),
+                "не отсеяно: {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn empty_text_is_silence() {
+        assert!(is_silence_hallucination(&Transcript::default(), 0.6));
+        assert!(is_silence_hallucination(&Transcript::text_only("   "), 0.6));
+    }
+
+    #[test]
+    fn phrase_that_merely_contains_boilerplate_is_kept() {
+        // «Спасибо за просмотр отчёта» — это речь пользователя, а не хвост субтитров.
+        let transcript = Transcript {
+            text: "Спасибо за просмотр отчёта, до связи".into(),
+            no_speech_prob: Some(0.02),
+            ..Transcript::default()
+        };
+        assert!(!is_silence_hallucination(&transcript, 0.6));
+    }
+
+    #[test]
+    fn missing_no_speech_prob_does_not_block_speech() {
+        let transcript = Transcript::text_only("привет");
+        assert!(!is_silence_hallucination(&transcript, 0.6));
     }
 
     #[test]
