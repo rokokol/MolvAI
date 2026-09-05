@@ -168,8 +168,8 @@ defect 'styles/verbatim-skips-the-model' 'crates/molva-core/src/app/styles.rs' \
   'стиль «дословно» зовёт модель: пароли и команды уезжают на постобработку'
 
 defect 'styles/prompts-forbid-inventing' 'crates/molva-core/src/app/styles.rs' \
-  'const COMMON_RULES: &str = " Сохрани язык входного текста. Не добавляй фактов, которых нет в \\' \
-  'const COMMON_RULES: &str = " Дополняй текст недостающими деталями, которых нет в \\' \
+  '" Сохрани язык входного текста. Не добавляй фактов, которых нет в' \
+  '" Переводи на английский. Дополняй текст деталями, которых нет в' \
   'модель дописывает факты и болтает вступлениями прямо в поле пользователя'
 
 defect 'styles/explicit-choice-wins' 'crates/molva-core/src/app/styles.rs' \
