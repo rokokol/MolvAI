@@ -132,6 +132,21 @@ defect 'rules/non-breaking-space-in-units' 'crates/molva-core/src/app/rules.rs' 
   '            out.push(format!("{} {}", tokens[index], tokens[index + 1]));' \
   '«5 кг» переносится по строкам: число отрывается от единицы измерения'
 
+defect 'rules/dot-inside-a-word-is-not-a-sentence-end' 'crates/molva-core/src/app/rules.rs' \
+  '        None => true,' \
+  '        None | Some(_) => true,' \
+  '`whisper.cpp` превращается в `whisper.Cpp`, а `example.com` — в `example.Com`'
+
+defect 'rules/no-space-inside-a-domain' 'crates/molva-core/src/app/rules.rs' \
+  "        if ch == '.' && previous.is_alphanumeric() && !next.is_uppercase() {" \
+  '        if false {' \
+  'почтовый адрес разводится пробелом: `ivan@example. com` уже не адрес'
+
+defect 'rules/email-is-glued-back' 'crates/molva-core/src/app/rules.rs' \
+  '                if is_address_part(&left) && is_address_part(&right) {' \
+  '                if false {' \
+  'продиктованный адрес остаётся рассыпанным на куски вокруг собачки'
+
 defect 'rules/no-space-before-punctuation' 'crates/molva-core/src/app/rules.rs' \
   "                    '.' | ',' | ';' | ':' | '!' | '?' | ')' | '»' | '…' | '\\u{201d}'" \
   "                    '\\u{0}'" \

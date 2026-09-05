@@ -6,10 +6,11 @@
 //!
 //! 1. `Lists` и `NewLine` — голосовые команды структуры, они режут текст на строки;
 //! 2. `SpokenPunctuation` — «запятая» превращается в отдельный токен `,`;
-//! 3. `RemoveFillers`, `RemoveRepeats` — мусор речи;
-//! 4. `NumbersAsDigits` — числительные в цифры;
-//! 5. `Whitespace` — склейка знаков препинания, лишние пробелы, неразрывные пробелы;
-//! 6. `Capitalize` — заглавная в начале предложения.
+//! 3. `Glue` — почтовый адрес и ссылка собираются обратно из кусков;
+//! 4. `RemoveFillers`, `RemoveRepeats` — мусор речи;
+//! 5. `NumbersAsDigits` — числительные в цифры;
+//! 6. `Whitespace` — склейка знаков препинания, лишние пробелы, неразрывные пробелы;
+//! 7. `Capitalize` — заглавная в начале предложения.
 //!
 //! ## Принятые решения
 //!
@@ -21,6 +22,9 @@
 //!   Числительные складываются, только пока разряд строго убывает: «три четыре» остаётся «3 4».
 //! - **Пунктуация словами.** «точка» перед «зрения», «отсчёта», «кипения», «опоры» не считается
 //!   командой.
+//! - **Точка внутри слова.** `example.com` и `whisper.cpp` не разводятся пробелом и не получают
+//!   заглавную после точки: концом предложения точка считается только перед пробелом или
+//!   заглавной буквой. Само слово «собака» в `@` не превращается — цена ошибки выше пользы.
 //! - **Язык.** `ru` и `en` берут свои таблицы; неизвестный код — обе, потому что автоопределение
 //!   языка могло не сработать, а команды пунктуации в двух языках не пересекаются.
 
@@ -398,6 +402,88 @@ fn find_trigger(tokens: &[String]) -> Option<(usize, &'static ListTrigger)> {
         }
     }
     None
+}
+
+// --- Адреса и ссылки ------------------------------------------------------------------------
+
+/// Схемы, после которых идёт адрес, а не новое предложение.
+const URL_STARTS: &[&str] = &["http://", "https://", "www.", "ftp://"];
+
+/// Собирает обратно почтовые адреса и ссылки, которые распознаватель разорвал пробелами.
+///
+/// Правило сознательно узкое: склеивается только то, где уже есть `@` или начало ссылки. Само
+/// слово «собака» в `@` не превращается — «погладить собака Барсика» дороже, чем один адрес.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Glue;
+
+impl TextRule for Glue {
+    fn id(&self) -> &'static str {
+        "glue"
+    }
+
+    fn apply(&self, text: &str, _lang: &str) -> String {
+        let tokens = tokenize(text);
+        let mut out: Vec<String> = Vec::with_capacity(tokens.len());
+        let mut index = 0;
+        while index < tokens.len() {
+            let token = &tokens[index];
+            // `имя @ домен` — три токена в один.
+            if token == "@" && !out.is_empty() && index + 1 < tokens.len() {
+                let left = out.last().cloned().unwrap_or_default();
+                let right = tokens[index + 1].clone();
+                if is_address_part(&left) && is_address_part(&right) {
+                    out.pop();
+                    out.push(format!("{left}@{right}"));
+                    index += 2;
+                    continue;
+                }
+            }
+            // `адрес . ru` или `www . example` — точка приклеивается к обеим сторонам.
+            if token == "." && !out.is_empty() && index + 1 < tokens.len() {
+                let left = out.last().cloned().unwrap_or_default();
+                let right = tokens[index + 1].clone();
+                if continues_an_address(&left) && is_address_part(&right) {
+                    out.pop();
+                    out.push(format!("{left}.{right}"));
+                    index += 2;
+                    continue;
+                }
+            }
+            // `адрес .ru` — точка уже приросла к правому куску.
+            if let Some(rest) = token.strip_prefix('.') {
+                let left = out.last().cloned().unwrap_or_default();
+                if !out.is_empty() && continues_an_address(&left) && is_address_part(rest) {
+                    out.pop();
+                    out.push(format!("{left}.{rest}"));
+                    index += 1;
+                    continue;
+                }
+            }
+            out.push(token.clone());
+            index += 1;
+        }
+        join(&out)
+    }
+}
+
+/// Кусок адреса: буквы, цифры, дефисы и подчёркивания, без знаков препинания.
+fn is_address_part(token: &str) -> bool {
+    !token.is_empty()
+        && token.chars().any(char::is_alphanumeric)
+        && token
+            .chars()
+            .all(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | '@' | '/' | ':'))
+}
+
+/// Слева от точки уже есть адрес или ссылка, а не конец предложения.
+fn continues_an_address(token: &str) -> bool {
+    if !is_address_part(token) {
+        return false;
+    }
+    let lowered = token.to_lowercase();
+    token.contains('@')
+        || lowered == "www"
+        || URL_STARTS.iter().any(|start| lowered.starts_with(start))
 }
 
 // --- Повторы и заполнители ------------------------------------------------------------------
@@ -882,6 +968,11 @@ fn tidy(text: &str) -> String {
         if previous.is_ascii_digit() && next.is_ascii_digit() {
             continue;
         }
+        // Точка внутри слова — это `example.com`, `whisper.cpp` или версия, а не конец
+        // предложения: разводить такое пробелом нельзя. Признак предложения — заглавная следом.
+        if ch == '.' && previous.is_alphanumeric() && !next.is_uppercase() {
+            continue;
+        }
         spaced.push(' ');
     }
 
@@ -917,16 +1008,27 @@ fn is_list_marker(ch: char) -> bool {
     ch.is_ascii_digit() || matches!(ch, '-' | '*' | '•' | '.' | ')')
 }
 
+/// Точка заканчивает предложение только если за ней пробел или конец текста.
+///
+/// Иначе `whisper.cpp` превращается в `whisper.Cpp`, а `example.com` — в `example.Com`.
+fn ends_a_sentence(chars: &[char], at: usize) -> bool {
+    match chars.get(at + 1) {
+        None => true,
+        Some(next) => next.is_whitespace() || matches!(next, '"' | '»' | ')' | '\u{201d}'),
+    }
+}
+
 impl TextRule for Capitalize {
     fn id(&self) -> &'static str {
         "capitalize"
     }
 
     fn apply(&self, text: &str, _lang: &str) -> String {
+        let chars: Vec<char> = text.chars().collect();
         let mut out = String::with_capacity(text.len());
         let mut start_of_sentence = true;
         let mut start_of_line = true;
-        for ch in text.chars() {
+        for (index, &ch) in chars.iter().enumerate() {
             if start_of_sentence && ch.is_alphabetic() {
                 out.extend(ch.to_uppercase());
                 start_of_sentence = false;
@@ -936,7 +1038,10 @@ impl TextRule for Capitalize {
             if ch == '\n' {
                 start_of_sentence = true;
                 start_of_line = true;
-            } else if matches!(ch, '.' | '!' | '?' | '…') && !start_of_line {
+            } else if matches!(ch, '.' | '!' | '?' | '…')
+                && !start_of_line
+                && ends_a_sentence(&chars, index)
+            {
                 start_of_sentence = true;
             } else if !ch.is_whitespace() {
                 let keeps = opens_a_sentence(ch) || (start_of_line && is_list_marker(ch));
@@ -978,6 +1083,8 @@ impl RuleSet {
         if cfg.spoken_punctuation {
             rules.push(Box::new(SpokenPunctuation));
         }
+        // После пунктуации, но до чистки пробелов: иначе `Whitespace` разведёт адрес обратно.
+        rules.push(Box::new(Glue));
         if cfg.remove_fillers {
             rules.push(Box::new(RemoveFillers));
         }
@@ -1167,6 +1274,9 @@ mod tests {
         assert_eq!(rule.apply("привет,мир", "ru"), "привет, мир");
         assert_eq!(rule.apply("цена 1.5 рубля", "ru"), "цена 1.5 рубля");
         assert_eq!(rule.apply("итого 1,5 кг", "ru"), "итого 1,5 кг");
+        // Точка между словами разводится пробелом только перед заглавной буквой.
+        assert_eq!(rule.apply("конец.Новое", "ru"), "конец. Новое");
+        assert_eq!(rule.apply("собери whisper.cpp", "ru"), "собери whisper.cpp");
     }
 
     #[test]
@@ -1191,6 +1301,64 @@ mod tests {
         assert_eq!(
             Capitalize.apply("вызови getUserById потом exit", "ru"),
             "Вызови getUserById потом exit"
+        );
+    }
+
+    #[test]
+    fn a_dot_inside_a_word_does_not_start_a_new_sentence() {
+        assert_eq!(
+            Capitalize.apply("собери whisper.cpp и открой example.com", "ru"),
+            "Собери whisper.cpp и открой example.com"
+        );
+        assert_eq!(
+            Capitalize.apply("готово. следующий шаг", "ru"),
+            "Готово. Следующий шаг"
+        );
+        // Точка в конце текста предложение всё-таки закрывает.
+        assert_eq!(Capitalize.apply("готово.", "ru"), "Готово.");
+    }
+
+    #[test]
+    fn an_email_broken_by_spaces_is_glued_back() {
+        assert_eq!(
+            Glue.apply("напиши на ivan @ example . com", "ru"),
+            "напиши на ivan@example.com"
+        );
+        assert_eq!(
+            full().apply("напиши на ivan @ example точка com", "ru"),
+            "Напиши на ivan@example.com"
+        );
+        assert_eq!(
+            full().apply("почта ivan @ example точка com точка", "ru"),
+            "Почта ivan@example.com."
+        );
+        // «собака» словом в `@` не превращается: слишком часто это животное.
+        assert!(!full().apply("погладить собака барсика", "ru").contains('@'));
+    }
+
+    #[test]
+    fn a_link_broken_by_spaces_is_glued_back() {
+        assert_eq!(
+            Glue.apply("открой https://example . com", "ru"),
+            "открой https://example.com"
+        );
+        assert_eq!(
+            Glue.apply("зайди на www . example . com", "ru"),
+            "зайди на www.example.com"
+        );
+    }
+
+    #[test]
+    fn an_ordinary_sentence_is_not_glued_into_an_address() {
+        // Точка в конце предложения не приклеивает следующее слово.
+        assert_eq!(
+            Glue.apply("работа сделана . завтра продолжим", "ru"),
+            "работа сделана . завтра продолжим"
+        );
+        assert_eq!(Glue.apply("почта @ дома", "ru"), "почта@дома");
+        assert_eq!(
+            full().apply("это конец точка новое начало", "ru"),
+            "Это конец. Новое начало"
         );
     }
 
