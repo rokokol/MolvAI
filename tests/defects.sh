@@ -58,6 +58,7 @@ defect 'decode/native-sample-rate' 'crates/molva-core/src/infra/audio/decode.rs'
   '    Ok(PcmAudio::new(mono, sample_rate))' \
   '    Ok(PcmAudio::new(mono, 16_000))' \
   'частота файла подменяется на 16 кГц без ресемплинга: длительность и скорость речи врут'
+
 # --- дорожка E: веса моделей ---
 
 defect 'models/checksum-checked' 'crates/molva-core/src/app/models.rs' \
@@ -155,3 +156,8 @@ defect 'cli/bench-repeat-validated' 'crates/molva/src/cmd/bench.rs' \
   '    if args.repeat == 0 {' \
   '    if false {' \
   '--repeat 0 молча делает один прогон вместо понятной ошибки'
+
+defect 'cli/output-name-collision' 'crates/molva/src/cmd/transcribe.rs' \
+  '            if counts.get(&stem).copied().unwrap_or(0) > 1 {' \
+  '            if false {' \
+  'tone.mp3 и tone.ogg пишутся в один tone.txt: половина работы теряется молча'

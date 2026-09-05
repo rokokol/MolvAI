@@ -330,12 +330,37 @@ pub fn render_all(results: &[FileResult], timecodes: bool) -> String {
         .join("\n\n")
 }
 
-fn out_file_for(dir: &Path, result: &FileResult, json: bool) -> PathBuf {
-    let stem = Path::new(&result.file)
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| "transcript".to_string());
-    dir.join(format!("{stem}.{}", if json { "json" } else { "txt" }))
+/// Имена выходных файлов для каталога: `запись.wav` → `запись.txt`.
+///
+/// Если в пакете есть `tone.mp3` и `tone.ogg`, одно имя `tone.txt` на двоих молча потеряло бы
+/// половину работы, поэтому при совпадении основы в имя добавляется исходное расширение.
+pub fn out_file_names(results: &[FileResult], json: bool) -> Vec<String> {
+    let ext = if json { "json" } else { "txt" };
+    let stem_of = |result: &FileResult| {
+        Path::new(&result.file)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "transcript".to_string())
+    };
+    let mut counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for result in results {
+        *counts.entry(stem_of(result)).or_default() += 1;
+    }
+    results
+        .iter()
+        .map(|result| {
+            let stem = stem_of(result);
+            if counts.get(&stem).copied().unwrap_or(0) > 1 {
+                let full = Path::new(&result.file)
+                    .file_name()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or(stem);
+                format!("{full}.{ext}")
+            } else {
+                format!("{stem}.{ext}")
+            }
+        })
+        .collect()
 }
 
 /// Записать результаты туда, куда просил пользователь.
@@ -355,8 +380,9 @@ pub fn write_output(
     match &args.out {
         // Каталог: по файлу на вход, имя — от исходного файла.
         Some(path) if path.is_dir() => {
-            for result in &outcome.results {
-                let target = out_file_for(path, result, args.json);
+            let names = out_file_names(&outcome.results, args.json);
+            for (result, name) in outcome.results.iter().zip(names) {
+                let target = path.join(name);
                 let body = if args.json {
                     serde_json::to_string_pretty(result)
                         .map_err(|e| CmdError::file(e.to_string()))?
@@ -804,6 +830,23 @@ mod tests {
             std::fs::read_to_string(out.join("второй.txt")).unwrap(),
             "два\n"
         );
+    }
+
+    #[test]
+    fn files_with_the_same_stem_do_not_overwrite_each_other() {
+        let make = |name: &str| FileResult {
+            file: name.into(),
+            text: name.into(),
+            segments: vec![],
+            audio_secs: 1.0,
+            latency_ms: 1,
+            language: None,
+        };
+        let names = out_file_names(
+            &[make("a/tone.mp3"), make("a/tone.ogg"), make("a/речь.wav")],
+            false,
+        );
+        assert_eq!(names, vec!["tone.mp3.txt", "tone.ogg.txt", "речь.txt"]);
     }
 
     #[test]
