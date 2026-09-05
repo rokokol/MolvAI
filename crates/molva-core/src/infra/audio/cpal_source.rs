@@ -298,9 +298,12 @@ fn open_stream(
 ) -> Result<(cpal::Stream, u32, Arc<Shared>), AudioError> {
     let host = cpal::default_host();
     let device = match &selected {
+        // Устройство по умолчанию может не встречаться в общем списке (так делает ALSA), поэтому
+        // имя сверяется и с ним: иначе выбранный в GUI пункт списка не открылся бы.
         Some(name) => host
             .input_devices()
             .map_err(|e| map_cpal_error(&e, requested))?
+            .chain(host.default_input_device())
             .find(|d| d.to_string() == *name)
             .ok_or_else(|| AudioError::DeviceNotFound(name.clone()))?,
         None => host.default_input_device().ok_or(AudioError::NoDevices)?,
