@@ -113,8 +113,8 @@ defect 'rules/intensifier-repeat-survives' 'crates/molva-core/src/app/rules.rs' 
   '«очень очень важно» теряет усиление: снятие повторов режет смысл'
 
 defect 'rules/fillers-never-empty-the-text' 'crates/molva-core/src/app/rules.rs' \
-  '        if out.iter().all(|token| !token.chars().any(char::is_alphanumeric)) {' \
-  '        if false {' \
+  '            .all(|token| !token.chars().any(char::is_alphanumeric))' \
+  '            .all(|_token| false)' \
   'реплика из одних заполнителей превращается в пустую строку: сказанное потеряно'
 
 defect 'rules/numerals-need-a-falling-rank' 'crates/molva-core/src/app/rules.rs' \
@@ -128,7 +128,7 @@ defect 'rules/ordinals-stay-in-words' 'crates/molva-core/src/app/rules.rs' \
   '«две тысячи двадцать шестого года» превращается в «2020 шестого года»'
 
 defect 'rules/non-breaking-space-in-units' 'crates/molva-core/src/app/rules.rs' \
-  '            out.push(format!("{}\\u{a0}{}", tokens[index], tokens[index + 1]));' \
+  '            out.push(format!("{}\u{a0}{}", tokens[index], tokens[index + 1]));' \
   '            out.push(format!("{} {}", tokens[index], tokens[index + 1]));' \
   '«5 кг» переносится по строкам: число отрывается от единицы измерения'
 
