@@ -483,6 +483,11 @@ defect 'sound/stop-cue-on-record' 'crates/molva-core/src/app/daemon/mod.rs' \
   '                                        let _ = &sound;' \
   'конец записи не слышен: непонятно, отпустил ли ты клавишу и ушла ли реплика в обработку'
 
+defect 'daemon/hold-still-works-with-tap-toggles' 'crates/molva-core/src/app/daemon/state.rs' \
+  '        if !rec.latched && self.hotkeys.tap_toggles && held < Self::ms(self.hotkeys.short_press_ms)' \
+  '        if !rec.latched && self.hotkeys.tap_toggles && held < Duration::MAX' \
+  'удержание перестаёт работать при включённом переключателе: остаётся только hands-free'
+
 defect 'audio/mic-release-is-measured' 'crates/molva-core/src/app/daemon/mod.rs' \
   '                                            stop_after_release_ms,' \
   '                                            stop_after_release_ms: u32::MAX,' \
