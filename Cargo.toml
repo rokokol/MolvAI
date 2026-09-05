@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/molva-core", "crates/molva"]
+members = ["crates/molva-core", "crates/molva", "crates/molva-gui"]
 
 [workspace.package]
 version = "0.1.0"
