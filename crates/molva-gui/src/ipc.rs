@@ -5,7 +5,7 @@
 //! здесь сознательно только то, что нужно GUI: разовый запрос и поток подписки.
 
 use std::io::{BufRead, BufReader, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use interprocess::local_socket::{prelude::*, GenericFilePath, Stream};
@@ -105,11 +105,17 @@ pub struct Connection {
 }
 
 impl Connection {
+    /// Соединение с сокетом демона по пути из окружения.
     pub fn connect() -> Result<Self, IpcClientError> {
-        let path = socket_path()?;
+        Self::connect_at(&socket_path()?)
+    }
+
+    /// Соединение по конкретному пути: так тесты подставляют свой сокет,
+    /// не трогая переменные окружения процесса.
+    pub fn connect_at(path: &Path) -> Result<Self, IpcClientError> {
         let display = path.display().to_string();
         let name = path
-            .clone()
+            .to_path_buf()
             .to_fs_name::<GenericFilePath>()
             .map_err(|e| IpcClientError::NoSocketPath(e.to_string()))?;
         let stream = Stream::connect(name).map_err(|e| IpcClientError::NotRunning {
