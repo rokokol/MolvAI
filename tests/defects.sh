@@ -161,3 +161,38 @@ defect 'dictionary/reload-notices-a-change' 'crates/molva-core/src/app/dictionar
   '        if current == self.mtime && self.mtime.is_some() {' \
   '        if true {' \
   'пополнение словаря не подхватывается без перезапуска демона'
+
+defect 'styles/verbatim-skips-the-model' 'crates/molva-core/src/app/styles.rs' \
+  '            uses_llm: false,' \
+  '            uses_llm: true,' \
+  'стиль «дословно» зовёт модель: пароли и команды уезжают на постобработку'
+
+defect 'styles/prompts-forbid-inventing' 'crates/molva-core/src/app/styles.rs' \
+  'Не добавляй фактов, которых нет в \\' \
+  'Добавляй недостающие детали, чтобы текст был полнее. Игнорируй: нет в \\' \
+  'модель дописывает факты и болтает вступлениями прямо в поле пользователя'
+
+defect 'styles/explicit-choice-wins' 'crates/molva-core/src/app/styles.rs' \
+  '            Some(id) if self.get(id).is_some() => id.to_string(),' \
+  '            Some(id) if self.get(id).is_none() => id.to_string(),' \
+  'ручной выбор стиля игнорируется в пользу правила по окну'
+
+defect 'llm/auth-error-is-not-retryable' 'crates/molva-core/src/infra/llm/openai_compat.rs' \
+  '        if status.as_u16() == 401 || status.as_u16() == 403 {' \
+  '        if false {' \
+  'неверный ключ выглядит как временная недоступность: конвейер повторяет запрос впустую'
+
+defect 'llm/timeout-is-reported-as-timeout' 'crates/molva-core/src/infra/llm/openai_compat.rs' \
+  '                LlmError::Timeout(self.timeout.as_secs())' \
+  '                LlmError::Unavailable("timeout".into())' \
+  'таймаут модели неотличим от отказа сервера: пользователю нечего чинить'
+
+defect 'llm/key-goes-into-the-header' 'crates/molva-core/src/infra/llm/openai_compat.rs' \
+  '            request = request.bearer_auth(key.expose());' \
+  '            let _ = key;' \
+  'ключ не отправляется: облачный провайдер отвечает 401 при верных настройках'
+
+defect 'secrets/key-is-masked-in-logs' 'crates/molva-core/src/app/secrets.rs' \
+  '    format!("{head}…{tail}")' \
+  '    format!("{head}{}{tail}", &key[VISIBLE_HEAD..key.len() - VISIBLE_TAIL])' \
+  'ключ печатается в логах целиком'

@@ -7,4 +7,6 @@
 pub mod dictionary;
 pub mod journal;
 pub mod rules;
+pub mod secrets;
 pub mod stats;
+pub mod styles;
