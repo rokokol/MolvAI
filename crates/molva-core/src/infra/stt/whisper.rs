@@ -113,7 +113,10 @@ impl SttEngine for WhisperEngine {
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
         params.set_n_threads(threads as i32);
         params.set_translate(false);
-        params.set_no_timestamps(!opts.timestamps);
+        // no_timestamps НЕ выставляем никогда: с ним whisper.cpp 1.8 не отдаёт ни одного
+        // сегмента, а значит и текста. Таймкоды считаются всегда, а `opts.timestamps` решает
+        // только, отдавать ли сегменты наружу.
+        params.set_no_timestamps(false);
         // Прогресс и текст whisper.cpp не должны попадать в stdout: там только данные (Y-15).
         params.set_print_special(false);
         params.set_print_progress(false);
@@ -142,7 +145,10 @@ impl SttEngine for WhisperEngine {
             .map_err(|e| SttError::Inference(e.to_string()))?;
         let elapsed = started.elapsed();
 
-        let transcript = collect_transcript(&state)?;
+        let mut transcript = collect_transcript(&state)?;
+        if !opts.timestamps {
+            transcript.segments.clear();
+        }
         debug!(
             model = %self.model_name,
             threads,
@@ -374,5 +380,55 @@ mod tests {
         );
         engine.unload();
         assert!(!engine.is_loaded());
+    }
+
+    /// Регрессия: с `timestamps = false` текст пропадал целиком.
+    ///
+    /// whisper.cpp с `no_timestamps = true` не отдаёт ни одного сегмента, а текст мы собираем
+    /// именно из сегментов — распознавание молча возвращало пустую строку.
+    #[test]
+    #[ignore = "нужна скачанная модель whisper: MOLVA_TEST_MODEL=<путь> --ignored"]
+    fn regression_speech_is_recognised_without_timestamps() {
+        let Ok(path) = std::env::var("MOLVA_TEST_MODEL") else {
+            panic!("задайте MOLVA_TEST_MODEL=<путь к ggml-*.bin>");
+        };
+        let wav = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../tests/fixtures/privet_ru.wav"
+        );
+        let audio = read_wav_fixture(wav);
+
+        let mut engine = WhisperEngine::new(PathBuf::from(path), "test".into(), 0);
+        let opts = SttOptions {
+            language: LanguageHint::Fixed("ru".into()),
+            timestamps: false,
+            ..SttOptions::default()
+        };
+
+        let out = engine.transcribe(&audio, &opts).expect("речь распознаётся");
+
+        assert!(
+            !out.text.trim().is_empty(),
+            "текст пропал при timestamps = false"
+        );
+        assert!(
+            out.segments.is_empty(),
+            "сегменты не запрашивались, но пришли"
+        );
+    }
+
+    /// Мини-чтение WAV для ручных прогонов: фикстуры записаны как 16-битный моно 16 кГц.
+    #[cfg(test)]
+    fn read_wav_fixture(path: &str) -> PcmAudio {
+        let mut reader = hound::WavReader::open(path).expect("фикстура на месте");
+        let spec = reader.spec();
+        let samples: Vec<f32> = reader
+            .samples::<i16>()
+            .map(|s| s.expect("отсчёт читается") as f32 / i16::MAX as f32)
+            .collect();
+        PcmAudio::new(
+            crate::domain::audio::downmix_to_mono(&samples, spec.channels),
+            spec.sample_rate,
+        )
     }
 }

@@ -8,11 +8,14 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 use molva_core::Config;
 
+mod cmd;
+
 /// Коды выхода, общие для всех подкоманд: 0 ok, 2 аргументы, 3 демон недоступен, 4 занят,
 /// 5 ошибка движка, 6 ошибка файла. Константы добавляются по мере появления подкоманд.
 mod exit {
     pub const OK: u8 = 0;
     pub const BAD_ARGS: u8 = 2;
+    pub const ENGINE: u8 = 5;
     pub const FILE: u8 = 6;
 }
 
@@ -37,6 +40,11 @@ enum Commands {
     Config {
         #[command(subcommand)]
         action: ConfigAction,
+    },
+    /// Список устройств ввода
+    Devices {
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -69,6 +77,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             println!("{}", config_path.display());
             Ok(())
         }
+        Commands::Devices { json } => cmd::devices::run(json),
     }
 }
 
@@ -79,6 +88,12 @@ fn exit_code_for(err: &anyhow::Error) -> u8 {
         .is_some()
     {
         return exit::FILE;
+    }
+    if err
+        .downcast_ref::<molva_core::domain::audio::AudioError>()
+        .is_some()
+    {
+        return exit::ENGINE;
     }
     exit::BAD_ARGS
 }

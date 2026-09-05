@@ -40,7 +40,7 @@ pub fn list_input_devices() -> Result<Vec<DeviceInfo>, AudioError> {
         .input_devices()
         .map_err(|e| map_cpal_error(&e, DEFAULT_DEVICE))?;
 
-    let mut out = Vec::new();
+    let mut out: Vec<DeviceInfo> = Vec::new();
     for device in devices {
         let name = device.to_string();
         let sample_rates = match device.supported_input_configs() {
@@ -52,17 +52,50 @@ pub fn list_input_devices() -> Result<Vec<DeviceInfo>, AudioError> {
                 Vec::new()
             }
         };
-        out.push(DeviceInfo {
-            is_default: default_name.as_deref() == Some(name.as_str()),
-            name,
-            sample_rates,
-        });
+        merge_device(
+            &mut out,
+            DeviceInfo {
+                is_default: default_name.as_deref() == Some(name.as_str()),
+                name,
+                sample_rates,
+            },
+        );
+    }
+
+    // ALSA отдаёт устройство по умолчанию отдельной записью, которой нет в общем списке:
+    // без неё пользователь не увидит, куда на самом деле идёт запись.
+    if let Some(default_name) = default_name {
+        if !out.iter().any(|d| d.name == default_name) {
+            out.insert(
+                0,
+                DeviceInfo {
+                    name: default_name,
+                    is_default: true,
+                    sample_rates: Vec::new(),
+                },
+            );
+        }
     }
 
     if out.is_empty() {
         return Err(AudioError::NoDevices);
     }
     Ok(out)
+}
+
+/// Добавить устройство, объединив частоты с уже найденным одноимённым.
+///
+/// ALSA показывает одно физическое устройство несколько раз (hw, plughw, разные форматы):
+/// пользователю нужен один пункт списка, иначе выбирать не из чего.
+fn merge_device(devices: &mut Vec<DeviceInfo>, incoming: DeviceInfo) {
+    if let Some(existing) = devices.iter_mut().find(|d| d.name == incoming.name) {
+        existing.is_default |= incoming.is_default;
+        existing.sample_rates.extend(incoming.sample_rates);
+        existing.sample_rates.sort_unstable();
+        existing.sample_rates.dedup();
+        return;
+    }
+    devices.push(incoming);
 }
 
 /// Микрофон как источник записи.
@@ -400,12 +433,19 @@ pub fn apply_gain(samples: &mut [f32], gain: f32) {
     }
 }
 
+/// Похожа ли частота на реальный режим устройства.
+///
+/// ALSA сообщает границы «любой частоты» как 1 Гц и 4294967295 Гц: показывать их пользователю
+/// бессмысленно, выбрать их нельзя.
+fn is_plausible_rate(rate: &u32) -> bool {
+    (4_000..=768_000).contains(rate)
+}
+
 /// Частоты для показа пользователю: границы диапазонов плюс общеупотребимые значения внутри них.
 fn sample_rates_from_ranges(ranges: impl Iterator<Item = (u32, u32)>) -> Vec<u32> {
     let mut rates = Vec::new();
     for (min, max) in ranges {
-        rates.push(min);
-        rates.push(max);
+        rates.extend([min, max].into_iter().filter(is_plausible_rate));
         rates.extend(
             COMMON_RATES
                 .iter()
@@ -536,6 +576,38 @@ mod tests {
     fn sample_rates_include_bounds_and_common_values() {
         let rates = sample_rates_from_ranges([(8_000, 48_000)].into_iter());
         assert_eq!(rates, vec![8_000, 16_000, 22_050, 32_000, 44_100, 48_000]);
+    }
+
+    #[test]
+    fn absurd_alsa_bounds_are_not_shown_as_sample_rates() {
+        // ALSA отдаёт «любую частоту» как 1 … 4294967295: в списке остаются только реальные.
+        let rates = sample_rates_from_ranges([(1, u32::MAX)].into_iter());
+        assert_eq!(rates, COMMON_RATES.to_vec());
+    }
+
+    #[test]
+    fn duplicate_alsa_entries_collapse_into_one_device() {
+        let mut devices = Vec::new();
+        merge_device(
+            &mut devices,
+            DeviceInfo {
+                name: "ALC897 Analog".into(),
+                is_default: false,
+                sample_rates: vec![44_100],
+            },
+        );
+        merge_device(
+            &mut devices,
+            DeviceInfo {
+                name: "ALC897 Analog".into(),
+                is_default: true,
+                sample_rates: vec![16_000, 44_100],
+            },
+        );
+
+        assert_eq!(devices.len(), 1, "одно устройство — один пункт списка");
+        assert_eq!(devices[0].sample_rates, vec![16_000, 44_100]);
+        assert!(devices[0].is_default, "признак «по умолчанию» потерян");
     }
 
     #[test]
