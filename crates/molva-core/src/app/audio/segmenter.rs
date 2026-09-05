@@ -17,10 +17,16 @@
 use crate::domain::audio::PcmAudio;
 
 /// Куска короче этого не бывает: на паузу до него сегментатор не реагирует.
-pub const DEFAULT_TARGET_CHUNK_SECS: f32 = 5.0;
+///
+/// Три секунды — это замер, а не вкус. На модели `small` и процессоре распознавание идёт примерно
+/// со скоростью речи, поэтому длина куска решает всё: с пятью секундами очередь не успевает
+/// разгрестись до отпускания клавиши (12,6 → 12,2 с ожидания, то есть выигрыша нет), с тремя
+/// ожидание падает вдвое (12,6 → 6,8 с), а с двумя снова растёт (9,6 с) — каждый лишний кусок
+/// платит за свой запас окна энкодера.
+pub const DEFAULT_TARGET_CHUNK_SECS: f32 = 3.0;
 
 /// Предел, после которого кусок режется даже без паузы.
-pub const DEFAULT_MAX_CHUNK_SECS: f32 = 12.0;
+pub const DEFAULT_MAX_CHUNK_SECS: f32 = 10.0;
 
 /// Перекрытие соседних кусков: звук на границе попадает в оба куска.
 pub const DEFAULT_OVERLAP_MS: u32 = 150;
@@ -515,8 +521,8 @@ mod tests {
     #[test]
     fn defaults_match_the_documented_lengths() {
         let config = SegmenterConfig::new(16_000, DEFAULT_CHUNK_PAUSE_MS, -45.0);
-        assert_eq!(config.target_chunk_secs, 5.0);
-        assert_eq!(config.max_chunk_secs, 12.0);
+        assert_eq!(config.target_chunk_secs, 3.0);
+        assert_eq!(config.max_chunk_secs, 10.0);
         assert_eq!(config.overlap_ms, 150);
         assert_eq!(config.min_pause_ms, 700);
     }

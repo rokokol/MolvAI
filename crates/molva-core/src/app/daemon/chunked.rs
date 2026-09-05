@@ -518,6 +518,7 @@ mod tests {
 
     #[test]
     fn the_feeder_cuts_the_stream_while_the_recording_is_still_running() {
+        // Порции по восемь секунд: два тика — и в сегментаторе уже есть на что резать.
         let mut source = FakeAudioSource::paced(speech(14.0), 8_000);
         source.start(None).expect("запись началась");
         let mut feeder = ChunkFeeder::new(&SttConfig::default(), &AudioConfig::default());
@@ -528,13 +529,25 @@ mod tests {
 
         assert!(
             !first.is_empty() || !second.is_empty(),
-            "за 16 секунд речи не отдано ни куска: обработка так и ждёт отпускания"
+            "за четырнадцать секунд речи не отдано ни куска: обработка так и ждёт отпускания"
         );
         let full = source.stop().expect("запись остановлена");
         let streamed = feeder.emitted();
-        let tail = feeder.finish(&full);
+        // Остаток после отпускания: хвоста может и не быть, если запись кончилась на паузе —
+        // тишину распознавать незачем.
+        let rest = feeder.finish(&full);
+
         assert!(streamed > 0);
-        assert!(!tail.is_empty(), "хвост потерян");
+        let seconds: f32 = first
+            .iter()
+            .chain(second.iter())
+            .chain(rest.iter())
+            .map(Chunk::duration_secs)
+            .sum();
+        assert!(
+            seconds > 12.0,
+            "куски покрывают не всю запись: {seconds:.1} с из четырнадцати"
+        );
     }
 
     #[test]

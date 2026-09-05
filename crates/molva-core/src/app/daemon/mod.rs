@@ -915,8 +915,15 @@ mod tests {
 
     /// Дождаться реплики, собрав по дороге все черновики.
     fn drain_until_entry(events: &Receiver<Event>) -> (Vec<String>, crate::domain::entry::Entry) {
+        drain_until_entry_within(events, Duration::from_secs(10))
+    }
+
+    fn drain_until_entry_within(
+        events: &Receiver<Event>,
+        wait: Duration,
+    ) -> (Vec<String>, crate::domain::entry::Entry) {
         let mut drafts = Vec::new();
-        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        let deadline = std::time::Instant::now() + wait;
         while std::time::Instant::now() < deadline {
             match events.recv_timeout(Duration::from_millis(200)) {
                 Ok(Event::Hypothesis { text }) => drafts.push(text),
@@ -1044,6 +1051,98 @@ mod tests {
             "текст отменённой записи прирос к следующей реплике: {raw:?}"
         );
         drop(h.daemon);
+    }
+
+    /// Замер на настоящей модели: сколько человек ждёт после отпускания клавиши.
+    ///
+    /// Микрофон играет речь в реальном времени (порция за тик), поэтому измеряется ровно то, что
+    /// видит пользователь: от `RecordStop` до готовой записи. Прогон занимает минуты, поэтому он
+    /// ручной: `MOLVA_TEST_MODEL=<путь> cargo test --release -- --ignored real_model_streaming`.
+    #[test]
+    #[ignore = "нужна скачанная модель whisper: MOLVA_TEST_MODEL=<путь> --ignored"]
+    fn real_model_streaming_shortens_the_wait_after_the_release() {
+        let Ok(model) = std::env::var("MOLVA_TEST_MODEL") else {
+            panic!("задайте MOLVA_TEST_MODEL=<путь к ggml-*.bin>");
+        };
+        for chunked in [false, true] {
+            let mut config = Config::default();
+            config.stt.chunked = chunked;
+            let (elapsed, entry) = run_real_reply(&model, config);
+            println!(
+                "chunked = {chunked}: после отпускания {} мс | stt {} мс | до первой гипотезы \
+                 {:?} | реплика {:.1} с\n  {}",
+                elapsed.as_millis(),
+                entry.latency_ms.stt,
+                entry.latency_ms.first_hypothesis,
+                entry.audio_secs,
+                entry.text_final.as_deref().unwrap_or("")
+            );
+        }
+    }
+
+    /// Одна реплика через демон с настоящей моделью: время от отпускания до готовой записи.
+    #[cfg(test)]
+    fn run_real_reply(model: &str, config: Config) -> (Duration, crate::domain::entry::Entry) {
+        use crate::app::pipeline::{Pipeline, PipelineConfig};
+        use crate::domain::clock::SystemClock;
+        use crate::infra::stt::WhisperEngine;
+
+        let clock = Arc::new(SystemClock);
+        let audio = concatenated_fixtures();
+        let secs = audio.duration_secs();
+        let pipeline = Pipeline::new(
+            Box::new(WhisperEngine::new(model.into(), "test".into(), 0)),
+            None,
+            Box::new(SharedInjector {
+                injected: Arc::new(Mutex::new(Vec::new())),
+                fail: false,
+            }),
+            Box::new(MemJournal::default()),
+            clock.clone(),
+            PipelineConfig::from_config(&config),
+        );
+        let daemon = Daemon::spawn(DaemonParts {
+            // Порция за тик — это воспроизведение в реальном времени, как с живого микрофона.
+            audio: Box::new(FakeAudioSource::paced(audio, chunked::TICK_MS as u32)),
+            processor: Box::new(pipeline),
+            notifier: Arc::new(RecordingNotifier::default()),
+            clock,
+            config,
+        });
+        let handle = daemon.handle();
+        let events = handle.subscribe();
+        handle
+            .send(Input::RecordStart {
+                mode: Mode::Dictation,
+                style: None,
+            })
+            .unwrap();
+        std::thread::sleep(Duration::from_secs_f32(secs));
+        let released = std::time::Instant::now();
+        handle.send(Input::RecordStop).unwrap();
+        let (drafts, entry) = drain_until_entry_within(&events, Duration::from_secs(300));
+        let elapsed = released.elapsed();
+        println!("  черновиков во время записи: {}", drafts.len());
+        drop(daemon);
+        (elapsed, entry)
+    }
+
+    /// Три речевые фикстуры подряд: реплика на двенадцать секунд с паузами между фразами.
+    #[cfg(test)]
+    fn concatenated_fixtures() -> PcmAudio {
+        let mut samples = Vec::new();
+        for name in ["privet_ru.wav", "hello_en.wav", "secret_ru_en.wav"] {
+            let path = format!("{}/../../tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"));
+            let mut reader = hound::WavReader::open(&path).expect("фикстура на месте");
+            samples.extend(
+                reader
+                    .samples::<i16>()
+                    .map(|s| s.expect("отсчёт") as f32 / i16::MAX as f32),
+            );
+            // Пауза между фразами: сегментатору нужна граница.
+            samples.resize(samples.len() + 16_000, 0.0);
+        }
+        PcmAudio::new(samples, 16_000)
     }
 
     #[test]
