@@ -1,0 +1,195 @@
+name: release
+
+# Единственный workflow с правом писать в репозиторий: он и только он создаёт релиз.
+# Запускается по тегу vX.Y.Z, ручной запуск — для репетиции без публикации.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  WHISPER_DONT_GENERATE_BINDINGS: "1"
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Тег не выпускается, пока гейт не сошёлся: вызываем настоящий workflow,
+  # а не копию его шагов
+  gate:
+    uses: ./.github/workflows/ci.yml
+
+  # Ведомость состава и отчёт по лицензиям собираются один раз и кладутся
+  # в релиз рядом с бинарниками
+  provenance:
+    needs: gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Тулчейн Rust из rust-toolchain.toml
+        run: rustup show
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-cyclonedx,cargo-about
+
+      - name: just sbom
+        run: just sbom
+
+      - name: just third-party
+        run: just third-party
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: provenance
+          path: |
+            sbom/
+            THIRD-PARTY.md
+            NOTICE
+            docs/model-licenses.md
+
+  # CLI molva на трёх ОС; бинарник заодно становится sidecar для GUI
+  cli:
+    needs: gate
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: macos-latest
+            target: aarch64-apple-darwin
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Системные зависимости (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libasound2-dev libxkbcommon-dev libwayland-dev \
+            cmake patchelf
+
+      - name: Тулчейн Rust из rust-toolchain.toml
+        shell: bash
+        run: |
+          rustup show
+          rustup target add ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+
+      - name: Сборка CLI
+        shell: bash
+        run: cargo build --locked --release --target ${{ matrix.target }} --bin molva
+
+      # Tauri ждёт sidecar с именем, оканчивающимся на target triple
+      - name: Бинарник как sidecar для GUI
+        shell: bash
+        run: |
+          mkdir -p crates/molva-gui/binaries
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cp "target/${{ matrix.target }}/release/molva.exe" \
+               "crates/molva-gui/binaries/molva-${{ matrix.target }}.exe"
+          else
+            cp "target/${{ matrix.target }}/release/molva" \
+               "crates/molva-gui/binaries/molva-${{ matrix.target }}"
+          fi
+
+      - name: Архив CLI
+        shell: bash
+        run: |
+          mkdir -p dist
+          stage="molva-${{ github.ref_name }}-${{ matrix.target }}"
+          mkdir -p "$stage"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cp "target/${{ matrix.target }}/release/molva.exe" "$stage/"
+          else
+            cp "target/${{ matrix.target }}/release/molva" "$stage/"
+          fi
+          cp README.md LICENSE NOTICE THIRD-PARTY.md "$stage/"
+          tar -czf "dist/$stage.tar.gz" "$stage"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.target }}
+          path: dist/*
+
+      # GUI появляется в дорожке B; до появления tauri.conf.json шаг пропускается
+      - name: Есть ли конфиг Tauri
+        id: tauri
+        shell: bash
+        run: |
+          if [ -f crates/molva-gui/tauri.conf.json ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::SKIP: crates/molva-gui/tauri.conf.json ещё нет, пакеты GUI не собираются"
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.tauri.outputs.present == 'true'
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: crates/molva-gui/ui/package-lock.json
+
+      - uses: tauri-apps/tauri-action@v0
+        if: steps.tauri.outputs.present == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: crates/molva-gui
+          args: --target ${{ matrix.target }}
+
+      - uses: actions/upload-artifact@v4
+        if: steps.tauri.outputs.present == 'true'
+        with:
+          name: gui-${{ matrix.target }}
+          path: |
+            target/${{ matrix.target }}/release/bundle/**/*.AppImage
+            target/${{ matrix.target }}/release/bundle/**/*.deb
+            target/${{ matrix.target }}/release/bundle/**/*.msi
+            target/${{ matrix.target }}/release/bundle/**/*setup.exe
+            target/${{ matrix.target }}/release/bundle/**/*.dmg
+          if-no-files-found: ignore
+
+  publish:
+    needs: [cli, provenance]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # Право писать выдано ровно одному job во всём репозитории
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: staging
+
+      - name: Разложить артефакты и посчитать суммы
+        run: |
+          mkdir -p dist
+          find staging -type f ! -name '*.txt' -exec cp {} dist/ \;
+          cd dist
+          sha256sum ./* > sha256sums.txt
+          cat sha256sums.txt
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true
