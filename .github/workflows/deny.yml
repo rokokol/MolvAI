@@ -1,0 +1,41 @@
+name: deny
+
+# Детектор, а не гейт: красный прогон здесь обвиняет мир (новая CVE в базе RustSec,
+# сменившаяся лицензия у зависимости), а не чей-то pull request. Поэтому запускается
+# на push в main, раз в неделю и руками — но никогда на pull request.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deny-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Лицензии зависимостей, забаненные крейты, источники — правила в deny.toml
+  licenses:
+    name: cargo-deny
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+
+  # Уязвимости из базы RustSec: за неделю она пополняется без единого коммита в репозиторий
+  audit:
+    name: cargo-audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

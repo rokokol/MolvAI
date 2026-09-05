@@ -1,5 +1,7 @@
 # MolvAI
 
+[![ci](https://github.com/rokokol/MolvAI/actions/workflows/ci.yml/badge.svg)](https://github.com/rokokol/MolvAI/actions/workflows/ci.yml)
+[![deny](https://github.com/rokokol/MolvAI/actions/workflows/deny.yml/badge.svg)](https://github.com/rokokol/MolvAI/actions/workflows/deny.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 Открытый системный голосовой ввод: зажал клавишу, сказал, отпустил — текст появился в активном поле любого приложения. Обработка на вашем компьютере, одинаково на Linux, Windows и macOS
