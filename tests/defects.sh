@@ -483,6 +483,11 @@ defect 'sound/stop-cue-on-record' 'crates/molva-core/src/app/daemon/mod.rs' \
   '                                        let _ = &sound;' \
   'конец записи не слышен: непонятно, отпустил ли ты клавишу и ушла ли реплика в обработку'
 
+defect 'cli/second-instance-refuses-to-start' 'crates/molva/src/cmd/daemon.rs' \
+  '    let Some(pid) = ping(socket) else {' \
+  '    let Some(pid) = ping(socket).filter(|_| false) else {' \
+  'вторая копия демона стартует молча: две копии дерутся за микрофон и за вставку'
+
 defect 'config/terminal-shortcut-on-by-default' 'crates/molva-core/src/config.rs' \
   '            terminal_shortcut: true,' \
   '            terminal_shortcut: false,' \
