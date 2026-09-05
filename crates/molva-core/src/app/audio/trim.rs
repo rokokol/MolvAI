@@ -105,9 +105,7 @@ mod tests {
     /// Отрезок синуса заданной амплитуды: ровный сигнал, у которого RMS предсказуем.
     fn tone(ms: u32, amplitude: f32) -> Vec<f32> {
         let n = (RATE as u64 * ms as u64 / 1000) as usize;
-        (0..n)
-            .map(|i| amplitude * (i as f32 * 0.3).sin())
-            .collect()
+        (0..n).map(|i| amplitude * (i as f32 * 0.3).sin()).collect()
     }
 
     fn silence(ms: u32) -> Vec<f32> {

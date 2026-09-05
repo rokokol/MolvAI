@@ -1,0 +1,12 @@
+# Эталонные тексты речевых фикстур для WER/CER в `molva bench` и golden-тестах.
+# Записи сделаны автором проекта 2026-09-05 (pw-record, 16 кГц, моно), лицензия CC0-1.0.
+
+[[fixture]]
+file = "privet_ru.wav"
+language = "ru"
+text = "Привет, как дела, Солнышко?"
+
+[[fixture]]
+file = "hello_en.wav"
+language = "en"
+text = "What's up, guys! How is it doing? It is cold today"
