@@ -94,6 +94,20 @@ fn output_mode(value: &str) -> OutputMode {
     }
 }
 
+/// Способ вставки, каким он попадёт в журнал.
+///
+/// Критерий AJ-09/AJ-10: если активного окна нет, вставлять некуда — текст остаётся в буфере
+/// обмена, реализация вставки говорит об этом уведомлением, а в журнале случай виден отдельно
+/// (`clipboard-no-focus`), а не выдаётся за удачную вставку в поле ввода.
+pub const NO_FOCUS_METHOD: &str = "clipboard-no-focus";
+
+fn inject_method_for(method: &str, app_hint: Option<&str>) -> String {
+    if app_hint.is_none() && method == "clipboard-only" {
+        return NO_FOCUS_METHOD.to_string();
+    }
+    method.to_string()
+}
+
 fn millis_since(start: Instant, now: Instant) -> u32 {
     now.saturating_duration_since(start)
         .as_millis()
@@ -316,7 +330,7 @@ impl Pipeline {
             let inject_started = self.clock.instant();
             match self.injector.inject(&text, resolved) {
                 Ok(report) => {
-                    entry.inject_method = Some(report.method);
+                    entry.inject_method = Some(inject_method_for(&report.method, app_hint));
                     entry.latency_ms.inject =
                         Some(millis_since(inject_started, self.clock.instant()));
                 }
@@ -1161,6 +1175,18 @@ mod tests {
             .run(audio(4.0), Mode::Dictation, None, None)
             .unwrap();
         assert!(harness.clock.slept().is_empty());
+    }
+
+    #[test]
+    fn without_an_active_window_the_journal_says_the_text_stayed_in_the_clipboard() {
+        // Критерий AJ-09/AJ-10: поля ввода нет — текст в буфере, и в истории это видно.
+        assert_eq!(inject_method_for("clipboard-only", None), NO_FOCUS_METHOD);
+        assert_eq!(
+            inject_method_for("clipboard-only", Some("kitty")),
+            "clipboard-only",
+            "окно есть: обычная вставка через буфер, пусть и с Ctrl+V руками"
+        );
+        assert_eq!(inject_method_for("wtype-type", None), "wtype-type");
     }
 
     #[test]

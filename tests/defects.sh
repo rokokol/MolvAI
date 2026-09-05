@@ -483,6 +483,11 @@ defect 'sound/stop-cue-on-record' 'crates/molva-core/src/app/daemon/mod.rs' \
   '                                        let _ = &sound;' \
   'конец записи не слышен: непонятно, отпустил ли ты клавишу и ушла ли реплика в обработку'
 
+defect 'pipeline/no-focus-is-visible-in-the-journal' 'crates/molva-core/src/app/pipeline.rs' \
+  '    if app_hint.is_none() && method == "clipboard-only" {' \
+  '    if false {' \
+  'реплика без активного поля ввода выглядит в истории как успешно вставленная'
+
 defect 'gui/tray-icon-is-static-between-states' 'crates/molva-gui/src/tray.rs' \
   '    shown != Some(next)' \
   '    shown != Some(next) || true' \
