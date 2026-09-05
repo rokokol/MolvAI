@@ -7,6 +7,8 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 authors.workspace = true
+# Приложение распространяется бандлами Tauri, не через crates.io: path-зависимость на ядро без версии
+publish = false
 
 [lib]
 # Имя библиотеки без дефиса: его импортирует main.rs и мобильные обвязки Tauri.

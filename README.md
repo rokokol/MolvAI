@@ -159,6 +159,30 @@ model = "large-v3-turbo"
 > [!NOTE]
 > Раздел заполняется: функция реализуется на хакатоне, и описание появится здесь вместе с ней, а не раньше
 
+## Тесты
+
+Одна команда, обычный Cargo, без Nix и без `just`:
+
+```sh
+cargo test --workspace --no-fail-fast
+```
+
+Тесты не требуют микрофона, модели и сети: железо подменяется фейками, аудио берётся из `tests/fixtures/`. Крейту GUI нужны системные библиотеки Tauri; если их нет, проверяйте ядро и CLI отдельно:
+
+```sh
+cargo test -p molva-core -p molva --no-fail-fast
+```
+
+Системные зависимости для сборки на Debian и Ubuntu: `cmake libasound2-dev libxkbcommon-dev libwayland-dev` для ядра и CLI, плюс `libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev` для GUI. Полный список для других дистрибутивов печатает `./install.sh --check`. Тулчейн Rust закреплён в `rust-toolchain.toml`, `rustup` подхватит его сам
+
+Тот же прогон с честным вердиктом (лог читается даже при exit 0) и остальные проверки — через `just`:
+
+```sh
+just test     # cargo test через scripts/t.sh
+just check    # fmt, clippy, тесты, SPDX-заголовки, отсутствие заглушек
+just falsify  # сломать каждую гарантию из tests/defects.sh и потребовать, чтобы сьют заметил
+```
+
 ## Разработка
 
 ```sh

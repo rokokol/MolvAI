@@ -35,6 +35,15 @@ allow-wildcard-paths = true
 
 [advisories]
 yanked = "deny"
+# Tauri 2 на Linux тянет gtk-rs 0.18 (GTK3), proc-macro-error и unic-*, объявленные
+# unmaintained; заменить их не в нашей власти, поэтому статус unmaintained проверяется
+# только у прямых зависимостей workspace. Уязвимости остаются ошибкой при любой глубине.
+unmaintained = "workspace"
+ignore = [
+    # glib 0.18 (через Tauri 2 / GTK3): unsound в VariantStrIter, который мы не вызываем;
+    # исправлено в glib ≥ 0.20, куда Tauri перейдёт вместе с GTK4
+    { id = "RUSTSEC-2024-0429", reason = "glib 0.18 приходит транзитивно из Tauri 2; VariantStrIter не используется" },
+]
 
 [sources]
 unknown-registry = "deny"

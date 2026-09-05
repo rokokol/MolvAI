@@ -34,6 +34,11 @@ jobs:
     name: cargo-audit
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    # Действие публикует результат как check run, для этого нужна запись в checks;
+    # без неё job падал с «Resource not accessible by integration» при нуле уязвимостей
+    permissions:
+      contents: read
+      checks: write
     steps:
       - uses: actions/checkout@v4
       - uses: rustsec/audit-check@v2
