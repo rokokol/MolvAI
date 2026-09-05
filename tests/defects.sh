@@ -223,3 +223,23 @@ defect 'pipeline/auth-error-is-not-retried' 'crates/molva-core/src/app/pipeline.
   '                Err(LlmError::Auth) => return Err(LlmError::Auth),' \
   '                Err(LlmError::Auth) => last = LlmError::Auth,' \
   'протухший ключ бьётся в провайдера столько раз, сколько настроено повторов'
+
+defect 'config/broken-file-is-backed-up' 'crates/molva-core/src/config.rs' \
+  '                std::fs::rename(path, &broken).map_err(|source| ConfigError::Write {' \
+  '                std::fs::remove_file(path).map_err(|source| ConfigError::Write {' \
+  'повреждённый файл настроек стирается без копии: правки пользователя не вернуть'
+
+defect 'config/set-refuses-invalid-values' 'crates/molva-core/src/config.rs' \
+  '        updated.validate().map_err(ConfigError::Invalid)?;' \
+  '        let _ = updated.validate();' \
+  '`molva config set` записывает мусор, который потом ломает запуск'
+
+defect 'config/unknown-key-is-refused' 'crates/molva-core/src/config.rs' \
+  '        let value = value_at(&root, path).ok_or_else(|| ConfigError::UnknownKey(path.into()))?;' \
+  '        let value = value_at(&root, path).unwrap_or(&root);' \
+  'опечатка в имени настройки молча возвращает чужое значение вместо ошибки'
+
+defect 'config/validation-collects-every-issue' 'crates/molva-core/src/config.rs' \
+  '                issues.push(ConfigIssue::allowed(key, value, allowed));' \
+  '                let _ = (key, value, allowed);' \
+  'неверное значение из списка допустимых проходит проверку молча'
