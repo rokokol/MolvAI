@@ -1,0 +1,17 @@
+# Rust: lines that mean a run answered about less than you think.
+#
+# Opt in with `-m rust`. These are NOT in default.txt because a healthy workspace prints
+# them: `running 0 tests` appears for every target without tests, doc-test targets
+# included. Adopt this set in a crate where every target really is expected to have tests.
+
+# nothing ran, and the exit status is still 0
+running 0 tests
+test result: ok. 0 passed
+
+# a filter that matched nothing looks exactly like a clean run
+0 filtered out; finished in
+
+# something happened that the summary line does not cover
+thread 'main' panicked
+test result: FAILED
+error: test failed, to rerun pass

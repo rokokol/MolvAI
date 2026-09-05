@@ -1,0 +1,25 @@
+# Node (vitest, jest, node:test): lines that mean a run answered about less than you think.
+#
+# Opt in with `-m node`.
+
+# the glob matched nothing and somebody allowed it
+No test files found
+--passWithNoTests
+Tests:       0 total
+
+# the file never executed, so its tests are absent rather than passing
+Test suite failed to run
+
+# the expectation was regenerated instead of checked
+snapshot written
+snapshots written
+obsolete snapshot
+
+# the run was silently reduced to one test
+test.only
+it.only
+describe.only
+
+# something is still running; its state leaks into the next run
+worker process has failed to exit gracefully
+Jest did not exit one second after

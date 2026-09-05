@@ -1,0 +1,17 @@
+# Shell and bats: lines that mean a run answered about less than you think.
+#
+# Opt in with `-m shell`. `1..0`, `command not found` and `segmentation fault` are already
+# in default.txt because they are unambiguous in any language; nothing is repeated here.
+
+# with set -u this is a failure; without it, an empty string spread everywhere
+unbound variable
+
+# a path assumption that held on one machine only
+No such file or directory
+
+# a TAP producer that reported a failure while still exiting 0
+not ok
+
+# NOTE ON THE FORMAT: a marker cannot begin with `#`, because that is the comment
+# character. bats' skip line (`ok 1 name # skip reason`) therefore cannot be matched by its
+# tail alone — match something around it, or pass it for one run with `-p '# skip'`.

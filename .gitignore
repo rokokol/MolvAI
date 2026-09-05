@@ -1,0 +1,31 @@
+# Rust
+/target/
+**/target/
+
+# Node / Tauri
+node_modules/
+dist/
+crates/molva-gui/gen/
+crates/molva-gui/binaries/
+
+# Nix
+.direnv/
+result
+result-*
+
+# Логи и артефакты харнесса тестов
+.test-logs/
+*.log
+coverage.lcov
+lcov.info
+
+# Модели и локальные данные никогда не попадают в репозиторий
+*.bin
+*.gguf
+*.sqlite
+journal.jsonl
+
+# Редакторы
+.idea/
+.vscode/
+*.swp

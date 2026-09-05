@@ -1,0 +1,36 @@
+# Markers of a run that did not do what its exit status claims.
+#
+# One per line, matched case-insensitively as fixed strings against the whole log. Blank
+# lines and lines starting with # are ignored; everything else is taken verbatim, spaces
+# included. `t.sh run` loads this file always, and refuses to run if it is missing or
+# empty — a marker file that quietly resolves to nothing would turn the whole check into a
+# decoration.
+#
+# Two kinds live here, and both are failures rather than warnings: lines that mean the
+# suite never ran, and lines that mean something broke in a way an exit status can miss.
+#
+# WHAT MAY NOT GO IN THIS FILE: anything that a healthy run prints. Go emits
+# `[no test files]` for every package without tests, Rust emits `running 0 tests` for
+# every target without them, and in a workspace both appear on perfectly good runs. A
+# marker that cries wolf gets the whole check switched off within a day, which protects
+# nothing — so those live in the per-ecosystem files beside this one and are opted into
+# with `-m NAME`. check.sh enforces the difference: every entry here must catch a line in
+# tests/fixtures/lying/default.log AND stay silent on tests/fixtures/clean.log.
+#
+# Adding one: put a real line from a real run into the lying fixture in the same commit,
+# and make sure the marker is the shortest text that identifies it.
+
+# the suite never ran
+no tests ran
+collected 0 items
+no tests were found
+no tests found
+1..0
+
+# something broke in a way the exit status can miss
+traceback (most recent call last)
+panic:
+addresssanitizer
+leaksanitizer
+command not found
+segmentation fault

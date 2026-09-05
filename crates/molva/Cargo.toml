@@ -1,0 +1,19 @@
+[package]
+name = "molva"
+description = "MolvAI: системный голосовой ввод — CLI и демон"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "molva"
+path = "src/main.rs"
+
+[dependencies]
+molva-core = { path = "../molva-core" }
+clap = { workspace = true }
+anyhow = { workspace = true }
+serde_json = { workspace = true }

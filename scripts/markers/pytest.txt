@@ -1,0 +1,23 @@
+# pytest: lines that mean a run answered about less than you think.
+#
+# Opt in with `-m pytest`. The unambiguous pytest lines (`collected 0 items`, `no tests
+# ran`) are already in default.txt; what is here is noisier — a suite with legitimate
+# skips prints `skipped`, so adopt this where skips are meant to be rare and visible.
+
+# collection failed for a file: those tests are absent, not passing
+errors during collection
+ERROR collecting
+
+# a to-do list that never turns red
+xfailed
+xpassed
+
+# a condition became true everywhere, and the suite quietly shrank
+skipped
+
+# an exception nobody saw, in a destructor or a thread
+PytestUnraisableExceptionWarning
+PytestUnhandledThreadExceptionWarning
+
+# somebody already decided failures do not count
+--exitfirst

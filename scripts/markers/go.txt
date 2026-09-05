@@ -1,0 +1,18 @@
+# Go: lines that mean a run answered about less than you think.
+#
+# Opt in with `-m go`. These are NOT in default.txt because a healthy Go workspace prints
+# most of them: any package without tests emits `[no test files]`, and in a real module
+# most packages have none. Adopt this set in a repository that has reached the point of
+# expecting tests everywhere — otherwise start with `-p` for the one line you care about.
+
+# nothing ran, and the exit status is still 0
+[no test files]
+[no tests to run]
+testing: warning: no tests to run
+
+# you are reading an old verdict; -count=1 is the only supported way to defeat this
+(cached)
+
+# a build or vet failure that a wrapper can swallow
+[build failed]
+[setup failed]

@@ -1,0 +1,19 @@
+# C++ (ctest, gtest, sanitizers): lines that mean a run answered about less than you think.
+#
+# Opt in with `-m cpp`. AddressSanitizer and LeakSanitizer are already in default.txt
+# because they are unambiguous in any language; nothing is repeated here.
+
+# nothing ran, and ctest may still exit 0
+[  PASSED  ] 0 tests
+Unable to find executable
+
+# ctest reporting trouble in a way a wrapper can swallow
+Errors while running CTest
+
+# reported without failing unless halt_on_error is set
+runtime error:
+SUMMARY: UndefinedBehaviorSanitizer
+
+# the tests ran against whatever was already built, which may be yesterday's code
+No rule to make target
+ninja: build stopped
