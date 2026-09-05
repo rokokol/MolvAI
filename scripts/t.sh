@@ -38,6 +38,7 @@ set -uo pipefail
 # vendored from rokokol/tests-skill @ 6edbc0fe48d04ede242bec5052b0b371911546ee, 2026-09-05 (MIT);
 # markers/ рядом — из той же ревизии. Обновлять копированием, не правкой на месте:
 # `git log <sha>..master` в tests-skill показывает, чего не хватает этой копии.
+# Локальное отклонение: load_config без `[[ -v ]]` ради bash 3.2 на macOS (сообщено upstream).
 
 usage() { sed -n '2,35p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
@@ -103,7 +104,8 @@ load_config() {
   if [[ ! -e "$conf" ]]; then
     # A repository with no config is the normal case; only a config that exists and cannot
     # be used is an error
-    [[ "${T_CONFIG-}" == "" || ! -v T_CONFIG ]] || die "config: $conf does not exist"
+    # `[[ -v ]]` требует bash ≥ 4.2, а macOS поставляет 3.2: пустое и неустановленное равнозначны
+    [[ -z "${T_CONFIG-}" ]] || die "config: $conf does not exist"
     return 0
   fi
   [[ -r "$conf" ]] || die "config: $conf exists but cannot be read"
