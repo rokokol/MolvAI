@@ -25,13 +25,21 @@
 # The command is always explicit, after `--`. Nothing here guesses what your suite is:
 # a harness that guesses runs the wrong thing on the day it matters.
 #
+# A repository may keep its POLICY — marker sets, excused lines, log directory — in
+# ./tests/t.conf, which is read from the current directory only. It never carries the
+# command. See the config section below, or `allow`/`markers`/`pattern`/`logdir`.
+#
 # Exit status: CMD's own, passed through unchanged, except
 #   4  the runs disagreed with each other (flaky)
 #   3  CMD exited 0 but its log says it did not do what a pass claims
 #   2  a usage or harness error, before CMD ever ran
 set -uo pipefail
 
-usage() { sed -n '2,31p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+# vendored from rokokol/tests-skill @ 6edbc0fe48d04ede242bec5052b0b371911546ee, 2026-09-05 (MIT);
+# markers/ рядом — из той же ревизии. Обновлять копированием, не правкой на месте:
+# `git log <sha>..master` в tests-skill показывает, чего не хватает этой копии.
+
+usage() { sed -n '2,35p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 die() {
   printf 't.sh: %s\n' "$1" >&2
@@ -63,13 +71,77 @@ resolve_markers() {
   RESOLVED="$name"
 }
 
-# Blank lines and # comments out; everything else verbatim, spaces included
+# Blank lines and # comments out; everything else verbatim, spaces included.
+#
+# The trailing CR is stripped first, and that is not cosmetic: a file checked out with
+# CRLF turns every blank line into a marker of a single carriage return, which `grep -F`
+# then finds on every line of a CRLF log — so a healthy run is reported as a lie, with a
+# random build line offered as the evidence. Found on a Windows runner, where git's
+# autocrlf does the conversion on checkout.
 read_markers() {
   local file="$1" line
   while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
     [[ -z "$line" || "$line" == \#* ]] && continue
     printf '%s\n' "$line"
   done <"$file"
+}
+
+# A repository's own policy: which marker sets apply, which lines are excused, where logs
+# go. Read from ./tests/t.conf and nowhere else — no search up the tree, because a config
+# found three directories away is a config nobody knew was in effect. T_CONFIG points
+# somewhere else; T_CONFIG= (empty) turns it off.
+#
+# It carries policy and never the command. The command stays after `--`, in the line you
+# typed, so what runs is always visible where it runs.
+EXTRA_PATTERNS=()
+POLICY_LOGDIR=""
+POLICY_ALLOW=""
+load_config() {
+  local conf="${T_CONFIG-tests/t.conf}"
+  [[ -n "$conf" ]] || return 0
+  if [[ ! -e "$conf" ]]; then
+    # A repository with no config is the normal case; only a config that exists and cannot
+    # be used is an error
+    [[ "${T_CONFIG-}" == "" || ! -v T_CONFIG ]] || die "config: $conf does not exist"
+    return 0
+  fi
+  [[ -r "$conf" ]] || die "config: $conf exists but cannot be read"
+
+  local line key value n=0 sets=0 pats=0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    n=$((n + 1))
+    # Same CRLF stripping as read_markers, for the same reason: a config checked out with
+    # CRLF would otherwise carry a carriage return into every value
+    line="${line%$'\r'}"
+    [[ -z "${line//[[:space:]]/}" || "$line" == \#* ]] && continue
+    key=${line%%[[:space:]]*}
+    value=${line#"$key"}
+    value=${value#"${value%%[![:space:]]*}"}
+    [[ -n "$value" ]] || die "config: $conf:$n — '$key' has no value"
+    case "$key" in
+      markers)
+        resolve_markers "$value"
+        MARKER_FILES+=("$RESOLVED")
+        sets=$((sets + 1))
+        ;;
+      pattern)
+        EXTRA_PATTERNS+=("$value")
+        pats=$((pats + 1))
+        ;;
+      allow)
+        [[ -z "$POLICY_ALLOW" ]] || die "config: $conf:$n — 'allow' is given more than once"
+        POLICY_ALLOW="$value"
+        ;;
+      logdir) POLICY_LOGDIR="$value" ;;
+      # An unknown key is a typo, and a typo that is ignored is a policy silently not in
+      # effect — the failure this whole file exists to avoid
+      *) die "config: $conf:$n — unknown key '$key' (markers, pattern, allow, logdir)" ;;
+    esac
+  done <"$conf"
+
+  printf 't.sh: policy from %s (%d marker set(s), %d pattern(s)%s)\n' \
+    "$conf" "$sets" "$pats" "$([[ -n "$POLICY_ALLOW" ]] && printf ', 1 allow')" >&2
 }
 
 # Fills MARKER_PATTERNS from MARKER_FILES. Called from the shell that can actually exit.
@@ -95,10 +167,12 @@ scan_log() {
   local -a pats=("${MARKER_PATTERNS[@]}")
   (($#)) && pats+=("$@")
 
+  # T_ALLOW is the ad-hoc override and wins over the repository's own `allow` line
+  local allow="${T_ALLOW:-$POLICY_ALLOW}"
   local source="$log"
-  if [[ -n "${T_ALLOW:-}" ]]; then
+  if [[ -n "$allow" ]]; then
     source="$log.scanned"
-    grep -Ev -- "$T_ALLOW" "$log" >"$source" || :
+    grep -Ev -- "$allow" "$log" >"$source" || :
   fi
 
   local pat line found=1
@@ -109,14 +183,23 @@ scan_log() {
     done < <(grep -i -F -m 3 -- "$pat" "$source" || :)
   done
 
-  [[ -n "${T_ALLOW:-}" ]] && rm -f "$source"
+  [[ -n "$allow" ]] && rm -f "$source"
   return "$found"
 }
 
 cmd_run() {
-  local logdir="${T_LOGDIR:-.test-logs}" tail_n=40 saw_ddash=""
+  local tail_n=40 saw_ddash="" logdir=""
   MARKER_FILES=("$MARKER_DIR/default.txt")
-  local -a extra=()
+  EXTRA_PATTERNS=()
+  POLICY_LOGDIR=""
+  POLICY_ALLOW=""
+
+  # Policy first, then the flags on top: what you type adds to the repository's own
+  # settings rather than silently replacing them
+  load_config
+  logdir="${T_LOGDIR:-${POLICY_LOGDIR:-.test-logs}}"
+
+  local -a extra=(${EXTRA_PATTERNS[@]+"${EXTRA_PATTERNS[@]}"})
   while (($#)); do
     case "$1" in
       -l)
@@ -207,7 +290,11 @@ cmd_flaky() {
   ((n >= 2)) || die "flaky: $n runs cannot show disagreement; use 2 or more"
   shift
 
-  local logdir="${T_LOGDIR:-.test-logs}"
+  # The same policy `run` obeys: a repository that named its log directory once should not
+  # find flaky writing somewhere else
+  POLICY_LOGDIR=""
+  load_config
+  local logdir="${T_LOGDIR:-${POLICY_LOGDIR:-.test-logs}}"
   local -a pass=()
   while (($#)); do
     case "$1" in
