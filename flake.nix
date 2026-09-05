@@ -30,6 +30,15 @@
 
             # Биндинги whisper-rs лежат в крейте — libclang при сборке не нужен
             WHISPER_DONT_GENERATE_BINDINGS = "1";
+            # Воспроизводимая сборка без -march=native, но с SIMD: x86-64-v3 (AVX2/FMA/F16C) —
+            # иначе whisper.cpp под Nix собирается скалярно и работает в 20 раз медленнее
+            GGML_NATIVE = "OFF";
+          } // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isx86_64 {
+            GGML_AVX = "ON";
+            GGML_AVX2 = "ON";
+            GGML_FMA = "ON";
+            GGML_F16C = "ON";
+          } // {
 
             meta = {
               description = "Системный голосовой ввод с обработкой на своём компьютере";
@@ -77,6 +86,9 @@
 
             # Биндинги whisper-rs уже лежат в крейте — libclang не нужен
             WHISPER_DONT_GENERATE_BINDINGS = "1";
+            # Nix задаёт SOURCE_DATE_EPOCH, и ggml из-за этого выключает GGML_NATIVE: whisper.cpp
+            # собирается без AVX2/FMA и работает в 20 раз медленнее. Для devShell — под свою машину.
+            GGML_NATIVE = "ON";
             RUST_BACKTRACE = "1";
             # NVIDIA + Wayland: без этого окно webkit остаётся пустым
             WEBKIT_DISABLE_DMABUF_RENDERER = "1";

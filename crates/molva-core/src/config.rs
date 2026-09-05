@@ -148,7 +148,9 @@ impl Default for SttConfig {
             engine: "whisper-cpp".into(),
             model: "small".into(),
             model_path: String::new(),
-            language: "auto".into(),
+            // Фиксированный язык: автоопределение в whisper.cpp на CPU в пять раз медленнее
+            // (23 с против 4 с на реплику в 4 с с моделью small). `auto` остаётся опцией.
+            language: "ru".into(),
             allowed_languages: vec!["ru".into(), "en".into()],
             threads: 0,
             unload_after_secs: 600,
@@ -993,7 +995,7 @@ mod tests {
         let text = "[stt]\nmodel = \"large-v3-turbo\"\n[llm]\nenabled = true\n";
         let config = Config::from_toml_str(Path::new("x.toml"), text).unwrap();
         assert_eq!(config.stt.model, "large-v3-turbo");
-        assert_eq!(config.stt.language, "auto");
+        assert_eq!(config.stt.language, "ru");
         assert!(config.llm.enabled);
         assert_eq!(config.output.auto_type_max_chars, 200);
     }
