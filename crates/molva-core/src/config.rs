@@ -310,6 +310,7 @@ pub struct OutputConfig {
     /// Локально хватает 50 мс; удалённому рабочему столу (RDP, VNC, xrdp) и тяжёлым Electron-окнам
     /// нужно заметно больше — до 1500 мс.
     pub pre_inject_delay_ms: u32,
+    /// Вставлять в терминалы через Ctrl+Shift+V, глядя на класс активного окна.
     pub terminal_shortcut: bool,
     pub notify_on_fallback: bool,
 }
@@ -325,7 +326,9 @@ impl Default for OutputConfig {
             type_backend: "auto".into(),
             type_delay_ms: 4,
             pre_inject_delay_ms: 50,
-            terminal_shortcut: false,
+            // Терминалы — обычное место диктовки, а Ctrl+V в них не вставляет ничего:
+            // по умолчанию смотрим на класс окна и переключаемся на Ctrl+Shift+V.
+            terminal_shortcut: true,
             notify_on_fallback: true,
         }
     }

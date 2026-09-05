@@ -132,6 +132,7 @@ bindr = , Control_R, exec, molva stop
 | `output` | `restore_clipboard` | `true` | вернуть прежнее содержимое буфера после вставки |
 | `output` | `type_delay_ms` | `4` | задержка между символами при эмуляции ввода |
 | `output` | `pre_inject_delay_ms` | `50` | пауза перед вставкой, чтобы фокус успел вернуться в поле ввода; на удалённом рабочем столе и в медленных приложениях ставят до `1500` |
+| `output` | `terminal_shortcut` | `true` | в терминалах вставлять через Ctrl+Shift+V, определяя их по классу окна |
 | `output` | `notify_on_fallback` | `true` | сообщать, когда способ вставки пришлось сменить |
 | `hotkeys` | `backend` | `auto` | `auto`, `external`, `evdev` или `gui` |
 | `hotkeys` | `push_to_talk` | `RightCtrl` | клавиша удержания |

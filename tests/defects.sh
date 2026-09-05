@@ -483,6 +483,16 @@ defect 'sound/stop-cue-on-record' 'crates/molva-core/src/app/daemon/mod.rs' \
   '                                        let _ = &sound;' \
   'конец записи не слышен: непонятно, отпустил ли ты клавишу и ушла ли реплика в обработку'
 
+defect 'config/terminal-shortcut-on-by-default' 'crates/molva-core/src/config.rs' \
+  '            terminal_shortcut: true,' \
+  '            terminal_shortcut: false,' \
+  'из коробки вставка в терминал идёт Ctrl+V и не работает: реплика пропадает молча'
+
+defect 'inject/terminal-class-matches-exactly' 'crates/molva-core/src/infra/inject/mod.rs' \
+  '        .any(|known| class == *known || tail == *known)' \
+  '        .any(|known| class == *known || class.ends_with(known))' \
+  'терминалом считается любое окно с похожим хвостом класса: в редактор уходит Ctrl+Shift+V'
+
 defect 'daemon/hold-still-works-with-tap-toggles' 'crates/molva-core/src/app/daemon/state.rs' \
   '        if !rec.latched && self.hotkeys.tap_toggles && held < Self::ms(self.hotkeys.short_press_ms)' \
   '        if !rec.latched && self.hotkeys.tap_toggles && held < Duration::MAX' \
