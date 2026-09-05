@@ -17,6 +17,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Sample, SampleFormat, SizedSample, StreamConfig};
 use tracing::{debug, info, warn};
 
+use crate::config::AudioConfig;
 use crate::domain::audio::{downmix_to_mono, AudioError, AudioSource, DeviceInfo, PcmAudio};
 use crate::infra::audio::level::ZeroLevelWatch;
 
@@ -135,6 +136,11 @@ impl CpalSource {
             max_duration_secs,
             active: None,
         }
+    }
+
+    /// Источник по настройкам пользователя.
+    pub fn from_config(cfg: &AudioConfig) -> Self {
+        Self::new(&cfg.device, cfg.gain, cfg.max_duration_secs)
     }
 
     /// Упёрлась ли последняя запись в `max_duration_secs`.
@@ -652,6 +658,22 @@ mod tests {
             ),
             AudioError::DeviceLost
         );
+    }
+
+    #[test]
+    fn source_takes_device_gain_and_limit_from_the_config() {
+        let cfg = AudioConfig {
+            device: "Yeti".into(),
+            gain: 1.5,
+            max_duration_secs: 42,
+            ..AudioConfig::default()
+        };
+
+        let source = CpalSource::from_config(&cfg);
+
+        assert_eq!(source.device, "Yeti");
+        assert_eq!(source.gain, 1.5);
+        assert_eq!(source.max_duration_secs, 42);
     }
 
     #[test]

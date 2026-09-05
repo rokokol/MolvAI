@@ -8,10 +8,39 @@ pub mod whisper;
 
 pub use whisper::WhisperEngine;
 
+use std::path::{Path, PathBuf};
+
 use tracing::debug;
 
+use crate::config::SttConfig;
 use crate::domain::audio::PcmAudio;
 use crate::domain::stt::{LanguageHint, SttEngine, SttError, SttOptions, Transcript};
+
+/// Параметры распознавания из настроек: одно место, где конфиг превращается в `SttOptions`.
+///
+/// `initial_prompt` заполняет словарь терминов уже на стороне конвейера — он знает,
+/// какие термины актуальны для этой реплики.
+pub fn stt_options_from_config(cfg: &SttConfig, timestamps: bool) -> SttOptions {
+    SttOptions {
+        language: LanguageHint::parse(&cfg.language),
+        allowed_languages: cfg.allowed_languages.clone(),
+        initial_prompt: None,
+        threads: cfg.threads as usize,
+        timestamps,
+    }
+}
+
+/// Путь к файлу весов: явный `model_path` из настроек либо имя модели в каталоге моделей.
+///
+/// Каталог передаётся параметром, потому что им владеет каталог моделей (`molva models`), а не
+/// движок: так путь считается одинаково и в демоне, и в CLI.
+pub fn model_file_path(cfg: &SttConfig, models_dir: &Path) -> PathBuf {
+    let explicit = cfg.model_path.trim();
+    if !explicit.is_empty() {
+        return PathBuf::from(explicit);
+    }
+    models_dir.join(format!("ggml-{}.bin", cfg.model.trim()))
+}
 
 /// Распознать с одним повтором, если автоопределение выдало язык вне списка разрешённых.
 ///
@@ -166,6 +195,51 @@ mod tests {
         assert_eq!(
             retry_language(&opts_auto(&["ru", "en"]), Some("uk")),
             Some("ru".into())
+        );
+    }
+
+    #[test]
+    fn options_come_from_the_config() {
+        let cfg = SttConfig {
+            language: "RU".into(),
+            allowed_languages: vec!["ru".into(), "en".into()],
+            threads: 6,
+            ..SttConfig::default()
+        };
+
+        let opts = stt_options_from_config(&cfg, true);
+
+        assert_eq!(opts.language, LanguageHint::Fixed("ru".into()));
+        assert_eq!(opts.allowed_languages, vec!["ru", "en"]);
+        assert_eq!(opts.threads, 6);
+        assert!(opts.timestamps);
+    }
+
+    #[test]
+    fn empty_model_path_falls_back_to_the_models_directory() {
+        let cfg = SttConfig {
+            model: "small".into(),
+            model_path: String::new(),
+            ..SttConfig::default()
+        };
+
+        assert_eq!(
+            model_file_path(&cfg, Path::new("/data/models")),
+            PathBuf::from("/data/models/ggml-small.bin")
+        );
+    }
+
+    #[test]
+    fn explicit_model_path_wins_over_the_catalogue() {
+        let cfg = SttConfig {
+            model: "small".into(),
+            model_path: "/opt/whisper/my-model.bin".into(),
+            ..SttConfig::default()
+        };
+
+        assert_eq!(
+            model_file_path(&cfg, Path::new("/data/models")),
+            PathBuf::from("/opt/whisper/my-model.bin")
         );
     }
 
