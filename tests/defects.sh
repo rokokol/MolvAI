@@ -480,3 +480,18 @@ defect 'cli/plain-line-carries-the-id' 'crates/molva/src/cmd/history.rs' \
   '        "{}  {}  {}  {ID_SEPARATOR}{}",' \
   '        "{}  {}  {}  {}",' \
   'строка для rofi теряет метку идентификатора: выбранную реплику не найти по id'
+
+defect 'segmenter/silence-never-reaches-the-model' 'crates/molva-core/src/app/audio/segmenter.rs' \
+  '        if !voiced {' \
+  '        if false {' \
+  'куски чистой тишины уходят в whisper и возвращаются «Продолжением следует» посреди реплики'
+
+defect 'segmenter/chunk-is-not-shorter-than-target' 'crates/molva-core/src/app/audio/segmenter.rs' \
+  '            if cut >= target {' \
+  '            if cut >= 1 {' \
+  'первая же пауза режет реплику на огрызки по паре слов: контекста у модели не остаётся'
+
+defect 'segmenter/chunks-overlap' 'crates/molva-core/src/app/audio/segmenter.rs' \
+  '            .saturating_sub(self.samples_for_ms(self.config.overlap_ms))' \
+  '            .saturating_sub(0)' \
+  'соседние куски стыкуются встык: звук на границе теряется, слог рвётся пополам'
