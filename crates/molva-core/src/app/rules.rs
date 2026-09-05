@@ -1104,6 +1104,8 @@ mod tests {
     #[test]
     fn an_utterance_made_only_of_fillers_is_kept() {
         assert_eq!(RemoveFillers.apply("ну короче", "ru"), "ну короче");
+        // От реплики остались одни знаки препинания — это тоже пустая реплика.
+        assert_eq!(RemoveFillers.apply("ну — короче", "ru"), "ну — короче");
     }
 
     #[test]
