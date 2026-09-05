@@ -106,6 +106,8 @@ pub struct CpalSource {
     gain: f32,
     max_duration_secs: u32,
     active: Option<Active>,
+    /// Упёрлась ли в лимит последняя завершённая запись; читается уже после `stop`.
+    truncated: bool,
 }
 
 /// Состояние идущей записи: нить-хозяин потока и общий буфер.
@@ -135,6 +137,7 @@ impl CpalSource {
             gain,
             max_duration_secs,
             active: None,
+            truncated: false,
         }
     }
 
@@ -143,11 +146,14 @@ impl CpalSource {
         Self::new(&cfg.device, cfg.gain, cfg.max_duration_secs)
     }
 
-    /// Упёрлась ли последняя запись в `max_duration_secs`.
+    /// Упёрлась ли запись в `max_duration_secs` — во время записи и после её остановки.
+    ///
+    /// Демону это нужно уже после `stop`, чтобы сказать пользователю, что хвост не сохранён.
     pub fn was_truncated(&self) -> bool {
-        self.active
-            .as_ref()
-            .is_some_and(|a| a.shared.truncated.load(Ordering::Relaxed))
+        match &self.active {
+            Some(active) => active.shared.truncated.load(Ordering::Relaxed),
+            None => self.truncated,
+        }
     }
 }
 
@@ -156,6 +162,7 @@ impl AudioSource for CpalSource {
         if self.active.is_some() {
             return Err(AudioError::AlreadyRecording);
         }
+        self.truncated = false;
 
         // Список устройств пересоставляется на каждый старт: микрофон могли переподключить.
         let devices = list_input_devices()?;
@@ -218,6 +225,7 @@ impl AudioSource for CpalSource {
 
         let lost = active.shared.lost.load(Ordering::Relaxed);
         let truncated = active.shared.truncated.load(Ordering::Relaxed);
+        self.truncated = truncated;
         let mut samples = match active.shared.samples.lock() {
             Ok(mut guard) => std::mem::take(&mut *guard),
             Err(poisoned) => std::mem::take(&mut *poisoned.into_inner()),
