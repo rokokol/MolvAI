@@ -94,8 +94,8 @@ impl ProcessorConfig {
 ///
 /// Этого достаточно для сквозного демо и для тестов демона; конвейер с правилами и LLM встаёт
 /// на то же место, реализуя `Processor`.
-pub struct SimpleProcessor<S: SttEngine, I: TextInjector, J: Journal> {
-    stt: S,
+pub struct SimpleProcessor<I: TextInjector, J: Journal> {
+    stt: Box<dyn SttEngine>,
     injector: I,
     journal: J,
     clock: Arc<dyn Clock>,
@@ -103,9 +103,9 @@ pub struct SimpleProcessor<S: SttEngine, I: TextInjector, J: Journal> {
     config: ProcessorConfig,
 }
 
-impl<S: SttEngine, I: TextInjector, J: Journal> SimpleProcessor<S, I, J> {
+impl<I: TextInjector, J: Journal> SimpleProcessor<I, J> {
     pub fn new(
-        stt: S,
+        stt: Box<dyn SttEngine>,
         injector: I,
         journal: J,
         clock: Arc<dyn Clock>,
@@ -128,7 +128,7 @@ fn ms_between(from: Instant, to: Instant) -> u32 {
     u32::try_from(to.saturating_duration_since(from).as_millis()).unwrap_or(u32::MAX)
 }
 
-impl<S: SttEngine, I: TextInjector, J: Journal> Processor for SimpleProcessor<S, I, J> {
+impl<I: TextInjector, J: Journal> Processor for SimpleProcessor<I, J> {
     fn process(
         &mut self,
         audio: PcmAudio,
@@ -297,7 +297,7 @@ mod tests {
         };
         let notifier = Arc::new(RecordingNotifier::default());
         let mut processor = SimpleProcessor::new(
-            stt,
+            Box::new(stt),
             RecordingInjector::default(),
             MemJournal::default(),
             clock.clone(),
@@ -334,7 +334,7 @@ mod tests {
             takes: Duration::from_millis(10),
         };
         let mut processor = SimpleProcessor::new(
-            stt,
+            Box::new(stt),
             RecordingInjector::default(),
             MemJournal::default(),
             clock.clone(),
@@ -359,7 +359,7 @@ mod tests {
             takes: Duration::from_millis(5),
         };
         let mut processor = SimpleProcessor::new(
-            stt,
+            Box::new(stt),
             RecordingInjector::default(),
             MemJournal::default(),
             clock.clone(),
@@ -386,7 +386,7 @@ mod tests {
         };
         let notifier = Arc::new(RecordingNotifier::default());
         let mut processor = SimpleProcessor::new(
-            stt,
+            Box::new(stt),
             injector,
             MemJournal::default(),
             clock.clone(),
@@ -417,7 +417,7 @@ mod tests {
             takes: Duration::from_millis(5),
         };
         let mut processor = SimpleProcessor::new(
-            stt,
+            Box::new(stt),
             RecordingInjector::default(),
             MemJournal::default(),
             clock.clone(),
@@ -442,7 +442,7 @@ mod tests {
         };
         let notifier = Arc::new(RecordingNotifier::default());
         let mut processor = SimpleProcessor::new(
-            stt,
+            Box::new(stt),
             RecordingInjector::default(),
             MemJournal::default(),
             clock.clone(),
@@ -469,7 +469,7 @@ mod tests {
         let mut config = config();
         config.include_text = false;
         let mut processor = SimpleProcessor::new(
-            stt,
+            Box::new(stt),
             RecordingInjector::default(),
             MemJournal::default(),
             clock.clone(),
@@ -505,7 +505,7 @@ mod tests {
             takes: Duration::from_millis(5),
         };
         let mut processor = SimpleProcessor::new(
-            stt,
+            Box::new(stt),
             RecordingInjector::default(),
             MemJournal::default(),
             clock.clone(),

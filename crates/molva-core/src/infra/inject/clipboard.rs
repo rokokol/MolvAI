@@ -83,15 +83,30 @@ impl<B: ClipboardBackend> ClipboardGuard<B> {
 ///
 /// На Wayland arboard требует протокол `wlr-data-control`; на композиторах без него
 /// (и в сессиях без прав на протокол) остаются внешние утилиты.
+///
+/// Есть вторая, менее очевидная причина держать `wl-copy`: на Wayland содержимое буфера живёт
+/// в процессе-владельце. Короткоживущая команда вроде `molva test-inject` кладёт текст через
+/// arboard, выходит — и буфер становится пустым. `wl-copy` остаётся резидентом и продолжает его
+/// обслуживать, поэтому запись всегда идёт через него, когда он есть.
 #[derive(Default)]
 pub struct SystemClipboard {
     inner: Option<arboard::Clipboard>,
+    external_write: bool,
 }
 
 impl SystemClipboard {
     pub fn new() -> Self {
         Self {
             inner: arboard::Clipboard::new().ok(),
+            external_write: which::which("wl-copy").is_ok(),
+        }
+    }
+
+    /// Буфер только через arboard: для окружений без `wl-copy` и для тестов.
+    pub fn arboard_only() -> Self {
+        Self {
+            inner: arboard::Clipboard::new().ok(),
+            external_write: false,
         }
     }
 
@@ -116,8 +131,9 @@ impl ClipboardBackend for SystemClipboard {
                     rgba: image.bytes.into_owned(),
                 };
             }
-            return ClipboardSnapshot::Empty;
         }
+        // arboard мог не увидеть содержимое (нет протокола, чужой владелец) — спросим утилиту,
+        // иначе «пусто» превратит возврат буфера в его очистку.
         match wl_paste() {
             Some(text) if !text.is_empty() => ClipboardSnapshot::Text(text),
             _ => ClipboardSnapshot::Empty,
@@ -125,6 +141,9 @@ impl ClipboardBackend for SystemClipboard {
     }
 
     fn set_text(&mut self, text: &str) -> Result<(), InjectError> {
+        if self.external_write && wl_copy(text).is_ok() {
+            return Ok(());
+        }
         if let Some(clipboard) = self.inner.as_mut() {
             if clipboard.set_text(text).is_ok() {
                 return Ok(());
@@ -175,21 +194,23 @@ fn wl_paste() -> Option<String> {
 }
 
 fn wl_copy(text: &str) -> Result<(), InjectError> {
-    let mut child = Command::new("wl-copy")
+    // wl-copy сам уходит в фон и остаётся владельцем выделения; управление он возвращает уже
+    // после того, как буфер захвачен, поэтому ждать его выхода не только можно, но и нужно:
+    // иначе Ctrl+V уйдёт раньше, чем в буфере появится текст.
+    let status = Command::new("wl-copy")
         .arg("--")
         .arg(text)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .spawn()
+        .status()
         .map_err(|e| InjectError::ClipboardDenied(format!("wl-copy не запустился: {e}")))?;
-    // wl-copy остаётся резидентом и обслуживает буфер, поэтому его не ждём до конца:
-    // достаточно убедиться, что процесс стартовал.
-    match child.try_wait() {
-        Ok(Some(status)) if !status.success() => Err(InjectError::ClipboardDenied(
+    if status.success() {
+        Ok(())
+    } else {
+        Err(InjectError::ClipboardDenied(
             "wl-copy завершился с ошибкой".into(),
-        )),
-        _ => Ok(()),
+        ))
     }
 }
 

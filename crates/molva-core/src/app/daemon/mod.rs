@@ -489,7 +489,7 @@ mod tests {
         };
         let injected = injector.injected.clone();
         let processor = SimpleProcessor::new(
-            FakeStt::returning(text),
+            Box::new(FakeStt::returning(text)),
             injector,
             MemJournal::default(),
             clock.clone(),

@@ -198,12 +198,14 @@ impl TextInjector for WtypeInjector {
             }
             OutputMode::Paste => {
                 let shortcut = self.shortcut;
+                // `-k v` — именно нажатие клавиши; голое `v` wtype набрал бы как текст, и
+                // модификатор к такому «набору» не применяется.
                 paste_via_clipboard(&mut self.clipboard, text, || match shortcut {
-                    PasteShortcut::CtrlV => run("wtype", &["-M", "ctrl", "v", "-m", "ctrl"]),
+                    PasteShortcut::CtrlV => run("wtype", &["-M", "ctrl", "-k", "v", "-m", "ctrl"]),
                     PasteShortcut::CtrlShiftV => run(
                         "wtype",
                         &[
-                            "-M", "ctrl", "-M", "shift", "v", "-m", "shift", "-m", "ctrl",
+                            "-M", "ctrl", "-M", "shift", "-k", "v", "-m", "shift", "-m", "ctrl",
                         ],
                     ),
                 })?;
