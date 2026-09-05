@@ -97,7 +97,7 @@ jobs:
       - name: libclang для генерации биндингов whisper-rs (Windows)
         if: runner.os == 'Windows'
         shell: bash
-        run: echo 'LIBCLANG_PATH=C:\Program Files\LLVM\bin' >> "$GITHUB_ENV"
+        run: printf 'LIBCLANG_PATH=%s\n' 'C:\Program Files\LLVM\bin' >> "$GITHUB_ENV"
 
       - uses: Swatinem/rust-cache@v2
         with:
