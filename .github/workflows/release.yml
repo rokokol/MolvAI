@@ -45,7 +45,7 @@ jobs:
       - name: just third-party
         run: just third-party
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: provenance
           path: |
@@ -161,7 +161,7 @@ jobs:
           cp README.md LICENSE NOTICE THIRD-PARTY.md "$stage/"
           tar -czf "dist/$stage.tar.gz" "$stage"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cli-${{ matrix.target }}
           path: dist/*
@@ -204,7 +204,7 @@ jobs:
           # Без сайдкара установщик кладёт один MolvAI.exe, и GUI не находит molva.
           args: --target ${{ matrix.target }} --config tauri.sidecar.conf.json
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: steps.tauri.outputs.present == 'true'
         with:
           name: gui-${{ matrix.target }}
