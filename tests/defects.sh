@@ -161,3 +161,128 @@ defect 'rules/no-space-before-punctuation' 'crates/molva-core/src/app/rules.rs' 
   "                    '.' | ',' | ';' | ':' | '!' | '?' | ')' | '»' | '…' | '\\u{201d}'" \
   "                    '\\u{0}'" \
   'перед точкой и запятой остаётся пробел: текст выглядит как машинный вывод'
+
+# --- дорожка E: декодирование файлов ---
+
+defect 'decode/downmix-to-mono' 'crates/molva-core/src/infra/audio/decode.rs' \
+  '                mono.extend_from_slice(&downmix_to_mono(buf.samples(), channels));' \
+  '                mono.extend_from_slice(buf.samples());' \
+  'стерео-файл уходит в whisper как чередующиеся каналы: вдвое длиннее и звучит как каша'
+
+defect 'decode/empty-file-rejected' 'crates/molva-core/src/infra/audio/decode.rs' \
+  '    if meta.len() == 0 {' \
+  '    if false {' \
+  'пустой файл вместо понятного «0 байт» даёт ошибку разбора формата'
+
+defect 'decode/native-sample-rate' 'crates/molva-core/src/infra/audio/decode.rs' \
+  '    Ok(PcmAudio::new(mono, sample_rate))' \
+  '    Ok(PcmAudio::new(mono, 16_000))' \
+  'частота файла подменяется на 16 кГц без ресемплинга: длительность и скорость речи врут'
+
+# --- дорожка E: веса моделей ---
+
+defect 'models/checksum-checked' 'crates/molva-core/src/app/models.rs' \
+  '    if !actual.eq_ignore_ascii_case(sha256.trim()) {' \
+  '    if false {' \
+  'подменённый или недокачанный файл модели принимается как настоящий'
+
+defect 'models/checksum-mismatch-deletes' 'crates/molva-core/src/app/models.rs' \
+  '        let _ = std::fs::remove_file(&target);' \
+  '        let _ = &target;' \
+  'битый файл остаётся на диске и на следующем запуске выдаётся за модель'
+
+defect 'models/skip-download-when-valid' 'crates/molva-core/src/app/models.rs' \
+  '    if verify(&target, sha256)? {' \
+  '    if false {' \
+  'повторный pull качает гигабайты заново, хотя модель уже на месте'
+
+defect 'models/resume-from-part' 'crates/molva-core/src/app/models.rs' \
+  '        request = request.header(reqwest::header::RANGE, format!("bytes={already}-"));' \
+  '        request = request.header(reqwest::header::RANGE, "bytes=0-".to_string());' \
+  'прерванная загрузка начинается с нуля вместо докачки'
+
+defect 'models/missing-model-hint' 'crates/molva-core/src/app/models.rs' \
+  '    if path.is_file() {' \
+  '    if true {' \
+  'отсутствующая модель не сообщает команду скачивания, а падает где-то в движке'
+
+# --- дорожка E: метрики качества ---
+
+defect 'wer/normalization-lowercase' 'crates/molva-core/src/app/wer.rs' \
+  '            out.extend(ch.to_lowercase());' \
+  '            out.push(ch);' \
+  'разный регистр считается ошибкой распознавания: WER завышен на ровном месте'
+
+defect 'wer/levenshtein-substitution' 'crates/molva-core/src/app/wer.rs' \
+  '            let cost = usize::from(ai != bj);' \
+  '            let cost = 0usize;' \
+  'замена слова не считается ошибкой: WER занижен, чекер хвалит плохую модель'
+
+defect 'wer/empty-reference' 'crates/molva-core/src/app/wer.rs' \
+  '        return if hypothesis_len == 0 { 0.0 } else { 1.0 };' \
+  '        return 0.0;' \
+  'галлюцинация на тишине получает нулевой WER'
+
+# --- дорожка E: чекер bench ---
+
+defect 'bench/percentile-rank' 'crates/molva-core/src/app/bench.rs' \
+  '    let rank = (p / 100.0 * sorted.len() as f32).ceil().max(1.0) as usize;' \
+  '    let rank = 1;' \
+  'все перцентили задержки равны минимуму: p95 и p99 в отчёте выдуманы'
+
+defect 'bench/repeat-runs' 'crates/molva-core/src/app/bench.rs' \
+  '        for _ in 0..repeat {' \
+  '        for _ in 0..1 {' \
+  '--repeat N молча делает один прогон: разброс задержек не виден'
+
+defect 'bench/empty-set-detected' 'crates/molva-core/src/app/bench.rs' \
+  '        if manifest.case.is_empty() {' \
+  '        if false {' \
+  'пустой набор выдаёт отчёт с нулевым WER вместо ошибки'
+
+# --- дорожка E: командная строка ---
+
+defect 'cli/directory-order-stable' 'crates/molva/src/cmd/transcribe.rs' \
+  '    entries.sort();' \
+  '    entries.sort_unstable_by(|a, b| b.cmp(a));' \
+  'файлы каталога обрабатываются в обратном порядке: вывод пакета непредсказуем'
+
+defect 'cli/timecode-minutes' 'crates/molva/src/cmd/transcribe.rs' \
+  '        total_secs / 60,' \
+  '        0,' \
+  'таймкоды длиннее минуты показывают 90 секунд вместо 01:30'
+
+defect 'cli/postprocess-applied' 'crates/molva/src/cmd/transcribe.rs' \
+  '        let text = postprocess(&raw);' \
+  '        let text = raw.clone();' \
+  'постобработка текста молча отключается: словарь и правила не применяются'
+
+defect 'cli/journal-source-file' 'crates/molva/src/cmd/transcribe.rs' \
+  '            source: Source::File,' \
+  '            source: Source::Mic,' \
+  'пакетная расшифровка попадает в статистику как диктовка с микрофона'
+
+defect 'cli/output-directory' 'crates/molva/src/cmd/transcribe.rs' \
+  '        Some(path) if path.is_dir() => {' \
+  '        Some(path) if false => {' \
+  'при выводе в каталог всё сливается в один файл с именем каталога'
+
+defect 'cli/exit-code-file' 'crates/molva/src/cmd/mod.rs' \
+  '    pub const FILE: u8 = crate::exit::FILE;' \
+  '    pub const FILE: u8 = crate::exit::BAD_ARGS;' \
+  'ошибка файла отдаёт код аргументов: скрипты не отличают одно от другого'
+
+defect 'cli/bench-repeat-validated' 'crates/molva/src/cmd/bench.rs' \
+  '    if args.repeat == 0 {' \
+  '    if false {' \
+  '--repeat 0 молча делает один прогон вместо понятной ошибки'
+
+defect 'cli/output-name-collision' 'crates/molva/src/cmd/transcribe.rs' \
+  '            if counts.get(&stem).copied().unwrap_or(0) > 1 {' \
+  '            if false {' \
+  'tone.mp3 и tone.ogg пишутся в один tone.txt: половина работы теряется молча'
+
+defect 'cli/pull-skips-installed' 'crates/molva/src/cmd/models.rs' \
+  '    let ok = models::verify(target, sha256).map_err(|e| CmdError::file(e.to_string()))?;' \
+  '    let ok = false;' \
+  'молва каждый раз перекачивает уже установленную модель'

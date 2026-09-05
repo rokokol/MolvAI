@@ -17,6 +17,9 @@ allow = [
     "Unicode-3.0",
     "Unicode-DFS-2016",
     "CC0-1.0",
+    # Набор корневых сертификатов Mozilla (webpki-root-certs) — данные, а не код;
+    # лицензия разрешительная и без копилефта, поэтому Z-07/Z-08 не нарушает.
+    "CDLA-Permissive-2.0",
     "BSL-1.0",
     "0BSD",
     "OpenSSL",

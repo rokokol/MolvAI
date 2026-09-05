@@ -25,9 +25,14 @@ uuid = { workspace = true }
 toml = { workspace = true }
 directories = { workspace = true }
 tracing = { workspace = true }
+# Захват и распознавание
 whisper-rs = "0.16"
 cpal = "0.18"
-hound = "3.5"
+hound = { workspace = true }
+# Декодирование файлов, загрузка весов
+symphonia = { workspace = true }
+reqwest = { workspace = true }
+sha2 = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
