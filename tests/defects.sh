@@ -136,3 +136,28 @@ defect 'rules/no-space-before-punctuation' 'crates/molva-core/src/app/rules.rs' 
   "                    '.' | ',' | ';' | ':' | '!' | '?' | ')' | '»' | '…' | '\\u{201d}'" \
   "                    '\\u{0}'" \
   'перед точкой и запятой остаётся пробел: текст выглядит как машинный вывод'
+
+defect 'dictionary/case-from-the-dictionary' 'crates/molva-core/src/app/dictionary.rs' \
+  '            CaseMode::Keep => self.word.clone(),' \
+  '            CaseMode::Keep => self.word.to_lowercase(),' \
+  'термин теряет свой регистр: MolvAI превращается в molvai'
+
+defect 'dictionary/fuzzy-threshold' 'crates/molva-core/src/app/dictionary.rs' \
+  'pub const FUZZY_THRESHOLD: f64 = 0.85;' \
+  'pub const FUZZY_THRESHOLD: f64 = 0.1;' \
+  'нечёткое совпадение подменяет любое похожее по длине слово'
+
+defect 'dictionary/hits-count-real-substitutions' 'crates/molva-core/src/app/dictionary.rs' \
+  '                    if join(&original) != replacement {' \
+  '                    if true {' \
+  'счётчик попаданий словаря растёт на словах, которые и так были написаны верно'
+
+defect 'dictionary/multi-word-aliases' 'crates/molva-core/src/app/dictionary.rs' \
+  '        let max = self.max_alias_words.min(tokens.len() - at);' \
+  '        let max = 1;' \
+  'многословный алиас «молв ай» перестаёт распознаваться'
+
+defect 'dictionary/reload-notices-a-change' 'crates/molva-core/src/app/dictionary.rs' \
+  '        if current == self.mtime && self.mtime.is_some() {' \
+  '        if true {' \
+  'пополнение словаря не подхватывается без перезапуска демона'

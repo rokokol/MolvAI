@@ -382,6 +382,7 @@ dependencies = [
  "directories",
  "serde",
  "serde_json",
+ "strsim",
  "tempfile",
  "thiserror",
  "toml",

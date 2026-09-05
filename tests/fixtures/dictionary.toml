@@ -1,0 +1,34 @@
+# Пример словаря терминов MolvAI.
+#
+# `word` — как термин должен выглядеть в тексте; `aliases` — как его слышит распознаватель,
+# включая падежные формы и многословные варианты. `case` = keep | upper | lower.
+
+[[term]]
+word = "MolvAI"
+aliases = ["молва", "молвы", "молве", "molvai", "молв ай"]
+case = "keep"
+
+[[term]]
+word = "Hyprland"
+aliases = ["гипрланд", "гипрланде", "хипрленд", "хайперленд"]
+case = "keep"
+
+[[term]]
+word = "whisper.cpp"
+aliases = ["виспер цпп", "виспер си пи пи", "whisper cpp"]
+case = "keep"
+
+[[term]]
+word = "getUserById"
+aliases = ["гет юзер бай айди", "гетюзербайайди"]
+case = "keep"
+
+[[term]]
+word = "API"
+aliases = ["апи", "эй пи ай"]
+case = "upper"
+
+[[term]]
+word = "Пётр Иванов"
+aliases = ["петр иванов", "пётр иванов", "петя иванов"]
+case = "keep"
