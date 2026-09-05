@@ -1,0 +1,52 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "MolvAI",
+  "version": "0.1.0",
+  "identifier": "io.github.rokokol.molva",
+  "build": {
+    "beforeDevCommand": {
+      "cwd": "ui",
+      "script": "npm run dev"
+    },
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": {
+      "cwd": "ui",
+      "script": "npm run build"
+    },
+    "frontendDist": "ui/dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "MolvAI",
+        "width": 900,
+        "height": 600,
+        "minWidth": 640,
+        "minHeight": 480,
+        "resizable": true,
+        "visible": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: http://asset.localhost; connect-src 'self' ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["deb", "appimage", "nsis", "app", "dmg"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": ["icons/tray-idle.png", "icons/tray-recording.png", "icons/tray-processing.png"],
+    "category": "Utility",
+    "shortDescription": "Системный голосовой ввод",
+    "longDescription": "MolvAI — открытый системный голосовой ввод: зажал хоткей, сказал, отпустил — текст в активном поле."
+  }
+}

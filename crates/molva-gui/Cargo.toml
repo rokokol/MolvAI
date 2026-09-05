@@ -1,0 +1,49 @@
+[package]
+name = "molva-gui"
+description = "GUI MolvAI на Tauri 2: трей, настройки, история и статистика"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[lib]
+# Имя библиотеки без дефиса: его импортирует main.rs и мобильные обвязки Tauri.
+name = "molva_gui"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[[bin]]
+name = "molva-gui"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+molva-core = { path = "../molva-core" }
+tauri = { version = "2.11", features = ["tray-icon", "image-png"] }
+tauri-plugin-shell = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-autostart = "2.5"
+interprocess = "2.4"
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+directories = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Вторая копия приложения показывает окно первой; на мобильных плагина нет.
+[target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
+tauri-plugin-single-instance = "2"
+
+# На Wayland глобальные хоткеи процессу не выдаются: там бинды ставит композитор.
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+tauri-plugin-global-shortcut = "2.3"
+
+[dev-dependencies]
+tempfile = { workspace = true }

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: MIT -->
+<!-- Исходная форма иконки MolvAI: микрофон на скруглённом квадрате. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <rect x="0" y="0" width="1024" height="1024" rx="220" ry="220" fill="#3B5BDB"/>
+  <g fill="#FFFFFF">
+    <rect x="410" y="205" width="204" height="410" rx="102" ry="102"/>
+    <path d="M 246 512 a 266 266 0 0 0 532 0 h -72 a 194 194 0 0 1 -388 0 z"/>
+    <rect x="476" y="778" width="72" height="90"/>
+    <rect x="358" y="852" width="308" height="66" rx="33" ry="33"/>
+  </g>
+</svg>
