@@ -59,7 +59,8 @@ cargo build --release --bin molva
 ## Быстрый старт
 
 ```sh
-molva model download small   # веса с Hugging Face, проверяются по SHA-256
+molva models pull small   # веса с Hugging Face, проверяются по SHA-256
+molva doctor                 # сессия, инструменты вставки, права, демон, веса whisper и sha256, провайдер модели
 molva devices                # список микрофонов
 molva test-inject            # проверить, что текст попадает в активное поле
 molva daemon                 # демон, слушающий горячие клавиши
@@ -176,8 +177,8 @@ bindr = , Control_R, exec, molva stop
 Модель — это один файл весов, и меняется она одной настройкой:
 
 ```sh
-molva model list              # что доступно и что уже скачано
-molva model download large-v3-turbo
+molva models list             # что доступно и что уже скачано
+molva models pull large-v3-turbo
 ```
 
 ```toml

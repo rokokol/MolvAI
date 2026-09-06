@@ -56,7 +56,7 @@ cargo build --release --bin molva
 ### Шаг 5. Скачай модель
 
 ```sh
-molva model download small
+molva models pull small
 ```
 
 Спроси у пользователя, какая модель нужна, и объясни выбор: `base` быстрее и хуже, `small` — разумный компромисс и значение по умолчанию, `large-v3-turbo` заметно точнее, но требует больше памяти и времени. Веса скачиваются с Hugging Face и проверяются по SHA-256; в репозиторий они не входят, их лицензии — в [model-licenses.md](model-licenses.md)
