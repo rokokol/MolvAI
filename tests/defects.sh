@@ -385,7 +385,7 @@ defect 'dictionary/multi-word-aliases' 'crates/molva-core/src/app/dictionary.rs'
   'многословный алиас «молв ай» перестаёт распознаваться'
 
 defect 'dictionary/reload-notices-a-change' 'crates/molva-core/src/app/dictionary.rs' \
-  '        if current == self.mtime && self.mtime.is_some() {' \
+  '        if current == self.fingerprint && self.fingerprint.is_some() {' \
   '        if true {' \
   'пополнение словаря не подхватывается без перезапуска демона'
 
