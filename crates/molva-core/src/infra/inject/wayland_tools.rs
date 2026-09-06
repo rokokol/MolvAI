@@ -94,11 +94,13 @@ impl HyprctlInjector {
         self.shortcut = shortcut;
     }
 
-    /// Аргумент `sendshortcut`: `МОДИФИКАТОРЫ, КЛАВИША, окно`.
+    /// Аргумент `sendshortcut`: `МОДИФИКАТОРЫ, КЛАВИША, окно`. Клавиша задаётся кодом, а не
+    /// keysym: при активной русской раскладке keysym `V` не находится на клавиатуре, и Hyprland
+    /// молча ничего не шлёт. Код `55` — физическая клавиша V в любой раскладке.
     fn shortcut_arg(&self) -> &'static str {
         match self.shortcut {
-            PasteShortcut::CtrlV => "CTRL, V, activewindow",
-            PasteShortcut::CtrlShiftV => "CTRL SHIFT, V, activewindow",
+            PasteShortcut::CtrlV => "CTRL, code:55, activewindow",
+            PasteShortcut::CtrlShiftV => "CTRL SHIFT, code:55, activewindow",
         }
     }
 }
@@ -144,9 +146,10 @@ impl TextInjector for HyprctlInjector {
         // свежим считается только содержимое, отличное от прежнего.
         let before = wl_paste();
         let cleared = wl_clear().is_ok();
+        // Код 54 — физическая клавиша C: keysym `C` при русской раскладке не находится.
         run(
             "hyprctl",
-            &["dispatch", "sendshortcut", "CTRL, C, activewindow"],
+            &["dispatch", "sendshortcut", "CTRL, code:54, activewindow"],
         )?;
         std::thread::sleep(MODIFIER_RELEASE_DELAY);
         release_modifiers();
@@ -353,8 +356,9 @@ mod tests {
     fn terminals_get_the_shift_variant_of_the_shortcut() {
         let plain = HyprctlInjector::new(true, 0, PasteShortcut::CtrlV);
         let terminal = HyprctlInjector::new(true, 0, PasteShortcut::CtrlShiftV);
-        assert_eq!(plain.shortcut_arg(), "CTRL, V, activewindow");
-        assert_eq!(terminal.shortcut_arg(), "CTRL SHIFT, V, activewindow");
+        // Клавиша кодом, а не keysym: иначе при русской раскладке сочетание не доходит.
+        assert_eq!(plain.shortcut_arg(), "CTRL, code:55, activewindow");
+        assert_eq!(terminal.shortcut_arg(), "CTRL SHIFT, code:55, activewindow");
     }
 
     #[test]
