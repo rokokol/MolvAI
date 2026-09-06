@@ -3,7 +3,9 @@ resolver = "2"
 members = ["crates/molva-core", "crates/molva", "crates/molva-gui"]
 
 [workspace.package]
-version = "0.1.0"
+# Единственный источник версии: CLI (`molva --version`), пакеты GUI (tauri.conf.json версию
+# не задаёт и берёт её отсюда) и тег релиза `v<версия>` — release.yml сверяет их перед сборкой.
+version = "0.1.3"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/rokokol/MolvAI"

@@ -117,6 +117,19 @@ jobs:
         with:
           key: release-${{ matrix.target }}
 
+      # Версия одна на всё: тег v<версия> обязан совпадать с [workspace.package] version,
+      # иначе CLI и пакеты GUI выйдут под старым номером, как случилось с v0.1.1 и v0.1.2
+      - name: Тег совпадает с версией в Cargo.toml
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="$(cargo pkgid -p molva | sed 's/.*[#@]//')"
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::тег $TAG не совпадает с версией $version в Cargo.toml"
+            exit 1
+          fi
+
       - name: Сборка CLI
         shell: bash
         run: cargo build --locked --release --target ${{ matrix.target }} --bin molva
