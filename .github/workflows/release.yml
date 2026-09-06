@@ -219,9 +219,11 @@ jobs:
   # CUDA-сборка CLI для Windows: опциональная, релиз при её сбое не падает
   # (continue-on-error). Артефакт тянет проприетарный рантайм NVIDIA (cudart, cublas),
   # поэтому идёт отдельным архивом с суффиксом cuda, а свободные пакеты остаются без него.
+  # Раннер windows-2022, а не windows-latest: CUDA 12.6 знает Visual Studio только до 2022,
+  # с VS 2026 cudafe++ падает даже с -allow-unsupported-compiler. Проверено в cuda.yml.
   cli-cuda:
     needs: gate
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 120
     continue-on-error: true
     steps:
