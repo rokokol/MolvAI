@@ -178,7 +178,7 @@ jobs:
             echo "present=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: steps.tauri.outputs.present == 'true'
         with:
           node-version: "22"
