@@ -179,7 +179,7 @@ cargo test -p molva-core -p molva --no-fail-fast
 
 ```sh
 just test     # cargo test через scripts/t.sh
-just check    # fmt, clippy, тесты, SPDX-заголовки, отсутствие заглушек
+just check    # fmt, clippy, зависимости, тесты, SPDX-заголовки, отсутствие заглушек
 just falsify  # сломать каждую гарантию из tests/defects.sh и потребовать, чтобы сьют заметил
 ```
 
@@ -187,7 +187,7 @@ just falsify  # сломать каждую гарантию из tests/defects.
 
 ```sh
 nix develop   # тулчейн и системные библиотеки
-just check    # fmt, clippy, тесты, SPDX-заголовки, отсутствие заглушек
+just check    # fmt, clippy, зависимости, тесты, SPDX-заголовки, отсутствие заглушек
 ```
 
 Тесты идут через `scripts/t.sh` — харнесс из [скилла tests](https://github.com/rokokol/tests-skill): статус прогона честный, лог читается даже при exit 0
@@ -195,6 +195,8 @@ just check    # fmt, clippy, тесты, SPDX-заголовки, отсутст
 ```sh
 just falsify        # сломать каждую гарантию из tests/defects.sh и потребовать, чтобы сьют заметил
 just flaky 10       # десять прогонов подряд: расходятся ли результаты на одном коде
+just lint-deps      # cargo machete: зависимости, которые никто не использует
+just doc            # документация без предупреждений, битые ссылки — ошибка
 just cov            # покрытие в coverage.lcov
 just deny           # лицензии зависимостей и уязвимости
 just third-party    # пересобрать THIRD-PARTY.md

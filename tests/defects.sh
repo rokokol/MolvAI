@@ -410,7 +410,7 @@ defect 'llm/auth-error-is-not-retryable' 'crates/molva-core/src/infra/llm/openai
   'неверный ключ выглядит как временная недоступность: конвейер повторяет запрос впустую'
 
 defect 'llm/timeout-is-reported-as-timeout' 'crates/molva-core/src/infra/llm/openai_compat.rs' \
-  '                LlmError::Timeout(self.timeout.as_secs())' \
+  '                LlmError::Timeout(self.timeout.as_secs().max(1))' \
   '                LlmError::Unavailable("timeout".into())' \
   'таймаут модели неотличим от отказа сервера: пользователю нечего чинить'
 
