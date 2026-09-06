@@ -646,3 +646,8 @@ defect 'llm/auto-effort-silences-local-reasoning' 'crates/molva-core/src/infra/l
   '        "auto" => is_local.then(|| "none".to_string()),' \
   '        "auto" => None,' \
   'рассуждающая локальная модель сжигает max_tokens на размышления и отдаёт пустой текст'
+
+defect 'dictionary/reload-notices-a-same-mtime-change' 'crates/molva-core/src/app/dictionary.rs' \
+  '        len: metadata.len(),' \
+  '        len: 0,' \
+  'правка словаря с той же меткой времени остаётся незамеченной до перезапуска демона'
