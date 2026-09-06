@@ -227,7 +227,9 @@ fn wl_copy(text: &str) -> Result<(), InjectError> {
     }
 }
 
-fn wl_clear() -> Result<(), InjectError> {
+/// Очистить буфер через `wl-copy --clear`. Режим команд чистит его перед Ctrl+C, чтобы
+/// отличить свежее выделение от того, что лежало в буфере раньше.
+pub(crate) fn wl_clear() -> Result<(), InjectError> {
     let status = Command::new("wl-copy")
         .arg("--clear")
         .stdin(Stdio::null())

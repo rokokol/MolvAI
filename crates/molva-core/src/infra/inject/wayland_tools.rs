@@ -137,27 +137,43 @@ impl TextInjector for HyprctlInjector {
     /// Режим команд: скопировать выделение сочетанием Ctrl+C через композитор и забрать его
     /// из буфера. Буфер намеренно не восстанавливается — так же ведёт себя обычный Ctrl+C.
     fn copy_selection(&mut self) -> Result<String, InjectError> {
+        use crate::infra::inject::clipboard::{wl_clear, wl_paste};
+        // Буфер чистится до Ctrl+C: иначе, если приложение не успело выложить выделение,
+        // в модель уйдёт прошлое содержимое буфера — например, результат предыдущей правки,
+        // и каждая следующая команда наслаивается на старый текст. Если очистка недоступна,
+        // свежим считается только содержимое, отличное от прежнего.
+        let before = wl_paste();
+        let cleared = wl_clear().is_ok();
         run(
             "hyprctl",
             &["dispatch", "sendshortcut", "CTRL, C, activewindow"],
         )?;
         std::thread::sleep(MODIFIER_RELEASE_DELAY);
         release_modifiers();
-        // Приложению нужно время, чтобы выложить выделение в буфер: wl-paste сразу после
-        // сочетания получает ещё старое содержимое.
-        std::thread::sleep(SELECTION_SETTLE_DELAY);
-        let selection = crate::infra::inject::clipboard::wl_paste().unwrap_or_default();
-        if selection.trim().is_empty() {
-            return Err(InjectError::Failed(
-                "выделения нет: буфер после Ctrl+C пуст".into(),
-            ));
+        // Приложение отдаёт выделение не мгновенно: ждём, пока в буфере появится новое.
+        let deadline = std::time::Instant::now() + SELECTION_SETTLE_TIMEOUT;
+        while std::time::Instant::now() < deadline {
+            std::thread::sleep(SELECTION_POLL_INTERVAL);
+            let Some(selection) = wl_paste() else {
+                continue;
+            };
+            if selection.trim().is_empty() {
+                continue;
+            }
+            if cleared || before.as_deref() != Some(selection.as_str()) {
+                return Ok(selection);
+            }
         }
-        Ok(selection)
+        Err(InjectError::Failed(
+            "выделения нет: буфер после Ctrl+C не изменился".into(),
+        ))
     }
 }
 
-/// Пауза между Ctrl+C и чтением буфера: приложение отдаёт выделение не мгновенно.
-const SELECTION_SETTLE_DELAY: Duration = Duration::from_millis(150);
+/// Сколько ждать, пока приложение выложит выделение в буфер после Ctrl+C.
+const SELECTION_SETTLE_TIMEOUT: Duration = Duration::from_millis(600);
+/// Шаг опроса буфера в это время.
+const SELECTION_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 /// Пауза между сочетанием и отпусканием модификаторов.
 const MODIFIER_RELEASE_DELAY: Duration = Duration::from_millis(80);
