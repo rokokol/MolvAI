@@ -328,8 +328,8 @@ defect 'cli/timecode-minutes' 'crates/molva/src/cmd/transcribe.rs' \
   'таймкоды длиннее минуты показывают 90 секунд вместо 01:30'
 
 defect 'cli/postprocess-applied' 'crates/molva/src/cmd/transcribe.rs' \
-  '        let text = postprocess(&raw);' \
-  '        let text = raw.clone();' \
+  '        let processed = postprocess(&raw, &rules_language);' \
+  '        let processed = Postprocessed { text: raw.clone(), dict_hits: 0, llm: None };' \
   'постобработка текста молча отключается: словарь и правила не применяются'
 
 defect 'cli/journal-source-file' 'crates/molva/src/cmd/transcribe.rs' \
@@ -624,3 +624,25 @@ defect 'chunked/cancelled-chunks-are-forgotten' 'crates/molva-core/src/app/daemo
   '                        Job::Discard => {
                             let _ = &chunks;' \
   'куски отменённой записи прирастают к следующей реплике'
+
+defect 'transcribe/short-text-skips-the-model' 'crates/molva/src/cmd/transcribe.rs' \
+  '        if !self.style.uses_llm || word_count(&after_rules) <= self.llm_min_words {' \
+  '        if !self.style.uses_llm {' \
+  'короткие реплики из файлов уходят в модель вопреки rules.llm_min_words'
+
+defect 'transcribe/empty-model-answer-keeps-the-rules-text' 'crates/molva/src/cmd/transcribe.rs' \
+  '                if text.is_empty() {
+                    // Пустой ответ — не результат' \
+  '                if false {
+                    // Пустой ответ — не результат' \
+  'пустой ответ модели затирает расшифровку файла'
+
+defect 'transcribe/model-trace-reaches-the-journal' 'crates/molva/src/cmd/transcribe.rs' \
+  '            llm_used: processed.llm.is_some(),' \
+  '            llm_used: false,' \
+  'журнал не отличает файлы, прошедшие через модель, от остальных: статистика токенов врёт'
+
+defect 'llm/auto-effort-silences-local-reasoning' 'crates/molva-core/src/infra/llm/openai_compat.rs' \
+  '        "auto" => is_local.then(|| "none".to_string()),' \
+  '        "auto" => None,' \
+  'рассуждающая локальная модель сжигает max_tokens на размышления и отдаёт пустой текст'

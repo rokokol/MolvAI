@@ -257,6 +257,11 @@ pub struct LlmConfig {
     pub max_tokens: u32,
     pub timeout_secs: u64,
     pub max_retries: u32,
+    /// Сколько модели «думать» перед ответом: `auto` — для локальных провайдеров (Ollama,
+    /// LM Studio) шлётся `none`, для облачных поле не шлётся; пустая строка — не слать никогда;
+    /// любое другое значение (`none`, `low`, `medium`, `high`) уходит как есть. Рассуждающие
+    /// модели вроде qwen3.5 иначе тратят весь `max_tokens` на размышления и отдают пустой текст.
+    pub reasoning_effort: String,
 }
 
 impl Default for LlmConfig {
@@ -272,6 +277,7 @@ impl Default for LlmConfig {
             max_tokens: 1024,
             timeout_secs: 20,
             max_retries: 2,
+            reasoning_effort: "auto".into(),
         }
     }
 }

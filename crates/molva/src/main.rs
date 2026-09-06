@@ -250,7 +250,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         }
         Commands::Transcribe(args) => {
             let config = Config::load(&config_path)?;
-            Ok(cmd::transcribe::run(&args, &config)?)
+            Ok(cmd::transcribe::run(&args, &config, &config_path)?)
         }
         Commands::Models { action } => {
             let config = Config::load(&config_path)?;

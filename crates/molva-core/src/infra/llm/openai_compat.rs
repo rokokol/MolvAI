@@ -84,7 +84,20 @@ pub struct OpenAiCompatClient {
     provider_id: String,
     is_local: bool,
     timeout: Duration,
+    /// Поле `reasoning_effort` запроса; `None` — не слать (см. `LlmConfig::reasoning_effort`).
+    reasoning_effort: Option<String>,
     http: reqwest::blocking::Client,
+}
+
+/// Что слать в `reasoning_effort` по настройке и типу провайдера. `auto` выключает
+/// размышления у локальных моделей (`none`), облачным поле не отправляет — там оно
+/// допустимо не у всех моделей. Пустая строка — не слать, остальное — как есть.
+pub fn effective_reasoning_effort(setting: &str, is_local: bool) -> Option<String> {
+    match setting.trim() {
+        "" => None,
+        "auto" => is_local.then(|| "none".to_string()),
+        other => Some(other.to_string()),
+    }
 }
 
 impl fmt::Debug for OpenAiCompatClient {
@@ -119,8 +132,16 @@ impl OpenAiCompatClient {
             provider_id: provider_id.into(),
             is_local,
             timeout,
+            reasoning_effort: None,
             http,
         })
+    }
+
+    /// Задать `reasoning_effort` запроса; `None` — поле не отправляется.
+    #[must_use]
+    pub fn with_reasoning_effort(mut self, effort: Option<String>) -> Self {
+        self.reasoning_effort = effort;
+        self
     }
 
     /// Клиент по настройкам: пустой `base_url` берётся из пресета провайдера.
@@ -144,6 +165,12 @@ impl OpenAiCompatClient {
             provider.id(),
             provider.is_local(),
         )
+        .map(|client| {
+            client.with_reasoning_effort(effective_reasoning_effort(
+                &cfg.reasoning_effort,
+                provider.is_local(),
+            ))
+        })
     }
 
     pub fn base_url(&self) -> &str {
@@ -213,7 +240,7 @@ impl LlmClient for OpenAiCompatClient {
     }
 
     fn complete(&self, req: &ChatRequest) -> Result<ChatResponse, LlmError> {
-        let body = json!({
+        let mut body = json!({
             "model": if req.model.is_empty() { &self.model } else { &req.model },
             "messages": [
                 { "role": "system", "content": req.system },
@@ -223,6 +250,9 @@ impl LlmClient for OpenAiCompatClient {
             "max_tokens": req.max_tokens,
             "stream": false,
         });
+        if let Some(effort) = &self.reasoning_effort {
+            body["reasoning_effort"] = json!(effort);
+        }
 
         let mut request = self.http.post(self.endpoint()).json(&body);
         if let Some(key) = &self.api_key {
@@ -396,6 +426,60 @@ mod tests {
             temperature: 0.2,
             max_tokens: 256,
         }
+    }
+
+    #[test]
+    fn auto_reasoning_effort_silences_local_models_and_leaves_cloud_alone() {
+        assert_eq!(
+            effective_reasoning_effort("auto", true),
+            Some("none".to_string())
+        );
+        assert_eq!(effective_reasoning_effort("auto", false), None);
+        assert_eq!(effective_reasoning_effort("", true), None);
+        assert_eq!(
+            effective_reasoning_effort("low", false),
+            Some("low".to_string())
+        );
+    }
+
+    #[test]
+    fn reasoning_effort_reaches_the_request_body_only_when_set() {
+        let server = MockServer::spawn(vec![Some(ok_body()), Some(ok_body())]);
+        client(&server, None).complete(&request()).unwrap();
+        assert!(
+            !server.last_request().contains("reasoning_effort"),
+            "без настройки поле не шлётся: {}",
+            server.last_request()
+        );
+
+        client(&server, None)
+            .with_reasoning_effort(Some("none".into()))
+            .complete(&request())
+            .unwrap();
+        assert!(
+            server
+                .last_request()
+                .contains(r#""reasoning_effort":"none""#),
+            "{}",
+            server.last_request()
+        );
+    }
+
+    #[test]
+    fn config_with_auto_effort_and_ollama_sends_none() {
+        let server = MockServer::spawn(vec![Some(ok_body())]);
+        let cfg = LlmConfig {
+            base_url: server.base_url(),
+            provider: "ollama".into(),
+            ..LlmConfig::default()
+        };
+        OpenAiCompatClient::from_config(&cfg, None)
+            .unwrap()
+            .complete(&request())
+            .unwrap();
+        assert!(server
+            .last_request()
+            .contains(r#""reasoning_effort":"none""#));
     }
 
     #[test]
