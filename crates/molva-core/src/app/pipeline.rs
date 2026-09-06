@@ -503,9 +503,12 @@ impl Pipeline {
         let request = ChatRequest {
             model: self.config.llm.model.clone(),
             system: self.config.command_mode.system_prompt.clone(),
+            // Сначала инструкция, потом текст: так модель не принимает фрагмент за задание.
+            // Ответ должен быть только текстом — без заголовков, пояснений и кавычек.
             user: format!(
-                "ВЫДЕЛЕННЫЙ ТЕКСТ:\n{selection}\n\nИНСТРУКЦИЯ:\n{instruction}\n\n\
-                 Примени инструкцию к выделенному тексту и выведи только результат."
+                "ИНСТРУКЦИЯ: {instruction}\n\nТЕКСТ:\n{selection}\n\n\
+                 Верни только текст после применения инструкции, одной репликой, без \
+                 заголовков, пояснений, кавычек и markdown."
             ),
             temperature: self.config.llm.temperature,
             max_tokens: self.config.llm.max_tokens,
