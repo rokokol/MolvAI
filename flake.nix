@@ -30,6 +30,15 @@
 
             # Биндинги whisper-rs лежат в крейте — libclang при сборке не нужен
             WHISPER_DONT_GENERATE_BINDINGS = "1";
+            # Воспроизводимая сборка без -march=native, но с SIMD: x86-64-v3 (AVX2/FMA/F16C) —
+            # иначе whisper.cpp под Nix собирается скалярно и работает в 20 раз медленнее
+            GGML_NATIVE = "OFF";
+          } // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isx86_64 {
+            GGML_AVX = "ON";
+            GGML_AVX2 = "ON";
+            GGML_FMA = "ON";
+            GGML_F16C = "ON";
+          } // {
 
             meta = {
               description = "Системный голосовой ввод с обработкой на своём компьютере";
@@ -72,11 +81,20 @@
           # Инструменты для демо на Wayland
           waylandTools = with pkgs; pkgs.lib.optionals isLinux [ wtype wl-clipboard ];
 
+          # CUDA toolkit несвободный: отдельный экземпляр nixpkgs с allowUnfree только для оболочки cuda.
+          pkgsUnfree = import nixpkgs {
+            inherit (pkgs.stdenv.hostPlatform) system;
+            config.allowUnfree = true;
+          };
+
           base = {
             packages = rustTools ++ nativeBuild ++ coreLibs ++ tauriLibs ++ waylandTools;
 
             # Биндинги whisper-rs уже лежат в крейте — libclang не нужен
             WHISPER_DONT_GENERATE_BINDINGS = "1";
+            # Nix задаёт SOURCE_DATE_EPOCH, и ggml из-за этого выключает GGML_NATIVE: whisper.cpp
+            # собирается без AVX2/FMA и работает в 20 раз медленнее. Для devShell — под свою машину.
+            GGML_NATIVE = "ON";
             RUST_BACKTRACE = "1";
             # NVIDIA + Wayland: без этого окно webkit остаётся пустым
             WEBKIT_DISABLE_DMABUF_RENDERER = "1";
@@ -89,12 +107,18 @@
         {
           default = pkgs.mkShell base;
 
-          # Сборка whisper.cpp с CUDA (cargo build --features cuda)
+          # Сборка whisper.cpp с CUDA (cargo build --features cuda).
+          # Драйвер NVIDIA на NixOS лежит в /run/opengl-driver/lib, туда же смотрит линковщик (-lcuda).
           cuda = pkgs.mkShell (base // {
-            packages = base.packages ++ pkgs.lib.optionals isLinux [ pkgs.cudaPackages.cudatoolkit ];
-            CUDA_PATH = pkgs.lib.optionalString isLinux "${pkgs.cudaPackages.cudatoolkit}";
+            packages = base.packages ++ pkgs.lib.optionals isLinux [ pkgsUnfree.cudaPackages.cudatoolkit ];
+            CUDA_PATH = pkgs.lib.optionalString isLinux "${pkgsUnfree.cudaPackages.cudatoolkit}";
+            CUDAToolkit_ROOT = pkgs.lib.optionalString isLinux "${pkgsUnfree.cudaPackages.cudatoolkit}";
+            # rpath: бинарь находит libcuda и libcudart сам, без LD_LIBRARY_PATH, — бинды композитора
+            # и GUI запускают его вне этой оболочки
+            RUSTFLAGS = "-L native=/run/opengl-driver/lib -C link-arg=-Wl,-rpath,/run/opengl-driver/lib -C link-arg=-Wl,-rpath,${pkgsUnfree.cudaPackages.cudatoolkit}/lib";
             shellHook = base.shellHook + pkgs.lib.optionalString isLinux ''
-              export LD_LIBRARY_PATH="/run/opengl-driver/lib:${pkgs.cudaPackages.cudatoolkit}/lib:$LD_LIBRARY_PATH"
+              export LD_LIBRARY_PATH="/run/opengl-driver/lib:${pkgsUnfree.cudaPackages.cudatoolkit}/lib:$LD_LIBRARY_PATH"
+              export LIBRARY_PATH="/run/opengl-driver/lib:$LIBRARY_PATH"
             '';
           });
 

@@ -92,7 +92,7 @@ bindr = , Control_R, exec, molva stop
 | `stt` | `engine` | `whisper-cpp` | `whisper-cpp` локально или `remote-openai` |
 | `stt` | `model` | `small` | какие веса использовать |
 | `stt` | `model_path` | пусто | путь к файлу весов; пусто — каталог моделей по умолчанию |
-| `stt` | `language` | `auto` | код ISO-639-1 или `auto` |
+| `stt` | `language` | `ru` | код ISO-639-1 или `auto`; автоопределение на CPU в несколько раз медленнее |
 | `stt` | `allowed_languages` | `["ru", "en"]` | среди каких языков выбирать при `auto` |
 | `stt` | `threads` | `0` | потоков распознавания; `0` — все логические ядра |
 | `stt` | `unload_after_secs` | `600` | через сколько выгрузить модель из памяти |

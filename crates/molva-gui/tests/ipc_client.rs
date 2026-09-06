@@ -14,7 +14,7 @@ use std::sync::mpsc;
 use std::thread::JoinHandle;
 
 use interprocess::local_socket::traits::{ListenerExt as _, Stream as _};
-use interprocess::local_socket::{GenericFilePath, ListenerOptions, Stream, ToFsName};
+use interprocess::local_socket::{ListenerOptions, Stream};
 use molva_core::domain::entry::Mode;
 use molva_core::ipc::{Command, DaemonState, ErrorCode, Event, Request, Response};
 use molva_gui::ipc::{Connection, IpcClientError, Message};
@@ -33,10 +33,8 @@ impl FakeDaemon {
     fn start(reply: impl Fn(&Request) -> Option<Vec<String>> + Send + 'static) -> Self {
         let dir = tempfile::tempdir().expect("временный каталог");
         let path = dir.path().join("molva.sock");
-        let name = path
-            .clone()
-            .to_fs_name::<GenericFilePath>()
-            .expect("имя сокета");
+        // Имя строит ядро, как и у клиента: на Windows путь из tempdir — не имя канала.
+        let name = molva_core::infra::ipc::transport::socket_name(&path).expect("имя сокета");
         let listener = ListenerOptions::new()
             .name(name)
             .create_sync()

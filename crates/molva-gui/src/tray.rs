@@ -71,6 +71,10 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         true,
         None::<&str>,
     )?;
+    // Второй пункт — сама панель: на Wayland это единственный путь к спрятанному окну
+    // помимо левого щелчка, а его не все хосты трея передают.
+    let open_panel =
+        MenuItem::with_id(app, "open:dashboard", "Открыть панель…", true, None::<&str>)?;
 
     let style_items: Vec<CheckMenuItem<Wry>> = builtin_style_options(&config)
         .into_iter()
@@ -164,6 +168,7 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         app,
         &[
             &record,
+            &open_panel,
             &PredefinedMenuItem::separator(app)?,
             &style_menu,
             &output_menu,
@@ -235,6 +240,16 @@ pub fn show_window(app: &AppHandle, tab: Option<&str>) {
     }
 }
 
+/// Вкладки окна, которые открываются из трея. Список закрыт: произвольный
+/// идентификатор `open:*` не должен уводить окно на несуществующую вкладку.
+const WINDOW_TABS: [&str; 4] = ["dashboard", "history", "stats", "settings"];
+
+/// Пункт меню `open:<вкладка>` → имя вкладки для окна, `None` для всех прочих пунктов.
+fn window_tab_for_menu_id(menu_id: &str) -> Option<&'static str> {
+    let tab = menu_id.strip_prefix("open:")?;
+    WINDOW_TABS.iter().copied().find(|known| *known == tab)
+}
+
 /// Команда демону в отдельном потоке: зависший демон не должен морозить меню.
 fn send_async(app: &AppHandle, command: Command) {
     let app = app.clone();
@@ -265,9 +280,6 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
             };
             send_async(app, command);
         }
-        "open:history" => show_window(app, Some("history")),
-        "open:settings" => show_window(app, Some("settings")),
-        "open:stats" => show_window(app, Some("stats")),
         "pause" => {
             let state = app.state::<AppState>();
             let paused = !state.hotkeys_paused();
@@ -285,7 +297,9 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
             app.exit(0);
         }
         other => {
-            if let Some(style) = other.strip_prefix("style:") {
+            if let Some(tab) = window_tab_for_menu_id(other) {
+                show_window(app, Some(tab));
+            } else if let Some(style) = other.strip_prefix("style:") {
                 set_style(app, style);
             } else if let Some(mode) = other.strip_prefix("output:") {
                 set_output(app, mode);
@@ -360,6 +374,21 @@ mod tests {
             "Остановить запись"
         );
         assert_eq!(record_label(None), "Начать запись");
+    }
+
+    #[test]
+    fn panel_item_opens_the_dashboard_tab() {
+        assert_eq!(window_tab_for_menu_id("open:dashboard"), Some("dashboard"));
+        assert_eq!(window_tab_for_menu_id("open:history"), Some("history"));
+        assert_eq!(window_tab_for_menu_id("open:settings"), Some("settings"));
+        assert_eq!(window_tab_for_menu_id("open:stats"), Some("stats"));
+    }
+
+    #[test]
+    fn unknown_open_targets_and_other_items_do_not_open_the_window() {
+        assert_eq!(window_tab_for_menu_id("open:nowhere"), None);
+        assert_eq!(window_tab_for_menu_id("record"), None);
+        assert_eq!(window_tab_for_menu_id("style:cleanup"), None);
     }
 
     #[test]

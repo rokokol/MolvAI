@@ -8,7 +8,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use interprocess::local_socket::{prelude::*, GenericFilePath, Stream};
+use interprocess::local_socket::{prelude::*, Stream};
 use molva_core::ipc::{Command, ErrorCode, Event, IpcError, Request, Response};
 use serde_json::Value;
 use thiserror::Error;
@@ -115,9 +115,9 @@ impl Connection {
     /// не трогая переменные окружения процесса.
     pub fn connect_at(path: &Path) -> Result<Self, IpcClientError> {
         let display = path.display().to_string();
-        let name = path
-            .to_path_buf()
-            .to_fs_name::<GenericFilePath>()
+        // Имя строит ядро: на Windows путь из tempdir или `MOLVA_SOCKET` должен превратиться
+        // в то же имя канала, что и у демона.
+        let name = molva_core::infra::ipc::transport::socket_name(path)
             .map_err(|e| IpcClientError::NoSocketPath(e.to_string()))?;
         let stream = Stream::connect(name).map_err(|e| IpcClientError::NotRunning {
             path: display,

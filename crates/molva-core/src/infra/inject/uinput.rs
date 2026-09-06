@@ -312,6 +312,45 @@ mod tests {
         assert_eq!(key_for('\n'), Some((28, false)));
     }
 
+    /// Каждая пара US-раскладки делит один код: нижний символ без Shift, верхний — с ним.
+    /// Перепутанный флаг напечатал бы `'` вместо `"` — и ни один другой тест этого не заметит.
+    #[test]
+    fn every_shift_pair_shares_a_code_and_differs_only_by_shift() {
+        let pairs = [
+            ('1', '!'),
+            ('2', '@'),
+            ('3', '#'),
+            ('4', '$'),
+            ('5', '%'),
+            ('6', '^'),
+            ('7', '&'),
+            ('8', '*'),
+            ('9', '('),
+            ('0', ')'),
+            ('-', '_'),
+            ('=', '+'),
+            ('[', '{'),
+            (']', '}'),
+            (';', ':'),
+            ('\'', '"'),
+            ('`', '~'),
+            ('\\', '|'),
+            (',', '<'),
+            ('.', '>'),
+            ('/', '?'),
+        ];
+        for (lower, upper) in pairs {
+            let (lower_code, lower_shift) = key_for(lower).unwrap_or_else(|| panic!("{lower}"));
+            let (upper_code, upper_shift) = key_for(upper).unwrap_or_else(|| panic!("{upper}"));
+            assert_eq!(
+                lower_code, upper_code,
+                "{lower} и {upper} делят одну клавишу"
+            );
+            assert!(!lower_shift, "{lower} набирается без Shift");
+            assert!(upper_shift, "{upper} набирается с Shift");
+        }
+    }
+
     #[test]
     fn cyrillic_and_emoji_have_no_key_code() {
         assert_eq!(key_for('я'), None);

@@ -231,7 +231,8 @@ impl LlmClient for OpenAiCompatClient {
 
         let response = request.send().map_err(|err| {
             if err.is_timeout() {
-                LlmError::Timeout(self.timeout.as_secs())
+                // Таймаут короче секунды в сообщении округляется вверх, а не до нуля.
+                LlmError::Timeout(self.timeout.as_secs().max(1))
             } else {
                 // В сообщение попадает адрес, но не ключ: он живёт только в заголовке.
                 LlmError::Unavailable(format!("{}: {err}", self.endpoint()))
@@ -520,7 +521,8 @@ mod tests {
         )
         .unwrap();
         let err = client.complete(&request()).unwrap_err();
-        assert_eq!(err, LlmError::Timeout(0), "{err:?}");
+        // Таймаут в 150 мс в сообщении округляется вверх до секунды, а не до нуля.
+        assert_eq!(err, LlmError::Timeout(1), "{err:?}");
     }
 
     #[test]
@@ -529,11 +531,14 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         drop(listener);
+        // Windows отвечает на закрытый порт не сразу, а после нескольких повторов SYN
+        // (около секунды), поэтому таймаут должен быть заметно больше, иначе вместо
+        // «недоступен» тест получает «таймаут».
         let client = OpenAiCompatClient::new(
             format!("http://{addr}/v1"),
             "m",
             None,
-            Duration::from_millis(500),
+            Duration::from_secs(10),
             "ollama",
             true,
         )

@@ -99,6 +99,20 @@ jobs:
         shell: bash
         run: printf 'LIBCLANG_PATH=%s\n' 'C:\Program Files\LLVM\bin' >> "$GITHUB_ENV"
 
+      # Релиз для x86_64 собирается под переносимый x86-64-v3 (AVX2/FMA/F16C), а не под
+      # процессор раннера: иначе бинарь либо падает на чужой машине, либо без SIMD медленнее в 20 раз
+      - name: SIMD whisper.cpp для x86_64
+        if: runner.arch == 'X64'
+        shell: bash
+        run: |
+          {
+            echo "GGML_NATIVE=OFF"
+            echo "GGML_AVX=ON"
+            echo "GGML_AVX2=ON"
+            echo "GGML_FMA=ON"
+            echo "GGML_F16C=ON"
+          } >> "$GITHUB_ENV"
+
       - uses: Swatinem/rust-cache@v2
         with:
           key: release-${{ matrix.target }}

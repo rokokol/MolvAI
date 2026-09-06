@@ -89,7 +89,12 @@ fn current_uid() -> String {
     std::env::var("USER").unwrap_or_else(|_| "default".into())
 }
 
-fn name_for(path: &Path) -> Result<interprocess::local_socket::Name<'static>, std::io::Error> {
+/// Имя локального сокета по пути. Одна функция на сервер, CLI-клиент и GUI-клиент:
+/// на Windows путь вне `\\.\pipe\` превращается в имя канала, и все стороны должны
+/// сделать это одинаково, иначе они не найдут друг друга.
+pub fn socket_name(
+    path: &Path,
+) -> Result<interprocess::local_socket::Name<'static>, std::io::Error> {
     #[cfg(windows)]
     {
         // Windows принимает только имена каналов `\\.\pipe\…`. Любой другой путь (например,
@@ -130,7 +135,7 @@ impl Server {
         if path_is_stale(path) {
             let _ = std::fs::remove_file(path);
         }
-        let name = name_for(path).map_err(|e| IpcServerError::Bind {
+        let name = socket_name(path).map_err(|e| IpcServerError::Bind {
             path: path.to_path_buf(),
             message: e.to_string(),
         })?;
@@ -196,7 +201,7 @@ impl Stopper {
     pub fn stop(&self) {
         self.stop.store(true, Ordering::SeqCst);
         // Разбудить `accept`: без соединения он будет ждать вечно.
-        if let Ok(name) = name_for(&self.path) {
+        if let Ok(name) = socket_name(&self.path) {
             let _ = Stream::connect(name);
         }
     }
@@ -276,7 +281,7 @@ fn path_is_stale(path: &Path) -> bool {
     if !path.exists() {
         return false;
     }
-    match name_for(path) {
+    match socket_name(path) {
         Ok(name) => Stream::connect(name).is_err(),
         Err(_) => false,
     }
@@ -300,7 +305,7 @@ impl std::fmt::Debug for Client {
 
 impl Client {
     pub fn connect(path: &Path) -> Result<Self, IpcClientError> {
-        let name = name_for(path).map_err(|e| IpcClientError::NotRunning {
+        let name = socket_name(path).map_err(|e| IpcClientError::NotRunning {
             path: path.to_path_buf(),
             message: e.to_string(),
         })?;
@@ -521,7 +526,7 @@ mod tests {
     #[test]
     fn an_unknown_command_is_answered_with_bad_request_not_silence() {
         let (path, _dir, stopper) = started(EchoHandler::new());
-        let name = name_for(&path).unwrap();
+        let name = socket_name(&path).unwrap();
         let stream = Stream::connect(name).unwrap();
         let (recv, mut send) = stream.split();
         send.write_all(b"{\"v\":1,\"id\":9,\"cmd\":\"fly\"}\n")
