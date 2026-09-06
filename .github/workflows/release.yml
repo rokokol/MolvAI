@@ -172,6 +172,13 @@ jobs:
           cache: npm
           cache-dependency-path: crates/molva-gui/ui/package-lock.json
 
+      # tauri-action запускает только beforeBuildCommand (сборку фронтенда), а зависимости
+      # npm ставит не он: без этого шага TypeScript не находит react и сборка падает
+      - name: Зависимости фронтенда
+        if: steps.tauri.outputs.present == 'true'
+        working-directory: crates/molva-gui/ui
+        run: npm ci
+
       - uses: tauri-apps/tauri-action@v0
         if: steps.tauri.outputs.present == 'true'
         env:
