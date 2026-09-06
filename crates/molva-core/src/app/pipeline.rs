@@ -27,9 +27,10 @@ use crate::domain::entry::{Entry, LatencyMs, Mode, Source, Tokens, SCHEMA_VERSIO
 use crate::domain::inject::{OutputMode, TextInjector};
 use crate::domain::journal::{Journal, JournalError};
 use crate::domain::llm::{ChatRequest, LlmClient, LlmError};
-use crate::domain::stt::{LanguageHint, SttEngine, SttError, SttOptions};
+use crate::domain::stt::{LanguageHint, SttEngine, SttError, SttOptions, Transcript};
 use crate::domain::text::word_count;
 
+use super::daemon::chunked::{self, ChunkContext, ChunkPrefix, ChunkText};
 use super::dictionary::Dictionary;
 use super::llm_output::sanitize_llm_output;
 use super::rules::RuleSet;
@@ -128,6 +129,8 @@ pub struct Pipeline {
     session_id: Uuid,
     /// От отпускания клавиши до закрытия потока микрофона: демон меряет, конвейер записывает.
     stop_after_release_ms: Option<u32>,
+    /// Начало реплики, распознанное кусками во время записи; `None` — обычная реплика целиком.
+    chunk_prefix: Option<ChunkPrefix>,
 }
 
 impl Pipeline {
@@ -153,6 +156,7 @@ impl Pipeline {
             styles,
             session_id: Uuid::new_v4(),
             stop_after_release_ms: None,
+            chunk_prefix: None,
         }
     }
 
@@ -221,7 +225,10 @@ impl Pipeline {
     ) -> Result<Entry, PipelineError> {
         let started = self.clock.instant();
         let audio = audio.to_16k();
-        let audio_secs = audio.duration_secs();
+        // Куски, распознанные во время записи; здесь на входе тогда только хвост реплики, а её
+        // длительность знает префикс.
+        let prefix = self.chunk_prefix.take().unwrap_or_default();
+        let audio_secs = prefix.audio_secs.unwrap_or_else(|| audio.duration_secs());
 
         // Выделение забирается до распознавания: пока пользователь говорил, оно ещё на месте.
         let selection = match mode {
@@ -242,8 +249,8 @@ impl Pipeline {
 
         let options = self.stt_options();
         let stt_started = self.clock.instant();
-        let transcript = transcribe_with_language_policy(self.stt.as_mut(), &audio, &options)?;
-        let stt_ms = millis_since(stt_started, self.clock.instant());
+        let transcript = self.transcribe_utterance(&audio, &options, &prefix)?;
+        let stt_ms = millis_since(stt_started, self.clock.instant()) + prefix.stt_ms;
 
         // Тишина и шум: whisper уверенно печатает «Продолжение следует» на пустом входе.
         // Такую реплику не вставляем и не отдаём в модель, но в журнал она попадает (F-22).
@@ -296,6 +303,7 @@ impl Pipeline {
                 stt: stt_ms,
                 rules: rules_ms,
                 stop_after_release: self.stop_after_release_ms.take(),
+                first_hypothesis: prefix.first_hypothesis_ms,
                 ..Default::default()
             },
             tokens: None,
@@ -363,6 +371,58 @@ impl Pipeline {
         }
         self.clock
             .sleep(std::time::Duration::from_millis(u64::from(delay)));
+    }
+
+    /// Распознать кусок ещё идущей записи (потоковая обработка, см. [`chunked`]).
+    ///
+    /// Куски копит демон, а конвейер только читает их моделью — со словарём, языком реплики и
+    /// хвостом предыдущего текста в подсказке.
+    pub fn transcribe_chunk(
+        &mut self,
+        audio: &PcmAudio,
+        context: &ChunkContext,
+    ) -> Result<ChunkText, SttError> {
+        let options = self.stt_options();
+        let started = self.clock.instant();
+        let mut chunk = chunked::transcribe_chunk(
+            self.stt.as_mut(),
+            &audio.to_16k(),
+            &options,
+            context,
+            self.config.stt.no_speech_threshold,
+        )?;
+        chunk.stt_ms = millis_since(started, self.clock.instant());
+        Ok(chunk)
+    }
+
+    /// Отдать конвейеру начало реплики, распознанное кусками: следующий [`Pipeline::run`] получит
+    /// только хвост.
+    pub fn set_chunk_prefix(&mut self, prefix: ChunkPrefix) {
+        self.chunk_prefix = (!prefix.is_empty()).then_some(prefix);
+    }
+
+    /// Распознать реплику целиком или, если начало уже есть кусками, только её хвост.
+    fn transcribe_utterance(
+        &mut self,
+        audio: &PcmAudio,
+        options: &SttOptions,
+        prefix: &ChunkPrefix,
+    ) -> Result<Transcript, SttError> {
+        if prefix.is_empty() {
+            return transcribe_with_language_policy(self.stt.as_mut(), audio, options);
+        }
+        let tail = if audio.samples.is_empty() {
+            // Последний кусок совпал с концом реплики: распознавать нечего, всё уже готово.
+            None
+        } else {
+            let options = chunked::tail_options(options, prefix);
+            Some(transcribe_with_language_policy(
+                self.stt.as_mut(),
+                audio,
+                &options,
+            )?)
+        };
+        Ok(chunked::merge(prefix, tail))
     }
 
     /// Параметры распознавания из настроек и словаря.

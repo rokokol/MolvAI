@@ -410,7 +410,7 @@ defect 'llm/auth-error-is-not-retryable' 'crates/molva-core/src/infra/llm/openai
   'неверный ключ выглядит как временная недоступность: конвейер повторяет запрос впустую'
 
 defect 'llm/timeout-is-reported-as-timeout' 'crates/molva-core/src/infra/llm/openai_compat.rs' \
-  '                LlmError::Timeout(self.timeout.as_secs())' \
+  '                LlmError::Timeout(self.timeout.as_secs().max(1))' \
   '                LlmError::Unavailable("timeout".into())' \
   'таймаут модели неотличим от отказа сервера: пользователю нечего чинить'
 
@@ -582,3 +582,45 @@ defect 'cli/plain-line-carries-the-id' 'crates/molva/src/cmd/history.rs' \
   '        "{}  {}  {}  {ID_SEPARATOR}{}",' \
   '        "{}  {}  {}  {}",' \
   'строка для rofi теряет метку идентификатора: выбранную реплику не найти по id'
+
+defect 'segmenter/silence-never-reaches-the-model' 'crates/molva-core/src/app/audio/segmenter.rs' \
+  '        if !voiced {' \
+  '        if false {' \
+  'куски чистой тишины уходят в whisper и возвращаются «Продолжением следует» посреди реплики'
+
+defect 'segmenter/chunk-is-not-shorter-than-target' 'crates/molva-core/src/app/audio/segmenter.rs' \
+  '            if cut >= target {' \
+  '            if cut >= 1 {' \
+  'первая же пауза режет реплику на огрызки по паре слов: контекста у модели не остаётся'
+
+defect 'segmenter/chunks-overlap' 'crates/molva-core/src/app/audio/segmenter.rs' \
+  '            .saturating_sub(self.samples_for_ms(self.config.overlap_ms))' \
+  '            .saturating_sub(0)' \
+  'соседние куски стыкуются встык: звук на границе теряется, слог рвётся пополам'
+
+defect 'chunked/recognition-starts-during-the-recording' 'crates/molva-core/src/app/daemon/mod.rs' \
+  '                                        if feeder.is_enabled() {' \
+  '                                        if false {' \
+  'вся обработка снова начинается по отпусканию клавиши: реплику в пять секунд ждать пять секунд'
+
+defect 'chunked/chunks-keep-their-order' 'crates/molva-core/src/app/daemon/chunked.rs' \
+  '        self.texts.push(chunk.text);' \
+  '        self.texts.insert(0, chunk.text);' \
+  'куски склеиваются в обратном порядке: реплика читается задом наперёд'
+
+defect 'chunked/the-beginning-is-not-lost' 'crates/molva-core/src/app/pipeline.rs' \
+  '        self.chunk_prefix = (!prefix.is_empty()).then_some(prefix);' \
+  '        self.chunk_prefix = None;' \
+  'распознанное во время записи начало реплики выбрасывается, вставляется один хвост'
+
+defect 'chunked/reply-length-is-the-whole-recording' 'crates/molva-core/src/app/pipeline.rs' \
+  '        let audio_secs = prefix.audio_secs.unwrap_or_else(|| audio.duration_secs());' \
+  '        let audio_secs = audio.duration_secs();' \
+  'длительность реплики считается по хвосту: WPM и статистика завышены в разы'
+
+defect 'chunked/cancelled-chunks-are-forgotten' 'crates/molva-core/src/app/daemon/mod.rs' \
+  '                        Job::Discard => {
+                            chunks.reset();' \
+  '                        Job::Discard => {
+                            let _ = &chunks;' \
+  'куски отменённой записи прирастают к следующей реплике'

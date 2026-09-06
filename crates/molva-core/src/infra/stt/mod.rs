@@ -16,13 +16,52 @@ use crate::config::SttConfig;
 use crate::domain::audio::PcmAudio;
 use crate::domain::stt::{LanguageHint, SttEngine, SttError, SttOptions, Transcript};
 
+/// Как выбирается язык реплики.
+///
+/// Разница видна на процессоре: `Fixed` — это один прогон модели с известным языком, `DetectAmong` —
+/// короткое определение по первым секундам плюс тот же прогон. Режима `auto` у самого whisper.cpp
+/// здесь нет вовсе: он считает полное окно в тридцать секунд и обходится в разы дороже.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LanguagePolicy {
+    /// Язык задан настройками: автоопределение выключено.
+    Fixed(String),
+    /// Язык выбирается среди разрешённых. Пустой список означает «доверить выбор модели».
+    DetectAmong(Vec<String>),
+}
+
+impl LanguagePolicy {
+    /// Политика по настройкам: `language = "auto"` со списком разрешённых даёт `DetectAmong`.
+    pub fn from_config(cfg: &SttConfig) -> Self {
+        match LanguageHint::parse(&cfg.language) {
+            LanguageHint::Fixed(code) => LanguagePolicy::Fixed(code),
+            LanguageHint::Auto => LanguagePolicy::DetectAmong(cfg.allowed_languages.clone()),
+        }
+    }
+
+    /// Подсказка языка для движка.
+    pub fn hint(&self) -> LanguageHint {
+        match self {
+            LanguagePolicy::Fixed(code) => LanguageHint::Fixed(code.clone()),
+            LanguagePolicy::DetectAmong(_) => LanguageHint::Auto,
+        }
+    }
+
+    /// Языки, среди которых разрешено выбирать.
+    pub fn allowed(&self) -> &[String] {
+        match self {
+            LanguagePolicy::Fixed(_) => &[],
+            LanguagePolicy::DetectAmong(allowed) => allowed,
+        }
+    }
+}
+
 /// Параметры распознавания из настроек: одно место, где конфиг превращается в `SttOptions`.
 ///
 /// `initial_prompt` заполняет словарь терминов уже на стороне конвейера — он знает,
 /// какие термины актуальны для этой реплики.
 pub fn stt_options_from_config(cfg: &SttConfig, timestamps: bool) -> SttOptions {
     SttOptions {
-        language: LanguageHint::parse(&cfg.language),
+        language: LanguagePolicy::from_config(cfg).hint(),
         allowed_languages: cfg.allowed_languages.clone(),
         initial_prompt: None,
         threads: cfg.threads as usize,
@@ -93,17 +132,31 @@ fn normalise_for_match(text: &str) -> String {
     out.trim().to_string()
 }
 
-/// Распознать с одним повтором, если автоопределение выдало язык вне списка разрешённых.
+/// Распознать по политике выбора языка.
 ///
-/// Типичная ошибка whisper на коротких репликах — принять русскую речь за украинскую или
-/// болгарскую. `allowed_languages` — это языки, которые пользователь вообще использует; если
-/// определённый язык не из списка, делаем ровно один повтор с первым языком списка (I-06).
-/// При фиксированном языке (I-07) автоопределение выключено и повтор не нужен.
+/// Сначала дешёвое определение языка по первым секундам среди разрешённых: движок, который так
+/// умеет, избавляет от режима `auto` у самого распознавания — а тот считает полное окно в тридцать
+/// секунд и на процессоре обходится в разы дороже.
+///
+/// Если движок определять не умеет, остаётся прежний путь: распознать и, если модель выбрала язык
+/// вне списка разрешённых, повторить ровно один раз с первым языком списка (I-06). Типичная ошибка
+/// whisper на коротких репликах — принять русскую речь за украинскую или болгарскую. При
+/// фиксированном языке (I-07) автоопределения нет вовсе и повтор не нужен.
 pub fn transcribe_with_language_policy(
     engine: &mut dyn SttEngine,
     audio: &PcmAudio,
     opts: &SttOptions,
 ) -> Result<Transcript, SttError> {
+    if opts.language == LanguageHint::Auto && !opts.allowed_languages.is_empty() {
+        if let Some(code) = engine.detect_language(audio, opts) {
+            debug!(language = %code, "язык определён до распознавания");
+            let opts = SttOptions {
+                language: LanguageHint::Fixed(code),
+                ..opts.clone()
+            };
+            return engine.transcribe(audio, &opts);
+        }
+    }
     let first = engine.transcribe(audio, opts)?;
     let Some(fallback) = retry_language(opts, first.detected_language.as_deref()) else {
         return Ok(first);
@@ -146,6 +199,46 @@ mod tests {
     use super::*;
     use crate::domain::fakes::FakeStt;
 
+    /// Движок, который умеет определять язык до распознавания.
+    struct DetectingStt {
+        inner: FakeStt,
+        detected: Option<String>,
+        detect_calls: usize,
+    }
+
+    impl DetectingStt {
+        fn new(detected: Option<&str>, responses: Vec<Result<Transcript, SttError>>) -> Self {
+            Self {
+                inner: FakeStt::with_responses(responses),
+                detected: detected.map(str::to_string),
+                detect_calls: 0,
+            }
+        }
+    }
+
+    impl SttEngine for DetectingStt {
+        fn id(&self) -> &str {
+            "detecting"
+        }
+        fn model_name(&self) -> &str {
+            "detecting"
+        }
+        fn transcribe(
+            &mut self,
+            audio: &PcmAudio,
+            opts: &SttOptions,
+        ) -> Result<Transcript, SttError> {
+            self.inner.transcribe(audio, opts)
+        }
+        fn unload(&mut self) {
+            self.inner.unload();
+        }
+        fn detect_language(&mut self, _audio: &PcmAudio, _opts: &SttOptions) -> Option<String> {
+            self.detect_calls += 1;
+            self.detected.clone()
+        }
+    }
+
     fn audio() -> PcmAudio {
         PcmAudio::new(vec![0.1; 16_000], 16_000)
     }
@@ -164,6 +257,98 @@ mod tests {
             allowed_languages: allowed.iter().map(|s| (*s).to_string()).collect(),
             ..SttOptions::default()
         }
+    }
+
+    #[test]
+    fn a_detected_language_is_recognised_in_one_pass_without_auto() {
+        let mut engine = DetectingStt::new(
+            Some("en"),
+            vec![
+                Ok(detected("en", "hello there")),
+                Ok(detected("ru", "лишний")),
+            ],
+        );
+
+        let out = transcribe_with_language_policy(&mut engine, &audio(), &opts_auto(&["ru", "en"]))
+            .expect("успех");
+
+        assert_eq!(out.text, "hello there");
+        assert_eq!(engine.detect_calls, 1);
+        assert_eq!(
+            engine.inner.calls.len(),
+            1,
+            "определение языка не должно добавлять второй прогон модели"
+        );
+        assert_eq!(
+            engine.inner.calls[0].language,
+            LanguageHint::Fixed("en".into()),
+            "распознавание идёт с определённым языком, а не в режиме auto"
+        );
+    }
+
+    #[test]
+    fn a_fixed_language_is_never_detected() {
+        let mut engine = DetectingStt::new(Some("en"), vec![Ok(detected("ru", "привет"))]);
+        let opts = SttOptions {
+            language: LanguageHint::Fixed("ru".into()),
+            ..opts_auto(&["ru", "en"])
+        };
+
+        transcribe_with_language_policy(&mut engine, &audio(), &opts).expect("успех");
+
+        assert_eq!(engine.detect_calls, 0, "лишняя работа на каждой реплике");
+        assert_eq!(
+            engine.inner.calls[0].language,
+            LanguageHint::Fixed("ru".into())
+        );
+    }
+
+    #[test]
+    fn an_engine_that_cannot_detect_falls_back_to_the_retry() {
+        let mut engine = DetectingStt::new(
+            None,
+            vec![
+                Ok(detected("uk", "почалося")),
+                Ok(detected("ru", "началось")),
+            ],
+        );
+
+        let out = transcribe_with_language_policy(&mut engine, &audio(), &opts_auto(&["ru", "en"]))
+            .expect("успех");
+
+        assert_eq!(out.text, "началось");
+        assert_eq!(engine.detect_calls, 1);
+        assert_eq!(engine.inner.calls.len(), 2);
+    }
+
+    #[test]
+    fn the_policy_comes_from_the_configuration() {
+        let auto = SttConfig {
+            language: "auto".into(),
+            allowed_languages: vec!["ru".into(), "en".into()],
+            ..SttConfig::default()
+        };
+        assert_eq!(
+            LanguagePolicy::from_config(&auto),
+            LanguagePolicy::DetectAmong(vec!["ru".into(), "en".into()])
+        );
+        assert_eq!(
+            LanguagePolicy::from_config(&auto).hint(),
+            LanguageHint::Auto
+        );
+
+        let fixed = SttConfig {
+            language: " RU ".into(),
+            ..SttConfig::default()
+        };
+        assert_eq!(
+            LanguagePolicy::from_config(&fixed),
+            LanguagePolicy::Fixed("ru".into())
+        );
+        assert!(
+            LanguagePolicy::from_config(&fixed).allowed().is_empty(),
+            "при фиксированном языке выбирать не из чего"
+        );
     }
 
     #[test]

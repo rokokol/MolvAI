@@ -21,6 +21,8 @@ use crate::domain::stt::{LanguageHint, SttEngine, SttError, SttOptions};
 use crate::domain::text::word_count;
 use crate::infra::inject::parse_output_mode;
 
+use super::chunked::{ChunkContext, ChunkPrefix, ChunkText};
+
 #[derive(Debug, Error)]
 pub enum ProcessError {
     #[error("распознавание не удалось: {0}")]
@@ -59,6 +61,29 @@ impl Processor for crate::app::pipeline::Pipeline {
     fn set_stop_after_release(&mut self, ms: u32) {
         crate::app::pipeline::Pipeline::set_stop_after_release(self, ms);
     }
+
+    fn transcribe_chunk(
+        &mut self,
+        audio: &PcmAudio,
+        context: &ChunkContext,
+    ) -> Option<Result<ChunkText, ProcessError>> {
+        Some(
+            crate::app::pipeline::Pipeline::transcribe_chunk(self, audio, context)
+                .map_err(ProcessError::from),
+        )
+    }
+
+    fn process_with_prefix(
+        &mut self,
+        prefix: ChunkPrefix,
+        audio: PcmAudio,
+        mode: Mode,
+        style: Option<&str>,
+        app_hint: Option<&str>,
+    ) -> Result<Entry, ProcessError> {
+        self.set_chunk_prefix(prefix);
+        self.process(audio, mode, style, app_hint)
+    }
 }
 
 /// Конвейер обработки одной реплики.
@@ -79,6 +104,33 @@ pub trait Processor: Send {
     /// Меряет демон — только он знает обе точки. Значение уходит в `Entry.latency_ms
     /// .stop_after_release`, поэтому гарантию приватности микрофона видно в журнале.
     fn set_stop_after_release(&mut self, _ms: u32) {}
+
+    /// Распознать кусок ещё идущей записи.
+    ///
+    /// `None` означает, что обработчик потоковую обработку не умеет: демон тогда дождётся конца
+    /// реплики и отдаст её целиком, как раньше.
+    fn transcribe_chunk(
+        &mut self,
+        _audio: &PcmAudio,
+        _context: &ChunkContext,
+    ) -> Option<Result<ChunkText, ProcessError>> {
+        None
+    }
+
+    /// Обработать реплику, начало которой уже распознано кусками.
+    ///
+    /// Реализация по умолчанию не умеет в куски, поэтому и префикса у неё не бывает: демон отдаёт
+    /// ей запись целиком.
+    fn process_with_prefix(
+        &mut self,
+        _prefix: ChunkPrefix,
+        audio: PcmAudio,
+        mode: Mode,
+        style: Option<&str>,
+        app_hint: Option<&str>,
+    ) -> Result<Entry, ProcessError> {
+        self.process(audio, mode, style, app_hint)
+    }
 }
 
 /// Настройки, которые обработчику нужны от конфига.
