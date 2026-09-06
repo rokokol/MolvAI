@@ -184,6 +184,48 @@ impl OpenAiCompatClient {
     pub fn endpoint(&self) -> String {
         format!("{}/chat/completions", self.base_url)
     }
+
+    /// Имена моделей, которые сервер отдаёт на `GET /models`. Нужно диагностике: отвечает ли
+    /// провайдер вообще и скачана ли настроенная модель. Ошибки те же, что у `complete`.
+    pub fn list_models(&self) -> Result<Vec<String>, LlmError> {
+        let mut request = self.http.get(format!("{}/models", self.base_url));
+        if let Some(key) = &self.api_key {
+            request = request.bearer_auth(key.expose());
+        }
+        let response = request.send().map_err(|err| {
+            if err.is_timeout() {
+                LlmError::Timeout(self.timeout.as_secs().max(1))
+            } else {
+                LlmError::Unavailable(format!("{}/models: {err}", self.base_url))
+            }
+        })?;
+        let status = response.status();
+        if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+            return Err(LlmError::Auth);
+        }
+        if !status.is_success() {
+            return Err(LlmError::Unavailable(format!("HTTP {status}")));
+        }
+        let text = response
+            .text()
+            .map_err(|err| LlmError::BadResponse(err.to_string()))?;
+        let value: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|err| LlmError::BadResponse(format!("{err}: {}", snippet(&text))))?;
+        let names = value
+            .get("data")
+            .and_then(serde_json::Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| item.get("id").and_then(serde_json::Value::as_str))
+                    .map(str::to_string)
+                    .collect()
+            })
+            .ok_or_else(|| {
+                LlmError::BadResponse(format!("в ответе нет списка data: {}", snippet(&text)))
+            })?;
+        Ok(names)
+    }
 }
 
 /// Ответ провайдера: разбираем только то, что нужно журналу и вставке.
@@ -480,6 +522,30 @@ mod tests {
         assert!(server
             .last_request()
             .contains(r#""reasoning_effort":"none""#));
+    }
+
+    #[test]
+    fn model_listing_returns_ids_and_reports_a_dead_server() {
+        let server = MockServer::spawn(vec![Some(http(
+            "200 OK",
+            r#"{"object":"list","data":[{"id":"qwen3.5:4b"},{"id":"gemma4:26b"}]}"#,
+        ))]);
+        let names = client(&server, None).list_models().unwrap();
+        assert_eq!(names, vec!["qwen3.5:4b", "gemma4:26b"]);
+
+        let dead = OpenAiCompatClient::new(
+            "http://127.0.0.1:9/v1",
+            "qwen3.5:4b",
+            None,
+            Duration::from_secs(2),
+            "ollama",
+            true,
+        )
+        .unwrap();
+        assert!(matches!(
+            dead.list_models().unwrap_err(),
+            LlmError::Unavailable(_) | LlmError::Timeout(_)
+        ));
     }
 
     #[test]

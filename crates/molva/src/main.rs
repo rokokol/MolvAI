@@ -279,7 +279,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                 std::time::Duration::from_secs(delay),
             )
         }
-        Commands::Doctor => cmd::doctor::run(&socket),
+        Commands::Doctor => cmd::doctor::run(&socket, &config()?),
         Commands::Completions { shell } => {
             let mut stdout = std::io::stdout().lock();
             Ok(cmd::completions::run::<Cli>(shell, "molva", &mut stdout)?)

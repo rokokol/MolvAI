@@ -651,3 +651,21 @@ defect 'dictionary/reload-notices-a-same-mtime-change' 'crates/molva-core/src/ap
   '        len: metadata.len(),' \
   '        len: 0,' \
   'правка словаря с той же меткой времени остаётся незамеченной до перезапуска демона'
+
+defect 'doctor/wrong-model-hash-is-not-ok' 'crates/molva/src/cmd/doctor.rs' \
+  '        Ok(false) => Check::new(
+            "модель whisper",
+            false,' \
+  '        Ok(false) => Check::new(
+            "модель whisper",
+            true,' \
+  'doctor называет битые веса whisper исправными'
+
+defect 'doctor/unreachable-llm-is-not-ok' 'crates/molva/src/cmd/doctor.rs' \
+  '        Err(error) => Check::new(
+            "LLM",
+            false,' \
+  '        Err(error) => Check::new(
+            "LLM",
+            true,' \
+  'doctor называет недоступного провайдера модели работающим'
