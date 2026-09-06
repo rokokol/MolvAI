@@ -16,6 +16,7 @@ use molva_core::domain::journal::Journal;
 use molva_core::domain::stt::{LanguageHint, Segment, SttEngine, SttOptions};
 use molva_core::domain::text::word_count;
 use molva_core::infra::audio::decode;
+use molva_core::infra::stt::transcribe_with_language_policy;
 use molva_core::Config;
 use serde::Serialize;
 use uuid::Uuid;
@@ -211,7 +212,9 @@ pub fn transcribe_jobs(
         let ready = audio.to_16k();
 
         let started = Instant::now();
-        let transcript = match engine.transcribe(&ready, opts) {
+        // Через политику, а не напрямую: язык выбирается среди разрешённых, и `auto` не заставляет
+        // whisper считать полное окно в тридцать секунд.
+        let transcript = match transcribe_with_language_policy(engine, &ready, opts) {
             Ok(transcript) => transcript,
             Err(e) => {
                 outcome.errors.push((job.label.clone(), e.to_string()));
