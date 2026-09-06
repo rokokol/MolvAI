@@ -256,6 +256,29 @@ impl TextInjector for ChainInjector {
         self.apply_window(class);
     }
 
+    /// Выделение забирает первый доступный способ, который это умеет; остальные ошибки
+    /// собираются в одно сообщение, чтобы пользователь видел, почему не вышло.
+    fn copy_selection(&mut self) -> Result<String, InjectError> {
+        let mut reasons = Vec::new();
+        for backend in &mut self.backends {
+            let injector = backend.as_injector();
+            let id = injector.id();
+            if !injector.available() {
+                continue;
+            }
+            match injector.copy_selection() {
+                Ok(selection) => return Ok(selection),
+                Err(InjectError::Unsupported) => {}
+                Err(err) => reasons.push(format!("{id}: {err}")),
+            }
+        }
+        if reasons.is_empty() {
+            Err(InjectError::Unsupported)
+        } else {
+            Err(InjectError::Failed(reasons.join("; ")))
+        }
+    }
+
     fn inject(&mut self, text: &str, mode: OutputMode) -> Result<InjectReport, InjectError> {
         // `Auto` сюда доходить не должен, но если дошёл — разрешаем по общему правилу.
         let mode = mode.resolve(text, usize::MAX);

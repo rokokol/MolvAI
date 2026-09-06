@@ -196,7 +196,9 @@ impl ClipboardBackend for SystemClipboard {
     }
 }
 
-fn wl_paste() -> Option<String> {
+/// Текст из буфера через `wl-paste`; `None`, если утилиты нет или в буфере не текст.
+/// Нужен и снимку буфера, и режиму команд, который забирает выделение после Ctrl+C.
+pub(crate) fn wl_paste() -> Option<String> {
     let output = Command::new("wl-paste").arg("--no-newline").output().ok()?;
     if !output.status.success() {
         return None;

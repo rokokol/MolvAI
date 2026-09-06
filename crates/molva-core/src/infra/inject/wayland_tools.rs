@@ -133,7 +133,31 @@ impl TextInjector for HyprctlInjector {
             attempts: Vec::new(),
         })
     }
+
+    /// Режим команд: скопировать выделение сочетанием Ctrl+C через композитор и забрать его
+    /// из буфера. Буфер намеренно не восстанавливается — так же ведёт себя обычный Ctrl+C.
+    fn copy_selection(&mut self) -> Result<String, InjectError> {
+        run(
+            "hyprctl",
+            &["dispatch", "sendshortcut", "CTRL, C, activewindow"],
+        )?;
+        std::thread::sleep(MODIFIER_RELEASE_DELAY);
+        release_modifiers();
+        // Приложению нужно время, чтобы выложить выделение в буфер: wl-paste сразу после
+        // сочетания получает ещё старое содержимое.
+        std::thread::sleep(SELECTION_SETTLE_DELAY);
+        let selection = crate::infra::inject::clipboard::wl_paste().unwrap_or_default();
+        if selection.trim().is_empty() {
+            return Err(InjectError::Failed(
+                "выделения нет: буфер после Ctrl+C пуст".into(),
+            ));
+        }
+        Ok(selection)
+    }
 }
+
+/// Пауза между Ctrl+C и чтением буфера: приложение отдаёт выделение не мгновенно.
+const SELECTION_SETTLE_DELAY: Duration = Duration::from_millis(150);
 
 /// Пауза между сочетанием и отпусканием модификаторов.
 const MODIFIER_RELEASE_DELAY: Duration = Duration::from_millis(80);
