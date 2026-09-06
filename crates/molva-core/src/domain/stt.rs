@@ -109,6 +109,15 @@ pub trait SttEngine: std::fmt::Debug + Send {
     ) -> Result<Transcript, SttError>;
     /// Освободить память модели; следующий вызов `transcribe` загрузит её заново.
     fn unload(&mut self);
+
+    /// Определить язык по первым секундам записи, выбирая только среди `opts.allowed_languages`.
+    ///
+    /// Это отдельный дешёвый шаг, а не режим `auto` у самого распознавания: `auto` заставляет
+    /// whisper.cpp считать полное тридцатисекундное окно на каждой реплике. `None` означает, что
+    /// движок так не умеет — тогда язык выбирает сама модель во время распознавания.
+    fn detect_language(&mut self, _audio: &PcmAudio, _opts: &SttOptions) -> Option<String> {
+        None
+    }
 }
 
 #[cfg(test)]

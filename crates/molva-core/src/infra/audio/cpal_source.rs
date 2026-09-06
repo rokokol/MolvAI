@@ -118,6 +118,8 @@ struct Active {
     thread: JoinHandle<()>,
     shared: Arc<Shared>,
     sample_rate: u32,
+    /// Сколько отсчётов уже забрала потоковая обработка: позиция чтения, а не удаление.
+    drained: usize,
 }
 
 /// То, что callback пишет, а `stop` читает.
@@ -198,6 +200,7 @@ impl AudioSource for CpalSource {
                     thread,
                     shared,
                     sample_rate,
+                    drained: 0,
                 });
                 Ok(())
             }
@@ -263,6 +266,22 @@ impl AudioSource for CpalSource {
 
     fn is_recording(&self) -> bool {
         self.active.is_some()
+    }
+
+    fn drain_new_samples(&mut self) -> Option<PcmAudio> {
+        let gain = self.gain;
+        let active = self.active.as_mut()?;
+        let buffer = active.shared.samples.lock().ok()?;
+        if buffer.len() <= active.drained {
+            return None;
+        }
+        // Копия, а не изъятие: `stop` обязан вернуть запись целиком, иначе пропадёт и файл, и
+        // длительность реплики. Усиление применяется к копии, поэтому дважды оно не наложится.
+        let mut samples = buffer[active.drained..].to_vec();
+        active.drained = buffer.len();
+        drop(buffer);
+        apply_gain(&mut samples, gain);
+        Some(PcmAudio::new(samples, active.sample_rate))
     }
 }
 
