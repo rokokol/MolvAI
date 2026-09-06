@@ -18,6 +18,7 @@ use tracing::warn;
 use uuid::Uuid;
 
 use crate::app::journal_crypto::{self, JournalCipher};
+use crate::app::secrets;
 use crate::domain::entry::{Entry, SCHEMA_VERSION};
 use crate::domain::journal::{Journal, JournalError};
 
@@ -82,7 +83,8 @@ impl FileJournal {
 
     /// Журнал по настройкам: путь, режим приватности и шифр из одного места, чтобы демон,
     /// CLI и GUI открывали один и тот же файл одинаково. С `journal.encrypt = true` ключ
-    /// читается или создаётся по `journal.key_path`.
+    /// читается или создаётся по `journal.key_source`: в хранилище ОС (запись `journal-key`)
+    /// или в файле `journal.key_path`.
     pub fn open_for(config: &crate::config::Config) -> Result<Self, JournalError> {
         let path = config
             .journal_path()
@@ -91,11 +93,20 @@ impl FileJournal {
         if !config.journal.encrypt {
             return Ok(journal);
         }
-        let key_path = config
-            .journal_key_path()
-            .map_err(|e| JournalError::Io(e.to_string()))?;
-        let cipher =
-            JournalCipher::from_key_file(&key_path).map_err(|e| JournalError::Io(e.to_string()))?;
+        let cipher = if config
+            .journal
+            .key_source
+            .trim()
+            .eq_ignore_ascii_case("keyring")
+        {
+            JournalCipher::from_store(&secrets::OsKeyring, secrets::JOURNAL_KEY_ENTRY)
+        } else {
+            let key_path = config
+                .journal_key_path()
+                .map_err(|e| JournalError::Io(e.to_string()))?;
+            JournalCipher::from_key_file(&key_path)
+        }
+        .map_err(|e| JournalError::Io(e.to_string()))?;
         Ok(journal.with_cipher(Some(cipher)))
     }
 

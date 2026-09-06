@@ -706,3 +706,18 @@ defect 'daemon/idle-waits-for-every-reply' 'crates/molva-core/src/app/daemon/sta
   '                if self.in_flight == 0 && matches!(self.phase, Phase::Processing(_)) {' \
   '                if matches!(self.phase, Phase::Processing(_)) {' \
   'демон показывает «готов», пока вторая реплика ещё распознаётся'
+
+defect 'secrets/keyring-preferred-over-env' 'crates/molva-core/src/app/secrets.rs' \
+  '                    return Some(value);' \
+  '                    let _ = value;' \
+  'ключ из хранилища ОС игнорируется: при api_key_source = keyring читается только переменная окружения'
+
+defect 'secrets/journal-key-is-reused' 'crates/molva-core/src/app/journal_crypto.rs' \
+  '        return parse_key(text.trim(), name);' \
+  '        let _ = text;' \
+  'при каждом открытии журнала в хранилище пишется новый ключ: вчерашние реплики нечитаемы'
+
+defect 'secrets/file-store-owner-only' 'crates/molva-core/src/app/secrets.rs' \
+  '            options.mode(0o600);' \
+  '            options.mode(0o644);' \
+  'файл с ключом провайдера читается любым пользователем машины'

@@ -4,7 +4,7 @@
 
 Лицензии весов моделей распознавания здесь не перечислены: веса в репозиторий не входят, их условия описаны в [docs/model-licenses.md](docs/model-licenses.md)
 
-- MIT License — зависимостей: 476
+- MIT License — зависимостей: 502
 - Unicode License v3 — зависимостей: 19
 - Mozilla Public License 2.0 — зависимостей: 17
 - Apache License 2.0 — зависимостей: 11
@@ -1575,6 +1575,7 @@ THE SOFTWARE IS PROVIDED "AS IS" AND ISC DISCLAIMS ALL WARRANTIES WITH REGARD TO
 
 Под этой лицензией распространяются:
 
+- [sha1 0.10.7](https://github.com/RustCrypto/hashes)
 - [sha2 0.10.9](https://github.com/RustCrypto/hashes)
 
 ```
@@ -1954,7 +1955,13 @@ THE SOFTWARE.
 - [bitflags 2.13.1](https://github.com/bitflags/bitflags)
 - [glob 0.3.4](https://github.com/rust-lang/glob)
 - [log 0.4.34](https://github.com/rust-lang/log)
+- [num-bigint 0.4.8](https://github.com/rust-num/num-bigint)
+- [num-complex 0.4.6](https://github.com/rust-num/num-complex)
+- [num-integer 0.1.47](https://github.com/rust-num/num-integer)
+- [num-iter 0.1.46](https://github.com/rust-num/num-iter)
+- [num-rational 0.4.2](https://github.com/rust-num/num-rational)
 - [num-traits 0.2.19](https://github.com/rust-num/num-traits)
+- [num 0.4.3](https://github.com/rust-num/num)
 - [regex-automata 0.4.18](https://github.com/rust-lang/regex)
 - [regex-syntax 0.8.11](https://github.com/rust-lang/regex)
 - [regex 1.13.1](https://github.com/rust-lang/regex)
@@ -2636,6 +2643,42 @@ SOFTWARE.
 
 Под этой лицензией распространяются:
 
+- [hkdf 0.12.4](https://github.com/RustCrypto/KDFs/)
+
+```
+Copyright (c) 2015-2018 Vlad Filippov
+Copyright (c) 2018-2021 RustCrypto Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+```
+
+## MIT License
+
+Под этой лицензией распространяются:
+
 - [poly1305 0.8.0](https://github.com/RustCrypto/universal-hashes)
 
 ```
@@ -2983,6 +3026,76 @@ DEALINGS IN THE SOFTWARE.
 
 Под этой лицензией распространяются:
 
+- [keyring 3.6.3](https://github.com/hwchen/keyring-rs.git)
+
+```
+Copyright (c) 2016 keyring Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+```
+
+## MIT License
+
+Под этой лицензией распространяются:
+
+- [secret-service 4.0.0](https://github.com/hwchen/secret-service-rs.git)
+
+```
+Copyright (c) 2016 secret-service Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+```
+
+## MIT License
+
+Под этой лицензией распространяются:
+
 - [indexmap 2.14.2](https://github.com/indexmap-rs/indexmap)
 
 ```
@@ -3154,6 +3267,7 @@ THE SOFTWARE.
 Под этой лицензией распространяются:
 
 - [digest 0.10.7](https://github.com/RustCrypto/traits)
+- [hmac 0.12.1](https://github.com/RustCrypto/MACs)
 
 ```
 Copyright (c) 2017 Artyom Pavlov
@@ -3591,6 +3705,41 @@ DEALINGS IN THE SOFTWARE.
 
 Под этой лицензией распространяются:
 
+- [aes 0.8.4](https://github.com/RustCrypto/block-ciphers)
+
+```
+Copyright (c) 2018 Artyom Pavlov
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+```
+
+## MIT License
+
+Под этой лицензией распространяются:
+
 - [bytes 1.12.1](https://github.com/tokio-rs/bytes)
 
 ```
@@ -3721,6 +3870,7 @@ THE SOFTWARE.
 Под этой лицензией распространяются:
 
 - [block-buffer 0.10.4](https://github.com/RustCrypto/utils)
+- [block-padding 0.3.3](https://github.com/RustCrypto/utils)
 
 ```
 Copyright (c) 2018-2019 The RustCrypto Project Developers
@@ -3780,6 +3930,42 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+```
+
+## MIT License
+
+Под этой лицензией распространяются:
+
+- [cbc 0.1.2](https://github.com/RustCrypto/block-modes)
+
+```
+Copyright (c) 2018-2022 RustCrypto Developers
+Copyright (c) 2018 Artyom Pavlov
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
 
 ```
 
@@ -4946,10 +5132,14 @@ DEALINGS IN THE SOFTWARE.
 
 Под этой лицензией распространяются:
 
+- [zbus 4.4.0](https://github.com/dbus2/zbus/)
 - [zbus 5.19.0](https://github.com/z-galaxy/zbus/)
+- [zbus_macros 4.4.0](https://github.com/dbus2/zbus/)
 - [zbus_macros 5.19.0](https://github.com/z-galaxy/zbus/)
 - [zbus_names 4.3.4](https://github.com/z-galaxy/zbus/)
+- [zvariant 4.2.0](https://github.com/dbus2/zbus/)
 - [zvariant 5.15.0](https://github.com/z-galaxy/zbus/)
+- [zvariant_derive 4.2.0](https://github.com/dbus2/zbus/)
 - [zvariant_derive 5.15.0](https://github.com/z-galaxy/zbus/)
 
 ```
@@ -5268,7 +5458,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 Под этой лицензией распространяются:
 
+- [rand 0.8.8](https://github.com/rust-random/rand)
 - [rand 0.9.5](https://github.com/rust-random/rand)
+- [rand_chacha 0.3.1](https://github.com/rust-random/rand)
 - [rand_chacha 0.9.0](https://github.com/rust-random/rand)
 - [rand_core 0.6.4](https://github.com/rust-random/rand)
 - [rand_core 0.9.5](https://github.com/rust-random/rand)
@@ -5715,6 +5907,37 @@ SOFTWARE.
 MIT License
 
 Copyright (c) 2017 Matthew D. Steele
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+```
+
+## MIT License
+
+Под этой лицензией распространяются:
+
+- [static_assertions 1.1.0](https://github.com/nvzqz/static-assertions-rs)
+
+```
+MIT License
+
+Copyright (c) 2017 Nikolai Vazquez
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -6676,6 +6899,7 @@ SOFTWARE.
 - [windows-result 0.4.1](https://github.com/microsoft/windows-rs)
 - [windows-strings 0.4.2](https://github.com/microsoft/windows-rs)
 - [windows-strings 0.5.1](https://github.com/microsoft/windows-rs)
+- [windows-sys 0.52.0](https://github.com/microsoft/windows-rs)
 - [windows-sys 0.59.0](https://github.com/microsoft/windows-rs)
 - [windows-sys 0.60.2](https://github.com/microsoft/windows-rs)
 - [windows-sys 0.61.2](https://github.com/microsoft/windows-rs)
@@ -6952,6 +7176,7 @@ DEALINGS IN THE SOFTWARE.
 - [anyhow 1.0.104](https://github.com/dtolnay/anyhow)
 - [async-channel 2.5.0](https://github.com/smol-rs/async-channel)
 - [async-executor 1.14.0](https://github.com/smol-rs/async-executor)
+- [async-fs 2.2.0](https://github.com/smol-rs/async-fs)
 - [async-io 2.6.0](https://github.com/smol-rs/async-io)
 - [async-lock 3.4.2](https://github.com/smol-rs/async-lock)
 - [async-process 2.5.0](https://github.com/smol-rs/async-process)
@@ -7009,7 +7234,10 @@ DEALINGS IN THE SOFTWARE.
 - [unicode-ident 1.0.24](https://github.com/dtolnay/unicode-ident)
 - [x11-dl 2.21.0](https://github.com/AltF02/x11-rs.git)
 - [x11 2.21.0](https://github.com/AltF02/x11-rs.git)
+- [xdg-home 1.3.0](https://github.com/zeenix/xdg-home)
+- [zbus_names 3.0.0](https://github.com/dbus2/zbus/)
 - [zmij 1.0.23](https://github.com/dtolnay/zmij)
+- [zvariant_utils 2.1.0](https://github.com/dbus2/zbus/)
 - [zvariant_utils 4.2.0](https://github.com/z-galaxy/zbus/)
 
 ```

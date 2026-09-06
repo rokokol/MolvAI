@@ -108,6 +108,15 @@ reqwest = { version = "0.13", default-features = false, features = [
 sha2 = "0.10"
 # Шифрование текстов журнала по настройке journal.encrypt (AEAD, RustCrypto, MIT/Apache-2.0)
 chacha20poly1305 = "0.10"
+# Хранилище ключей ОС: Secret Service (Linux, чистый Rust через zbus, без libdbus),
+# Credential Manager (Windows), Keychain (macOS). Лицензия MIT/Apache-2.0.
+keyring = { version = "3", default-features = false, features = [
+    "async-secret-service",
+    "async-io",
+    "crypto-rust",
+    "windows-native",
+    "apple-native",
+] }
 indicatif = "0.18"
 clap_complete = "4"
 
