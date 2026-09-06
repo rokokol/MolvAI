@@ -185,20 +185,32 @@ impl OpenAiCompatClient {
         format!("{}/chat/completions", self.base_url)
     }
 
-    /// Имена моделей, которые сервер отдаёт на `GET /models`. Нужно диагностике: отвечает ли
-    /// провайдер вообще и скачана ли настроенная модель. Ошибки те же, что у `complete`.
-    pub fn list_models(&self) -> Result<Vec<String>, LlmError> {
-        let mut request = self.http.get(format!("{}/models", self.base_url));
+    /// Отправить запрос с ключом в заголовке. Одно место для обоих вызовов: ключ уходит
+    /// только в `Authorization`, таймаут отличим от отказа сервера, в сообщение об ошибке
+    /// попадает адрес, но не ключ.
+    fn send(
+        &self,
+        mut request: reqwest::blocking::RequestBuilder,
+        url: &str,
+    ) -> Result<reqwest::blocking::Response, LlmError> {
         if let Some(key) = &self.api_key {
             request = request.bearer_auth(key.expose());
         }
-        let response = request.send().map_err(|err| {
+        request.send().map_err(|err| {
             if err.is_timeout() {
+                // Таймаут короче секунды в сообщении округляется вверх, а не до нуля.
                 LlmError::Timeout(self.timeout.as_secs().max(1))
             } else {
-                LlmError::Unavailable(format!("{}/models: {err}", self.base_url))
+                LlmError::Unavailable(format!("{url}: {err}"))
             }
-        })?;
+        })
+    }
+
+    /// Имена моделей, которые сервер отдаёт на `GET /models`. Нужно диагностике: отвечает ли
+    /// провайдер вообще и скачана ли настроенная модель. Ошибки те же, что у `complete`.
+    pub fn list_models(&self) -> Result<Vec<String>, LlmError> {
+        let url = format!("{}/models", self.base_url);
+        let response = self.send(self.http.get(&url), &url)?;
         let status = response.status();
         if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
             return Err(LlmError::Auth);
@@ -296,20 +308,8 @@ impl LlmClient for OpenAiCompatClient {
             body["reasoning_effort"] = json!(effort);
         }
 
-        let mut request = self.http.post(self.endpoint()).json(&body);
-        if let Some(key) = &self.api_key {
-            request = request.bearer_auth(key.expose());
-        }
-
-        let response = request.send().map_err(|err| {
-            if err.is_timeout() {
-                // Таймаут короче секунды в сообщении округляется вверх, а не до нуля.
-                LlmError::Timeout(self.timeout.as_secs().max(1))
-            } else {
-                // В сообщение попадает адрес, но не ключ: он живёт только в заголовке.
-                LlmError::Unavailable(format!("{}: {err}", self.endpoint()))
-            }
-        })?;
+        let url = self.endpoint();
+        let response = self.send(self.http.post(&url).json(&body), &url)?;
 
         let status = response.status();
         let text = response
