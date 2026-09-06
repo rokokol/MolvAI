@@ -10,12 +10,19 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use chrono::Utc;
+use molva_core::app::dictionary::Dictionary;
 use molva_core::app::engine::{build_stt_with, EngineChoice};
-use molva_core::domain::entry::{Entry, LatencyMs, Mode, Source, SCHEMA_VERSION};
+use molva_core::app::llm_output::sanitize_llm_output;
+use molva_core::app::rules::RuleSet;
+use molva_core::app::secrets;
+use molva_core::app::styles::Styles;
+use molva_core::domain::entry::{Entry, LatencyMs, Mode, Source, Tokens, SCHEMA_VERSION};
 use molva_core::domain::journal::Journal;
+use molva_core::domain::llm::{ChatRequest, LlmClient};
 use molva_core::domain::stt::{LanguageHint, Segment, SttEngine, SttOptions};
-use molva_core::domain::text::word_count;
+use molva_core::domain::text::{word_count, Style};
 use molva_core::infra::audio::decode;
+use molva_core::infra::llm::openai_compat::{OpenAiCompatClient, Provider};
 use molva_core::infra::stt::transcribe_with_language_policy;
 use molva_core::Config;
 use serde::Serialize;
@@ -23,10 +30,169 @@ use uuid::Uuid;
 
 use super::{progress_enabled, CmdError};
 
-/// Постобработка распознанного текста: словарь, правила и модель подключаются конвейером
-/// дорожки D. Пока по умолчанию — тождественная функция, точка вызова уже на месте.
-pub fn identity(text: &str) -> String {
-    text.to_string()
+/// След обращения к модели за один файл: в журнал попадает то же, что и при диктовке.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LlmTrace {
+    pub provider: String,
+    pub model: String,
+    pub local: bool,
+    pub tokens: Option<Tokens>,
+    pub elapsed_ms: u32,
+}
+
+/// Результат конвейера текста для одного файла.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Postprocessed {
+    pub text: String,
+    pub dict_hits: u32,
+    pub llm: Option<LlmTrace>,
+}
+
+#[cfg(test)]
+impl Postprocessed {
+    /// Текст без следов словаря и модели.
+    pub fn plain(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            dict_hits: 0,
+            llm: None,
+        }
+    }
+}
+
+/// Постобработка, которая ничего не меняет: тесты проверяют сам проход конвейера.
+#[cfg(test)]
+pub fn identity(text: &str, _language: &str) -> Postprocessed {
+    Postprocessed::plain(text)
+}
+
+/// Конвейер текста для файлов: тот же порядок, что и при диктовке — словарь, правила,
+/// модель по стилю. Модель зовётся только когда стиль её просит, она включена в настройках,
+/// `--no-llm` не задан и слов больше `rules.llm_min_words`; отказ модели возвращает текст
+/// после правил, а не ошибку.
+pub struct FilePostprocessor {
+    dictionary: Dictionary,
+    rules: RuleSet,
+    style: Style,
+    llm: Option<Box<dyn LlmClient>>,
+    llm_provider: String,
+    llm_model: String,
+    llm_local: bool,
+    llm_min_words: u32,
+    temperature: f32,
+    max_tokens: u32,
+}
+
+impl FilePostprocessor {
+    /// Сборка по настройкам. `style_id` — стиль из `--style` или `style.default`.
+    pub fn from_config(cfg: &Config, config_path: &Path, style_id: &str, no_llm: bool) -> Self {
+        let dictionary = cfg
+            .dictionary_path_near(config_path)
+            .ok()
+            .and_then(|path| Dictionary::load(&path, cfg.dictionary.fuzzy).ok())
+            .unwrap_or_else(Dictionary::empty);
+        let style = Styles::from_config(&cfg.style).resolve(Some(style_id), None, &cfg.style);
+        let llm: Option<Box<dyn LlmClient>> =
+            if no_llm || !cfg.llm.enabled || !cfg.privacy.send_to_llm {
+                None
+            } else {
+                OpenAiCompatClient::from_config(&cfg.llm, secrets::api_key(&cfg.llm))
+                    .ok()
+                    .map(|client| Box::new(client) as Box<dyn LlmClient>)
+            };
+        Self::assemble(cfg, dictionary, style, llm)
+    }
+
+    /// Та же сборка, но с готовыми частями: тесты подставляют поддельную модель.
+    pub fn assemble(
+        cfg: &Config,
+        dictionary: Dictionary,
+        style: Style,
+        llm: Option<Box<dyn LlmClient>>,
+    ) -> Self {
+        Self {
+            dictionary,
+            rules: RuleSet::from_config(&cfg.rules),
+            style,
+            llm,
+            llm_provider: cfg.llm.provider.clone(),
+            llm_model: cfg.llm.model.clone(),
+            llm_local: Provider::parse(&cfg.llm.provider).is_local(),
+            llm_min_words: cfg.rules.llm_min_words,
+            temperature: cfg.llm.temperature,
+            max_tokens: cfg.llm.max_tokens,
+        }
+    }
+
+    /// Словарь → правила → модель. `language` — язык реплики для правил.
+    pub fn apply(&self, raw: &str, language: &str) -> Postprocessed {
+        let (after_dictionary, dict_hits) = self.dictionary.apply(raw);
+        let after_rules = self.rules.apply(&after_dictionary, language);
+        let Some(llm) = self.llm.as_deref() else {
+            return Postprocessed {
+                text: after_rules,
+                dict_hits,
+                llm: None,
+            };
+        };
+        if !self.style.uses_llm || word_count(&after_rules) <= self.llm_min_words {
+            return Postprocessed {
+                text: after_rules,
+                dict_hits,
+                llm: None,
+            };
+        }
+        let request = ChatRequest {
+            model: self.llm_model.clone(),
+            system: self.style.system_prompt.clone(),
+            user: after_rules.clone(),
+            temperature: self.temperature,
+            max_tokens: self.max_tokens,
+        };
+        let started = Instant::now();
+        match llm.complete(&request) {
+            Ok(response) => {
+                let text = sanitize_llm_output(&response.text, &self.dictionary.prompt_hint());
+                if text.is_empty() {
+                    // Пустой ответ — не результат: модель, скорее всего, сожгла лимит токенов
+                    // на размышления. Текст после правил ценнее пустой строки.
+                    eprintln!(
+                        "предупреждение: модель вернула пустой текст, текст оставлен после правил"
+                    );
+                    return Postprocessed {
+                        text: after_rules,
+                        dict_hits,
+                        llm: None,
+                    };
+                }
+                let tokens = match (response.prompt_tokens, response.completion_tokens) {
+                    (Some(prompt), Some(completion)) => Some(Tokens { prompt, completion }),
+                    _ => None,
+                };
+                Postprocessed {
+                    text,
+                    dict_hits,
+                    llm: Some(LlmTrace {
+                        provider: self.llm_provider.clone(),
+                        model: self.llm_model.clone(),
+                        local: self.llm_local,
+                        tokens,
+                        elapsed_ms: started.elapsed().as_millis() as u32,
+                    }),
+                }
+            }
+            Err(err) => {
+                eprintln!(
+                    "предупреждение: модель не ответила ({err}), текст оставлен после правил"
+                );
+                Postprocessed {
+                    text: after_rules,
+                    dict_hits,
+                    llm: None,
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, clap::Args)]
@@ -185,7 +351,7 @@ pub fn transcribe_jobs(
     engine: &mut dyn SttEngine,
     opts: &SttOptions,
     stdin_format: Option<&str>,
-    postprocess: &dyn Fn(&str) -> String,
+    postprocess: &dyn Fn(&str, &str) -> Postprocessed,
     journal: &mut dyn Journal,
     style: &str,
     progress: &mut dyn FnMut(usize, &str),
@@ -224,9 +390,20 @@ pub fn transcribe_jobs(
         let stt_ms = started.elapsed().as_millis() as u32;
 
         let raw = transcript.text.clone();
-        let text = postprocess(&raw);
+        // Язык для правил: что определил whisper, иначе заданный явно, иначе «auto».
+        let rules_language = transcript
+            .detected_language
+            .clone()
+            .or_else(|| match &opts.language {
+                LanguageHint::Fixed(code) => Some(code.clone()),
+                LanguageHint::Auto => None,
+            })
+            .unwrap_or_else(|| "auto".to_string());
+        let processed = postprocess(&raw, &rules_language);
+        let text = processed.text;
         let total_ms = started.elapsed().as_millis() as u32;
         let words = word_count(&text) as u32;
+        let llm_ms = processed.llm.as_ref().map(|trace| trace.elapsed_ms);
 
         let entry = Entry {
             schema: SCHEMA_VERSION,
@@ -245,19 +422,25 @@ pub fn transcribe_jobs(
             style: style.to_string(),
             stt_engine: engine_id.clone(),
             stt_model: model_name.clone(),
-            llm_provider: None,
-            llm_model: None,
-            llm_used: false,
-            local_llm: true,
-            dict_hits: 0,
+            llm_provider: processed.llm.as_ref().map(|trace| trace.provider.clone()),
+            llm_model: processed.llm.as_ref().map(|trace| trace.model.clone()),
+            llm_used: processed.llm.is_some(),
+            local_llm: processed.llm.as_ref().is_none_or(|trace| trace.local),
+            dict_hits: processed.dict_hits,
             inject_method: None,
             latency_ms: LatencyMs {
                 stt: stt_ms,
-                rules: total_ms.saturating_sub(stt_ms),
+                rules: total_ms
+                    .saturating_sub(stt_ms)
+                    .saturating_sub(llm_ms.unwrap_or(0)),
+                llm: llm_ms,
                 total: total_ms,
                 ..LatencyMs::default()
             },
-            tokens: None,
+            tokens: processed
+                .llm
+                .as_ref()
+                .and_then(|trace| trace.tokens.clone()),
             error: None,
             text_raw: Some(raw),
             text_final: Some(text.clone()),
@@ -418,7 +601,7 @@ pub fn write_output(
 }
 
 /// Точка входа подкоманды.
-pub fn run(args: &Args, cfg: &Config) -> Result<(), CmdError> {
+pub fn run(args: &Args, cfg: &Config, config_path: &Path) -> Result<(), CmdError> {
     let jobs = collect_jobs(&args.input, args.recursive)?;
 
     let choice = EngineChoice {
@@ -442,6 +625,9 @@ pub fn run(args: &Args, cfg: &Config) -> Result<(), CmdError> {
         .as_deref()
         .unwrap_or(&cfg.style.default)
         .to_string();
+    // Тот же конвейер текста, что и при диктовке: словарь, правила, модель по стилю.
+    let postprocessor = FilePostprocessor::from_config(cfg, config_path, &style, args.no_llm);
+    let postprocess = |raw: &str, language: &str| postprocessor.apply(raw, language);
     // Файловый журнал подключает конвейер дорожки D; здесь запись собирается и уходит
     // в приёмник, который передали.
     let mut journal = molva_core::domain::fakes::MemJournal::default();
@@ -461,7 +647,7 @@ pub fn run(args: &Args, cfg: &Config) -> Result<(), CmdError> {
         engine.as_mut(),
         &opts,
         args.stdin_format.as_deref(),
-        &identity,
+        &postprocess,
         &mut journal,
         &style,
         &mut |index, label| {
@@ -685,7 +871,7 @@ mod tests {
             &mut stt,
             &SttOptions::default(),
             None,
-            &|text| format!("{text}!"),
+            &|text, _| Postprocessed::plain(format!("{text}!")),
             &mut journal,
             "cleanup",
             &mut |_, _| {},
@@ -694,6 +880,186 @@ mod tests {
         // В журнал попадает и сырой текст, и итоговый: видно, что сделала постобработка.
         assert_eq!(journal.entries[0].text_raw.as_deref(), Some("привет"));
         assert_eq!(journal.entries[0].text_final.as_deref(), Some("привет!"));
+    }
+
+    fn llm_style() -> Style {
+        Style {
+            id: "cleanup".into(),
+            name: "Чистка".into(),
+            uses_llm: true,
+            system_prompt: "Убери мусор".into(),
+        }
+    }
+
+    #[test]
+    fn short_text_stays_with_the_rules_and_never_reaches_the_model() {
+        let mut cfg = Config::default();
+        cfg.rules.llm_min_words = 10;
+        let llm = molva_core::domain::fakes::FakeLlm::echoing("ОТВЕТ МОДЕЛИ");
+        let postprocessor = FilePostprocessor::assemble(
+            &cfg,
+            Dictionary::empty(),
+            llm_style(),
+            Some(Box::new(llm)),
+        );
+
+        let processed = postprocessor.apply("привет как дела", "ru");
+
+        assert!(processed.llm.is_none(), "{processed:?}");
+        assert!(!processed.text.contains("ОТВЕТ МОДЕЛИ"));
+    }
+
+    #[test]
+    fn long_text_goes_through_the_model_and_the_trace_is_kept() {
+        let mut cfg = Config::default();
+        cfg.rules.llm_min_words = 0;
+        cfg.llm.provider = "ollama".into();
+        cfg.llm.model = "qwen3.5:4b".into();
+        let llm = molva_core::domain::fakes::FakeLlm::echoing("чистый текст");
+        let postprocessor = FilePostprocessor::assemble(
+            &cfg,
+            Dictionary::empty(),
+            llm_style(),
+            Some(Box::new(llm)),
+        );
+
+        let processed = postprocessor.apply("ну это самое текст", "ru");
+
+        assert_eq!(processed.text, "чистый текст");
+        let trace = processed.llm.expect("модель звалась");
+        assert_eq!(trace.provider, "ollama");
+        assert_eq!(trace.model, "qwen3.5:4b");
+        assert!(trace.local, "ollama — локальный провайдер");
+        assert_eq!(
+            trace.tokens,
+            Some(Tokens {
+                prompt: 10,
+                completion: 5
+            })
+        );
+    }
+
+    #[test]
+    fn a_failing_model_leaves_the_text_after_the_rules() {
+        let mut cfg = Config::default();
+        cfg.rules.llm_min_words = 0;
+        let llm = molva_core::domain::fakes::FakeLlm::failing(
+            molva_core::domain::llm::LlmError::Disabled,
+        );
+        let postprocessor = FilePostprocessor::assemble(
+            &cfg,
+            Dictionary::empty(),
+            llm_style(),
+            Some(Box::new(llm)),
+        );
+
+        let processed = postprocessor.apply("текст который должен уцелеть", "ru");
+
+        // Правила отработали (заглавная буква), модель — нет.
+        assert_eq!(processed.text, "Текст который должен уцелеть");
+        assert!(processed.llm.is_none());
+    }
+
+    #[test]
+    fn an_empty_model_answer_keeps_the_text_after_the_rules() {
+        let mut cfg = Config::default();
+        cfg.rules.llm_min_words = 0;
+        // Ответ из одних размышлений: после чистки от него ничего не остаётся.
+        let llm = molva_core::domain::fakes::FakeLlm::echoing("<think>долго думаю</think>");
+        let postprocessor = FilePostprocessor::assemble(
+            &cfg,
+            Dictionary::empty(),
+            llm_style(),
+            Some(Box::new(llm)),
+        );
+
+        let processed = postprocessor.apply("текст который должен уцелеть", "ru");
+
+        assert_eq!(processed.text, "Текст который должен уцелеть");
+        assert!(
+            processed.llm.is_none(),
+            "пустой ответ не считается работой модели"
+        );
+    }
+
+    #[test]
+    fn a_style_without_a_model_never_calls_it() {
+        let mut cfg = Config::default();
+        cfg.rules.llm_min_words = 0;
+        let llm = molva_core::domain::fakes::FakeLlm::echoing("ОТВЕТ МОДЕЛИ");
+        let style = Style {
+            uses_llm: false,
+            ..llm_style()
+        };
+        let postprocessor =
+            FilePostprocessor::assemble(&cfg, Dictionary::empty(), style, Some(Box::new(llm)));
+
+        let processed = postprocessor.apply("дословно как сказано", "ru");
+
+        assert_eq!(processed.text, "Дословно как сказано");
+        assert!(processed.llm.is_none());
+    }
+
+    #[test]
+    fn no_llm_flag_builds_a_postprocessor_without_a_model() {
+        let mut cfg = Config::default();
+        cfg.llm.enabled = true;
+        cfg.rules.llm_min_words = 0;
+        let dir = tempfile::tempdir().unwrap();
+        let postprocessor =
+            FilePostprocessor::from_config(&cfg, &dir.path().join("config.toml"), "cleanup", true);
+
+        let processed = postprocessor.apply("длинный текст без модели вовсе", "ru");
+
+        assert!(processed.llm.is_none());
+    }
+
+    #[test]
+    fn the_model_trace_lands_in_the_journal_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.wav");
+        write_wav(&path, 0.2);
+        let mut stt = FakeStt::returning("привет");
+        let mut journal = MemJournal::default();
+
+        transcribe_jobs(
+            &jobs_for(&[path]),
+            &mut stt,
+            &SttOptions::default(),
+            None,
+            &|text, _| Postprocessed {
+                text: text.to_string(),
+                dict_hits: 2,
+                llm: Some(LlmTrace {
+                    provider: "ollama".into(),
+                    model: "qwen3.5:4b".into(),
+                    local: true,
+                    tokens: Some(Tokens {
+                        prompt: 7,
+                        completion: 3,
+                    }),
+                    elapsed_ms: 42,
+                }),
+            },
+            &mut journal,
+            "cleanup",
+            &mut |_, _| {},
+        );
+
+        let entry = &journal.entries[0];
+        assert!(entry.llm_used);
+        assert_eq!(entry.llm_provider.as_deref(), Some("ollama"));
+        assert_eq!(entry.llm_model.as_deref(), Some("qwen3.5:4b"));
+        assert!(entry.local_llm);
+        assert_eq!(entry.dict_hits, 2);
+        assert_eq!(entry.latency_ms.llm, Some(42));
+        assert_eq!(
+            entry.tokens,
+            Some(Tokens {
+                prompt: 7,
+                completion: 3
+            })
+        );
     }
 
     #[test]

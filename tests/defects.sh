@@ -624,3 +624,20 @@ defect 'chunked/cancelled-chunks-are-forgotten' 'crates/molva-core/src/app/daemo
   '                        Job::Discard => {
                             let _ = &chunks;' \
   'куски отменённой записи прирастают к следующей реплике'
+
+defect 'transcribe/short-text-skips-the-model' 'crates/molva/src/cmd/transcribe.rs' \
+  '        if !self.style.uses_llm || word_count(&after_rules) <= self.llm_min_words {' \
+  '        if !self.style.uses_llm {' \
+  'короткие реплики из файлов уходят в модель вопреки rules.llm_min_words'
+
+defect 'transcribe/empty-model-answer-keeps-the-rules-text' 'crates/molva/src/cmd/transcribe.rs' \
+  '                if text.is_empty() {
+                    // Пустой ответ — не результат' \
+  '                if false {
+                    // Пустой ответ — не результат' \
+  'пустой ответ модели затирает расшифровку файла'
+
+defect 'transcribe/model-trace-reaches-the-journal' 'crates/molva/src/cmd/transcribe.rs' \
+  '            llm_used: processed.llm.is_some(),' \
+  '            llm_used: false,' \
+  'журнал не отличает файлы, прошедшие через модель, от остальных: статистика токенов врёт'
