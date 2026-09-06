@@ -42,8 +42,9 @@ mod tests {
     fn default_config_binds_every_action() {
         let specs = specs_from_config(&HotkeysConfig::default()).unwrap();
         assert_eq!(specs.len(), 5);
-        assert_eq!(specs[&HotkeyAction::PushToTalk].key, 97);
-        assert_eq!(specs[&HotkeyAction::Cancel].key, 1);
+        // Умолчания: F9 (код evdev 67) и Ctrl+Alt+C (код 46) — нарочно простые клавиши.
+        assert_eq!(specs[&HotkeyAction::PushToTalk].key, 67);
+        assert_eq!(specs[&HotkeyAction::Cancel].key, 46);
     }
 
     #[test]
