@@ -1,0 +1,74 @@
+name: cuda
+
+# CUDA-сборка CLI для Windows по ручному запуску: отлаживается здесь, без тега и без релиза.
+# Когда сборка стабильно зелёная, те же шаги живут в job cli-cuda в release.yml.
+#
+# Что уже выяснено на раннерах GitHub:
+# - сетевой установщик CUDA не регистрирует toolset в MSBuild → генератор Ninja;
+# - в bash из Git первым в PATH стоит coreutils link.exe → шаг сборки из PowerShell;
+# - CUDA 12.6 не знает Visual Studio 2026 с windows-latest, cudafe++ падает даже с
+#   -allow-unsupported-compiler → раннер windows-2022 с Visual Studio 2022.
+
+on:
+  workflow_dispatch:
+    inputs:
+      cuda:
+        description: Версия CUDA Toolkit
+        default: "12.6.0"
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  cli-cuda:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: Jimver/cuda-toolkit@v0.2.19
+        with:
+          cuda: ${{ inputs.cuda }}
+          method: network
+          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "visual_studio_integration"]'
+
+      - name: Тулчейн Rust из rust-toolchain.toml
+        shell: bash
+        run: rustup show
+
+      - name: libclang для генерации биндингов whisper-rs
+        shell: bash
+        run: printf 'LIBCLANG_PATH=%s\n' 'C:\Program Files\LLVM\bin' >> "$GITHUB_ENV"
+
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: cuda-x86_64-pc-windows-msvc
+
+      - name: Сборка CLI с CUDA
+        shell: pwsh
+        env:
+          CMAKE_GENERATOR: Ninja
+          NVCC_APPEND_FLAGS: -allow-unsupported-compiler
+          CUDAFLAGS: -allow-unsupported-compiler
+        run: cargo build --locked --release --bin molva --features molva-core/cuda
+
+      - name: Архив CLI с CUDA и рантаймом NVIDIA
+        shell: bash
+        run: |
+          mkdir -p dist
+          stage="molva-cuda-$(cargo pkgid -p molva | sed 's/.*[#@]//')-x86_64-pc-windows-msvc"
+          mkdir -p "$stage"
+          cp target/release/molva.exe "$stage/"
+          for dll in cudart64_12.dll cublas64_12.dll cublasLt64_12.dll; do
+            cp "$CUDA_PATH/bin/$dll" "$stage/" || echo "::warning::нет $dll в $CUDA_PATH/bin"
+          done
+          cp README.md LICENSE NOTICE THIRD-PARTY.md "$stage/"
+          tar -czf "dist/$stage.tar.gz" "$stage"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-cuda-x86_64-pc-windows-msvc
+          path: dist/*
