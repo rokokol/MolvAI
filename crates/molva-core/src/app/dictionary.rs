@@ -113,7 +113,16 @@ pub struct Dictionary {
     max_alias_words: usize,
     fuzzy: bool,
     path: Option<PathBuf>,
-    mtime: Option<SystemTime>,
+    fingerprint: Option<FileFingerprint>,
+}
+
+/// Отпечаток файла для горячей перезагрузки: время изменения и размер вместе.
+/// Одного mtime мало — на Windows и на файловых системах с грубым временем две записи
+/// подряд получают одинаковую метку, и правка словаря остаётся незамеченной.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FileFingerprint {
+    modified: SystemTime,
+    len: u64,
 }
 
 impl Dictionary {
@@ -131,7 +140,7 @@ impl Dictionary {
             max_alias_words: 1,
             fuzzy,
             path: None,
-            mtime: None,
+            fingerprint: None,
         };
         dictionary.index();
         dictionary
@@ -159,7 +168,7 @@ impl Dictionary {
         })?;
         let mut dictionary = Self::from_terms(file.terms, fuzzy);
         dictionary.path = Some(path.to_path_buf());
-        dictionary.mtime = file_mtime(path);
+        dictionary.fingerprint = file_fingerprint(path);
         Ok(dictionary)
     }
 
@@ -168,13 +177,13 @@ impl Dictionary {
         let Some(path) = self.path.clone() else {
             return Ok(false);
         };
-        let current = file_mtime(&path);
-        if current == self.mtime && self.mtime.is_some() {
+        let current = file_fingerprint(&path);
+        if current == self.fingerprint && self.fingerprint.is_some() {
             return Ok(false);
         }
         let fresh = Self::load(&path, self.fuzzy)?;
         if fresh.terms == self.terms {
-            self.mtime = current;
+            self.fingerprint = current;
             return Ok(false);
         }
         *self = fresh;
@@ -371,8 +380,12 @@ fn trailing_punctuation(token: &str) -> String {
         .collect()
 }
 
-fn file_mtime(path: &Path) -> Option<SystemTime> {
-    std::fs::metadata(path).ok()?.modified().ok()
+fn file_fingerprint(path: &Path) -> Option<FileFingerprint> {
+    let metadata = std::fs::metadata(path).ok()?;
+    Some(FileFingerprint {
+        modified: metadata.modified().ok()?,
+        len: metadata.len(),
+    })
 }
 
 #[cfg(test)]
@@ -563,6 +576,37 @@ mod tests {
         assert!(dictionary.reload_if_changed().unwrap());
         assert_eq!(dictionary.len(), 2);
         assert_eq!(dictionary.apply("гипрланд").0, "Hyprland");
+    }
+
+    #[test]
+    fn a_change_with_the_same_mtime_is_still_noticed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("dictionary.toml");
+        std::fs::write(
+            &path,
+            "[[term]]\nword = \"MolvAI\"\naliases = [\"молва\"]\n",
+        )
+        .unwrap();
+        let original_mtime = std::fs::metadata(&path).unwrap().modified().unwrap();
+        let mut dictionary = Dictionary::load(&path, false).unwrap();
+
+        // Вторая запись получает ту же метку времени, как на файловых системах с грубым
+        // временем: словарь обязан заметить правку по размеру.
+        std::fs::write(
+            &path,
+            "[[term]]\nword = \"MolvAI\"\naliases = [\"молва\"]\n\
+             [[term]]\nword = \"Hyprland\"\naliases = [\"гипрланд\"]\n",
+        )
+        .unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(original_mtime)
+            .unwrap();
+
+        assert!(dictionary.reload_if_changed().unwrap());
+        assert_eq!(dictionary.len(), 2);
     }
 
     #[test]
