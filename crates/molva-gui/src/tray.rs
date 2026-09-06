@@ -386,7 +386,7 @@ fn update_config(app: &AppHandle, change: impl FnOnce(&mut molva_core::Config)) 
     refresh(app);
 }
 
-fn set_style(app: &AppHandle, style: &str) {
+pub(crate) fn set_style(app: &AppHandle, style: &str) {
     let style = style.to_string();
     update_config(app, |config| config.style.default.clone_from(&style));
     send_async(app, Command::StyleSet { style });

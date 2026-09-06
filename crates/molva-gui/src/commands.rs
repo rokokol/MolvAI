@@ -204,12 +204,15 @@ pub fn is_cloud_provider(provider: &str) -> bool {
 }
 
 /// Встроенные стили постобработки: идентификатор и подпись для меню.
-pub const BUILTIN_STYLES: [(&str, &str); 5] = [
-    ("raw", "Как сказано"),
+// Идентификаторы совпадают с `molva_core::app::styles::builtin`: демон принимает только их,
+// и чужой идентификатор молча откатывался бы на стиль по умолчанию.
+pub const BUILTIN_STYLES: [(&str, &str); 6] = [
+    ("verbatim", "Как сказано"),
     ("cleanup", "Чистка"),
-    ("formal", "Формально"),
-    ("email", "Письмо"),
+    ("messenger", "Мессенджер"),
+    ("mail", "Письмо"),
     ("code", "Код"),
+    ("formal", "Формально"),
 ];
 
 /// Встроенные стили плюс пользовательские из конфига, без повторов по идентификатору.
@@ -444,9 +447,12 @@ pub async fn record_cancel() -> Result<(), CommandError> {
     tell_daemon(Command::RecordCancel).await
 }
 
+/// Стиль с панели идёт тем же путём, что и из трея: в файл настроек, демону и в трей,
+/// иначе подсветка на панели не меняется, а после перезапуска выбор пропадает.
 #[tauri::command]
-pub async fn set_style(style: String) -> Result<(), CommandError> {
-    tell_daemon(Command::StyleSet { style }).await
+pub fn set_style(app: AppHandle, style: String) -> Result<(), CommandError> {
+    crate::tray::set_style(&app, &style);
+    Ok(())
 }
 
 /// Разбор ответа `devices.list`: отсутствующий список — пустой, а не ошибка.
