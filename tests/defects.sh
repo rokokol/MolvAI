@@ -641,3 +641,8 @@ defect 'transcribe/model-trace-reaches-the-journal' 'crates/molva/src/cmd/transc
   '            llm_used: processed.llm.is_some(),' \
   '            llm_used: false,' \
   'журнал не отличает файлы, прошедшие через модель, от остальных: статистика токенов врёт'
+
+defect 'llm/auto-effort-silences-local-reasoning' 'crates/molva-core/src/infra/llm/openai_compat.rs' \
+  '        "auto" => is_local.then(|| "none".to_string()),' \
+  '        "auto" => None,' \
+  'рассуждающая локальная модель сжигает max_tokens на размышления и отдаёт пустой текст'
