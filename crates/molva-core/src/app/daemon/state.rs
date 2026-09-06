@@ -156,6 +156,16 @@ impl Machine {
     }
 
     /// Идущая запись, если она есть: нужна `status` для длительности.
+    /// Захват реально начался: удержание считается с этого момента, а не с команды старта.
+    /// Открытие микрофона занимает до нескольких сотен миллисекунд, и без этой поправки
+    /// короткий тап выглядел бы как удержание дольше `short_press_ms` — запись завершалась
+    /// бы пустой вместо того, чтобы защёлкнуться.
+    pub fn capture_started(&mut self, at: Instant) {
+        if let Phase::Recording(rec) = &mut self.phase {
+            rec.since = at;
+        }
+    }
+
     pub fn recording(&self) -> Option<&Recording> {
         match &self.phase {
             Phase::Recording(rec) => Some(rec),
@@ -603,6 +613,23 @@ mod tests {
         let tapped = m.on(Input::RecordStop);
         assert!(tapped.actions.is_empty(), "{:?}", tapped.actions);
         assert!(m.recording().unwrap().latched);
+    }
+
+    #[test]
+    fn slow_microphone_open_does_not_turn_a_tap_into_a_hold() {
+        let (mut m, clock) = machine();
+        m.on(start());
+        // Микрофон открывался 300 мс — дольше порога короткого нажатия.
+        clock.advance(Duration::from_millis(300));
+        m.capture_started(clock.instant());
+        // Клавишу отпустили через 50 мс после реального старта захвата: это тап.
+        clock.advance(Duration::from_millis(50));
+        let out = m.on(Input::RecordStop);
+        assert!(out.actions.is_empty(), "{:?}", out.actions);
+        assert!(
+            m.recording().unwrap().latched,
+            "тап после медленного открытия микрофона обязан защёлкнуть запись"
+        );
     }
 
     #[test]

@@ -221,13 +221,24 @@ impl Daemon {
                     // Отсчёт гарантии «микрофон освобождён после реплики»: от команды остановки
                     // (то есть от отпускания клавиши) до закрытия потока (AG-03).
                     let released_from = control_clock.instant();
+                    let input_label = format!("{:?}", message.input);
                     let outcome = machine.on(message.input);
+                    tracing::debug!(
+                        input = %input_label,
+                        actions = ?outcome.actions,
+                        state = ?machine.state(),
+                        "машина состояний"
+                    );
                     for action in &outcome.actions {
                         match action {
                             Action::StartCapture { mode, style } => {
                                 let app = platform::active_window_class();
                                 match audio.start(Some(level_tx.clone())) {
                                     Ok(()) => {
+                                        // Удержание считается от открытого микрофона: сам старт
+                                        // потока занимает до 300 мс, и короткий тап иначе выглядел
+                                        // бы длинным удержанием.
+                                        machine.capture_started(control_clock.instant());
                                         pending = Some((*mode, style.clone(), app));
                                         // Первый из двух сигналов реплики: микрофон открыт.
                                         sound.play(CueKind::RecordStart);
@@ -838,6 +849,35 @@ mod tests {
             "текст должен дойти до инжектора"
         );
         assert_eq!(entry.words, 2);
+        drop(h.daemon);
+    }
+
+    #[test]
+    fn a_short_tap_through_ipc_latches_the_recording_instead_of_finishing_it() {
+        // Бинд композитора шлёт `record start` на нажатие и `record stop` на отпускание:
+        // короткий тап приходит как два запроса подряд и обязан включить hands-free,
+        // а не отдать пустую реплику.
+        let h = harness("тестовая реплика");
+        let events = h.handle.subscribe();
+        h.handle
+            .send(Input::RecordStart {
+                mode: Mode::Dictation,
+                style: None,
+            })
+            .unwrap();
+        h.clock.advance(Duration::from_millis(50));
+        let outcome = h.handle.send(Input::RecordStop).unwrap();
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(
+            h.handle.state(),
+            DaemonState::Recording,
+            "после короткого тапа запись продолжается без клавиши"
+        );
+
+        h.clock.advance(Duration::from_secs(2));
+        h.handle.send(Input::RecordStop).unwrap();
+        let entry = wait_for_entry(&events);
+        assert_eq!(entry.text_final.as_deref(), Some("тестовая реплика"));
         drop(h.daemon);
     }
 

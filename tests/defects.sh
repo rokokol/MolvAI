@@ -669,3 +669,12 @@ defect 'doctor/unreachable-llm-is-not-ok' 'crates/molva/src/cmd/doctor.rs' \
             "LLM",
             true,' \
   'doctor называет недоступного провайдера модели работающим'
+
+defect 'daemon/hold-counts-from-the-open-microphone' 'crates/molva-core/src/app/daemon/state.rs' \
+  '        if let Phase::Recording(rec) = &mut self.phase {
+            rec.since = at;
+        }' \
+  '        if let Phase::Recording(rec) = &mut self.phase {
+            let _ = (rec, at);
+        }' \
+  'медленное открытие микрофона превращает короткий тап в удержание: запись завершается пустой'

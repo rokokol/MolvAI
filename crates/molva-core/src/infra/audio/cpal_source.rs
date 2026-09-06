@@ -173,8 +173,16 @@ impl AudioSource for CpalSource {
         self.truncated = false;
 
         // Список устройств пересоставляется на каждый старт: микрофон могли переподключить.
-        let devices = list_input_devices()?;
-        let selected = pick_device_name(&self.device, &devices)?;
+        // Но только когда выбрано конкретное имя: перебор с опросом каждого устройства
+        // занимает до 300 мс (USB-карты отвечают «занято»), а для `default` он не нужен —
+        // это время уходило из начала реплики и превращало короткий тап в удержание.
+        let requested = self.device.trim();
+        let selected = if requested.is_empty() || requested.eq_ignore_ascii_case(DEFAULT_DEVICE) {
+            None
+        } else {
+            let devices = list_input_devices()?;
+            pick_device_name(&self.device, &devices)?
+        };
 
         let (ready_tx, ready_rx) = channel::<Result<(u32, Arc<Shared>), AudioError>>();
         let (stop_tx, stop_rx) = channel::<()>();
