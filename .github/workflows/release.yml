@@ -250,8 +250,10 @@ jobs:
         with:
           key: release-cuda-x86_64-pc-windows-msvc
 
+      # Не bash: в PATH оболочки Git первым стоит coreutils-`link.exe` из /usr/bin, и rustc
+      # линковал им вместо компоновщика MSVC. PowerShell сохраняет PATH от msvc-dev-cmd.
       - name: Сборка CLI с CUDA
-        shell: bash
+        shell: pwsh
         env:
           CMAKE_GENERATOR: Ninja
         run: cargo build --locked --release --bin molva --features molva-core/cuda
