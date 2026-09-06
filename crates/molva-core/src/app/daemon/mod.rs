@@ -197,6 +197,8 @@ impl Daemon {
             let work_tx = work_tx.clone();
             threads.push(std::thread::spawn(move || {
                 let mut pending: Option<(Mode, Option<String>, Option<String>)> = None;
+                // Нажатие, пришедшее во время обработки: запустится сразу после неё.
+                let mut queued_start: Option<Input> = None;
                 while let Ok(ctl) = rx.recv() {
                     let message = match ctl {
                         // Тик потоковой обработки: снять свежий звук и отправить дозревшие куски в
@@ -221,14 +223,53 @@ impl Daemon {
                     // Отсчёт гарантии «микрофон освобождён после реплики»: от команды остановки
                     // (то есть от отпускания клавиши) до закрытия потока (AG-03).
                     let released_from = control_clock.instant();
-                    let input_label = format!("{:?}", message.input);
-                    let outcome = machine.on(message.input);
+                    let input = message.input;
+                    let input_label = format!("{input:?}");
+                    let is_start = matches!(
+                        input,
+                        Input::RecordStart { .. } | Input::RecordToggle { .. }
+                    );
+                    let is_stop = matches!(input, Input::RecordStop);
+                    let processing_finished =
+                        matches!(input, Input::ProcessingDone | Input::ProcessingFailed);
+                    let start_candidate = is_start.then(|| input.clone());
+                    let outcome = machine.on(input);
                     tracing::debug!(
                         input = %input_label,
                         actions = ?outcome.actions,
                         state = ?machine.state(),
                         "машина состояний"
                     );
+                    // Нажатие во время обработки предыдущей реплики не пропадает: оно ждёт
+                    // конца обработки и запускает запись само. Отпускание клавиши за это время
+                    // превращает ожидающий старт в переключатель — иначе запись началась бы
+                    // и тут же закончилась пустой.
+                    let busy_while_processing = outcome
+                        .error
+                        .as_ref()
+                        .is_some_and(|error| error.code == ErrorCode::Busy)
+                        && matches!(
+                            machine.state(),
+                            DaemonState::Transcribing
+                                | DaemonState::PostProcessing
+                                | DaemonState::Injecting
+                        );
+                    if busy_while_processing {
+                        tracing::info!("нажатие во время обработки поставлено в очередь");
+                        queued_start = start_candidate;
+                    } else if is_stop {
+                        if let Some(Input::RecordStart { mode, style }) = queued_start.take() {
+                            queued_start = Some(Input::RecordToggle { mode, style });
+                        }
+                    }
+                    if processing_finished {
+                        if let Some(queued) = queued_start.take() {
+                            let _ = tx.send(Ctl::Message(Message {
+                                input: queued,
+                                reply: None,
+                            }));
+                        }
+                    }
                     for action in &outcome.actions {
                         match action {
                             Action::StartCapture { mode, style } => {
@@ -710,6 +751,8 @@ mod tests {
     struct SharedInjector {
         injected: Arc<Mutex<Vec<String>>>,
         fail: bool,
+        /// Задержка вставки: так тест держит демон в обработке, пока шлёт новые нажатия.
+        delay: Duration,
     }
 
     impl TextInjector for SharedInjector {
@@ -720,6 +763,9 @@ mod tests {
             true
         }
         fn inject(&mut self, text: &str, _mode: OutputMode) -> Result<InjectReport, InjectError> {
+            if !self.delay.is_zero() {
+                std::thread::sleep(self.delay);
+            }
             if self.fail {
                 return Err(InjectError::Failed("нет активного окна".into()));
             }
@@ -766,10 +812,15 @@ mod tests {
     }
 
     fn harness(text: &str) -> Harness {
-        harness_with(text, false, Config::default())
+        harness_with(text, false, Config::default(), Duration::ZERO)
     }
 
-    fn harness_with(text: &str, fail_inject: bool, config: Config) -> Harness {
+    fn harness_with(
+        text: &str,
+        fail_inject: bool,
+        config: Config,
+        inject_delay: Duration,
+    ) -> Harness {
         let start = DateTime::parse_from_rfc3339("2026-09-05T12:00:00Z")
             .unwrap()
             .with_timezone(&Utc);
@@ -778,6 +829,7 @@ mod tests {
         let injector = SharedInjector {
             injected: Arc::new(Mutex::new(Vec::new())),
             fail: fail_inject,
+            delay: inject_delay,
         };
         let injected = injector.injected.clone();
         let processor = SimpleProcessor::new(
@@ -799,6 +851,7 @@ mod tests {
             injector: Some(Box::new(SharedInjector {
                 injected: injected.clone(),
                 fail: fail_inject,
+                delay: inject_delay,
             })),
             clock: clock.clone(),
             config,
@@ -878,6 +931,54 @@ mod tests {
         h.handle.send(Input::RecordStop).unwrap();
         let entry = wait_for_entry(&events);
         assert_eq!(entry.text_final.as_deref(), Some("тестовая реплика"));
+        drop(h.daemon);
+    }
+
+    #[test]
+    fn a_press_during_processing_is_queued_and_starts_the_next_recording() {
+        // Вставка держит демон в обработке 400 мс; нажатие в это время не должно пропасть.
+        let h = harness_with(
+            "тестовая реплика",
+            false,
+            Config::default(),
+            Duration::from_millis(400),
+        );
+        let events = h.handle.subscribe();
+        h.handle
+            .send(Input::RecordStart {
+                mode: Mode::Dictation,
+                style: None,
+            })
+            .unwrap();
+        h.clock.advance(Duration::from_secs(2));
+        h.handle.send(Input::RecordStop).unwrap();
+
+        let busy = h
+            .handle
+            .send(Input::RecordStart {
+                mode: Mode::Dictation,
+                style: None,
+            })
+            .unwrap();
+        assert_eq!(
+            busy.error.as_ref().map(|e| e.code),
+            Some(ErrorCode::Busy),
+            "во время обработки демон честно отвечает «занят»"
+        );
+
+        let entry = wait_for_entry(&events);
+        assert_eq!(entry.text_final.as_deref(), Some("тестовая реплика"));
+        // Очередь срабатывает следующим сообщением после ProcessingDone: дать ей дойти.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while h.handle.state() != DaemonState::Recording && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(
+            h.handle.state(),
+            DaemonState::Recording,
+            "нажатие из очереди обязано начать новую запись"
+        );
+        h.handle.send(Input::RecordCancel).unwrap();
         drop(h.daemon);
     }
 
@@ -1035,7 +1136,7 @@ mod tests {
 
     #[test]
     fn a_failed_injection_still_yields_an_entry_and_a_notification() {
-        let h = harness_with("реплика", true, Config::default());
+        let h = harness_with("реплика", true, Config::default(), Duration::ZERO);
         let events = h.handle.subscribe();
         h.handle
             .send(Input::RecordStart {
@@ -1139,7 +1240,7 @@ mod tests {
 
     #[test]
     fn a_failed_repeat_is_an_honest_error_with_a_next_step() {
-        let h = harness_with("реплика", true, Config::default());
+        let h = harness_with("реплика", true, Config::default(), Duration::ZERO);
         let handler: &dyn RequestHandler = &h.handle;
         let err = handler
             .handle(Command::InjectText {
@@ -1176,6 +1277,7 @@ mod tests {
         let injector = SharedInjector {
             injected: Arc::new(Mutex::new(Vec::new())),
             fail: false,
+            delay: Duration::ZERO,
         };
         let injected = injector.injected.clone();
         let stt = FakeStt::with_responses(
@@ -1413,6 +1515,7 @@ mod tests {
             Box::new(SharedInjector {
                 injected: Arc::new(Mutex::new(Vec::new())),
                 fail: false,
+                delay: Duration::ZERO,
             }),
             Box::new(MemJournal::default()),
             clock.clone(),
