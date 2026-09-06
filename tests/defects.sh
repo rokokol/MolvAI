@@ -701,3 +701,8 @@ defect 'daemon/config-reload-reaches-the-pipeline' 'crates/molva-core/src/app/da
   '                            let _ = work_tx.send(Job::Reload(config));' \
   '                            let _ = &config;' \
   'смена стиля из трея и config reload не доходят до конвейера: диктовка идёт старым стилем'
+
+defect 'daemon/idle-waits-for-every-reply' 'crates/molva-core/src/app/daemon/state.rs' \
+  '                if self.in_flight == 0 && matches!(self.phase, Phase::Processing(_)) {' \
+  '                if matches!(self.phase, Phase::Processing(_)) {' \
+  'демон показывает «готов», пока вторая реплика ещё распознаётся'

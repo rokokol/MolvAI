@@ -207,8 +207,6 @@ impl Daemon {
             let work_tx = work_tx.clone();
             threads.push(std::thread::spawn(move || {
                 let mut pending: Option<(Mode, Option<String>, Option<String>)> = None;
-                // Нажатие, пришедшее во время обработки: запустится сразу после неё.
-                let mut queued_start: Option<Input> = None;
                 while let Ok(ctl) = rx.recv() {
                     let message = match ctl {
                         // Тик потоковой обработки: снять свежий звук и отправить дозревшие куски в
@@ -239,53 +237,15 @@ impl Daemon {
                     // Отсчёт гарантии «микрофон освобождён после реплики»: от команды остановки
                     // (то есть от отпускания клавиши) до закрытия потока (AG-03).
                     let released_from = control_clock.instant();
-                    let input = message.input;
-                    let input_label = format!("{input:?}");
-                    let is_start = matches!(
-                        input,
-                        Input::RecordStart { .. } | Input::RecordToggle { .. }
-                    );
-                    let is_stop = matches!(input, Input::RecordStop);
-                    let processing_finished =
-                        matches!(input, Input::ProcessingDone | Input::ProcessingFailed);
-                    let start_candidate = is_start.then(|| input.clone());
-                    let outcome = machine.on(input);
+                    let input_label = format!("{:?}", message.input);
+                    let outcome = machine.on(message.input);
                     tracing::debug!(
                         input = %input_label,
                         actions = ?outcome.actions,
                         state = ?machine.state(),
+                        in_flight = machine.in_flight(),
                         "машина состояний"
                     );
-                    // Нажатие во время обработки предыдущей реплики не пропадает: оно ждёт
-                    // конца обработки и запускает запись само. Отпускание клавиши за это время
-                    // превращает ожидающий старт в переключатель — иначе запись началась бы
-                    // и тут же закончилась пустой.
-                    let busy_while_processing = outcome
-                        .error
-                        .as_ref()
-                        .is_some_and(|error| error.code == ErrorCode::Busy)
-                        && matches!(
-                            machine.state(),
-                            DaemonState::Transcribing
-                                | DaemonState::PostProcessing
-                                | DaemonState::Injecting
-                        );
-                    if busy_while_processing {
-                        tracing::info!("нажатие во время обработки поставлено в очередь");
-                        queued_start = start_candidate;
-                    } else if is_stop {
-                        if let Some(Input::RecordStart { mode, style }) = queued_start.take() {
-                            queued_start = Some(Input::RecordToggle { mode, style });
-                        }
-                    }
-                    if processing_finished {
-                        if let Some(queued) = queued_start.take() {
-                            let _ = tx.send(Ctl::Message(Message {
-                                input: queued,
-                                reply: None,
-                            }));
-                        }
-                    }
                     for action in &outcome.actions {
                         match action {
                             Action::StartCapture { mode, style } => {
@@ -1001,8 +961,8 @@ mod tests {
     }
 
     #[test]
-    fn a_press_during_processing_is_queued_and_starts_the_next_recording() {
-        // Вставка держит демон в обработке 400 мс; нажатие в это время не должно пропасть.
+    fn a_press_during_processing_starts_the_next_recording_and_both_replies_arrive_in_order() {
+        // Вставка держит демон в обработке 400 мс; следующая реплика пишется, не дожидаясь её.
         let h = harness_with(
             "тестовая реплика",
             false,
@@ -1019,32 +979,37 @@ mod tests {
         h.clock.advance(Duration::from_secs(2));
         h.handle.send(Input::RecordStop).unwrap();
 
-        let busy = h
+        let second = h
             .handle
             .send(Input::RecordStart {
                 mode: Mode::Dictation,
                 style: None,
             })
             .unwrap();
-        assert_eq!(
-            busy.error.as_ref().map(|e| e.code),
-            Some(ErrorCode::Busy),
-            "во время обработки демон честно отвечает «занят»"
-        );
-
-        let entry = wait_for_entry(&events);
-        assert_eq!(entry.text_final.as_deref(), Some("тестовая реплика"));
-        // Очередь срабатывает следующим сообщением после ProcessingDone: дать ей дойти.
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while h.handle.state() != DaemonState::Recording && Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(10));
-        }
+        assert!(second.is_ok(), "{second:?}");
         assert_eq!(
             h.handle.state(),
             DaemonState::Recording,
-            "нажатие из очереди обязано начать новую запись"
+            "запись следующей реплики идёт, пока первая обрабатывается"
         );
-        h.handle.send(Input::RecordCancel).unwrap();
+        h.clock.advance(Duration::from_secs(2));
+        h.handle.send(Input::RecordStop).unwrap();
+
+        let first = wait_for_entry(&events);
+        let second = wait_for_entry(&events);
+        assert_eq!(first.text_final.as_deref(), Some("тестовая реплика"));
+        assert_eq!(second.text_final.as_deref(), Some("тестовая реплика"));
+        assert!(first.ts <= second.ts, "реплики обрабатываются по порядку");
+        assert_eq!(
+            h.injected.lock().unwrap().len(),
+            2,
+            "обе реплики дошли до вставки"
+        );
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while h.handle.state() != DaemonState::Idle && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(h.handle.state(), DaemonState::Idle);
         drop(h.daemon);
     }
 

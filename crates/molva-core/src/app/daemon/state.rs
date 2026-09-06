@@ -134,6 +134,10 @@ pub struct Machine {
     clock: Arc<dyn Clock>,
     /// Момент нажатия, которое машина приняла к исполнению: окно подавления двойного нажатия.
     last_press: Option<Instant>,
+    /// Сколько реплик сейчас в обработке. Запись следующей реплики начинается, не дожидаясь
+    /// конца обработки предыдущей: микрофон свободен, а задания рабочему потоку идут по
+    /// очереди сами. В «готов» машина уходит, только когда обработаны все.
+    in_flight: u32,
 }
 
 impl Machine {
@@ -143,7 +147,13 @@ impl Machine {
             hotkeys,
             clock,
             last_press: None,
+            in_flight: 0,
         }
+    }
+
+    /// Сколько реплик ещё обрабатывается.
+    pub fn in_flight(&self) -> u32 {
+        self.in_flight
     }
 
     /// Состояние, видимое клиентам.
@@ -234,7 +244,10 @@ impl Machine {
                 Outcome::nothing()
             }
             Input::ProcessingDone | Input::ProcessingFailed => {
-                if matches!(self.phase, Phase::Processing(_)) {
+                self.in_flight = self.in_flight.saturating_sub(1);
+                // Пока идёт следующая запись, машина остаётся в ней; «готов» — когда
+                // обработаны все реплики, а не первая из них.
+                if self.in_flight == 0 && matches!(self.phase, Phase::Processing(_)) {
                     self.phase = Phase::Idle;
                 }
                 Outcome::nothing()
@@ -245,7 +258,9 @@ impl Machine {
 
     fn start(&mut self, mode: Mode, style: Option<String>, at: Instant) -> Outcome {
         match &self.phase {
-            Phase::Idle => {
+            // Во время обработки предыдущей реплики микрофон свободен: следующая запись
+            // начинается сразу, а её обработка встанет в очередь рабочего потока.
+            Phase::Idle | Phase::Processing(_) => {
                 self.last_press = Some(at);
                 self.begin(mode, style, at, false)
             }
@@ -261,7 +276,6 @@ impl Machine {
                 }
                 Outcome::busy("запись уже идёт")
             }
-            Phase::Processing(_) => Outcome::busy("идёт обработка предыдущей реплики"),
         }
     }
 
@@ -290,13 +304,12 @@ impl Machine {
 
     fn toggle(&mut self, mode: Mode, style: Option<String>, at: Instant) -> Outcome {
         match &self.phase {
-            Phase::Idle => {
+            Phase::Idle | Phase::Processing(_) => {
                 self.last_press = Some(at);
                 // Toggle сразу защёлкнут: отпускание клавиши запись не остановит.
                 self.begin(mode, style, at, true)
             }
             Phase::Recording(_) => self.toggle_off(at),
-            Phase::Processing(_) => Outcome::busy("идёт обработка предыдущей реплики"),
         }
     }
 
@@ -343,6 +356,7 @@ impl Machine {
             style: rec.style.clone(),
         };
         self.phase = Phase::Processing(DaemonState::Transcribing);
+        self.in_flight += 1;
         Outcome::act(action)
     }
 }
@@ -410,15 +424,62 @@ mod tests {
     }
 
     #[test]
-    fn start_while_processing_is_busy() {
+    fn start_while_processing_begins_the_next_recording_at_once() {
         let (mut m, clock) = machine();
         m.on(start());
         clock.advance(Duration::from_secs(2));
         m.on(Input::RecordStop);
         assert_eq!(m.state(), DaemonState::Transcribing);
+        assert_eq!(m.in_flight(), 1);
+
+        // Микрофон свободен: следующая реплика пишется, пока первая обрабатывается.
+        clock.advance(Duration::from_secs(1));
         let out = m.on(start());
-        assert!(out.actions.is_empty());
-        assert_eq!(out.error.unwrap().code, ErrorCode::Busy);
+        assert!(out.is_ok(), "{out:?}");
+        assert!(
+            matches!(out.actions.as_slice(), [Action::StartCapture { .. }]),
+            "{:?}",
+            out.actions
+        );
+        assert_eq!(m.state(), DaemonState::Recording);
+    }
+
+    #[test]
+    fn idle_comes_only_after_every_reply_is_processed() {
+        let (mut m, clock) = machine();
+        m.on(start());
+        clock.advance(Duration::from_secs(2));
+        m.on(Input::RecordStop);
+        clock.advance(Duration::from_secs(1));
+        m.on(start());
+        clock.advance(Duration::from_secs(2));
+        m.on(Input::RecordStop);
+        assert_eq!(m.in_flight(), 2);
+        assert_eq!(m.state(), DaemonState::Transcribing);
+
+        // Первая реплика обработана, вторая — ещё нет: «готов» рано.
+        m.on(Input::ProcessingDone);
+        assert_eq!(m.state(), DaemonState::Transcribing);
+        assert_eq!(m.in_flight(), 1);
+        m.on(Input::ProcessingDone);
+        assert_eq!(m.state(), DaemonState::Idle);
+        assert_eq!(m.in_flight(), 0);
+    }
+
+    #[test]
+    fn a_reply_finishing_during_the_next_recording_does_not_stop_it() {
+        let (mut m, clock) = machine();
+        m.on(start());
+        clock.advance(Duration::from_secs(2));
+        m.on(Input::RecordStop);
+        clock.advance(Duration::from_secs(1));
+        m.on(start());
+        m.on(Input::ProcessingDone);
+        assert_eq!(
+            m.state(),
+            DaemonState::Recording,
+            "конец обработки первой реплики не трогает идущую запись"
+        );
     }
 
     #[test]
