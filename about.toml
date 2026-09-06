@@ -17,6 +17,9 @@ accepted = [
     "BSL-1.0",
     "0BSD",
     "OpenSSL",
+    "Unlicense",            # whisper-rs, memchr: общественное достояние
+    "MIT-0",
+    "CDLA-Permissive-2.0",  # корневые сертификаты Mozilla в webpki-roots: данные
 ]
 
 # Отчёт про то, что реально попадает в бинарник, а не про dev-зависимости
