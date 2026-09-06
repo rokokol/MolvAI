@@ -203,8 +203,59 @@ jobs:
             target/${{ matrix.target }}/release/bundle/**/*.dmg
           if-no-files-found: ignore
 
+  # CUDA-сборка CLI для Windows: опциональная, релиз при её сбое не падает
+  # (continue-on-error). Артефакт тянет проприетарный рантайм NVIDIA (cudart, cublas),
+  # поэтому идёт отдельным архивом с суффиксом cuda, а свободные пакеты остаются без него.
+  cli-cuda:
+    needs: gate
+    runs-on: windows-latest
+    timeout-minutes: 120
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: Jimver/cuda-toolkit@v0.2.19
+        with:
+          cuda: "12.6.0"
+          method: network
+          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "visual_studio_integration"]'
+
+      - name: Тулчейн Rust из rust-toolchain.toml
+        shell: bash
+        run: rustup show
+
+      - name: libclang для генерации биндингов whisper-rs
+        shell: bash
+        run: printf 'LIBCLANG_PATH=%s\n' 'C:\Program Files\LLVM\bin' >> "$GITHUB_ENV"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-cuda-x86_64-pc-windows-msvc
+
+      - name: Сборка CLI с CUDA
+        shell: bash
+        run: cargo build --locked --release --bin molva --features molva-core/cuda
+
+      - name: Архив CLI с CUDA и рантаймом NVIDIA
+        shell: bash
+        run: |
+          mkdir -p dist
+          stage="molva-cuda-${{ github.ref_name }}-x86_64-pc-windows-msvc"
+          mkdir -p "$stage"
+          cp target/release/molva.exe "$stage/"
+          for dll in cudart64_12.dll cublas64_12.dll cublasLt64_12.dll; do
+            cp "$CUDA_PATH/bin/$dll" "$stage/" || echo "::warning::нет $dll в $CUDA_PATH/bin"
+          done
+          cp README.md LICENSE NOTICE THIRD-PARTY.md "$stage/"
+          tar -czf "dist/$stage.tar.gz" "$stage"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-cuda-x86_64-pc-windows-msvc
+          path: dist/*
+
   publish:
-    needs: [cli, provenance]
+    needs: [cli, cli-cuda, provenance]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 15

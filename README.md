@@ -37,7 +37,7 @@ nix run github:rokokol/MolvAI -- --help                          # с Nix: со�
 git clone https://github.com/rokokol/MolvAI && cd MolvAI && ./install.sh   # без Nix: бинарник в ~/.local/bin
 ```
 
-Готовые сборки для Linux, Windows и macOS лежат на [странице релизов](https://github.com/rokokol/MolvAI/releases): архив CLI, AppImage, deb, dmg и установщик Windows, каждый с суммой SHA-256 в `sha256sums.txt`
+Готовые сборки для Linux, Windows и macOS лежат на [странице релизов](https://github.com/rokokol/MolvAI/releases): архив CLI, AppImage, deb, dmg и установщик Windows, каждый с суммой SHA-256 в `sha256sums.txt`. Все они считают whisper на процессоре; отдельный архив `molva-cuda-…-windows.tar.gz` собран с CUDA и несёт рантайм NVIDIA (`cudart`, `cublas`), поэтому лежит отдельно от свободных пакетов: замените им `molva.exe` рядом с `MolvAI.exe`, и реплика на RTX 3060 распознаётся за 0,5–0,9 с вместо 4 с
 
 ### С Nix
 
