@@ -119,7 +119,7 @@ jobs:
           tool: just,cargo-machete
 
       # Фронтенд GUI появляется в crates/molva-gui/ui; до тех пор шаг пропускается
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: hashFiles('crates/molva-gui/ui/package.json') != ''
         with:
           node-version: "22"
