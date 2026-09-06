@@ -106,6 +106,8 @@ reqwest = { version = "0.13", default-features = false, features = [
     "system-proxy",
 ] }
 sha2 = "0.10"
+# Шифрование текстов журнала по настройке journal.encrypt (AEAD, RustCrypto, MIT/Apache-2.0)
+chacha20poly1305 = "0.10"
 indicatif = "0.18"
 clap_complete = "4"
 

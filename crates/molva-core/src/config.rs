@@ -411,6 +411,12 @@ pub struct JournalConfig {
     pub enabled: bool,
     /// `false` — режим приватности: строка без текста реплики.
     pub include_text: bool,
+    /// `true` — тексты реплик в журнале шифруются (XChaCha20-Poly1305), ключ в `key_path`.
+    /// Остальные поля строки остаются открытыми: статистика и фильтры работают без ключа.
+    pub encrypt: bool,
+    /// Файл ключа шифрования; пусто — `journal.key` рядом с журналом. Создаётся сам,
+    /// права только для владельца.
+    pub key_path: String,
     pub keep_audio: bool,
     pub max_entries: u32,
     pub max_size_mb: u32,
@@ -422,6 +428,8 @@ impl Default for JournalConfig {
             path: String::new(),
             enabled: true,
             include_text: true,
+            encrypt: false,
+            key_path: String::new(),
             keep_audio: false,
             max_entries: 10_000,
             max_size_mb: 50,
@@ -596,6 +604,18 @@ impl Config {
             return Ok(PathBuf::from(&self.journal.path));
         }
         Ok(Self::data_dir()?.join("journal.jsonl"))
+    }
+
+    /// Файл ключа шифрования журнала: из настроек или `journal.key` рядом с журналом.
+    pub fn journal_key_path(&self) -> Result<PathBuf, ConfigError> {
+        if !self.journal.key_path.trim().is_empty() {
+            return Ok(PathBuf::from(&self.journal.key_path));
+        }
+        let journal = self.journal_path()?;
+        Ok(journal.parent().map_or_else(
+            || PathBuf::from("journal.key"),
+            |dir| dir.join("journal.key"),
+        ))
     }
 
     /// Путь к словарю: из настроек или `dictionary.toml` рядом с файлом настроек.

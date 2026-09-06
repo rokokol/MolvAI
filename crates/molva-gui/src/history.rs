@@ -72,6 +72,18 @@ pub fn parse_lines(text: &str) -> (Vec<Entry>, usize) {
 }
 
 /// Все записи журнала, новые сверху. Отсутствующий файл — пустая история.
+/// Записи по настройкам через ядро: с `journal.encrypt = true` тексты приходят расшифрованными,
+/// а без ключа — пустыми, но никогда шифротекстом в окне истории.
+pub fn load_for(config: &Config) -> Result<Vec<Entry>, HistoryError> {
+    let path = journal_path(config)?;
+    let read_error = |error: molva_core::domain::journal::JournalError| HistoryError::Read {
+        path: path.clone(),
+        source: std::io::Error::other(error.to_string()),
+    };
+    let journal = molva_core::app::journal::FileJournal::open_for(config).map_err(read_error)?;
+    journal.load_all().map_err(read_error)
+}
+
 pub fn load_all(path: &Path) -> Result<Vec<Entry>, HistoryError> {
     let text = match std::fs::read_to_string(path) {
         Ok(text) => text,

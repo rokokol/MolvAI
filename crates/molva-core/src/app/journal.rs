@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use tracing::warn;
 use uuid::Uuid;
 
+use crate::app::journal_crypto::{self, JournalCipher};
 use crate::domain::entry::{Entry, SCHEMA_VERSION};
 use crate::domain::journal::{Journal, JournalError};
 
@@ -37,6 +38,8 @@ pub struct FileJournal {
     path: PathBuf,
     /// `false` — режим приватности: строка пишется без текстов и пути к аудио.
     include_text: bool,
+    /// Шифр текстов реплики (`journal.encrypt`); `None` — тексты пишутся открыто.
+    cipher: Option<JournalCipher>,
 }
 
 impl FileJournal {
@@ -73,7 +76,57 @@ impl FileJournal {
         Ok(Self {
             path: path.to_path_buf(),
             include_text,
+            cipher: None,
         })
+    }
+
+    /// Журнал по настройкам: путь, режим приватности и шифр из одного места, чтобы демон,
+    /// CLI и GUI открывали один и тот же файл одинаково. С `journal.encrypt = true` ключ
+    /// читается или создаётся по `journal.key_path`.
+    pub fn open_for(config: &crate::config::Config) -> Result<Self, JournalError> {
+        let path = config
+            .journal_path()
+            .map_err(|e| JournalError::Io(e.to_string()))?;
+        let journal = Self::open_with(&path, config.journal.include_text)?;
+        if !config.journal.encrypt {
+            return Ok(journal);
+        }
+        let key_path = config
+            .journal_key_path()
+            .map_err(|e| JournalError::Io(e.to_string()))?;
+        let cipher =
+            JournalCipher::from_key_file(&key_path).map_err(|e| JournalError::Io(e.to_string()))?;
+        Ok(journal.with_cipher(Some(cipher)))
+    }
+
+    /// Включить шифрование текстов: с `Some` тексты новых строк пишутся шифротекстом, а при
+    /// чтении расшифровываются; строки, записанные открыто, читаются как раньше.
+    #[must_use]
+    pub fn with_cipher(mut self, cipher: Option<JournalCipher>) -> Self {
+        self.cipher = cipher;
+        self
+    }
+
+    /// Шифруются ли тексты новых строк.
+    pub fn encrypts(&self) -> bool {
+        self.cipher.is_some()
+    }
+
+    /// Расшифровать текстовые поля строки. Поле, которое не удалось прочитать (чужой ключ,
+    /// подменённые байты, ключа нет вовсе), становится пустым, а не шифротекстом в истории.
+    fn decrypted(&self, mut entry: Entry) -> Entry {
+        let unlock = |field: Option<String>| -> Option<String> {
+            let value = field?;
+            if !journal_crypto::is_encrypted(&value) {
+                return Some(value);
+            }
+            self.cipher
+                .as_ref()
+                .and_then(|cipher| cipher.decrypt(&value))
+        };
+        entry.text_raw = unlock(entry.text_raw);
+        entry.text_final = unlock(entry.text_final);
+        entry
     }
 
     pub fn path(&self) -> &Path {
@@ -110,7 +163,7 @@ impl FileJournal {
                 continue;
             }
             match serde_json::from_str::<Entry>(line) {
-                Ok(entry) => entries.push(entry),
+                Ok(entry) => entries.push(self.decrypted(entry)),
                 Err(_) if is_header(line) => {}
                 Err(err) => {
                     warn!(
@@ -244,11 +297,21 @@ impl FileJournal {
 impl Journal for FileJournal {
     fn append(&mut self, entry: &Entry) -> Result<(), JournalError> {
         let owned;
-        let entry = if self.include_text {
-            entry
-        } else {
+        let entry = if !self.include_text {
             owned = entry.clone().without_text();
             &owned
+        } else if let Some(cipher) = &self.cipher {
+            // Шифруются только тексты: остальные поля нужны статистике и фильтрам без ключа.
+            let mut sealed = entry.clone();
+            sealed.text_raw = sealed.text_raw.as_deref().map(|text| cipher.encrypt(text));
+            sealed.text_final = sealed
+                .text_final
+                .as_deref()
+                .map(|text| cipher.encrypt(text));
+            owned = sealed;
+            &owned
+        } else {
+            entry
         };
         let line =
             serde_json::to_string(entry).map_err(|e| JournalError::Serialize(e.to_string()))?;
@@ -703,11 +766,61 @@ mod tests {
     }
 
     #[test]
+    fn encrypted_journal_keeps_no_plaintext_on_disk_and_reads_back_with_the_key() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("journal.jsonl");
+        let key = [3u8; journal_crypto::KEY_LEN];
+        let mut journal = FileJournal::open(&path)
+            .unwrap()
+            .with_cipher(Some(JournalCipher::from_key(&key)));
+        let mut entry = test_entry("2026-09-05T12:00:00Z", 4, 3.0, "kitty");
+        entry.text_raw = Some("сырой секретный текст".into());
+        entry.text_final = Some("Итоговый секретный текст.".into());
+        journal.append(&entry).unwrap();
+
+        let on_disk = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            !on_disk.contains("секретный"),
+            "текст на диске открыт: {on_disk}"
+        );
+        assert!(on_disk.contains("enc1:"), "{on_disk}");
+        // Остальные поля остаются открытыми: статистика и фильтры работают без ключа.
+        assert!(on_disk.contains("\"words\""), "{on_disk}");
+
+        let loaded = journal.load_all().unwrap();
+        assert_eq!(
+            loaded[0].text_final.as_deref(),
+            Some("Итоговый секретный текст.")
+        );
+        assert_eq!(loaded[0].text_raw.as_deref(), Some("сырой секретный текст"));
+
+        // Без ключа история показывает пустые поля, а не шифротекст.
+        let without_key = FileJournal::open(&path).unwrap();
+        let blind = without_key.load_all().unwrap();
+        assert_eq!(blind[0].text_final, None);
+        assert_eq!(blind[0].text_raw, None);
+    }
+
+    #[test]
+    fn open_for_creates_the_key_file_next_to_the_journal_only_when_asked() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut config = crate::config::Config::default();
+        config.journal.path = directory.path().join("journal.jsonl").display().to_string();
+        assert!(!FileJournal::open_for(&config).unwrap().encrypts());
+        assert!(!directory.path().join("journal.key").exists());
+
+        config.journal.encrypt = true;
+        assert!(FileJournal::open_for(&config).unwrap().encrypts());
+        assert!(directory.path().join("journal.key").is_file());
+    }
+
+    #[test]
     fn loading_a_missing_file_is_an_empty_history() {
         let directory = tempfile::tempdir().unwrap();
         let journal = FileJournal {
             path: directory.path().join("absent.jsonl"),
             include_text: true,
+            cipher: None,
         };
         assert!(journal.load_all().unwrap().is_empty());
     }

@@ -48,6 +48,10 @@ impl From<crate::app::pipeline::PipelineError> for ProcessError {
 
 /// Полный конвейер (словарь, правила, модель) на месте обработчика демона.
 impl Processor for crate::app::pipeline::Pipeline {
+    fn apply_config(&mut self, config: &Config) {
+        self.set_config(crate::app::pipeline::PipelineConfig::from_config(config));
+    }
+
     fn process(
         &mut self,
         audio: PcmAudio,
@@ -104,6 +108,10 @@ pub trait Processor: std::fmt::Debug + Send {
     /// Меряет демон — только он знает обе точки. Значение уходит в `Entry.latency_ms
     /// .stop_after_release`, поэтому гарантию приватности микрофона видно в журнале.
     fn set_stop_after_release(&mut self, _ms: u32) {}
+
+    /// Применить перечитанные настройки: стиль по умолчанию, правила, пороги. Обработчик,
+    /// которому настройки безразличны, ничего не делает.
+    fn apply_config(&mut self, _config: &Config) {}
 
     /// Распознать кусок ещё идущей записи.
     ///

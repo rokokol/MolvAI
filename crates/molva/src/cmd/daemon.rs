@@ -69,8 +69,9 @@ fn build_journal(config: &Config) -> anyhow::Result<Box<dyn Journal>> {
         return Ok(Box::new(NullJournal));
     }
     let path = config.journal_path()?;
-    let journal = FileJournal::open_with(&path, config.journal.include_text)
-        .with_context(|| format!("журнал {}", path.display()))?;
+    // Путь, приватность и шифр решает ядро: CLI и GUI открывают журнал той же функцией.
+    let journal =
+        FileJournal::open_for(config).with_context(|| format!("журнал {}", path.display()))?;
     Ok(Box::new(journal))
 }
 
@@ -179,6 +180,8 @@ pub(crate) fn run(config_path: &Path, options: &Options) -> anyhow::Result<()> {
         config: config.clone(),
     });
     let handle = daemon.handle();
+    // `config.reload` и `style.set` перечитывают тот же файл, с которым демон запущен.
+    handle.set_config_path(config_path.to_path_buf());
 
     let server = Server::bind(&options.socket)
         .with_context(|| format!("сокет {}", options.socket.display()))?;

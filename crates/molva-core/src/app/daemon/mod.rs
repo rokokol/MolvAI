@@ -10,6 +10,7 @@ pub mod chunked;
 pub mod processor;
 pub mod state;
 
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
@@ -45,11 +46,17 @@ struct Message {
 /// свежий звук с микрофона, которым владеет этот же поток.
 enum Ctl {
     Message(Message),
-    ChunkTick { generation: u64 },
+    ChunkTick {
+        generation: u64,
+    },
+    /// Перечитанные настройки: хоткеи для машины состояний, остальное — рабочему потоку.
+    Reload(Box<Config>),
 }
 
 /// Задание рабочему потоку.
 enum Job {
+    /// Перечитанные настройки для конвейера: стиль по умолчанию, правила, пороги.
+    Reload(Box<Config>),
     /// Кусок ещё идущей записи: распознаётся, пока человек говорит.
     Chunk {
         audio: PcmAudio,
@@ -109,6 +116,8 @@ struct Shared {
     injector: Mutex<Option<Box<dyn TextInjector>>>,
     /// Порог `output.auto_type_max_chars` для разрешения режима `auto`.
     auto_type_max_chars: u32,
+    /// Файл настроек для `config.reload`; `None` — путь по умолчанию.
+    config_path: Mutex<Option<PathBuf>>,
 }
 
 impl Shared {
@@ -177,6 +186,7 @@ impl Daemon {
             generation: AtomicU64::new(0),
             injector: Mutex::new(injector),
             auto_type_max_chars: config.output.auto_type_max_chars,
+            config_path: Mutex::new(None),
         });
 
         let mut machine = Machine::new(config.hotkeys.clone(), clock.clone());
@@ -216,6 +226,12 @@ impl Daemon {
                                     }
                                 }
                             }
+                            continue;
+                        }
+                        Ctl::Reload(config) => {
+                            machine.set_hotkeys(config.hotkeys.clone());
+                            let _ = work_tx.send(Job::Reload(config));
+                            shared.publish(&Event::ConfigReloaded);
                             continue;
                         }
                         Ctl::Message(message) => message,
@@ -412,6 +428,11 @@ impl Daemon {
                     let (audio, tail, mode, style, app, stop_after_release_ms) = match job {
                         Job::Discard => {
                             chunks.reset();
+                            continue;
+                        }
+                        Job::Reload(config) => {
+                            processor.apply_config(&config);
+                            tracing::info!(style = %config.style.default, "конвейер перечитал настройки");
                             continue;
                         }
                         Job::Chunk { audio, started } => {
@@ -663,6 +684,40 @@ impl DaemonHandle {
     }
 
     /// Сводка для `molva status`.
+    /// Откуда демон перечитывает настройки по `config.reload`; без пути — файл по умолчанию.
+    pub fn set_config_path(&self, path: PathBuf) {
+        if let Ok(mut slot) = self.shared.config_path.lock() {
+            *slot = Some(path);
+        }
+    }
+
+    /// Перечитать файл настроек и разослать его машине состояний и конвейеру.
+    /// `style` подменяет стиль по умолчанию: так работает `style.set` из трея и CLI.
+    pub fn reload_config(&self, style: Option<String>) -> Result<Config, IpcError> {
+        let path = match self
+            .shared
+            .config_path
+            .lock()
+            .ok()
+            .and_then(|slot| slot.clone())
+        {
+            Some(path) => path,
+            None => Config::default_path().map_err(|e| internal(&e.to_string()))?,
+        };
+        let mut config = Config::load(&path).map_err(|e| IpcError {
+            code: ErrorCode::BadRequest,
+            message: format!("настройки не перечитаны: {e}"),
+            hint: Some("проверьте файл: molva config validate".into()),
+        })?;
+        if let Some(style) = style {
+            config.style.default = style;
+        }
+        let tx = self.shared.tx.lock().map_err(|_| internal("демон занят"))?;
+        tx.send(Ctl::Reload(Box::new(config.clone())))
+            .map_err(|_| internal("демон остановлен"))?;
+        Ok(config)
+    }
+
     pub fn status_json(&self) -> serde_json::Value {
         serde_json::json!({
             "state": self.state(),
@@ -705,6 +760,17 @@ impl RequestHandler for DaemonHandle {
             }
             Command::RecordCancel => outcome_to_result(self.send(Input::RecordCancel)?),
             Command::InjectText { text, mode } => self.inject_text(&text, mode),
+            Command::ConfigReload => {
+                let config = self.reload_config(None)?;
+                Ok(serde_json::json!({
+                    "reloaded": true,
+                    "style": config.style.default,
+                }))
+            }
+            Command::StyleSet { style } => {
+                let config = self.reload_config(Some(style))?;
+                Ok(serde_json::json!({ "style": config.style.default }))
+            }
             Command::Shutdown => {
                 // Ответ должен уйти раньше, чем процесс исчезнет.
                 std::thread::spawn(|| {
@@ -979,6 +1045,38 @@ mod tests {
             "нажатие из очереди обязано начать новую запись"
         );
         h.handle.send(Input::RecordCancel).unwrap();
+        drop(h.daemon);
+    }
+
+    #[test]
+    fn style_set_and_config_reload_reread_the_file_and_answer_with_the_style() {
+        let h = harness("тестовая реплика");
+        let directory = tempfile::tempdir().unwrap();
+        let config_path = directory.path().join("config.toml");
+        std::fs::write(&config_path, "[style]\ndefault = \"verbatim\"\n").unwrap();
+        h.handle.set_config_path(config_path.clone());
+        let events = h.handle.subscribe();
+
+        let reloaded = h.handle.handle(Command::ConfigReload).unwrap();
+        assert_eq!(reloaded["style"], "verbatim");
+
+        let set = h
+            .handle
+            .handle(Command::StyleSet {
+                style: "messenger".into(),
+            })
+            .unwrap();
+        assert_eq!(set["style"], "messenger");
+        let saw_reload = std::iter::from_fn(|| events.recv_timeout(Duration::from_secs(2)).ok())
+            .take(6)
+            .any(|event| matches!(event, Event::ConfigReloaded));
+        assert!(saw_reload, "подписчики узнают о перечитанных настройках");
+
+        // Битый файл — ошибка с подсказкой, а не молчаливое «перечитано».
+        std::fs::write(&config_path, "[style\n").unwrap();
+        let err = h.handle.handle(Command::ConfigReload).unwrap_err();
+        assert_eq!(err.code, ErrorCode::BadRequest);
+        assert!(err.hint.is_some());
         drop(h.daemon);
     }
 

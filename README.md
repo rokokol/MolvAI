@@ -171,6 +171,8 @@ bindr = , Control_R, exec, molva stop
 | `hotkeys` | `min_hold_ms` | `200` | удержание короче не создаёт реплику |
 | `journal` | `enabled` | `true` | вести журнал реплик |
 | `journal` | `include_text` | `true` | `false` — строка журнала без текста реплики |
+| `journal` | `encrypt` | `false` | `true` — тексты реплик в журнале шифруются XChaCha20-Poly1305; остальные поля открыты, статистика и фильтры работают без ключа |
+| `journal` | `key_path` | пусто | файл ключа шифрования; пусто — `journal.key` рядом с журналом, создаётся сам с правами только для владельца |
 | `journal` | `max_entries` | `10000` | сколько реплик хранить |
 | `privacy` | `send_to_llm` | `true` | разрешена ли отправка текста языковой модели |
 | `privacy` | `no_record_mode` | `false` | выключает журнал и историю целиком |

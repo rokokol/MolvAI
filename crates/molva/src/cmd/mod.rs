@@ -111,8 +111,8 @@ pub(crate) fn progress_enabled(machine_output: bool) -> bool {
 /// Открыть журнал по настройкам, создав его при необходимости.
 pub(crate) fn open_journal(config: &Config) -> anyhow::Result<FileJournal> {
     let path = config.journal_path()?;
-    let journal = FileJournal::open_with(&path, config.journal.include_text)
-        .with_context(|| format!("журнал {}", path.display()))?;
+    let journal =
+        FileJournal::open_for(config).with_context(|| format!("журнал {}", path.display()))?;
     Ok(journal)
 }
 

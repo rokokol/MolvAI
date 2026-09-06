@@ -617,8 +617,7 @@ pub fn history_list(
     state: State<'_, AppState>,
     filter: Option<Filter>,
 ) -> Result<Vec<Entry>, CommandError> {
-    let path = history::journal_path(&state.config())?;
-    let entries = history::load_all(&path)?;
+    let entries = history::load_for(&state.config())?;
     Ok(history::filter_entries(
         &entries,
         &filter.unwrap_or_default(),
@@ -627,8 +626,7 @@ pub fn history_list(
 
 #[tauri::command]
 pub fn history_apps(state: State<'_, AppState>) -> Result<Vec<String>, CommandError> {
-    let path = history::journal_path(&state.config())?;
-    Ok(history::apps_of(&history::load_all(&path)?))
+    Ok(history::apps_of(&history::load_for(&state.config())?))
 }
 
 #[tauri::command]
@@ -666,8 +664,7 @@ pub fn stats_summary(
     range_days: Option<u32>,
 ) -> Result<StatsSummary, CommandError> {
     let config = state.config();
-    let path = history::journal_path(&config)?;
-    let entries = history::load_all(&path)?;
+    let entries = history::load_for(&config)?;
     Ok(stats::summary(
         &entries,
         Utc::now(),
