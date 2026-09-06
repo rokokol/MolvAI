@@ -228,12 +228,19 @@ jobs:
         shell: bash
         run: printf 'LIBCLANG_PATH=%s\n' 'C:\Program Files\LLVM\bin' >> "$GITHUB_ENV"
 
+      # Сетевой установщик CUDA не регистрирует свой toolset в MSBuild, и генератор Visual
+      # Studio падает с «No CUDA toolset found». Ninja с cl.exe из окружения разработчика
+      # обходит MSBuild вовсе: nvcc и cl находятся по PATH.
+      - uses: ilammy/msvc-dev-cmd@v1
+
       - uses: Swatinem/rust-cache@v2
         with:
           key: release-cuda-x86_64-pc-windows-msvc
 
       - name: Сборка CLI с CUDA
         shell: bash
+        env:
+          CMAKE_GENERATOR: Ninja
         run: cargo build --locked --release --bin molva --features molva-core/cuda
 
       - name: Архив CLI с CUDA и рантаймом NVIDIA
