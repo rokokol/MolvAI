@@ -680,13 +680,21 @@ defect 'daemon/hold-counts-from-the-open-microphone' 'crates/molva-core/src/app/
   'медленное открытие микрофона превращает короткий тап в удержание: запись завершается пустой'
 
 defect 'journal/encrypt-seals-the-final-text' 'crates/molva-core/src/app/journal.rs' \
-  '            sealed.text_final = sealed.text_final.as_deref().map(|text| cipher.encrypt(text));' \
+  '            sealed.text_final = sealed
+                .text_final
+                .as_deref()
+                .map(|text| cipher.encrypt(text));' \
   '            sealed.text_final = sealed.text_final.clone();' \
   'journal.encrypt = true, а итоговый текст реплики лежит в файле открыто'
 
 defect 'journal/decrypt-hides-ciphertext-without-a-key' 'crates/molva-core/src/app/journal.rs' \
-  '            self.cipher.as_ref().and_then(|cipher| cipher.decrypt(&value))' \
-  '            self.cipher.as_ref().and_then(|cipher| cipher.decrypt(&value)).or(Some(value))' \
+  '            self.cipher
+                .as_ref()
+                .and_then(|cipher| cipher.decrypt(&value))' \
+  '            self.cipher
+                .as_ref()
+                .and_then(|cipher| cipher.decrypt(&value))
+                .or(Some(value))' \
   'история без ключа показывает шифротекст вместо пустого поля, а с ключом — тоже шифротекст при сбое'
 
 defect 'daemon/config-reload-reaches-the-pipeline' 'crates/molva-core/src/app/daemon/mod.rs' \
