@@ -721,3 +721,13 @@ defect 'secrets/file-store-owner-only' 'crates/molva-core/src/app/secrets.rs' \
   '            options.mode(0o600);' \
   '            options.mode(0o644);' \
   'файл с ключом провайдера читается любым пользователем машины'
+
+defect 'secrets/doctor-probe-is-deleted' 'crates/molva/src/cmd/doctor.rs' \
+  '        .and_then(|read| store.delete(probe).map(|()| read));' \
+  '        .and_then(Ok);' \
+  'каждый запуск molva doctor оставляет в хранилище ОС пробную запись'
+
+defect 'secrets/journal-key-must-be-hex' 'crates/molva/src/cmd/secret.rs' \
+  '    if name == SecretName::Journal' \
+  '    if false' \
+  '«molva secret set journal» принимает что угодно, а демон потом не открывает журнал'

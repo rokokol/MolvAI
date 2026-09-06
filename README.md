@@ -151,7 +151,7 @@ bindr = , Control_R, exec, molva stop
 | `llm` | `base_url` | `http://localhost:11434/v1` | адрес OpenAI-совместимого API |
 | `llm` | `model` | `qwen3.5:4b` | модель постобработки |
 | `llm` | `api_key_env` | `OPENAI_API_KEY` | имя переменной окружения с ключом |
-| `llm` | `api_key_source` | `keyring` | `keyring` или `env`; сам ключ в файле не хранится |
+| `llm` | `api_key_source` | `keyring` | `keyring` — хранилище ОС (Secret Service на Linux, Credential Manager на Windows, Keychain на macOS), `file` — `secrets/llm-api-key-<provider>` рядом с настройками, `env` — только переменная окружения; в файле настроек ключа нет |
 | `llm` | `timeout_secs` | `20` | сколько ждать ответа модели; дольше — текст уходит без неё |
 | `llm` | `max_retries` | `2` | повторов запроса при сбое |
 | `llm` | `reasoning_effort` | `auto` | `auto` шлёт локальным моделям `none`, облачным ничего; пустая строка — не слать; иначе значение как есть. Рассуждающие модели вроде qwen3.5 без этого тратят весь лимит токенов на размышления и отдают пустой текст |
@@ -172,7 +172,8 @@ bindr = , Control_R, exec, molva stop
 | `journal` | `enabled` | `true` | вести журнал реплик |
 | `journal` | `include_text` | `true` | `false` — строка журнала без текста реплики |
 | `journal` | `encrypt` | `false` | `true` — тексты реплик в журнале шифруются XChaCha20-Poly1305; остальные поля открыты, статистика и фильтры работают без ключа |
-| `journal` | `key_path` | пусто | файл ключа шифрования; пусто — `journal.key` рядом с журналом, создаётся сам с правами только для владельца |
+| `journal` | `key_source` | `file` | где лежит ключ шифрования: `file` — файл `key_path`, `keyring` — запись `journal-key` в хранилище ОС; создаётся сам при первом открытии журнала |
+| `journal` | `key_path` | пусто | файл ключа шифрования при `key_source = file`; пусто — `journal.key` рядом с журналом, создаётся сам с правами только для владельца |
 | `journal` | `max_entries` | `10000` | сколько реплик хранить |
 | `privacy` | `send_to_llm` | `true` | разрешена ли отправка текста языковой модели |
 | `privacy` | `no_record_mode` | `false` | выключает журнал и историю целиком |
@@ -228,6 +229,8 @@ molva config set style.default cleanup
 ```
 
 Модель зовётся только для реплик длиннее `rules.llm_min_words` слов и только для стилей, которым она нужна (`cleanup`, `messenger`, `mail`, `code`, `formal`); стиль `verbatim` её не трогает. Если модель не отвечает, отвечает пусто или дольше `llm.timeout_secs`, в поле уходит текст после правил — реплика не теряется. Та же цепочка работает и для файлов: `molva transcribe file.wav --style cleanup`, а `--no-llm` выключает модель на один запуск
+
+Ключ облачного провайдера (Groq, OpenRouter, OpenAI) в файл настроек не попадает: при `llm.api_key_source = keyring` он лежит в хранилище ОС, при `file` — в файле с правами только для владельца, при `env` — в переменной `llm.api_key_env`. Кладётся он через stdin, чтобы не осесть в истории оболочки: `printf '%s' "$KEY" | molva secret set llm`; `molva secret status` показывает, какие записи есть, не печатая значений, а `molva doctor` проверяет, отвечает ли хранилище. Если записи нет или хранилище недоступно, ключ читается из переменной окружения с предупреждением в логе
 
 На RTX 3060 ответ `qwen3.5:4b` на реплику из десяти слов занимает около секунды; на CPU считайте от трёх. В журнале у такой реплики `llm_used = true`, провайдер, модель, `latency_ms.llm` и число токенов, так что стоимость модели видна в `molva stats`
 

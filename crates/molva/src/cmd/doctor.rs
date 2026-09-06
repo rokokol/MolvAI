@@ -8,7 +8,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use molva_core::app::models;
-use molva_core::app::secrets;
+use molva_core::app::secrets::{self, OsKeyring, SecretStore};
 use molva_core::domain::llm::LlmError;
 use molva_core::infra::inject::clipboard::SystemClipboard;
 use molva_core::infra::ipc;
@@ -176,7 +176,34 @@ pub(crate) fn llm_check(config: &Config) -> Check {
 }
 
 /// Полный отчёт: строки в том порядке, в котором их читают.
+/// Хранилище ключей ОС: запись, чтение и удаление пробной записи. Недоступное хранилище —
+/// это «нет» с объяснением, а не падение: без него ключи читаются из переменных окружения.
+pub(crate) fn keyring_check(store: &dyn SecretStore) -> Check {
+    const NAME: &str = "хранилище ключей";
+    const HINT: &str = "запустите gnome-keyring/kwallet или используйте api_key_source = env";
+    let probe = "molva-doctor-probe";
+    let value = format!("probe-{}", std::process::id());
+    let round_trip = store
+        .set(probe, &value)
+        .and_then(|()| store.get(probe))
+        .and_then(|read| store.delete(probe).map(|()| read));
+    match round_trip {
+        Ok(Some(read)) if read == value => Check::new(NAME, true, "запись, чтение и удаление"),
+        Ok(_) => Check::new(
+            NAME,
+            false,
+            format!("пробная запись прочиталась не той; {HINT}"),
+        ),
+        Err(error) => Check::new(NAME, false, format!("{error}; {HINT}")),
+    }
+}
+
 pub(crate) fn checks(socket: &Path, config: &Config) -> Vec<Check> {
+    checks_with(socket, config, &OsKeyring)
+}
+
+/// То же с явным хранилищем: тесты не трогают хранилище ОС.
+pub(crate) fn checks_with(socket: &Path, config: &Config, store: &dyn SecretStore) -> Vec<Check> {
     let platform = platform::detect();
     let tools = Tools::detect();
     let mut checks = vec![
@@ -211,6 +238,7 @@ pub(crate) fn checks(socket: &Path, config: &Config) -> Vec<Check> {
     });
     checks.push(whisper_model_check(config));
     checks.push(llm_check(config));
+    checks.push(keyring_check(store));
     checks
 }
 
@@ -233,6 +261,8 @@ pub(crate) fn run(socket: &Path, config: &Config) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use molva_core::app::secrets::MemoryStore;
+
     use super::*;
 
     #[test]
@@ -256,9 +286,10 @@ mod tests {
     #[test]
     fn the_report_covers_session_tools_daemon_model_and_llm() {
         let directory = tempfile::tempdir().unwrap();
-        let checks = checks(
+        let checks = checks_with(
             &directory.path().join("absent.sock"),
             &offline_config(directory.path()),
+            &MemoryStore::new(),
         );
         let names: Vec<&str> = checks.iter().map(|c| c.name.as_str()).collect();
         for expected in [
@@ -269,9 +300,34 @@ mod tests {
             "демон",
             "модель whisper",
             "LLM",
+            "хранилище ключей",
         ] {
             assert!(names.contains(&expected), "{names:?}");
         }
+    }
+
+    #[test]
+    fn the_keyring_check_round_trips_and_leaves_no_probe_behind() {
+        let store = MemoryStore::new();
+        let check = keyring_check(&store);
+        assert!(check.ok, "{}", check.detail);
+        assert_eq!(store.get("molva-doctor-probe").unwrap(), None);
+    }
+
+    #[test]
+    fn an_unavailable_keyring_names_the_next_step_instead_of_failing() {
+        let check = keyring_check(&MemoryStore::failing("нет Secret Service"));
+        assert!(!check.ok);
+        assert!(
+            check.detail.contains("нет Secret Service"),
+            "{}",
+            check.detail
+        );
+        assert!(
+            check.detail.contains("api_key_source = env"),
+            "{}",
+            check.detail
+        );
     }
 
     #[test]
