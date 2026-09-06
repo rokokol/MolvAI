@@ -1,0 +1,8 @@
+# Настройки rustfmt. Форматирование проверяется в гейте: `just fmt` = `cargo fmt --all -- --check`,
+# тот же шаг идёт в CI на трёх ОС. Значения намеренно стандартные: спорить о стиле некогда,
+# файл существует, чтобы стиль был зафиксирован явно, а не по умолчанию текущей версии.
+edition = "2021"
+max_width = 100
+newline_style = "Unix"
+use_field_init_shorthand = true
+use_try_shorthand = true

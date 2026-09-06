@@ -135,13 +135,13 @@ jobs:
 
       # Шаги гейта — те же рецепты just, что разработчик запускает локально.
       # Копий команд в CI нет: одна команда разъедется с другой за неделю
-      - name: just fmt
+      - name: rustfmt --check (just fmt, настройки в rustfmt.toml)
         run: just fmt
 
-      - name: just clippy
+      - name: clippy -D warnings (just clippy, pedantic из Cargo.toml)
         run: just clippy
 
-      - name: just lint-deps
+      - name: cargo machete — неиспользуемые зависимости (just lint-deps)
         run: just lint-deps
 
       - name: just doc
