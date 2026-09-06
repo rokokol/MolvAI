@@ -4,6 +4,20 @@
 //! GUI — обычный клиент демона: микрофоном и моделью он не владеет и без демона
 //! честно показывает, что демон не запущен, вместо пустого окна.
 
+// В тестах паника — это способ сообщить о провале, а не необработанная ошибка; точное
+// сравнение чисел с плавающей точкой законно (тест сверяет вычисленное значение с константой,
+// которую сам же и задал), а печать замеров в stdout — это и есть отчёт замерочного теста.
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::float_cmp,
+        clippy::print_stdout
+    )
+)]
+
 pub mod commands;
 pub mod history;
 pub mod hotkeys;
@@ -12,6 +26,7 @@ pub mod sidecar;
 pub mod stats;
 pub mod tray;
 
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use molva_core::ipc::{Command, Event};
@@ -20,6 +35,15 @@ use tauri::{AppHandle, Emitter, Listener, Manager, WindowEvent};
 
 use crate::commands::AppState;
 use crate::ipc::Message;
+
+/// Захват мьютекса, переживающий панику в чужом потоке.
+///
+/// Под замками GUI лежат настройки, кэш устройств и ручка запущенного демона — значения,
+/// которые паника где-то ещё не делает противоречивыми. Ронять всё приложение из-за
+/// отравленного замка было бы хуже, чем продолжить с тем же содержимым.
+pub fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
 
 /// Пауза между попытками переподключиться к демону.
 const RECONNECT_DELAY: Duration = Duration::from_secs(2);
@@ -136,7 +160,7 @@ fn spawn_subscription(app: AppHandle) {
                     loop {
                         match connection.recv() {
                             Ok(Some(Message::Event(event))) => handle_event(&app, event),
-                            Ok(Some(Message::Response(_))) => continue,
+                            Ok(Some(Message::Response(_))) => {}
                             Ok(None) => break,
                             Err(err) => {
                                 tracing::info!(%err, "подписка прервана");
@@ -162,6 +186,8 @@ fn spawn_subscription(app: AppHandle) {
 }
 
 /// Запуск приложения. Ошибка чтения настроек не молчаливая: она видна в терминале.
+// Сборка Tauri — единственный отказ, который некому вернуть: см. `expect` в конце функции.
+#[allow(clippy::expect_used)]
 pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -275,5 +301,7 @@ pub fn run() {
             }
         })
         .run(tauri::generate_context!())
+        // Единственная точка, где вернуть ошибку некому: приложение не построилось,
+        // окна нет, показать сообщение нечем. Паника здесь и есть отчёт пользователю.
         .expect("не удалось запустить приложение Tauri");
 }

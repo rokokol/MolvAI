@@ -80,7 +80,7 @@ impl Term {
     pub fn new(word: &str, aliases: &[&str]) -> Self {
         Self {
             word: word.to_string(),
-            aliases: aliases.iter().map(|a| a.to_string()).collect(),
+            aliases: aliases.iter().map(ToString::to_string).collect(),
             case: CaseMode::Keep,
         }
     }
@@ -274,21 +274,18 @@ impl Dictionary {
         let mut hits = 0u32;
         let mut index = 0;
         while index < tokens.len() {
-            match self.match_at(&tokens, index) {
-                Some((len, term)) => {
-                    let tail = trailing_punctuation(&tokens[index + len - 1]);
-                    let replacement = format!("{}{tail}", term.rendered());
-                    let original: Vec<String> = tokens[index..index + len].to_vec();
-                    if join(&original) != replacement {
-                        hits += 1;
-                    }
-                    out.push(replacement);
-                    index += len;
+            if let Some((len, term)) = self.match_at(&tokens, index) {
+                let tail = trailing_punctuation(&tokens[index + len - 1]);
+                let replacement = format!("{}{tail}", term.rendered());
+                let original: Vec<String> = tokens[index..index + len].to_vec();
+                if join(&original) != replacement {
+                    hits += 1;
                 }
-                None => {
-                    out.push(tokens[index].clone());
-                    index += 1;
-                }
+                out.push(replacement);
+                index += len;
+            } else {
+                out.push(tokens[index].clone());
+                index += 1;
             }
         }
         (join(&out), hits)
@@ -326,7 +323,7 @@ impl Dictionary {
             };
             for (alias, term) in candidates {
                 let score = strsim::normalized_levenshtein(word, alias);
-                if score >= FUZZY_THRESHOLD && best.map(|(top, _)| score > top).unwrap_or(true) {
+                if score >= FUZZY_THRESHOLD && best.is_none_or(|(top, _)| score > top) {
                     best = Some((score, *term));
                 }
             }
@@ -512,8 +509,8 @@ mod tests {
 
     #[test]
     fn a_dictionary_file_is_read_from_toml() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/fixtures/dictionary.toml");
+        let path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/dictionary.toml");
         let dictionary = Dictionary::load(&path, true).unwrap();
         assert!(dictionary.len() >= 3, "{}", dictionary.len());
         let (text, hits) = dictionary.apply("проект молва работает на гипрланде");
@@ -523,16 +520,16 @@ mod tests {
 
     #[test]
     fn a_missing_file_is_an_empty_dictionary_not_an_error() {
-        let dir = tempfile::tempdir().unwrap();
-        let dictionary = Dictionary::load(&dir.path().join("absent.toml"), true).unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let dictionary = Dictionary::load(&directory.path().join("absent.toml"), true).unwrap();
         assert!(dictionary.is_empty());
         assert_eq!(dictionary.apply("текст").0, "текст");
     }
 
     #[test]
     fn a_broken_file_reports_the_path_and_the_reason() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("dictionary.toml");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("dictionary.toml");
         std::fs::write(&path, "[[term]]\nword = 12\n").unwrap();
         let err = Dictionary::load(&path, false).unwrap_err().to_string();
         assert!(err.contains("dictionary.toml"), "{err}");
@@ -541,8 +538,8 @@ mod tests {
 
     #[test]
     fn adding_a_term_writes_the_file_and_takes_effect_without_a_restart() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("dictionary.toml");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("dictionary.toml");
         let mut dictionary = Dictionary::load(&path, false).unwrap();
         dictionary
             .add(Term::new("Кубернетес", &["кубер", "k8s"]))
@@ -559,8 +556,8 @@ mod tests {
 
     #[test]
     fn reload_picks_up_a_changed_file_and_ignores_an_unchanged_one() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("dictionary.toml");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("dictionary.toml");
         std::fs::write(
             &path,
             "[[term]]\nword = \"MolvAI\"\naliases = [\"молва\"]\n",

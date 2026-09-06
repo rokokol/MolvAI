@@ -107,7 +107,7 @@ impl ChunkAccumulator {
         if self.language.is_none() {
             // Язык реплики выбирается по первому куску, в котором нашлась речь.
             if !chunk.text.trim().is_empty() {
-                self.language = chunk.language.clone();
+                self.language.clone_from(&chunk.language);
             }
         }
         if self.first_hypothesis_ms.is_none() && !chunk.text.trim().is_empty() {
@@ -141,6 +141,7 @@ impl ChunkAccumulator {
 }
 
 /// Нарезчик на стороне управляющего потока: снимает свежий звук и отдаёт готовые куски.
+#[derive(Debug)]
 pub struct ChunkFeeder {
     enabled: bool,
     pause_ms: u32,
@@ -277,17 +278,14 @@ pub fn tail_options(options: &SttOptions, prefix: &ChunkPrefix) -> SttOptions {
 
 /// Склеить начало реплики из кусков с распознанным хвостом.
 pub fn merge(prefix: &ChunkPrefix, tail: Option<Transcript>) -> Transcript {
-    let tail_text = tail
-        .as_ref()
-        .map(|t| t.text.trim().to_string())
-        .unwrap_or_default();
+    let (tail_text, tail_language) = match tail {
+        Some(tail) => (tail.text.trim().to_string(), tail.detected_language),
+        None => (String::new(), None),
+    };
     Transcript {
         text: join_texts(&[prefix.text.clone(), tail_text]),
         segments: Vec::new(),
-        detected_language: prefix
-            .language
-            .clone()
-            .or_else(|| tail.as_ref().and_then(|t| t.detected_language.clone())),
+        detected_language: prefix.language.clone().or(tail_language),
         // Речь в реплике уже нашлась в кусках: оценка тишины по одному хвосту выбросила бы её всю.
         no_speech_prob: None,
     }

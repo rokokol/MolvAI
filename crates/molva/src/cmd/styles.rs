@@ -6,14 +6,14 @@ use molva_core::app::styles::Styles;
 use molva_core::Config;
 
 #[derive(Debug, Subcommand)]
-pub enum StylesAction {
+pub(crate) enum StylesAction {
     /// Показать все стили
     List,
     /// Показать системный промпт одного стиля
     Show { id: String },
 }
 
-pub fn run(action: StylesAction, config: &Config) -> anyhow::Result<()> {
+pub(crate) fn run(action: StylesAction, config: &Config) -> anyhow::Result<()> {
     let styles = Styles::from_config(&config.style);
     match action {
         StylesAction::List => {

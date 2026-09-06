@@ -122,7 +122,7 @@ pub enum ModelError {
     },
 }
 
-fn io_err(path: &Path, e: std::io::Error) -> ModelError {
+fn io_err(path: &Path, e: &std::io::Error) -> ModelError {
     ModelError::Io {
         path: path.to_path_buf(),
         reason: e.to_string(),
@@ -190,12 +190,12 @@ pub fn installed_path(cfg: &Config, name: &str) -> Result<PathBuf, ModelError> {
 }
 
 /// Что из каталога есть на диске.
-pub fn list(dir: &Path) -> Vec<ModelStatus> {
+pub fn list(directory: &Path) -> Vec<ModelStatus> {
     CATALOG
         .iter()
         .map(|info| {
-            let path = dir.join(info.file_name);
-            let size_on_disk = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            let path = directory.join(info.file_name);
+            let size_on_disk = std::fs::metadata(&path).map_or(0, |m| m.len());
             ModelStatus {
                 info: *info,
                 installed: size_on_disk > 0,
@@ -207,30 +207,30 @@ pub fn list(dir: &Path) -> Vec<ModelStatus> {
 }
 
 /// Удалить установленную модель; возвращает путь удалённого файла.
-pub fn remove(name: &str, dir: &Path) -> Result<PathBuf, ModelError> {
+pub fn remove(name: &str, directory: &Path) -> Result<PathBuf, ModelError> {
     let info = find(name)?;
-    let path = dir.join(info.file_name);
+    let path = directory.join(info.file_name);
     if !path.exists() {
         return Err(ModelError::NotInstalled {
             model: name.to_string(),
             path,
         });
     }
-    std::fs::remove_file(&path).map_err(|e| io_err(&path, e))?;
+    std::fs::remove_file(&path).map_err(|e| io_err(&path, &e))?;
     Ok(path)
 }
 
 /// SHA-256 файла в нижнем регистре.
 pub fn sha256_file(path: &Path) -> Result<String, ModelError> {
-    let mut file = std::fs::File::open(path).map_err(|e| io_err(path, e))?;
+    let mut file = std::fs::File::open(path).map_err(|e| io_err(path, &e))?;
     let mut hasher = Sha256::new();
-    let mut buf = vec![0u8; CHUNK];
+    let mut buffer = vec![0u8; CHUNK];
     loop {
-        let read = file.read(&mut buf).map_err(|e| io_err(path, e))?;
+        let read = file.read(&mut buffer).map_err(|e| io_err(path, &e))?;
         if read == 0 {
             break;
         }
-        hasher.update(&buf[..read]);
+        hasher.update(&buffer[..read]);
     }
     Ok(hex(&hasher.finalize()))
 }
@@ -252,42 +252,49 @@ fn hex(bytes: &[u8]) -> String {
     })
 }
 
-/// Скачать модель из каталога в `dir`.
+/// Скачать модель из каталога в `directory`.
 ///
 /// Если файл уже на месте и хеш совпадает, сеть не трогается вовсе (A-09): повторный `pull`
 /// стоит одного чтения диска. `progress` вызывается по мере загрузки: (скачано, всего).
 pub fn pull(
     name: &str,
-    dir: &Path,
+    directory: &Path,
     progress: &mut dyn FnMut(u64, u64),
 ) -> Result<PathBuf, ModelError> {
     let info = find(name)?;
-    download_verified(info.url, dir, info.file_name, info.sha256, name, progress)
+    download_verified(
+        info.url,
+        directory,
+        info.file_name,
+        info.sha256,
+        name,
+        progress,
+    )
 }
 
 /// Загрузка произвольного файла с проверкой SHA-256 — ядро `pull`, вынесенное ради тестов.
 pub fn download_verified(
     url: &str,
-    dir: &Path,
+    directory: &Path,
     file_name: &str,
     sha256: &str,
     label: &str,
     progress: &mut dyn FnMut(u64, u64),
 ) -> Result<PathBuf, ModelError> {
-    let target = dir.join(file_name);
+    let target = directory.join(file_name);
     if verify(&target, sha256)? {
-        let size = std::fs::metadata(&target).map(|m| m.len()).unwrap_or(0);
+        let size = std::fs::metadata(&target).map_or(0, |m| m.len());
         progress(size, size);
         return Ok(target);
     }
     if target.exists() {
         // Файл есть, но битый: качаем заново, чтобы не выдавать мусор за модель.
-        std::fs::remove_file(&target).map_err(|e| io_err(&target, e))?;
+        std::fs::remove_file(&target).map_err(|e| io_err(&target, &e))?;
     }
-    std::fs::create_dir_all(dir).map_err(|e| io_err(dir, e))?;
+    std::fs::create_dir_all(directory).map_err(|e| io_err(directory, &e))?;
 
-    let part = dir.join(format!("{file_name}.part"));
-    let already = std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
+    let part = directory.join(format!("{file_name}.part"));
+    let already = std::fs::metadata(&part).map_or(0, |m| m.len());
 
     let client = reqwest::blocking::Client::builder()
         .user_agent(concat!("molva/", env!("CARGO_PKG_VERSION")))
@@ -326,32 +333,33 @@ pub fn download_verified(
         .write(true)
         .truncate(!resuming)
         .open(&part)
-        .map_err(|e| io_err(&part, e))?;
+        .map_err(|e| io_err(&part, &e))?;
     let mut downloaded = if resuming {
-        file.seek(SeekFrom::End(0)).map_err(|e| io_err(&part, e))?;
+        file.seek(SeekFrom::End(0)).map_err(|e| io_err(&part, &e))?;
         already
     } else {
         0
     };
     progress(downloaded, total);
 
-    let mut buf = vec![0u8; CHUNK];
+    let mut buffer = vec![0u8; CHUNK];
     loop {
-        let read = response.read(&mut buf).map_err(|e| ModelError::Http {
+        let read = response.read(&mut buffer).map_err(|e| ModelError::Http {
             url: url.to_string(),
             reason: e.to_string(),
         })?;
         if read == 0 {
             break;
         }
-        file.write_all(&buf[..read]).map_err(|e| io_err(&part, e))?;
+        file.write_all(&buffer[..read])
+            .map_err(|e| io_err(&part, &e))?;
         downloaded += read as u64;
         progress(downloaded, total.max(downloaded));
     }
-    file.flush().map_err(|e| io_err(&part, e))?;
+    file.flush().map_err(|e| io_err(&part, &e))?;
     drop(file);
 
-    std::fs::rename(&part, &target).map_err(|e| io_err(&part, e))?;
+    std::fs::rename(&part, &target).map_err(|e| io_err(&part, &e))?;
 
     let actual = sha256_file(&target)?;
     if !actual.eq_ignore_ascii_case(sha256.trim()) {
@@ -490,9 +498,9 @@ mod tests {
 
     #[test]
     fn missing_model_error_shows_the_pull_command() {
-        let dir = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir().unwrap();
         let mut cfg = Config::default();
-        cfg.stt.model_path = dir.path().display().to_string();
+        cfg.stt.model_path = directory.path().display().to_string();
         let err = installed_path(&cfg, "small").unwrap_err();
         assert!(err.to_string().contains("molva models pull small"), "{err}");
     }
@@ -502,11 +510,11 @@ mod tests {
         let body = vec![7u8; 200_000];
         let sha = sha_of(&body);
         let (url, served) = serve(body.clone(), 1);
-        let dir = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir().unwrap();
 
         let mut seen: Vec<(u64, u64)> = Vec::new();
-        let path = download_verified(&url, dir.path(), "m.bin", &sha, "m", &mut |d, t| {
-            seen.push((d, t))
+        let path = download_verified(&url, directory.path(), "m.bin", &sha, "m", &mut |d, t| {
+            seen.push((d, t));
         })
         .unwrap();
 
@@ -517,7 +525,10 @@ mod tests {
             seen.len() > 1,
             "прогресс должен вызываться по ходу загрузки"
         );
-        assert!(!dir.path().join("m.bin.part").exists(), ".part не убран");
+        assert!(
+            !directory.path().join("m.bin.part").exists(),
+            ".part не убран"
+        );
     }
 
     #[test]
@@ -525,16 +536,23 @@ mod tests {
         let body = vec![1u8; 4096];
         let wrong = "0".repeat(64);
         let (url, _) = serve(body, 1);
-        let dir = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir().unwrap();
 
-        let err = download_verified(&url, dir.path(), "m.bin", &wrong, "m", &mut no_progress())
-            .unwrap_err();
+        let err = download_verified(
+            &url,
+            directory.path(),
+            "m.bin",
+            &wrong,
+            "m",
+            &mut no_progress(),
+        )
+        .unwrap_err();
         assert!(matches!(err, ModelError::ChecksumMismatch { .. }), "{err}");
         assert!(
-            !dir.path().join("m.bin").exists(),
+            !directory.path().join("m.bin").exists(),
             "битый файл остался на диске"
         );
-        assert!(!dir.path().join("m.bin.part").exists());
+        assert!(!directory.path().join("m.bin.part").exists());
     }
 
     #[test]
@@ -543,10 +561,26 @@ mod tests {
         let sha = sha_of(&body);
         // Сервер готов обслужить только один запрос: второй `pull` обязан обойтись без сети.
         let (url, served) = serve(body, 1);
-        let dir = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir().unwrap();
 
-        download_verified(&url, dir.path(), "m.bin", &sha, "m", &mut no_progress()).unwrap();
-        download_verified(&url, dir.path(), "m.bin", &sha, "m", &mut no_progress()).unwrap();
+        download_verified(
+            &url,
+            directory.path(),
+            "m.bin",
+            &sha,
+            "m",
+            &mut no_progress(),
+        )
+        .unwrap();
+        download_verified(
+            &url,
+            directory.path(),
+            "m.bin",
+            &sha,
+            "m",
+            &mut no_progress(),
+        )
+        .unwrap();
 
         assert_eq!(served.load(Ordering::SeqCst), 1);
     }
@@ -556,13 +590,13 @@ mod tests {
         let body: Vec<u8> = (0..50_000u32).map(|i| (i % 251) as u8).collect();
         let sha = sha_of(&body);
         let (url, _) = serve(body.clone(), 1);
-        let dir = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir().unwrap();
         // Половина файла уже скачана прошлым, прерванным запуском.
         let half = body.len() / 2;
-        std::fs::write(dir.path().join("m.bin.part"), &body[..half]).unwrap();
+        std::fs::write(directory.path().join("m.bin.part"), &body[..half]).unwrap();
 
         let mut first_report = None;
-        let path = download_verified(&url, dir.path(), "m.bin", &sha, "m", &mut |d, t| {
+        let path = download_verified(&url, directory.path(), "m.bin", &sha, "m", &mut |d, t| {
             first_report.get_or_insert((d, t));
         })
         .unwrap();
@@ -580,17 +614,24 @@ mod tests {
         let body = vec![9u8; 8_192];
         let sha = sha_of(&body);
         let (url, _) = serve(body.clone(), 1);
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("m.bin"), "мусор").unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("m.bin"), "мусор").unwrap();
 
-        let path =
-            download_verified(&url, dir.path(), "m.bin", &sha, "m", &mut no_progress()).unwrap();
+        let path = download_verified(
+            &url,
+            directory.path(),
+            "m.bin",
+            &sha,
+            "m",
+            &mut no_progress(),
+        )
+        .unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), body);
     }
 
     #[test]
     fn server_error_is_reported_with_url() {
-        let dir = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir().unwrap();
         // Порт, который никто не слушает: соединение не установится.
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
@@ -599,7 +640,7 @@ mod tests {
 
         let err = download_verified(
             &url,
-            dir.path(),
+            directory.path(),
             "m.bin",
             &"a".repeat(64),
             "m",
@@ -612,9 +653,9 @@ mod tests {
 
     #[test]
     fn list_reports_installed_and_size() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("ggml-tiny.bin"), vec![0u8; 42]).unwrap();
-        let statuses = list(dir.path());
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("ggml-tiny.bin"), vec![0u8; 42]).unwrap();
+        let statuses = list(directory.path());
         assert_eq!(statuses.len(), CATALOG.len());
         let tiny = statuses.iter().find(|s| s.info.name == "tiny").unwrap();
         assert!(tiny.installed);
@@ -626,33 +667,33 @@ mod tests {
 
     #[test]
     fn remove_deletes_installed_model_and_reports_missing_one() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("ggml-tiny.bin");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("ggml-tiny.bin");
         std::fs::write(&path, b"x").unwrap();
-        assert_eq!(remove("tiny", dir.path()).unwrap(), path);
+        assert_eq!(remove("tiny", directory.path()).unwrap(), path);
         assert!(!path.exists());
         assert!(matches!(
-            remove("tiny", dir.path()).unwrap_err(),
+            remove("tiny", directory.path()).unwrap_err(),
             ModelError::NotInstalled { .. }
         ));
     }
 
     #[test]
     fn verify_compares_hash_and_tolerates_missing_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("f.bin");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("f.bin");
         std::fs::write(&path, b"molva").unwrap();
         let sha = sha_of(b"molva");
         assert!(verify(&path, &sha).unwrap());
         assert!(verify(&path, &sha.to_uppercase()).unwrap());
         assert!(!verify(&path, &"0".repeat(64)).unwrap());
-        assert!(!verify(&dir.path().join("absent.bin"), &sha).unwrap());
+        assert!(!verify(&directory.path().join("absent.bin"), &sha).unwrap());
     }
 
     #[test]
     fn sha256_matches_known_vector() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("empty");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("empty");
         std::fs::write(&path, b"").unwrap();
         assert_eq!(
             sha256_file(&path).unwrap(),

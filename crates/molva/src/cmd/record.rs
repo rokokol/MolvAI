@@ -11,7 +11,7 @@ use molva_core::infra::ipc::{Client, IpcClientError};
 use molva_core::ipc::protocol::Command;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Action {
+pub(crate) enum Action {
     Start,
     Stop,
     Toggle,
@@ -19,7 +19,7 @@ pub enum Action {
 }
 
 /// Команда протокола для действия CLI.
-pub fn command_for(action: Action, mode: Mode, style: Option<String>) -> Command {
+pub(crate) fn command_for(action: Action, mode: Mode, style: Option<String>) -> Command {
     match action {
         Action::Start => Command::RecordStart { mode, style },
         Action::Stop => Command::RecordStop,
@@ -28,7 +28,7 @@ pub fn command_for(action: Action, mode: Mode, style: Option<String>) -> Command
     }
 }
 
-pub fn run(
+pub(crate) fn run(
     socket: &Path,
     action: Action,
     mode: Mode,
@@ -80,9 +80,12 @@ mod tests {
 
     #[test]
     fn a_missing_daemon_is_reported_as_not_running() {
-        let dir = tempfile::tempdir().unwrap();
-        let socket = dir.path().join("absent.sock");
-        let err = run(&socket, Action::Stop, Mode::Dictation, None).unwrap_err();
-        assert!(matches!(err, IpcClientError::NotRunning { .. }), "{err}");
+        let directory = tempfile::tempdir().unwrap();
+        let socket = directory.path().join("absent.sock");
+        let error = run(&socket, Action::Stop, Mode::Dictation, None).unwrap_err();
+        assert!(
+            matches!(error, IpcClientError::NotRunning { .. }),
+            "{error}"
+        );
     }
 }

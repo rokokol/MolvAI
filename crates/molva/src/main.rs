@@ -3,6 +3,20 @@
 //!
 //! Подкоманды живут в `cmd/`, здесь только разбор аргументов и коды выхода.
 
+// В тестах паника — это способ сообщить о провале, а не необработанная ошибка; точное
+// сравнение чисел с плавающей точкой законно (тест сверяет вычисленное значение с константой,
+// которую сам же и задал), а печать замеров в stdout — это и есть отчёт замерочного теста.
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::float_cmp,
+        clippy::print_stdout
+    )
+)]
+
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
@@ -16,14 +30,14 @@ mod cmd;
 /// Коды выхода, общие для всех подкоманд: 0 ok, 2 аргументы, 3 демон недоступен, 4 занят,
 /// 5 ошибка движка, 6 ошибка файла, 7 демон уже запущен.
 mod exit {
-    pub const OK: u8 = 0;
-    pub const BAD_ARGS: u8 = 2;
-    pub const NO_DAEMON: u8 = 3;
-    pub const BUSY: u8 = 4;
-    pub const ENGINE: u8 = 5;
-    pub const FILE: u8 = 6;
+    pub(crate) const OK: u8 = 0;
+    pub(crate) const BAD_ARGS: u8 = 2;
+    pub(crate) const NO_DAEMON: u8 = 3;
+    pub(crate) const BUSY: u8 = 4;
+    pub(crate) const ENGINE: u8 = 5;
+    pub(crate) const FILE: u8 = 6;
     /// Демон уже запущен: вторая копия завершается с сообщением, а не дерётся за микрофон.
-    pub const ALREADY_RUNNING: u8 = 7;
+    pub(crate) const ALREADY_RUNNING: u8 = 7;
 }
 
 #[derive(Parser)]
@@ -173,9 +187,9 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     match run(cli) {
         Ok(()) => ExitCode::from(exit::OK),
-        Err(err) => {
-            eprintln!("ошибка: {err}");
-            ExitCode::from(exit_code_for(&err))
+        Err(error) => {
+            eprintln!("ошибка: {error}");
+            ExitCode::from(exit_code_for(&error))
         }
     }
 }
@@ -214,7 +228,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         Commands::Daemon { foreground } => {
             let config = Config::load(&config_path)?;
             init_logging(&config.log.level);
-            cmd::daemon::run(&config_path, cmd::daemon::Options { socket, foreground })
+            cmd::daemon::run(&config_path, &cmd::daemon::Options { socket, foreground })
         }
         Commands::Record { action } => {
             let (action, mode, style) = match action {
@@ -275,19 +289,18 @@ fn run(cli: Cli) -> anyhow::Result<()> {
 }
 
 /// Сопоставление ошибки с кодом выхода; неизвестные ошибки — код аргументов.
-fn exit_code_for(err: &anyhow::Error) -> u8 {
-    if let Some(cmd_err) = err.downcast_ref::<cmd::CmdError>() {
+fn exit_code_for(error: &anyhow::Error) -> u8 {
+    if let Some(cmd_err) = error.downcast_ref::<cmd::CmdError>() {
         return cmd_err.code;
     }
-    if err
+    if error
         .downcast_ref::<molva_core::config::ConfigError>()
         .is_some()
     {
         return exit::FILE;
     }
-    if let Some(ipc) = err.downcast_ref::<IpcClientError>() {
+    if let Some(ipc) = error.downcast_ref::<IpcClientError>() {
         return match ipc {
-            IpcClientError::NotRunning { .. } => exit::NO_DAEMON,
             IpcClientError::Daemon(inner) => match inner.code {
                 ErrorCode::Busy => exit::BUSY,
                 ErrorCode::SttFailed | ErrorCode::LlmFailed | ErrorCode::NoDevice => exit::ENGINE,
@@ -296,13 +309,13 @@ fn exit_code_for(err: &anyhow::Error) -> u8 {
             _ => exit::NO_DAEMON,
         };
     }
-    if err
+    if error
         .downcast_ref::<molva_core::domain::inject::InjectError>()
         .is_some()
     {
         return exit::ENGINE;
     }
-    if err
+    if error
         .downcast_ref::<molva_core::domain::audio::AudioError>()
         .is_some()
     {
@@ -338,53 +351,53 @@ mod tests {
 
     #[test]
     fn command_error_keeps_its_code_through_anyhow() {
-        let err: anyhow::Error = cmd::CmdError::engine("движок не собрался").into();
-        assert_eq!(exit_code_for(&err), exit::ENGINE);
-        let err: anyhow::Error = cmd::CmdError::file("нет файла").into();
-        assert_eq!(exit_code_for(&err), exit::FILE);
+        let error: anyhow::Error = cmd::CmdError::engine("движок не собрался").into();
+        assert_eq!(exit_code_for(&error), exit::ENGINE);
+        let error: anyhow::Error = cmd::CmdError::file("нет файла").into();
+        assert_eq!(exit_code_for(&error), exit::FILE);
     }
 
     #[test]
     fn a_missing_daemon_exits_with_code_three() {
-        let err = anyhow::Error::from(IpcClientError::NotRunning {
+        let error = anyhow::Error::from(IpcClientError::NotRunning {
             path: "/tmp/x.sock".into(),
             message: "нет такого файла".into(),
         });
-        assert_eq!(exit_code_for(&err), exit::NO_DAEMON);
+        assert_eq!(exit_code_for(&error), exit::NO_DAEMON);
     }
 
     #[test]
     fn a_busy_daemon_exits_with_code_four() {
-        let err = anyhow::Error::from(IpcClientError::Daemon(IpcError {
+        let error = anyhow::Error::from(IpcClientError::Daemon(IpcError {
             code: ErrorCode::Busy,
             message: "запись уже идёт".into(),
             hint: None,
         }));
-        assert_eq!(exit_code_for(&err), exit::BUSY);
+        assert_eq!(exit_code_for(&error), exit::BUSY);
     }
 
     #[test]
     fn an_engine_failure_exits_with_code_five() {
-        let err = anyhow::Error::from(IpcClientError::Daemon(IpcError {
+        let error = anyhow::Error::from(IpcClientError::Daemon(IpcError {
             code: ErrorCode::SttFailed,
             message: "модель не загрузилась".into(),
             hint: None,
         }));
-        assert_eq!(exit_code_for(&err), exit::ENGINE);
+        assert_eq!(exit_code_for(&error), exit::ENGINE);
         let inject = anyhow::Error::from(molva_core::domain::inject::InjectError::Unsupported);
         assert_eq!(exit_code_for(&inject), exit::ENGINE);
     }
 
     #[test]
     fn a_broken_config_exits_with_the_file_code() {
-        let err = anyhow::Error::from(molva_core::config::ConfigError::NoHome);
-        assert_eq!(exit_code_for(&err), exit::FILE);
+        let error = anyhow::Error::from(molva_core::config::ConfigError::NoHome);
+        assert_eq!(exit_code_for(&error), exit::FILE);
     }
 
     #[test]
     fn an_unknown_error_falls_back_to_the_argument_code() {
-        let err = anyhow::anyhow!("что-то пошло не так");
-        assert_eq!(exit_code_for(&err), exit::BAD_ARGS);
+        let error = anyhow::anyhow!("что-то пошло не так");
+        assert_eq!(exit_code_for(&error), exit::BAD_ARGS);
     }
 
     #[test]

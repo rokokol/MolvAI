@@ -63,7 +63,7 @@ defect 'inject/chain-falls-back-to-clipboard' 'crates/molva-core/src/infra/injec
   'когда все способы вставки отказали, реплика теряется вместо того, чтобы лечь в буфер обмена'
 
 defect 'inject/terminal-needs-shift' 'crates/molva-core/src/infra/inject/chain.rs' \
-  '        let terminal = class.map(is_terminal_class).unwrap_or(false);' \
+  '        let terminal = class.is_some_and(is_terminal_class);' \
   '        let terminal = false;' \
   'в терминале уходит Ctrl+V, который там ничего не вставляет: реплика молча пропадает'
 
@@ -103,12 +103,12 @@ defect 'audio/trim-silence-threshold' 'crates/molva-core/src/app/audio/trim.rs' 
   'тишина уходит в whisper целиком: модель галлюцинирует текст там, где никто не говорил'
 
 defect 'audio/trim-keep-ms' 'crates/molva-core/src/app/audio/trim.rs' \
-  '    let keep = (audio.sample_rate as u64 * keep_ms as u64 / 1000) as usize;' \
+  '    let keep = (u64::from(audio.sample_rate) * u64::from(keep_ms) / 1000) as usize;' \
   '    let keep = 0;' \
   'запас keep_ms не оставлен: обрезка съедает первый слог реплики'
 
 defect 'stt/language-retry' 'crates/molva-core/src/infra/stt/mod.rs' \
-  '    if opts.language != LanguageHint::Auto {' \
+  '    if options.language != LanguageHint::Auto {' \
   '    if true {' \
   'русская речь, принятая за украинскую, уходит в текст как есть: повтора с разрешённым языком нет'
 
@@ -328,8 +328,8 @@ defect 'cli/timecode-minutes' 'crates/molva/src/cmd/transcribe.rs' \
   'таймкоды длиннее минуты показывают 90 секунд вместо 01:30'
 
 defect 'cli/postprocess-applied' 'crates/molva/src/cmd/transcribe.rs' \
-  '        let text = postprocess(&raw);' \
-  '        let text = raw.clone();' \
+  '        let processed = postprocess(&raw, &rules_language);' \
+  '        let processed = Postprocessed { text: raw.clone(), dict_hits: 0, llm: None };' \
   'постобработка текста молча отключается: словарь и правила не применяются'
 
 defect 'cli/journal-source-file' 'crates/molva/src/cmd/transcribe.rs' \
@@ -343,8 +343,8 @@ defect 'cli/output-directory' 'crates/molva/src/cmd/transcribe.rs' \
   'при выводе в каталог всё сливается в один файл с именем каталога'
 
 defect 'cli/exit-code-file' 'crates/molva/src/cmd/mod.rs' \
-  '    pub const FILE: u8 = crate::exit::FILE;' \
-  '    pub const FILE: u8 = crate::exit::BAD_ARGS;' \
+  '    pub(crate) const FILE: u8 = crate::exit::FILE;' \
+  '    pub(crate) const FILE: u8 = crate::exit::BAD_ARGS;' \
   'ошибка файла отдаёт код аргументов: скрипты не отличают одно от другого'
 
 defect 'cli/bench-repeat-validated' 'crates/molva/src/cmd/bench.rs' \
@@ -375,8 +375,8 @@ defect 'dictionary/fuzzy-threshold' 'crates/molva-core/src/app/dictionary.rs' \
   'нечёткое совпадение подменяет любое похожее по длине слово'
 
 defect 'dictionary/hits-count-real-substitutions' 'crates/molva-core/src/app/dictionary.rs' \
-  '                    if join(&original) != replacement {' \
-  '                    if true {' \
+  '                if join(&original) != replacement {' \
+  '                if true {' \
   'счётчик попаданий словаря растёт на словах, которые и так были написаны верно'
 
 defect 'dictionary/multi-word-aliases' 'crates/molva-core/src/app/dictionary.rs' \
@@ -467,8 +467,8 @@ defect 'config/unknown-key-is-refused' 'crates/molva-core/src/config.rs' \
   'опечатка в имени настройки молча возвращает чужое значение вместо ошибки'
 
 defect 'config/validation-collects-every-issue' 'crates/molva-core/src/config.rs' \
-  '                issues.push(ConfigIssue::allowed(key, value, allowed));' \
-  '                let _ = (key, value, allowed);' \
+  '        issues.push(ConfigIssue::allowed(key, value, allowed));' \
+  '        let _ = (key, value, allowed);' \
   'неверное значение из списка допустимых проходит проверку молча'
 
 # --- дорожка H: признаки для чекера ---

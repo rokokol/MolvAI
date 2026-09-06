@@ -1,0 +1,5 @@
+# Пороги сложности: выше них clippy требует разбить код на шаги.
+cognitive-complexity-threshold = 20
+too-many-lines-threshold = 150
+too-many-arguments-threshold = 7
+type-complexity-threshold = 300

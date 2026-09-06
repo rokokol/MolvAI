@@ -102,7 +102,7 @@ pub fn tone_sample(index: usize, total: usize, freq_hz: f32, sample_rate: f32, v
 
 /// Сколько отсчётов занимает сигнал на этой частоте дискретизации.
 pub fn tone_len(kind: CueKind, sample_rate: u32) -> usize {
-    (sample_rate as u64 * u64::from(kind.duration_ms()) / 1000) as usize
+    (u64::from(sample_rate) * u64::from(kind.duration_ms()) / 1000) as usize
 }
 
 /// Открыть поток вывода, проиграть тон и закрыть поток.

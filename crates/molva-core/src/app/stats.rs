@@ -132,7 +132,7 @@ pub fn weighted_wpm(entries: &[&Entry]) -> Option<f32> {
     if secs <= 0.0 {
         return None;
     }
-    let words: u64 = entries.iter().map(|e| e.words as u64).sum();
+    let words: u64 = entries.iter().map(|e| u64::from(e.words)).sum();
     Some(words as f32 / secs * 60.0)
 }
 
@@ -180,24 +180,24 @@ pub fn summary(
     let range_start = if range_days == 0 {
         None
     } else {
-        Some(today - Duration::days(range_days as i64 - 1))
+        Some(today - Duration::days(i64::from(range_days) - 1))
     };
     let range: Vec<&Entry> = all
         .iter()
         .copied()
         .filter(|e| {
             let day = day_key(e.ts);
-            day <= today && range_start.map(|start| day >= start).unwrap_or(true)
+            day <= today && range_start.is_none_or(|start| day >= start)
         })
         .collect();
 
     let (record_wpm, record_at) = personal_record(&all);
     let total_secs: f32 = all.iter().map(|e| e.audio_secs).sum();
-    let total_words: u64 = all.iter().map(|e| e.words as u64).sum();
+    let total_words: u64 = all.iter().map(|e| u64::from(e.words)).sum();
 
     StatsSummary {
         total_words,
-        words_today: today_entries.iter().map(|e| e.words as u64).sum(),
+        words_today: today_entries.iter().map(|e| u64::from(e.words)).sum(),
         avg_wpm_today: weighted_wpm(&today_entries),
         avg_wpm_7d: weighted_wpm(&week_entries),
         avg_wpm_all: weighted_wpm(&all),
@@ -243,7 +243,7 @@ pub fn personal_record(entries: &[&Entry]) -> (Option<f32>, Option<DateTime<Utc>
         let Some(wpm) = entry_wpm(entry) else {
             continue;
         };
-        if best.map(|(top, _)| wpm > top).unwrap_or(true) {
+        if best.is_none_or(|(top, _)| wpm > top) {
             best = Some((wpm, entry.ts));
         }
     }
@@ -299,7 +299,7 @@ pub fn latency_summary(entries: &[&Entry]) -> LatencySummary {
         let mut sum = 0u64;
         let mut count = 0u64;
         for value in values {
-            sum += value as u64;
+            sum += u64::from(value);
             count += 1;
         }
         sum.checked_div(count).map(|mean| mean as u32)
@@ -318,8 +318,8 @@ pub fn token_summary(entries: &[&Entry]) -> TokenSummary {
     let mut sum = TokenSummary::default();
     for entry in entries {
         if let Some(tokens) = &entry.tokens {
-            sum.prompt += tokens.prompt as u64;
-            sum.completion += tokens.completion as u64;
+            sum.prompt += u64::from(tokens.prompt);
+            sum.completion += u64::from(tokens.completion);
         }
     }
     sum
@@ -354,7 +354,7 @@ pub fn series(
             DayStats {
                 day: day.format("%Y-%m-%d").to_string(),
                 entries: day_entries.len() as u32,
-                words: day_entries.iter().map(|e| e.words as u64).sum(),
+                words: day_entries.iter().map(|e| u64::from(e.words)).sum(),
                 audio_secs: no_minus_zero(day_entries.iter().map(|e| e.audio_secs).sum()),
                 avg_wpm: weighted_wpm(day_entries),
                 avg_latency_ms: latency_summary(day_entries).total,
@@ -375,7 +375,7 @@ pub fn by_app(entries: &[&Entry]) -> Vec<AppStats> {
         .map(|(app, group)| AppStats {
             app,
             entries: group.len() as u32,
-            words: group.iter().map(|e| e.words as u64).sum(),
+            words: group.iter().map(|e| u64::from(e.words)).sum(),
             avg_wpm: weighted_wpm(&group),
         })
         .collect();
@@ -414,7 +414,7 @@ pub fn sessions(entries: &[Entry]) -> Vec<Session> {
             started: group[0].ts,
             ended: group[group.len() - 1].ts,
             entries: group.len() as u32,
-            words: group.iter().map(|e| e.words as u64).sum(),
+            words: group.iter().map(|e| u64::from(e.words)).sum(),
             audio_secs: group.iter().map(|e| e.audio_secs).sum(),
             avg_wpm: weighted_wpm(&group),
         })
@@ -796,8 +796,8 @@ mod tests {
 
     #[test]
     fn reset_marker_hides_older_entries_without_deleting_them() {
-        let dir = tempfile::tempdir().unwrap();
-        let journal_path = dir.path().join("journal.jsonl");
+        let directory = tempfile::tempdir().unwrap();
+        let journal_path = directory.path().join("journal.jsonl");
         assert_eq!(read_reset_marker(&journal_path), None);
 
         let entries = vec![
@@ -822,8 +822,8 @@ mod tests {
 
     #[test]
     fn corrupt_reset_marker_is_treated_as_no_reset() {
-        let dir = tempfile::tempdir().unwrap();
-        let journal_path = dir.path().join("journal.jsonl");
+        let directory = tempfile::tempdir().unwrap();
+        let journal_path = directory.path().join("journal.jsonl");
         std::fs::write(reset_marker_path(&journal_path), "не json").unwrap();
         assert_eq!(read_reset_marker(&journal_path), None);
     }

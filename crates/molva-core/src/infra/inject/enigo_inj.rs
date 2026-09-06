@@ -13,6 +13,7 @@ use crate::domain::inject::{InjectError, InjectReport, OutputMode, TextInjector}
 use crate::infra::inject::clipboard::{ClipboardGuard, SystemClipboard};
 use crate::infra::inject::wayland_tools::PasteShortcut;
 
+#[derive(Debug)]
 pub struct EnigoInjector {
     enigo: Option<Enigo>,
     clipboard: ClipboardGuard<SystemClipboard>,
@@ -71,7 +72,7 @@ impl EnigoInjector {
         let modifier = Self::paste_modifier();
         let enigo = self.enigo()?;
         let map = |e: Result<(), enigo::InputError>| {
-            e.map_err(|err| InjectError::Failed(format!("enigo: {err}")))
+            e.map_err(|error| InjectError::Failed(format!("enigo: {error}")))
         };
         map(enigo.key(modifier, Direction::Press))?;
         if shift {
@@ -117,9 +118,9 @@ impl TextInjector for EnigoInjector {
                             attempts: Vec::new(),
                         })
                     }
-                    Err(err) => {
+                    Err(error) => {
                         self.clipboard.keep();
-                        Err(err)
+                        Err(error)
                     }
                 }
             }

@@ -9,7 +9,7 @@ use molva_core::Config;
 use super::confirm;
 
 #[derive(Debug, Subcommand)]
-pub enum ConfigAction {
+pub(crate) enum ConfigAction {
     /// Показать путь к файлу настроек
     Path,
     /// Показать значение по пути `stt.model`; без пути — все настройки
@@ -31,7 +31,7 @@ pub enum ConfigAction {
     Import { file: PathBuf },
 }
 
-pub fn run(action: ConfigAction, config_path: &Path) -> anyhow::Result<()> {
+pub(crate) fn run(action: ConfigAction, config_path: &Path) -> anyhow::Result<()> {
     match action {
         ConfigAction::Path => {
             println!("{}", config_path.display());

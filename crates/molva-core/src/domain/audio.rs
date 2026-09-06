@@ -45,6 +45,7 @@ impl PcmAudio {
     }
 
     /// Приведение к 16 кГц; если частота уже целевая — копия без изменений.
+    #[must_use]
     pub fn to_16k(&self) -> PcmAudio {
         resample_linear(self, TARGET_SAMPLE_RATE)
     }
@@ -75,16 +76,16 @@ pub fn resample_linear(audio: &PcmAudio, target_rate: u32) -> PcmAudio {
     if audio.sample_rate == target_rate || audio.samples.is_empty() || audio.sample_rate == 0 {
         return PcmAudio::new(audio.samples.clone(), target_rate);
     }
-    let ratio = audio.sample_rate as f64 / target_rate as f64;
+    let ratio = f64::from(audio.sample_rate) / f64::from(target_rate);
     let out_len = ((audio.samples.len() as f64) / ratio).round().max(1.0) as usize;
     let last = audio.samples.len() - 1;
     let samples = (0..out_len)
         .map(|i| {
             let pos = i as f64 * ratio;
-            let idx = (pos.floor() as usize).min(last);
-            let next = (idx + 1).min(last);
-            let frac = (pos - idx as f64) as f32;
-            audio.samples[idx] * (1.0 - frac) + audio.samples[next] * frac
+            let index = (pos.floor() as usize).min(last);
+            let next = (index + 1).min(last);
+            let frac = (pos - index as f64) as f32;
+            audio.samples[index] * (1.0 - frac) + audio.samples[next] * frac
         })
         .collect();
     PcmAudio::new(samples, target_rate)
@@ -131,7 +132,7 @@ pub enum AudioError {
 ///
 /// Реализация обязана освобождать устройство и при уничтожении: реплика могла закончиться
 /// аварийно, но микрофон после этого всё равно свободен.
-pub trait AudioSource: Send {
+pub trait AudioSource: std::fmt::Debug + Send {
     /// Начать захват. `level_tx` получает RMS-уровень не чаще ~10 раз в секунду.
     fn start(&mut self, level_tx: Option<Sender<f32>>) -> Result<(), AudioError>;
     /// Остановить захват, освободить микрофон и вернуть всё записанное.

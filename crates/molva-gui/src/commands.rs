@@ -4,6 +4,10 @@
 //! Всё, что можно посчитать в Rust, считается здесь: фронтенд получает готовые структуры,
 //! а не повторяет логику ядра на TypeScript.
 
+// Сигнатуру команды задаёт Tauri: `State` и разобранные из JSON аргументы приходят по
+// значению, ссылку `invoke_handler` принять не умеет.
+#![allow(clippy::needless_pass_by_value)]
+
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
@@ -20,6 +24,7 @@ use uuid::Uuid;
 
 use crate::history::{self, Filter, HistoryError};
 use crate::ipc::{self, IpcClientError};
+use crate::lock;
 use crate::sidecar::{self, Daemon, SidecarError, Transcriptions};
 use crate::stats::{self, StatsSummary};
 
@@ -46,6 +51,7 @@ impl CommandError {
         }
     }
 
+    #[must_use]
     pub fn with_hint(mut self, hint: Option<String>) -> Self {
         self.hint = hint;
         self
@@ -117,7 +123,7 @@ fn one_of(field: &str, value: &str, allowed: &[&str]) -> Result<(), ValidationEr
     Err(ValidationError {
         field: field.into(),
         message: format!("недопустимое значение «{value}»"),
-        allowed: allowed.iter().map(|s| s.to_string()).collect(),
+        allowed: allowed.iter().map(ToString::to_string).collect(),
     })
 }
 
@@ -237,6 +243,7 @@ pub fn available_styles(state: State<'_, AppState>) -> Vec<StyleOption> {
 }
 
 /// Общее состояние: настройки, запущенный нами демон, разборы файлов, пауза хоткеев.
+#[derive(Debug)]
 pub struct AppState {
     config: Mutex<Config>,
     config_path: PathBuf,
@@ -271,20 +278,20 @@ impl AppState {
     /// Записать настройки на диск и запомнить их: так меняет конфиг трей.
     pub fn replace_config(&self, config: Config) -> Result<(), ConfigError> {
         config.save(&self.config_path)?;
-        *self.config.lock().expect("настройки отравлены") = config;
+        *lock(&self.config) = config;
         Ok(())
     }
 
     pub fn devices(&self) -> Vec<DeviceInfo> {
-        self.devices.lock().expect("устройства отравлены").clone()
+        lock(&self.devices).clone()
     }
 
     pub fn set_devices(&self, devices: Vec<DeviceInfo>) {
-        *self.devices.lock().expect("устройства отравлены") = devices;
+        *lock(&self.devices) = devices;
     }
 
     pub fn config(&self) -> Config {
-        self.config.lock().expect("настройки отравлены").clone()
+        lock(&self.config).clone()
     }
 
     pub fn config_path(&self) -> &PathBuf {
@@ -304,15 +311,15 @@ impl AppState {
     }
 
     pub fn remember_state(&self, state: Option<DaemonState>) {
-        *self.last_state.lock().expect("состояние отравлено") = state;
+        *lock(&self.last_state) = state;
     }
 
     pub fn last_state(&self) -> Option<DaemonState> {
-        *self.last_state.lock().expect("состояние отравлено")
+        *lock(&self.last_state)
     }
 
     pub fn stop_owned_daemon(&self) {
-        let mut daemon = self.daemon.lock().expect("демон отравлен");
+        let mut daemon = lock(&self.daemon);
         if daemon.is_ours() {
             // Сначала вежливо: демон закрывает микрофон и дописывает журнал.
             let _ = ipc::request(Command::Shutdown);
@@ -369,7 +376,7 @@ async fn tell_daemon(cmd: Command) -> Result<(), CommandError> {
 #[tauri::command]
 pub async fn get_status(state: State<'_, AppState>) -> Result<Status, CommandError> {
     // Замок берётся и отпускается до ожидания: держать его через `await` нельзя.
-    let daemon_ours = state.daemon.lock().expect("демон отравлен").is_ours();
+    let daemon_ours = lock(&state.daemon).is_ours();
     match ask_daemon(Command::Status).await {
         Ok(value) => {
             let (daemon_state, style) = parse_status(&value);
@@ -479,12 +486,7 @@ pub async fn reload_config() -> Result<(), CommandError> {
 
 #[tauri::command]
 pub fn start_daemon(state: State<'_, AppState>) -> Result<(), CommandError> {
-    state
-        .daemon
-        .lock()
-        .expect("демон отравлен")
-        .start()
-        .map_err(CommandError::from)
+    lock(&state.daemon).start().map_err(CommandError::from)
 }
 
 #[tauri::command]
@@ -559,7 +561,7 @@ pub fn import_config(state: State<'_, AppState>, path: String) -> Result<Config,
     let config = Config::from_toml_str(&path, &text)?;
     validate_config(&config)?;
     config.save(state.config_path())?;
-    *state.config.lock().expect("настройки отравлены") = config.clone();
+    *lock(&state.config) = config.clone();
     notify_config_reload();
     Ok(config)
 }
@@ -568,7 +570,7 @@ pub fn import_config(state: State<'_, AppState>, path: String) -> Result<Config,
 pub fn reset_config(state: State<'_, AppState>) -> Result<Config, CommandError> {
     let config = Config::default();
     config.save(state.config_path())?;
-    *state.config.lock().expect("настройки отравлены") = config.clone();
+    *lock(&state.config) = config.clone();
     notify_config_reload();
     Ok(config)
 }

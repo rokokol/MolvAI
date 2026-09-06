@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 
-pub trait Clock: Send + Sync {
+pub trait Clock: std::fmt::Debug + Send + Sync {
     fn now_utc(&self) -> DateTime<Utc>;
     fn instant(&self) -> Instant;
     /// Подождать. Единственный способ сделать паузу в коде продукта: `std::thread::sleep`

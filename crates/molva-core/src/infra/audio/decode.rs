@@ -16,7 +16,7 @@ use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
 use symphonia::core::errors::Error as SymphoniaError;
 use symphonia::core::formats::FormatOptions;
-use symphonia::core::io::{MediaSource, MediaSourceStream};
+use symphonia::core::io::{MediaSource, MediaSourceStream, MediaSourceStreamOptions};
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 
@@ -37,7 +37,7 @@ pub const STDIN_LABEL: &str = "<stdin>";
 pub fn is_supported_audio(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
-        .map(|e| e.to_ascii_lowercase())
+        .map(str::to_ascii_lowercase)
         .is_some_and(|e| SUPPORTED_EXTENSIONS.contains(&e.as_str()))
 }
 
@@ -66,7 +66,7 @@ pub fn decode_file(path: &Path) -> Result<PcmAudio, AudioError> {
     if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
         hint.with_extension(ext);
     }
-    decode_source(Box::new(file), hint, &label)
+    decode_source(Box::new(file), &hint, &label)
 }
 
 /// Декодировать произвольный источник: используется для stdin и тестов.
@@ -82,7 +82,7 @@ pub fn decode_reader(
     if let Some(ext) = extension {
         hint.with_extension(ext);
     }
-    decode_source(source, hint, label)
+    decode_source(source, &hint, label)
 }
 
 /// Прочитать stdin целиком в память и декодировать.
@@ -103,10 +103,10 @@ pub fn decode_stdin(extension: Option<&str>) -> Result<PcmAudio, AudioError> {
 
 fn decode_source(
     source: Box<dyn MediaSource>,
-    hint: Hint,
+    hint: &Hint,
     label: &str,
 ) -> Result<PcmAudio, AudioError> {
-    let stream = MediaSourceStream::new(source, Default::default());
+    let stream = MediaSourceStream::new(source, MediaSourceStreamOptions::default());
     // enable_gapless убирает служебные отсчёты кодировщика (задержка mp3 и priming AAC),
     // иначе длительность файла заметно расходится с исходной.
     let format_opts = FormatOptions {
@@ -114,7 +114,7 @@ fn decode_source(
         ..FormatOptions::default()
     };
     let probed = symphonia::default::get_probe()
-        .format(&hint, stream, &format_opts, &MetadataOptions::default())
+        .format(hint, stream, &format_opts, &MetadataOptions::default())
         .map_err(|e| decode_error(label, format!("формат не распознан: {e}")))?;
     let mut format = probed.format;
 
@@ -151,18 +151,18 @@ fn decode_source(
             continue;
         }
         match decoder.decode(&packet) {
-            Ok(decoded) => {
-                let spec = *decoded.spec();
+            Ok(frames) => {
+                let spec = *frames.spec();
                 sample_rate = spec.rate;
                 let channels = spec.channels.count() as u16;
                 let buf = buffer.get_or_insert_with(|| {
-                    SampleBuffer::<f32>::new(decoded.capacity() as u64, spec)
+                    SampleBuffer::<f32>::new(frames.capacity() as u64, spec)
                 });
-                buf.copy_interleaved_ref(decoded);
+                buf.copy_interleaved_ref(frames);
                 mono.extend_from_slice(&downmix_to_mono(buf.samples(), channels));
             }
             // Битый пакет посреди файла — пропускаем: остальная запись всё ещё полезна.
-            Err(SymphoniaError::DecodeError(_)) => continue,
+            Err(SymphoniaError::DecodeError(_)) => {}
             Err(SymphoniaError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                 break
             }
@@ -208,8 +208,8 @@ mod tests {
 
     #[test]
     fn stereo_wav_becomes_mono_with_native_rate_and_duration() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("stereo.wav");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("stereo.wav");
         write_stereo_wav(&path, 44_100, 0.5);
 
         let audio = decode_file(&path).unwrap();
@@ -222,8 +222,8 @@ mod tests {
 
     #[test]
     fn mono_wav_keeps_samples_as_is() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("mono.wav");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("mono.wav");
         let spec = hound::WavSpec {
             channels: 1,
             sample_rate: 16_000,
@@ -244,37 +244,40 @@ mod tests {
 
     #[test]
     fn empty_file_is_rejected_with_reason() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("empty.wav");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("empty.wav");
         std::fs::write(&path, b"").unwrap();
 
-        let err = decode_file(&path).unwrap_err();
-        let text = err.to_string();
+        let error = decode_file(&path).unwrap_err();
+        let text = error.to_string();
         assert!(text.contains("0 байт"), "{text}");
         assert!(text.contains("empty.wav"), "{text}");
     }
 
     #[test]
     fn garbage_bytes_are_rejected() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("broken.wav");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("broken.wav");
         std::fs::write(&path, b"RIFFxxxxWAVEnot-a-real-header-at-all").unwrap();
 
-        let err = decode_file(&path).unwrap_err();
-        assert!(matches!(err, AudioError::Decode { .. }), "{err}");
+        let error = decode_file(&path).unwrap_err();
+        assert!(matches!(error, AudioError::Decode { .. }), "{error}");
     }
 
     #[test]
     fn missing_file_is_rejected() {
-        let err = decode_file(Path::new("/nonexistent/molva/none.wav")).unwrap_err();
-        assert!(err.to_string().contains("не удалось открыть файл"), "{err}");
+        let error = decode_file(Path::new("/nonexistent/molva/none.wav")).unwrap_err();
+        assert!(
+            error.to_string().contains("не удалось открыть файл"),
+            "{error}"
+        );
     }
 
     #[test]
     fn directory_is_not_an_audio_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let err = decode_file(dir.path()).unwrap_err();
-        assert!(err.to_string().contains("каталог"), "{err}");
+        let directory = tempfile::tempdir().unwrap();
+        let error = decode_file(directory.path()).unwrap_err();
+        assert!(error.to_string().contains("каталог"), "{error}");
     }
 
     /// Фикстуры — тон 440 Гц длительностью ровно 1 с (см. `tests/fixtures/README.md`).
@@ -347,8 +350,8 @@ mod tests {
 
     #[test]
     fn reader_reports_label_in_error() {
-        let err = decode_reader(Box::new(Cursor::new(vec![0u8; 64])), None, "поток").unwrap_err();
-        assert!(err.to_string().contains("поток"), "{err}");
+        let error = decode_reader(Box::new(Cursor::new(vec![0u8; 64])), None, "поток").unwrap_err();
+        assert!(error.to_string().contains("поток"), "{error}");
     }
 
     #[test]

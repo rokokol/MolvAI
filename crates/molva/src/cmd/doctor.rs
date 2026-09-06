@@ -12,7 +12,7 @@ use molva_core::infra::platform::{self, Platform, Tools};
 
 /// Одна строка отчёта.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Check {
+pub(crate) struct Check {
     pub name: String,
     pub ok: bool,
     pub detail: String,
@@ -27,30 +27,30 @@ impl Check {
         }
     }
 
-    pub fn line(&self) -> String {
+    pub(crate) fn line(&self) -> String {
         let mark = if self.ok { "да" } else { "нет" };
         format!("{:<24} {:<4} {}", self.name, mark, self.detail)
     }
 }
 
 /// Доступность `/dev/uinput` на запись: файл может существовать и быть закрытым.
-pub fn uinput_check() -> Check {
+pub(crate) fn uinput_check() -> Check {
     let path = Path::new("/dev/uinput");
     if !path.exists() {
         return Check::new("/dev/uinput", false, "нет модуля uinput в ядре");
     }
     match std::fs::OpenOptions::new().write(true).open(path) {
         Ok(_) => Check::new("/dev/uinput", true, "открывается на запись"),
-        Err(err) => Check::new(
+        Err(error) => Check::new(
             "/dev/uinput",
             false,
-            format!("{err}; нужно правило udev на группу input"),
+            format!("{error}; нужно правило udev на группу input"),
         ),
     }
 }
 
 /// Клавиатуры в `/dev/input`, которые нам разрешено читать.
-pub fn input_devices_check() -> Check {
+pub(crate) fn input_devices_check() -> Check {
     #[cfg(target_os = "linux")]
     {
         use molva_core::infra::hotkeys::evdev_source::EvdevHotkeys;
@@ -71,7 +71,7 @@ pub fn input_devices_check() -> Check {
 }
 
 /// Полный отчёт: строки в том порядке, в котором их читают.
-pub fn checks(socket: &Path) -> Vec<Check> {
+pub(crate) fn checks(socket: &Path) -> Vec<Check> {
     let platform = platform::detect();
     let tools = Tools::detect();
     let mut checks = vec![
@@ -115,7 +115,9 @@ fn tool_detail(found: bool) -> &'static str {
     }
 }
 
-pub fn run(socket: &Path) -> anyhow::Result<()> {
+// Общая для всех подкоманд сигнатура: диспетчер в `main` вызывает их одинаково.
+#[allow(clippy::unnecessary_wraps)]
+pub(crate) fn run(socket: &Path) -> anyhow::Result<()> {
     for check in checks(socket) {
         println!("{}", check.line());
     }
@@ -137,8 +139,8 @@ mod tests {
 
     #[test]
     fn the_report_covers_session_tools_and_the_daemon() {
-        let dir = tempfile::tempdir().unwrap();
-        let checks = checks(&dir.path().join("absent.sock"));
+        let directory = tempfile::tempdir().unwrap();
+        let checks = checks(&directory.path().join("absent.sock"));
         let names: Vec<&str> = checks.iter().map(|c| c.name.as_str()).collect();
         for expected in ["сессия", "hyprctl", "wtype", "/dev/uinput", "демон"] {
             assert!(names.contains(&expected), "{names:?}");
@@ -147,8 +149,8 @@ mod tests {
 
     #[test]
     fn a_missing_daemon_is_reported_with_the_socket_path_and_what_to_do() {
-        let dir = tempfile::tempdir().unwrap();
-        let socket = dir.path().join("absent.sock");
+        let directory = tempfile::tempdir().unwrap();
+        let socket = directory.path().join("absent.sock");
         let checks = checks(&socket);
         let daemon = checks.iter().find(|c| c.name == "демон").unwrap();
         assert!(!daemon.ok);

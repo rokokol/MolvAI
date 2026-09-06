@@ -14,6 +14,9 @@
 //!
 //! Печатает текст в stdout, тайминги и служебное — в stderr (Y-15).
 
+// Пример — это утилита командной строки: распознанный текст и есть её результат в stdout.
+#![allow(clippy::print_stdout)]
+
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Instant;
@@ -27,8 +30,8 @@ use molva_core::infra::stt::{transcribe_with_language_policy, WhisperEngine};
 fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
-        Err(err) => {
-            eprintln!("ошибка: {err}");
+        Err(error) => {
+            eprintln!("ошибка: {error}");
             ExitCode::FAILURE
         }
     }
@@ -55,21 +58,21 @@ fn run() -> Result<(), String> {
 
     let args = parse_args()?;
 
-    let audio = match args.mic_secs {
-        Some(secs) => record_from_mic(&args.device, secs)?,
-        None => {
-            let wav = args.wav.as_ref().ok_or(
-                "укажите WAV-файл или --mic СЕКУНДЫ: transcribe_wav file.wav [--model PATH]",
-            )?;
-            let audio = read_wav(wav)?;
-            eprintln!(
-                "файл: {} — {:.2} с, {} Гц",
-                wav.display(),
-                audio.duration_secs(),
-                audio.sample_rate
-            );
-            audio
-        }
+    let audio = if let Some(secs) = args.mic_secs {
+        record_from_mic(&args.device, secs)?
+    } else {
+        let wav = args
+            .wav
+            .as_ref()
+            .ok_or("укажите WAV-файл или --mic СЕКУНДЫ: transcribe_wav file.wav [--model PATH]")?;
+        let audio = read_wav(wav)?;
+        eprintln!(
+            "файл: {} — {:.2} с, {} Гц",
+            wav.display(),
+            audio.duration_secs(),
+            audio.sample_rate
+        );
+        audio
     };
 
     let ready = audio.to_16k();
@@ -97,7 +100,7 @@ fn run() -> Result<(), String> {
         .to_string();
     let mut engine = WhisperEngine::new(args.model.clone(), model_name, args.threads);
 
-    let opts = SttOptions {
+    let options = SttOptions {
         language: LanguageHint::parse(&args.language),
         timestamps: args.timecodes,
         threads: args.threads,
@@ -105,14 +108,14 @@ fn run() -> Result<(), String> {
     };
 
     let load_started = Instant::now();
-    let first =
-        transcribe_with_language_policy(&mut engine, &ready, &opts).map_err(|e| e.to_string())?;
+    let first = transcribe_with_language_policy(&mut engine, &ready, &options)
+        .map_err(|e| e.to_string())?;
     let first_elapsed = load_started.elapsed();
 
     // Второй прогон показывает задержку на уже загруженной модели — так работает демон.
     let warm_started = Instant::now();
-    let second =
-        transcribe_with_language_policy(&mut engine, &ready, &opts).map_err(|e| e.to_string())?;
+    let second = transcribe_with_language_policy(&mut engine, &ready, &options)
+        .map_err(|e| e.to_string())?;
     let warm_elapsed = warm_started.elapsed();
 
     println!("{}", second.text);
@@ -130,8 +133,7 @@ fn run() -> Result<(), String> {
         second.detected_language.as_deref().unwrap_or("?"),
         second
             .no_speech_prob
-            .map(|p| format!("{p:.3}"))
-            .unwrap_or_else(|| "?".into())
+            .map_or_else(|| "?".into(), |p| format!("{p:.3}"))
     );
     eprintln!(
         "первый прогон (с загрузкой модели): {} мс; второй (модель в памяти): {} мс; аудио {:.2} с",
@@ -163,7 +165,7 @@ fn parse_args() -> Result<Args, String> {
             "--model" => {
                 model = Some(PathBuf::from(
                     it.next().ok_or("--model требует путь к файлу модели")?,
-                ))
+                ));
             }
             "--mic" => {
                 mic_secs = Some(
@@ -171,7 +173,7 @@ fn parse_args() -> Result<Args, String> {
                         .ok_or("--mic требует число секунд")?
                         .parse()
                         .map_err(|_| "--mic: ожидалось число секунд")?,
-                )
+                );
             }
             "--device" => device = it.next().ok_or("--device требует имя устройства")?,
             "--language" => language = it.next().ok_or("--language требует код языка")?,
@@ -180,7 +182,7 @@ fn parse_args() -> Result<Args, String> {
                     .next()
                     .ok_or("--threads требует число")?
                     .parse()
-                    .map_err(|_| "--threads: ожидалось число")?
+                    .map_err(|_| "--threads: ожидалось число")?;
             }
             "--timecodes" => timecodes = true,
             "--no-trim" => trim = false,
@@ -208,7 +210,7 @@ fn record_from_mic(device: &str, secs: u32) -> Result<PcmAudio, String> {
 
     source.start(Some(level_tx)).map_err(|e| e.to_string())?;
     eprintln!("говорите… запись {secs} с");
-    std::thread::sleep(std::time::Duration::from_secs(secs.max(1) as u64));
+    std::thread::sleep(std::time::Duration::from_secs(u64::from(secs.max(1))));
     let audio = source.stop().map_err(|e| e.to_string())?;
 
     let levels: Vec<f32> = level_rx.try_iter().collect();
@@ -225,8 +227,7 @@ fn record_from_mic(device: &str, secs: u32) -> Result<PcmAudio, String> {
 /// Модель по умолчанию — `small` в каталоге данных пользователя.
 fn default_model_path() -> PathBuf {
     directories::BaseDirs::new()
-        .map(|dirs| dirs.data_dir().to_path_buf())
-        .unwrap_or_else(|| PathBuf::from("."))
+        .map_or_else(|| PathBuf::from("."), |dirs| dirs.data_dir().to_path_buf())
         .join("molva/models/ggml-small.bin")
 }
 

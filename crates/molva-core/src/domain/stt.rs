@@ -96,13 +96,17 @@ pub enum SttError {
 }
 
 /// Движок распознавания: whisper.cpp в проде, `FakeStt` в тестах.
-pub trait SttEngine: Send {
+pub trait SttEngine: std::fmt::Debug + Send {
     /// Идентификатор движка для журнала, например `whisper-cpp`.
     fn id(&self) -> &str;
     /// Имя модели для журнала, например `small`.
     fn model_name(&self) -> &str;
     /// Распознать моно 16 кГц.
-    fn transcribe(&mut self, audio: &PcmAudio, opts: &SttOptions) -> Result<Transcript, SttError>;
+    fn transcribe(
+        &mut self,
+        audio: &PcmAudio,
+        options: &SttOptions,
+    ) -> Result<Transcript, SttError>;
     /// Освободить память модели; следующий вызов `transcribe` загрузит её заново.
     fn unload(&mut self);
 
@@ -132,8 +136,8 @@ mod tests {
 
     #[test]
     fn default_options_allow_russian_and_english() {
-        let opts = SttOptions::default();
-        assert_eq!(opts.language, LanguageHint::Auto);
-        assert_eq!(opts.allowed_languages, vec!["ru", "en"]);
+        let options = SttOptions::default();
+        assert_eq!(options.language, LanguageHint::Auto);
+        assert_eq!(options.allowed_languages, vec!["ru", "en"]);
     }
 }

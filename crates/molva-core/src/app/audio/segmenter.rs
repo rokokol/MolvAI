@@ -91,6 +91,7 @@ impl Chunk {
 }
 
 /// Нарезчик потока на куски.
+#[derive(Debug)]
 pub struct Segmenter {
     config: SegmenterConfig,
     /// Ещё не отданные отсчёты; начинается с перекрытия предыдущего куска.
@@ -165,7 +166,7 @@ impl Segmenter {
 
     /// Длина окна анализа в отсчётах; для нулевой частоты — один отсчёт.
     fn window_len(&self) -> usize {
-        ((self.config.sample_rate as u64 * WINDOW_MS as u64 / 1000) as usize).max(1)
+        ((u64::from(self.config.sample_rate) * u64::from(WINDOW_MS) / 1000) as usize).max(1)
     }
 
     fn samples_for_secs(&self, secs: f32) -> usize {
@@ -173,7 +174,7 @@ impl Segmenter {
     }
 
     fn samples_for_ms(&self, ms: u32) -> usize {
-        (self.config.sample_rate as u64 * ms as u64 / 1000) as usize
+        (u64::from(self.config.sample_rate) * u64::from(ms) / 1000) as usize
     }
 
     fn target_samples(&self) -> usize {
@@ -221,7 +222,7 @@ impl Segmenter {
             if index - start < min_run {
                 continue;
             }
-            let cut = (start + index) / 2 * window;
+            let cut = usize::midpoint(start, index) * window;
             if cut >= target {
                 return Some(cut.min(self.buffer.len()));
             }
@@ -293,7 +294,8 @@ impl Segmenter {
         if self.config.sample_rate == 0 {
             return 0;
         }
-        u32::try_from(samples as u64 * 1000 / self.config.sample_rate as u64).unwrap_or(u32::MAX)
+        u32::try_from(samples as u64 * 1000 / u64::from(self.config.sample_rate))
+            .unwrap_or(u32::MAX)
     }
 }
 
@@ -335,16 +337,16 @@ mod tests {
     }
 
     fn tone_at(ms: u32, amplitude: f32) -> Vec<f32> {
-        let n = (RATE as u64 * ms as u64 / 1000) as usize;
+        let n = (u64::from(RATE) * u64::from(ms) / 1000) as usize;
         (0..n).map(|i| amplitude * (i as f32 * 0.3).sin()).collect()
     }
 
     fn silence(ms: u32) -> Vec<f32> {
-        vec![0.0; (RATE as u64 * ms as u64 / 1000) as usize]
+        vec![0.0; (u64::from(RATE) * u64::from(ms) / 1000) as usize]
     }
 
     fn ms_of(chunk: &Chunk) -> u32 {
-        (chunk.audio.samples.len() as u64 * 1000 / RATE as u64) as u32
+        (chunk.audio.samples.len() as u64 * 1000 / u64::from(RATE)) as u32
     }
 
     #[test]

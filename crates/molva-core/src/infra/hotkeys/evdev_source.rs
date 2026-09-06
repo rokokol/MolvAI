@@ -19,6 +19,7 @@ use crate::domain::hotkeys::{HotkeyAction, HotkeyError, HotkeyEvent, HotkeySourc
 const VALUE_RELEASE: i32 = 0;
 const VALUE_PRESS: i32 = 1;
 
+#[derive(Debug)]
 pub struct EvdevHotkeys {
     specs: HashMap<HotkeyAction, HotkeySpec>,
 }
@@ -54,8 +55,7 @@ fn keyboards() -> Vec<(PathBuf, Device)> {
         .filter(|(_, device)| {
             device
                 .supported_keys()
-                .map(|keys| keys.contains(KeyCode::KEY_A) && keys.contains(KeyCode::KEY_Z))
-                .unwrap_or(false)
+                .is_some_and(|keys| keys.contains(KeyCode::KEY_A) && keys.contains(KeyCode::KEY_Z))
         })
         .collect()
 }
@@ -78,8 +78,8 @@ impl HotkeySource for EvdevHotkeys {
             let modifiers = modifiers.clone();
             let specs = specs.clone();
             threads.push(std::thread::spawn(move || {
-                if let Err(err) = pump(device, &tx, &modifiers, &specs) {
-                    tracing::warn!(device = %path.display(), %err, "чтение устройства прекращено");
+                if let Err(error) = pump(device, &tx, &modifiers, &specs) {
+                    tracing::warn!(device = %path.display(), %error, "чтение устройства прекращено");
                 }
             }));
         }

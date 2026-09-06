@@ -178,11 +178,11 @@ fn summarize_latency(mut all: Vec<u32>) -> LatencySummary {
 /// Прогнать набор через движок.
 pub fn run(
     set_dir: &Path,
-    opts: &BenchOptions,
+    options: &BenchOptions,
     engine: &mut dyn SttEngine,
 ) -> Result<BenchReport, BenchError> {
     let manifest = Manifest::load(set_dir)?;
-    let repeat = opts.repeat.max(1);
+    let repeat = options.repeat.max(1);
 
     let mut cases = Vec::with_capacity(manifest.case.len());
     let mut all_latencies: Vec<u32> = Vec::new();
@@ -224,9 +224,8 @@ pub fn run(
             language: case
                 .language
                 .as_deref()
-                .map(LanguageHint::parse)
-                .unwrap_or(LanguageHint::Auto),
-            threads: opts.threads,
+                .map_or(LanguageHint::Auto, LanguageHint::parse),
+            threads: options.threads,
             ..SttOptions::default()
         };
 
@@ -319,7 +318,7 @@ pub fn format_summary(report: &BenchReport) -> String {
     for case in &report.cases {
         let id: String = case.id.chars().take(width).collect();
         if let Some(err) = &case.error {
-            let _ = writeln!(out, "{id:<width$}  ошибка: {err}", width = width);
+            let _ = writeln!(out, "{id:<width$}  ошибка: {err}");
             continue;
         }
         let mut latencies = case.latency_ms.clone();
@@ -386,23 +385,23 @@ mod tests {
 
     /// Набор из двух кейсов с эталоном «привет мир».
     fn make_set() -> tempfile::TempDir {
-        let dir = tempfile::tempdir().unwrap();
-        write_wav(&dir.path().join("a.wav"), 1.0);
-        write_wav(&dir.path().join("b.wav"), 0.5);
+        let directory = tempfile::tempdir().unwrap();
+        write_wav(&directory.path().join("a.wav"), 1.0);
+        write_wav(&directory.path().join("b.wav"), 0.5);
         std::fs::write(
-            dir.path().join(MANIFEST_NAME),
+            directory.path().join(MANIFEST_NAME),
             "[[case]]\naudio = \"a.wav\"\nreference = \"привет мир\"\nlanguage = \"ru\"\n\
              \n[[case]]\naudio = \"b.wav\"\nreference = \"привет мир\"\n",
         )
         .unwrap();
-        dir
+        directory
     }
 
     #[test]
     fn perfect_hypothesis_gives_zero_wer() {
-        let dir = make_set();
+        let directory = make_set();
         let mut stt = FakeStt::returning("Привет, мир!");
-        let report = run(dir.path(), &BenchOptions::default(), &mut stt).unwrap();
+        let report = run(directory.path(), &BenchOptions::default(), &mut stt).unwrap();
         assert_eq!(report.cases.len(), 2);
         assert_eq!(report.failed, 0);
         assert!(report.wer_avg.abs() < 1e-6, "{}", report.wer_avg);
@@ -412,18 +411,18 @@ mod tests {
 
     #[test]
     fn wrong_hypothesis_raises_wer_but_run_still_succeeds() {
-        let dir = make_set();
+        let directory = make_set();
         let mut stt = FakeStt::returning("совсем другое");
-        let report = run(dir.path(), &BenchOptions::default(), &mut stt).unwrap();
+        let report = run(directory.path(), &BenchOptions::default(), &mut stt).unwrap();
         assert!(report.wer_avg > 0.9, "{}", report.wer_avg);
         assert_eq!(report.failed, 0);
     }
 
     #[test]
     fn repeated_runs_produce_the_same_score() {
-        let dir = make_set();
+        let directory = make_set();
         let first = run(
-            dir.path(),
+            directory.path(),
             &BenchOptions {
                 repeat: 2,
                 threads: 0,
@@ -432,7 +431,7 @@ mod tests {
         )
         .unwrap();
         let second = run(
-            dir.path(),
+            directory.path(),
             &BenchOptions {
                 repeat: 2,
                 threads: 0,
@@ -451,9 +450,9 @@ mod tests {
 
     #[test]
     fn repeat_collects_a_latency_per_run() {
-        let dir = make_set();
+        let directory = make_set();
         let report = run(
-            dir.path(),
+            directory.path(),
             &BenchOptions {
                 repeat: 3,
                 threads: 0,
@@ -470,16 +469,16 @@ mod tests {
 
     #[test]
     fn missing_audio_marks_case_failed_without_killing_the_run() {
-        let dir = tempfile::tempdir().unwrap();
-        write_wav(&dir.path().join("a.wav"), 0.5);
+        let directory = tempfile::tempdir().unwrap();
+        write_wav(&directory.path().join("a.wav"), 0.5);
         std::fs::write(
-            dir.path().join(MANIFEST_NAME),
+            directory.path().join(MANIFEST_NAME),
             "[[case]]\naudio = \"a.wav\"\nreference = \"привет\"\n\
              \n[[case]]\naudio = \"нет-такого.wav\"\nreference = \"привет\"\n",
         )
         .unwrap();
         let report = run(
-            dir.path(),
+            directory.path(),
             &BenchOptions::default(),
             &mut FakeStt::returning("привет"),
         )
@@ -493,9 +492,9 @@ mod tests {
 
     #[test]
     fn engine_failure_is_recorded_per_case() {
-        let dir = make_set();
+        let directory = make_set();
         let mut stt = FakeStt::with_responses(vec![Err(SttError::Inference("сломалось".into()))]);
-        let report = run(dir.path(), &BenchOptions::default(), &mut stt).unwrap();
+        let report = run(directory.path(), &BenchOptions::default(), &mut stt).unwrap();
         assert_eq!(report.failed, 2);
         assert!(report.cases[0]
             .error
@@ -506,9 +505,9 @@ mod tests {
 
     #[test]
     fn missing_set_is_an_error() {
-        let dir = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir().unwrap();
         let err = run(
-            &dir.path().join("нет"),
+            &directory.path().join("нет"),
             &BenchOptions::default(),
             &mut FakeStt::returning("x"),
         )
@@ -518,25 +517,29 @@ mod tests {
 
     #[test]
     fn empty_manifest_is_an_error() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join(MANIFEST_NAME), "# пусто\n").unwrap();
-        let err = Manifest::load(dir.path()).unwrap_err();
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join(MANIFEST_NAME), "# пусто\n").unwrap();
+        let err = Manifest::load(directory.path()).unwrap_err();
         assert!(matches!(err, BenchError::Empty(_)), "{err}");
     }
 
     #[test]
     fn broken_manifest_reports_path() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join(MANIFEST_NAME), "[[case]]\naudio = 12\n").unwrap();
-        let err = Manifest::load(dir.path()).unwrap_err();
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join(MANIFEST_NAME),
+            "[[case]]\naudio = 12\n",
+        )
+        .unwrap();
+        let err = Manifest::load(directory.path()).unwrap_err();
         assert!(err.to_string().contains(MANIFEST_NAME), "{err}");
     }
 
     #[test]
     fn case_id_defaults_to_file_name_and_language_reaches_the_engine() {
-        let dir = make_set();
+        let directory = make_set();
         let mut stt = FakeStt::returning("привет мир");
-        let report = run(dir.path(), &BenchOptions::default(), &mut stt).unwrap();
+        let report = run(directory.path(), &BenchOptions::default(), &mut stt).unwrap();
         assert_eq!(report.cases[0].id, "a.wav");
         assert_eq!(stt.calls[0].language, LanguageHint::Fixed("ru".into()));
         assert_eq!(stt.calls[1].language, LanguageHint::Auto);
@@ -544,9 +547,9 @@ mod tests {
 
     #[test]
     fn summary_mentions_every_case_and_the_totals() {
-        let dir = make_set();
+        let directory = make_set();
         let report = run(
-            dir.path(),
+            directory.path(),
             &BenchOptions::default(),
             &mut FakeStt::returning("привет мир"),
         )
@@ -579,9 +582,9 @@ mod tests {
 
     #[test]
     fn report_serializes_to_json_with_cases() {
-        let dir = make_set();
+        let directory = make_set();
         let report = run(
-            dir.path(),
+            directory.path(),
             &BenchOptions::default(),
             &mut FakeStt::returning("привет мир"),
         )
@@ -594,9 +597,9 @@ mod tests {
 
     #[test]
     fn transcript_segments_do_not_affect_the_score() {
-        let dir = make_set();
+        let directory = make_set();
         let mut stt = FakeStt::with_responses(vec![Ok(Transcript::text_only("привет мир"))]);
-        let report = run(dir.path(), &BenchOptions::default(), &mut stt).unwrap();
+        let report = run(directory.path(), &BenchOptions::default(), &mut stt).unwrap();
         assert!(report.wer_avg.abs() < 1e-6);
     }
 }

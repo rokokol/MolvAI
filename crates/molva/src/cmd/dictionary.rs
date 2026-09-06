@@ -8,7 +8,7 @@ use molva_core::Config;
 use super::{open_journal, truncate};
 
 #[derive(Debug, Subcommand)]
-pub enum DictionaryAction {
+pub(crate) enum DictionaryAction {
     /// Показать термины и их алиасы
     List,
     /// Добавить термин
@@ -26,7 +26,7 @@ pub enum DictionaryAction {
 }
 
 /// Словарь лежит рядом с тем файлом настроек, с которым запущена команда.
-pub fn run(
+pub(crate) fn run(
     action: DictionaryAction,
     config: &Config,
     config_path: &std::path::Path,
@@ -52,7 +52,7 @@ pub fn run(
         }
         DictionaryAction::Add { term, aliases } => {
             let mut dictionary = Dictionary::load(&path, config.dictionary.fuzzy)?;
-            let refs: Vec<&str> = aliases.iter().map(|a| a.as_str()).collect();
+            let refs: Vec<&str> = aliases.iter().map(String::as_str).collect();
             dictionary.add(Term::new(&term, &refs))?;
             println!(
                 "Добавлено: {term} ({} алиасов) → {}",
@@ -96,14 +96,14 @@ pub fn run(
 
             match open_journal(config).and_then(|journal| Ok(journal.load_all()?)) {
                 Ok(entries) => {
-                    let hits: u64 = entries.iter().map(|e| e.dict_hits as u64).sum();
+                    let hits: u64 = entries.iter().map(|e| u64::from(e.dict_hits)).sum();
                     let touched = entries.iter().filter(|e| e.dict_hits > 0).count();
                     println!(
                         "Подстановок всего: {hits} в {touched} репликах из {}",
                         entries.len()
                     );
                 }
-                Err(err) => println!("История недоступна: {err}"),
+                Err(error) => println!("История недоступна: {error}"),
             }
             Ok(())
         }

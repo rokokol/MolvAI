@@ -337,7 +337,11 @@ mod tests {
             .unwrap()
             .filter_map(Result::ok)
             .map(|e| e.file_name().to_string_lossy().into_owned())
-            .filter(|name| name.ends_with(".tmp"))
+            .filter(|name| {
+                Path::new(name)
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("tmp"))
+            })
             .collect();
         assert!(
             leftovers.is_empty(),

@@ -21,7 +21,7 @@ use molva_core::domain::notify::Notifier;
 use molva_core::domain::stt::SttEngine;
 use molva_core::infra::audio::CpalSource;
 use molva_core::infra::inject::ChainInjector;
-use molva_core::infra::ipc::{self, Server};
+use molva_core::infra::ipc::{self, RequestHandler, Server};
 use molva_core::infra::llm::openai_compat::OpenAiCompatClient;
 use molva_core::infra::notify::{LogNotifier, SystemNotifier};
 use molva_core::infra::platform;
@@ -32,7 +32,7 @@ use uuid::Uuid;
 ///
 /// Ядро про окружение не знает специально: тест на сокете во временном каталоге не должен
 /// зависеть от того, что кто-то экспортировал `MOLVA_SOCKET`.
-pub fn resolve_socket(flag: Option<PathBuf>) -> PathBuf {
+pub(crate) fn resolve_socket(flag: Option<PathBuf>) -> PathBuf {
     if let Some(path) = flag {
         return path;
     }
@@ -46,7 +46,7 @@ pub fn resolve_socket(flag: Option<PathBuf>) -> PathBuf {
 }
 
 /// Движок распознавания по настройкам: единая фабрика ядра, та же, что у `transcribe` и `bench`.
-pub fn build_stt(config: &Config) -> anyhow::Result<Box<dyn SttEngine>> {
+pub(crate) fn build_stt(config: &Config) -> anyhow::Result<Box<dyn SttEngine>> {
     engine::build_stt(config, None).map_err(|err| anyhow!("{err}"))
 }
 
@@ -113,7 +113,7 @@ fn build_dictionary(config: &Config, config_path: &Path) -> Dictionary {
 /// через пинг сокета, а не через pid-файл: файл переживает падение процесса, а ответ по сокету —
 /// нет. Код выхода отдельный, `7` (`exit::ALREADY_RUNNING`), чтобы автозапуск отличал
 /// «уже работает» от настоящей ошибки.
-pub fn single_instance_guard(
+pub(crate) fn single_instance_guard(
     socket: &Path,
     ping: impl Fn(&Path) -> Option<u32>,
 ) -> Result<(), crate::cmd::CmdError> {
@@ -126,12 +126,12 @@ pub fn single_instance_guard(
     )))
 }
 
-pub struct Options {
+pub(crate) struct Options {
     pub socket: PathBuf,
     pub foreground: bool,
 }
 
-pub fn run(config_path: &Path, options: Options) -> anyhow::Result<()> {
+pub(crate) fn run(config_path: &Path, options: &Options) -> anyhow::Result<()> {
     let config = Config::load_or_create(config_path)
         .with_context(|| format!("настройки {}", config_path.display()))?;
 
@@ -183,7 +183,8 @@ pub fn run(config_path: &Path, options: Options) -> anyhow::Result<()> {
     let server = Server::bind(&options.socket)
         .with_context(|| format!("сокет {}", options.socket.display()))?;
     println!("MolvAI: демон слушает {}", options.socket.display());
-    server.serve(Arc::new(handle))?;
+    let handler: Arc<dyn RequestHandler> = Arc::new(handle);
+    server.serve(&handler)?;
     daemon.join();
     Ok(())
 }
@@ -223,7 +224,7 @@ mod tests {
 
     #[test]
     fn the_fake_engine_is_available_and_missing_weights_say_how_to_get_them() {
-        let dir = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir().unwrap();
         let mut config = Config::default();
         config.stt.engine = "fake".into();
         match build_stt(&config) {
@@ -231,7 +232,7 @@ mod tests {
             Err(err) => panic!("движок fake обязан собираться: {err}"),
         }
         config.stt.engine = "whisper-cpp".into();
-        config.stt.model_path = dir.path().display().to_string();
+        config.stt.model_path = directory.path().display().to_string();
         let err = match build_stt(&config) {
             Err(err) => err.to_string(),
             Ok(_) => panic!("без файла весов движок собираться не должен"),
@@ -241,16 +242,16 @@ mod tests {
 
     #[test]
     fn journal_is_silent_in_no_record_mode_and_a_file_otherwise() {
-        let dir = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir().unwrap();
         let mut config = Config::default();
-        config.journal.path = dir.path().join("journal.jsonl").display().to_string();
+        config.journal.path = directory.path().join("journal.jsonl").display().to_string();
         config.privacy.no_record_mode = true;
         build_journal(&config).unwrap();
-        assert!(!dir.path().join("journal.jsonl").exists());
+        assert!(!directory.path().join("journal.jsonl").exists());
 
         config.privacy.no_record_mode = false;
         build_journal(&config).unwrap();
-        assert!(dir.path().join("journal.jsonl").exists());
+        assert!(directory.path().join("journal.jsonl").exists());
     }
 
     #[test]
@@ -261,8 +262,8 @@ mod tests {
 
     #[test]
     fn missing_dictionary_file_gives_an_empty_dictionary() {
-        let dir = tempfile::tempdir().unwrap();
-        let config_path = dir.path().join("config.toml");
+        let directory = tempfile::tempdir().unwrap();
+        let config_path = directory.path().join("config.toml");
         let config = Config::default();
         let dictionary = build_dictionary(&config, &config_path);
         assert_eq!(dictionary.apply("привет").1, 0);

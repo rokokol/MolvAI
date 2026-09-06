@@ -79,6 +79,7 @@ fn millis_between(from: Instant, to: Instant) -> u32 {
 
 /// Всё, что демону нужно снаружи. Железо приходит трейтами, поэтому демон целиком проверяется
 /// фейками.
+#[derive(Debug)]
 pub struct DaemonParts {
     pub audio: Box<dyn AudioSource>,
     pub processor: Box<dyn Processor>,
@@ -95,6 +96,7 @@ pub struct DaemonParts {
 }
 
 /// Общее состояние демона, видимое всем ручкам.
+#[derive(Debug)]
 struct Shared {
     tx: Mutex<Sender<Ctl>>,
     state: Mutex<DaemonState>,
@@ -111,7 +113,7 @@ struct Shared {
 
 impl Shared {
     /// Разослать событие подписчикам; отвалившиеся отписываются сами.
-    fn publish(&self, event: Event) {
+    fn publish(&self, event: &Event) {
         let Ok(mut subscribers) = self.subscribers.lock() else {
             return;
         };
@@ -127,25 +129,30 @@ impl Shared {
             _ => false,
         };
         if changed {
-            self.publish(Event::State { state, mode });
+            self.publish(&Event::State { state, mode });
         }
     }
 }
 
 /// Работающий демон. Пока значение живо, живы и его потоки.
+#[derive(Debug)]
 pub struct Daemon {
     shared: Arc<Shared>,
     threads: Vec<std::thread::JoinHandle<()>>,
 }
 
 /// Ручка демона: её раздают серверу IPC и источникам горячих клавиш.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct DaemonHandle {
     shared: Arc<Shared>,
 }
 
 impl Daemon {
     /// Запустить демон: управляющий поток, рабочий поток и поток уровней сигнала.
+    // Три потока и их замыкания читаются как одно целое: каналы, которые они делят, видны
+    // только здесь. Разносить их по функциям стоит вместе с дорожкой потоковой обработки,
+    // которая эти же замыкания сейчас и меняет.
+    #[allow(clippy::too_many_lines)]
     pub fn spawn(parts: DaemonParts) -> Daemon {
         let DaemonParts {
             mut audio,
@@ -247,7 +254,7 @@ impl Daemon {
                                         sound.play(CueKind::Error);
                                         machine.on(Input::RecordCancel);
                                         shared.set_state(DaemonState::Idle, None);
-                                        shared.publish(Event::Error {
+                                        shared.publish(&Event::Error {
                                             code: ErrorCode::NoDevice,
                                             message: err.to_string(),
                                             hint: Some("проверьте устройство: molva doctor".into()),
@@ -306,7 +313,7 @@ impl Daemon {
                                         sound.play(CueKind::Error);
                                         machine.on(Input::ProcessingFailed);
                                         shared.set_state(DaemonState::Idle, None);
-                                        shared.publish(Event::Error {
+                                        shared.publish(&Event::Error {
                                             code: ErrorCode::NoDevice,
                                             message: err.to_string(),
                                             hint: None,
@@ -360,7 +367,7 @@ impl Daemon {
                                 processor.as_mut(),
                                 &mut chunks,
                                 &shared,
-                                audio,
+                                &audio,
                                 started,
                                 streaming_preview,
                             );
@@ -395,7 +402,7 @@ impl Daemon {
                     );
                     let input = match result {
                         Ok(entry) => {
-                            shared.publish(Event::Entry {
+                            shared.publish(&Event::Entry {
                                 entry: Box::new(entry),
                             });
                             Input::ProcessingDone
@@ -403,7 +410,7 @@ impl Daemon {
                         Err(err) => {
                             tracing::error!(%err, "обработка не удалась");
                             notifier.notify("MolvAI", &err.to_string());
-                            shared.publish(Event::Error {
+                            shared.publish(&Event::Error {
                                 code: error_code_for(&err),
                                 message: err.to_string(),
                                 hint: Some("подробности: molva doctor".into()),
@@ -421,7 +428,7 @@ impl Daemon {
             let shared = shared.clone();
             threads.push(std::thread::spawn(move || {
                 while let Ok(rms) = level_rx.recv() {
-                    shared.publish(Event::Level { rms });
+                    shared.publish(&Event::Level { rms });
                 }
             }));
         }
@@ -485,12 +492,12 @@ fn process_chunk(
     processor: &mut dyn Processor,
     chunks: &mut ChunkAccumulator,
     shared: &Shared,
-    audio: PcmAudio,
+    audio: &PcmAudio,
     started: Instant,
     streaming_preview: bool,
 ) {
     let context = chunks.context();
-    let Some(result) = processor.transcribe_chunk(&audio, &context) else {
+    let Some(result) = processor.transcribe_chunk(audio, &context) else {
         // Обработчик потоковую обработку не умеет: реплику он получит целиком.
         return;
     };
@@ -499,7 +506,7 @@ fn process_chunk(
             let since_start = u32::try_from(started.elapsed().as_millis()).unwrap_or(u32::MAX);
             chunks.push(chunk, since_start);
             if streaming_preview {
-                shared.publish(Event::Hypothesis {
+                shared.publish(&Event::Hypothesis {
                     text: chunks.draft(),
                 });
             }
@@ -540,11 +547,7 @@ impl DaemonHandle {
     }
 
     pub fn state(&self) -> DaemonState {
-        self.shared
-            .state
-            .lock()
-            .map(|s| *s)
-            .unwrap_or(DaemonState::Idle)
+        self.shared.state.lock().map_or(DaemonState::Idle, |s| *s)
     }
 
     pub fn session_id(&self) -> Uuid {
@@ -692,7 +695,7 @@ mod tests {
     use std::time::Duration;
 
     /// Инжектор, чей результат виден тесту после того, как он уехал в демон.
-    #[derive(Clone, Default)]
+    #[derive(Debug, Clone, Default)]
     struct SharedInjector {
         injected: Arc<Mutex<Vec<String>>>,
         fail: bool,
@@ -718,13 +721,13 @@ mod tests {
     }
 
     /// Микрофон, за которым тест продолжает следить после того, как отдал его демону.
-    #[derive(Clone)]
+    #[derive(Debug, Clone)]
     struct SharedAudio(Arc<Mutex<FakeAudioSource>>);
 
-    impl crate::domain::audio::AudioSource for SharedAudio {
+    impl AudioSource for SharedAudio {
         fn start(
             &mut self,
-            level_tx: Option<std::sync::mpsc::Sender<f32>>,
+            level_tx: Option<Sender<f32>>,
         ) -> Result<(), crate::domain::audio::AudioError> {
             self.0.lock().unwrap().start(level_tx)
         }
@@ -802,13 +805,12 @@ mod tests {
     }
 
     fn wait_for_entry(events: &Receiver<Event>) -> crate::domain::entry::Entry {
-        let deadline = std::time::Instant::now() + Duration::from_secs(5);
-        while std::time::Instant::now() < deadline {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
             match events.recv_timeout(Duration::from_millis(200)) {
                 Ok(Event::Entry { entry }) => return *entry,
                 Ok(Event::Error { message, .. }) => panic!("демон сообщил об ошибке: {message}"),
-                Ok(_) => continue,
-                Err(_) => continue,
+                Ok(_) | Err(_) => {}
             }
         }
         panic!("реплика так и не появилась");
@@ -941,8 +943,8 @@ mod tests {
         h.handle.send(Input::RecordStop).unwrap();
         wait_for_entry(&events);
         // Возврат в Idle делает управляющий поток уже после события: дождёмся его.
-        let deadline = std::time::Instant::now() + Duration::from_secs(5);
-        while h.handle.state() != DaemonState::Idle && std::time::Instant::now() < deadline {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while h.handle.state() != DaemonState::Idle && Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(20));
         }
         assert_eq!(h.handle.state(), DaemonState::Idle);
@@ -1020,14 +1022,14 @@ mod tests {
             })
             .unwrap();
         let mut seen = Vec::new();
-        let deadline = std::time::Instant::now() + Duration::from_secs(2);
-        while std::time::Instant::now() < deadline {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline {
             match events.recv_timeout(Duration::from_millis(100)) {
                 Ok(Event::State { state, .. }) => {
                     seen.push(state);
                     break;
                 }
-                Ok(_) => continue,
+                Ok(_) => {}
                 Err(_) => break,
             }
         }
@@ -1198,13 +1200,13 @@ mod tests {
         wait: Duration,
     ) -> (Vec<String>, crate::domain::entry::Entry) {
         let mut drafts = Vec::new();
-        let deadline = std::time::Instant::now() + wait;
-        while std::time::Instant::now() < deadline {
+        let deadline = Instant::now() + wait;
+        while Instant::now() < deadline {
             match events.recv_timeout(Duration::from_millis(200)) {
                 Ok(Event::Hypothesis { text }) => drafts.push(text),
                 Ok(Event::Entry { entry }) => return (drafts, *entry),
                 Ok(Event::Error { message, .. }) => panic!("демон сообщил об ошибке: {message}"),
-                Ok(_) | Err(_) => continue,
+                Ok(_) | Err(_) => {}
             }
         }
         panic!(
@@ -1396,7 +1398,7 @@ mod tests {
             })
             .unwrap();
         std::thread::sleep(Duration::from_secs_f32(secs));
-        let released = std::time::Instant::now();
+        let released = Instant::now();
         handle.send(Input::RecordStop).unwrap();
         let (drafts, entry) = drain_until_entry_within(&events, Duration::from_secs(300));
         let elapsed = released.elapsed();
@@ -1415,7 +1417,7 @@ mod tests {
             samples.extend(
                 reader
                     .samples::<i16>()
-                    .map(|s| s.expect("отсчёт") as f32 / i16::MAX as f32),
+                    .map(|s| f32::from(s.expect("отсчёт")) / f32::from(i16::MAX)),
             );
             // Пауза между фразами: сегментатору нужна граница.
             samples.resize(samples.len() + 16_000, 0.0);

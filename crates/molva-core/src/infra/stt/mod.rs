@@ -145,20 +145,20 @@ fn normalise_for_match(text: &str) -> String {
 pub fn transcribe_with_language_policy(
     engine: &mut dyn SttEngine,
     audio: &PcmAudio,
-    opts: &SttOptions,
+    options: &SttOptions,
 ) -> Result<Transcript, SttError> {
-    if opts.language == LanguageHint::Auto && !opts.allowed_languages.is_empty() {
-        if let Some(code) = engine.detect_language(audio, opts) {
+    if options.language == LanguageHint::Auto && !options.allowed_languages.is_empty() {
+        if let Some(code) = engine.detect_language(audio, options) {
             debug!(language = %code, "язык определён до распознавания");
-            let opts = SttOptions {
+            let detected = SttOptions {
                 language: LanguageHint::Fixed(code),
-                ..opts.clone()
+                ..options.clone()
             };
-            return engine.transcribe(audio, &opts);
+            return engine.transcribe(audio, &detected);
         }
     }
-    let first = engine.transcribe(audio, opts)?;
-    let Some(fallback) = retry_language(opts, first.detected_language.as_deref()) else {
+    let first = engine.transcribe(audio, options)?;
+    let Some(fallback) = retry_language(options, first.detected_language.as_deref()) else {
         return Ok(first);
     };
     debug!(
@@ -168,7 +168,7 @@ pub fn transcribe_with_language_policy(
     );
     let retry_opts = SttOptions {
         language: LanguageHint::Fixed(fallback),
-        ..opts.clone()
+        ..options.clone()
     };
     engine.transcribe(audio, &retry_opts)
 }
@@ -177,13 +177,13 @@ pub fn transcribe_with_language_policy(
 ///
 /// Повтор нужен только когда язык выбирала модель, список разрешённых непуст и выбранный язык в
 /// него не попал.
-pub fn retry_language(opts: &SttOptions, detected: Option<&str>) -> Option<String> {
-    if opts.language != LanguageHint::Auto {
+pub fn retry_language(options: &SttOptions, detected: Option<&str>) -> Option<String> {
+    if options.language != LanguageHint::Auto {
         return None;
     }
     let detected = detected?;
-    let first_allowed = opts.allowed_languages.first()?;
-    let allowed = opts
+    let first_allowed = options.allowed_languages.first()?;
+    let allowed = options
         .allowed_languages
         .iter()
         .any(|lang| lang.eq_ignore_ascii_case(detected));
@@ -200,6 +200,7 @@ mod tests {
     use crate::domain::fakes::FakeStt;
 
     /// Движок, который умеет определять язык до распознавания.
+    #[derive(Debug)]
     struct DetectingStt {
         inner: FakeStt,
         detected: Option<String>,
@@ -217,10 +218,10 @@ mod tests {
     }
 
     impl SttEngine for DetectingStt {
-        fn id(&self) -> &str {
+        fn id(&self) -> &'static str {
             "detecting"
         }
-        fn model_name(&self) -> &str {
+        fn model_name(&self) -> &'static str {
             "detecting"
         }
         fn transcribe(
@@ -357,9 +358,9 @@ mod tests {
             Ok(detected("uk", "почалося")),
             Ok(detected("ru", "началось")),
         ]);
-        let opts = opts_auto(&["ru", "en"]);
+        let options = opts_auto(&["ru", "en"]);
 
-        let out = transcribe_with_language_policy(&mut engine, &audio(), &opts).expect("успех");
+        let out = transcribe_with_language_policy(&mut engine, &audio(), &options).expect("успех");
 
         assert_eq!(out.text, "началось", "взят результат повтора, а не первый");
         assert_eq!(engine.calls.len(), 2, "повтор должен быть ровно один");
@@ -391,12 +392,12 @@ mod tests {
             Ok(detected("uk", "почалося")),
             Ok(detected("ru", "началось")),
         ]);
-        let opts = SttOptions {
+        let options = SttOptions {
             language: LanguageHint::Fixed("en".into()),
             ..opts_auto(&["ru"])
         };
 
-        let out = transcribe_with_language_policy(&mut engine, &audio(), &opts).expect("успех");
+        let out = transcribe_with_language_policy(&mut engine, &audio(), &options).expect("успех");
 
         assert_eq!(out.text, "почалося");
         assert_eq!(engine.calls.len(), 1);
@@ -503,12 +504,12 @@ mod tests {
             ..SttConfig::default()
         };
 
-        let opts = stt_options_from_config(&cfg, true);
+        let options = stt_options_from_config(&cfg, true);
 
-        assert_eq!(opts.language, LanguageHint::Fixed("ru".into()));
-        assert_eq!(opts.allowed_languages, vec!["ru", "en"]);
-        assert_eq!(opts.threads, 6);
-        assert!(opts.timestamps);
+        assert_eq!(options.language, LanguageHint::Fixed("ru".into()));
+        assert_eq!(options.allowed_languages, vec!["ru", "en"]);
+        assert_eq!(options.threads, 6);
+        assert!(options.timestamps);
     }
 
     #[test]
@@ -544,9 +545,9 @@ mod tests {
         let mut engine =
             FakeStt::with_responses(vec![Err(SttError::Inference("сломалось".into()))]);
 
-        let err = transcribe_with_language_policy(&mut engine, &audio(), &opts_auto(&["ru"]))
+        let error = transcribe_with_language_policy(&mut engine, &audio(), &opts_auto(&["ru"]))
             .expect_err("ошибка движка должна дойти до вызывающего");
 
-        assert_eq!(err, SttError::Inference("сломалось".into()));
+        assert_eq!(error, SttError::Inference("сломалось".into()));
     }
 }

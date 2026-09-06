@@ -133,7 +133,7 @@ fn longest_match<'a>(
             .iter()
             .enumerate()
             .all(|(offset, word)| normalize(&tokens[at + offset]) == *word);
-        if matches && best.map(|(len, _)| words.len() > len).unwrap_or(true) {
+        if matches && best.is_none_or(|(len, _)| words.len() > len) {
             best = Some((words.len(), replacement));
         }
     }
@@ -224,15 +224,12 @@ impl TextRule for SpokenPunctuation {
                 index += 1;
                 continue;
             }
-            match longest_match(&tokens, index, &table) {
-                Some((len, replacement)) => {
-                    out.push(replacement.to_string());
-                    index += len;
-                }
-                None => {
-                    out.push(tokens[index].clone());
-                    index += 1;
-                }
+            if let Some((len, replacement)) = longest_match(&tokens, index, &table) {
+                out.push(replacement.to_string());
+                index += len;
+            } else {
+                out.push(tokens[index].clone());
+                index += 1;
             }
         }
         join(&out)
@@ -245,8 +242,7 @@ fn is_dot_of_a_phrase(tokens: &[String], index: usize) -> bool {
     }
     tokens
         .get(index + 1)
-        .map(|next| DOT_IS_NOT_A_COMMAND.contains(&normalize(next).as_str()))
-        .unwrap_or(false)
+        .is_some_and(|next| DOT_IS_NOT_A_COMMAND.contains(&normalize(next).as_str()))
 }
 
 // --- Переводы строки ----------------------------------------------------------------------
@@ -282,15 +278,12 @@ impl TextRule for NewLine {
         let mut out: Vec<String> = Vec::with_capacity(tokens.len());
         let mut index = 0;
         while index < tokens.len() {
-            match longest_match(&tokens, index, &table) {
-                Some((len, replacement)) => {
-                    out.push(replacement.to_string());
-                    index += len;
-                }
-                None => {
-                    out.push(tokens[index].clone());
-                    index += 1;
-                }
+            if let Some((len, replacement)) = longest_match(&tokens, index, &table) {
+                out.push(replacement.to_string());
+                index += len;
+            } else {
+                out.push(tokens[index].clone());
+                index += 1;
             }
         }
         join(&out)
@@ -550,12 +543,11 @@ impl TextRule for RemoveFillers {
         let mut out: Vec<String> = Vec::with_capacity(tokens.len());
         let mut index = 0;
         while index < tokens.len() {
-            match longest_match(&tokens, index, &table) {
-                Some((len, _)) => index += len,
-                None => {
-                    out.push(tokens[index].clone());
-                    index += 1;
-                }
+            if let Some((len, _)) = longest_match(&tokens, index, &table) {
+                index += len;
+            } else {
+                out.push(tokens[index].clone());
+                index += 1;
             }
         }
         if out
@@ -887,7 +879,7 @@ impl TextRule for Whitespace {
     fn apply(&self, text: &str, _lang: &str) -> String {
         let mut tokens = tokenize(text);
         if self.non_breaking_units {
-            tokens = glue_units(tokens);
+            tokens = glue_units(&tokens);
         }
         tidy(&join(&tokens))
     }
@@ -903,15 +895,13 @@ fn is_number(token: &str) -> bool {
 }
 
 /// Число и единица склеиваются неразрывным пробелом: «5 кг» не переносится по строкам.
-fn glue_units(tokens: Vec<String>) -> Vec<String> {
+fn glue_units(tokens: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::with_capacity(tokens.len());
     let mut index = 0;
     while index < tokens.len() {
         let next = tokens.get(index + 1);
         let glue = is_number(&tokens[index])
-            && next
-                .map(|unit| UNITS.contains(&normalize(unit).as_str()))
-                .unwrap_or(false);
+            && next.is_some_and(|unit| UNITS.contains(&normalize(unit).as_str()));
         if glue {
             out.push(format!("{}\u{a0}{}", tokens[index], tokens[index + 1]));
             index += 2;
@@ -943,7 +933,7 @@ fn tidy(text: &str) -> String {
                 continue;
             }
             // Пробел после открывающей скобки или кавычки уже съеден ниже.
-            if matches!(out.last(), Some('(') | Some('«') | Some('\u{201c}')) {
+            if matches!(out.last(), Some('(' | '«' | '\u{201c}')) {
                 continue;
             }
         }
@@ -984,7 +974,7 @@ fn tidy(text: &str) -> String {
     }
     result
         .lines()
-        .map(|line| line.trim_end())
+        .map(str::trim_end)
         .collect::<Vec<&str>>()
         .join("\n")
 }
@@ -1434,15 +1424,18 @@ mod tests {
 
     #[test]
     fn golden_cases_match_the_recorded_output() {
-        let dir = golden_dir();
+        let directory = golden_dir();
         let update = std::env::var("UPDATE_GOLDEN").is_ok();
-        let mut cases: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
+        let mut cases: Vec<std::path::PathBuf> = std::fs::read_dir(&directory)
             .expect("golden-каталог читается")
             .filter_map(|entry| entry.ok().map(|e| e.path()))
             .filter(|path| path.to_string_lossy().ends_with(".in.txt"))
             .collect();
         cases.sort();
-        assert!(!cases.is_empty(), "нет ни одного golden-случая в {dir:?}");
+        assert!(
+            !cases.is_empty(),
+            "нет ни одного golden-случая в {directory:?}"
+        );
 
         let mut failures = Vec::new();
         for input_path in cases {

@@ -52,7 +52,7 @@ impl CueKind {
 ///
 /// Реализация обязана возвращать управление сразу: демон зовёт `play` из управляющего потока,
 /// и ожидание звука задержало бы открытие микрофона.
-pub trait SoundCue: Send + Sync {
+pub trait SoundCue: std::fmt::Debug + Send + Sync {
     /// Имя реализации: по нему видно, звучит ли что-нибудь вообще (`null` — выключено настройкой).
     fn id(&self) -> &'static str;
     fn play(&self, kind: CueKind);

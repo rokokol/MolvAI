@@ -127,6 +127,7 @@ enum Phase {
 }
 
 /// Машина состояний. Один экземпляр на демон, живёт в управляющем потоке.
+#[derive(Debug)]
 pub struct Machine {
     phase: Phase,
     hotkeys: HotkeysConfig,
@@ -243,8 +244,7 @@ impl Machine {
                 // дребезг и автоповтор клавиши не должны обрывать только что начатую запись.
                 let since_press = self
                     .last_press
-                    .map(|p| at.saturating_duration_since(p))
-                    .unwrap_or(Duration::MAX);
+                    .map_or(Duration::MAX, |p| at.saturating_duration_since(p));
                 if rec.latched && since_press >= Self::ms(self.hotkeys.double_tap_ms) {
                     self.last_press = Some(at);
                     return self.finish();

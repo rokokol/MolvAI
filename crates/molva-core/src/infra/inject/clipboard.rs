@@ -26,13 +26,14 @@ pub enum ClipboardSnapshot {
 
 /// Доступ к системному буферу обмена. Трейт нужен, чтобы `ClipboardGuard` проверялся тестами
 /// без графической сессии.
-pub trait ClipboardBackend: Send {
+pub trait ClipboardBackend: std::fmt::Debug + Send {
     fn snapshot(&mut self) -> ClipboardSnapshot;
     fn set_text(&mut self, text: &str) -> Result<(), InjectError>;
     fn restore(&mut self, snapshot: &ClipboardSnapshot) -> Result<(), InjectError>;
 }
 
 /// Подменяет буфер на время вставки и возвращает прежнее содержимое.
+#[derive(Debug)]
 pub struct ClipboardGuard<B: ClipboardBackend> {
     backend: B,
     restore_enabled: bool,
@@ -92,6 +93,16 @@ impl<B: ClipboardBackend> ClipboardGuard<B> {
 pub struct SystemClipboard {
     inner: Option<arboard::Clipboard>,
     external_write: bool,
+}
+
+// `arboard::Clipboard` — чужой тип без `Debug`, поэтому печатаем не соединение, а его наличие.
+impl std::fmt::Debug for SystemClipboard {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SystemClipboard")
+            .field("arboard", &self.inner.is_some())
+            .field("external_write", &self.external_write)
+            .finish()
+    }
 }
 
 impl SystemClipboard {
@@ -236,7 +247,7 @@ mod tests {
     use super::*;
 
     /// Буфер в памяти: тест видит каждую подмену и возврат.
-    #[derive(Default)]
+    #[derive(Debug, Default)]
     struct FakeClipboard {
         content: ClipboardSnapshot,
         writes: Vec<String>,
@@ -355,7 +366,7 @@ mod tests {
             ..FakeClipboard::default()
         };
         let mut guard = ClipboardGuard::new(backend, true, Duration::ZERO);
-        let err = guard.stage("реплика").unwrap_err();
-        assert!(matches!(err, InjectError::ClipboardDenied(_)), "{err}");
+        let error = guard.stage("реплика").unwrap_err();
+        assert!(matches!(error, InjectError::ClipboardDenied(_)), "{error}");
     }
 }

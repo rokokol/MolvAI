@@ -10,6 +10,55 @@ repository = "https://github.com/rokokol/MolvAI"
 rust-version = "1.85"
 authors = ["rokokol"]
 
+# Единый набор правил для всех крейтов: каждый подключает его через `[lints] workspace = true`.
+# Гейт `just clippy` запускает линтер с `-D warnings`, поэтому «warn» здесь означает «сборка
+# падает». Уровень «allow» стоит только у педантичных правил про вкус, а не про качество.
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+unused_qualifications = "warn"
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# `nursery` не включаем: там слишком много недоделанных правил, гейт превратился бы в шум.
+
+# Аварийные выходы в коде продукта: ошибка должна быть значением, а не паникой.
+# В `#[cfg(test)]` эти правила сняты через `cfg_attr` в корне каждого крейта.
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+# Данные идут в stdout, всё остальное — в stderr. Печать данных разрешена точечно,
+# `#[allow(clippy::print_stdout)]` на модуле команды; stderr не ограничен.
+print_stdout = "warn"
+print_stderr = "allow"
+
+# Педантичные правила про вкус, а не про качество: снимаем разом, чтобы не разносить
+# по коду два десятка `#[allow]`. Пороги сложности — в `clippy.toml` рядом.
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+struct_excessive_bools = "allow"
+doc_markdown = "allow"
+# `push_str(&format!(…))` против `write!`: правило про лишнюю аллокацию, а взамен предлагает
+# `write!`, чей `Result` для `String` не может быть ошибкой. Гасить его пришлось бы `let _ =`
+# в два десятка мест (`unwrap` запрещён выше) — это хуже, чем одна аллокация на строку отчёта.
+format_push_string = "allow"
+# Приведения между размерами чисел: аудио — это f32 из i16 и обратно, ограничения
+# проверяются в коде, а не типом.
+cast_precision_loss = "allow"
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

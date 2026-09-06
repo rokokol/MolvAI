@@ -8,7 +8,7 @@
 use molva_core::config::HotkeysConfig;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Target {
+pub(crate) enum Target {
     Hyprland,
     Sway,
     Kde,
@@ -16,7 +16,7 @@ pub enum Target {
 }
 
 impl Target {
-    pub fn parse(value: &str) -> Option<Target> {
+    pub(crate) fn parse(value: &str) -> Option<Target> {
         match value.trim().to_ascii_lowercase().as_str() {
             "hyprland" => Some(Target::Hyprland),
             "sway" => Some(Target::Sway),
@@ -29,14 +29,14 @@ impl Target {
 
 /// Комбинация, разобранная на модификаторы и клавишу.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Combo {
+pub(crate) struct Combo {
     pub mods: Vec<String>,
     pub key: String,
 }
 
 impl Combo {
     /// Разбор `Ctrl+Shift+Space`; последняя часть — клавиша, остальные — модификаторы.
-    pub fn parse(spec: &str) -> Combo {
+    pub(crate) fn parse(spec: &str) -> Combo {
         let parts: Vec<&str> = spec
             .split(['+', '-'])
             .map(str::trim)
@@ -44,8 +44,7 @@ impl Combo {
             .collect();
         let (key, mods) = parts
             .split_last()
-            .map(|(k, m)| (*k, m))
-            .unwrap_or(("", &[]));
+            .map_or(("", &[] as &[&str]), |(k, m)| (*k, m));
         Combo {
             mods: mods.iter().map(|m| normalize_mod(m)).collect(),
             key: key.to_string(),
@@ -106,7 +105,7 @@ fn keysym(key: &str) -> String {
 }
 
 /// Сниппет для композитора. `ptt` переопределяет клавишу push-to-talk из конфига.
-pub fn snippet(target: Target, hotkeys: &HotkeysConfig, ptt: Option<&str>) -> String {
+pub(crate) fn snippet(target: Target, hotkeys: &HotkeysConfig, ptt: Option<&str>) -> String {
     let ptt = Combo::parse(ptt.unwrap_or(&hotkeys.push_to_talk));
     let toggle = Combo::parse(&hotkeys.toggle);
     let command = Combo::parse(&hotkeys.command);
@@ -204,7 +203,13 @@ fn gnome(toggle: &Combo) -> String {
     )
 }
 
-pub fn run(target: Target, hotkeys: &HotkeysConfig, ptt: Option<&str>) -> anyhow::Result<()> {
+// Общая для всех подкоманд сигнатура: диспетчер в `main` вызывает их одинаково.
+#[allow(clippy::unnecessary_wraps)]
+pub(crate) fn run(
+    target: Target,
+    hotkeys: &HotkeysConfig,
+    ptt: Option<&str>,
+) -> anyhow::Result<()> {
     print!("{}", snippet(target, hotkeys, ptt));
     Ok(())
 }

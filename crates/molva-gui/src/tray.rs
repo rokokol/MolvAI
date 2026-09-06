@@ -32,9 +32,9 @@ const OUTPUT_MODES: [(&str, &str); 4] = [
 fn icon_bytes(state: Option<DaemonState>) -> &'static [u8] {
     match state {
         Some(DaemonState::Recording) => ICON_RECORDING,
-        Some(DaemonState::Transcribing)
-        | Some(DaemonState::PostProcessing)
-        | Some(DaemonState::Injecting) => ICON_PROCESSING,
+        Some(DaemonState::Transcribing | DaemonState::PostProcessing | DaemonState::Injecting) => {
+            ICON_PROCESSING
+        }
         _ => ICON_IDLE,
     }
 }
@@ -53,9 +53,9 @@ pub enum TrayIcon {
 pub fn tray_icon(state: Option<DaemonState>) -> TrayIcon {
     match state {
         Some(DaemonState::Recording) => TrayIcon::Recording,
-        Some(DaemonState::Transcribing)
-        | Some(DaemonState::PostProcessing)
-        | Some(DaemonState::Injecting) => TrayIcon::Processing,
+        Some(DaemonState::Transcribing | DaemonState::PostProcessing | DaemonState::Injecting) => {
+            TrayIcon::Processing
+        }
         _ => TrayIcon::Idle,
     }
 }
@@ -188,7 +188,7 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
 
     let history = MenuItem::with_id(app, "open:history", "История…", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "open:settings", "Настройки…", true, None::<&str>)?;
-    let stats = MenuItem::with_id(app, "open:stats", "Статистика…", true, None::<&str>)?;
+    let stats_item = MenuItem::with_id(app, "open:stats", "Статистика…", true, None::<&str>)?;
     let pause = CheckMenuItem::with_id(
         app,
         "pause",
@@ -211,7 +211,7 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &PredefinedMenuItem::separator(app)?,
             &history,
             &settings,
-            &stats,
+            &stats_item,
             &PredefinedMenuItem::separator(app)?,
             &pause,
             &quit,
@@ -323,6 +323,8 @@ fn send_async(app: &AppHandle, command: Command) {
     });
 }
 
+// Сигнатуру задаёт `on_menu_event`: событие приходит по значению.
+#[allow(clippy::needless_pass_by_value)]
 fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
     let id = event.id().0.clone();
     match id.as_str() {
@@ -386,7 +388,7 @@ fn update_config(app: &AppHandle, change: impl FnOnce(&mut molva_core::Config)) 
 
 fn set_style(app: &AppHandle, style: &str) {
     let style = style.to_string();
-    update_config(app, |config| config.style.default = style.clone());
+    update_config(app, |config| config.style.default.clone_from(&style));
     send_async(app, Command::StyleSet { style });
 }
 

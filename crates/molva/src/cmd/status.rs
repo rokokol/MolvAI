@@ -8,7 +8,7 @@ use molva_core::ipc::protocol::{Command, Event};
 use serde_json::Value;
 
 /// Человекочитаемая строка состояния.
-pub fn describe(status: &Value) -> String {
+pub(crate) fn describe(status: &Value) -> String {
     let state = status
         .get("state")
         .and_then(Value::as_str)
@@ -18,7 +18,7 @@ pub fn describe(status: &Value) -> String {
 }
 
 /// Состояния протокола по-русски: их видит пользователь, а не разработчик.
-pub fn human_state(state: &str) -> &str {
+pub(crate) fn human_state(state: &str) -> &str {
     match state {
         "idle" => "готов",
         "recording" => "идёт запись",
@@ -30,7 +30,7 @@ pub fn human_state(state: &str) -> &str {
 }
 
 /// Короткая строка про событие для `--watch`.
-pub fn describe_event(event: &Event) -> Option<String> {
+pub(crate) fn describe_event(event: &Event) -> Option<String> {
     match event {
         Event::State { state, .. } => {
             let name = serde_json::to_value(state)
@@ -53,7 +53,7 @@ pub fn describe_event(event: &Event) -> Option<String> {
     }
 }
 
-pub fn run(socket: &Path, json: bool, watch: bool) -> Result<(), IpcClientError> {
+pub(crate) fn run(socket: &Path, json: bool, watch: bool) -> Result<(), IpcClientError> {
     let mut client = Client::connect(socket)?;
     let status = client.call_ok(Command::Status)?;
     if json {

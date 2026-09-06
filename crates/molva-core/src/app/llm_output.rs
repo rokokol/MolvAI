@@ -83,7 +83,10 @@ fn strip_code_fences(text: &str) -> String {
     let mut lines: Vec<&str> = trimmed.lines().collect();
     // Первая строка — само ограждение, возможно с именем языка.
     lines.remove(0);
-    if lines.last().map(|line| line.trim_end().ends_with("```")) == Some(true) {
+    if lines
+        .last()
+        .is_some_and(|line| line.trim_end().ends_with("```"))
+    {
         let last = lines.pop().unwrap_or_default();
         let rest = last.trim_end().trim_end_matches("```");
         if !rest.trim().is_empty() {

@@ -12,7 +12,7 @@ use clap_complete::Shell;
 use super::CmdError;
 
 /// Сгенерировать дополнение для указанной оболочки.
-pub fn run<C: CommandFactory>(
+pub(crate) fn run<C: CommandFactory>(
     shell: Shell,
     bin_name: &str,
     out: &mut dyn Write,

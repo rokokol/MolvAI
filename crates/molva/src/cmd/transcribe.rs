@@ -32,7 +32,7 @@ use super::{progress_enabled, CmdError};
 
 /// След обращения к модели за один файл: в журнал попадает то же, что и при диктовке.
 #[derive(Debug, Clone, PartialEq)]
-pub struct LlmTrace {
+pub(crate) struct LlmTrace {
     pub provider: String,
     pub model: String,
     pub local: bool,
@@ -42,7 +42,7 @@ pub struct LlmTrace {
 
 /// Результат конвейера текста для одного файла.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Postprocessed {
+pub(crate) struct Postprocessed {
     pub text: String,
     pub dict_hits: u32,
     pub llm: Option<LlmTrace>,
@@ -51,7 +51,7 @@ pub struct Postprocessed {
 #[cfg(test)]
 impl Postprocessed {
     /// Текст без следов словаря и модели.
-    pub fn plain(text: impl Into<String>) -> Self {
+    pub(crate) fn plain(text: impl Into<String>) -> Self {
         Self {
             text: text.into(),
             dict_hits: 0,
@@ -62,7 +62,7 @@ impl Postprocessed {
 
 /// Постобработка, которая ничего не меняет: тесты проверяют сам проход конвейера.
 #[cfg(test)]
-pub fn identity(text: &str, _language: &str) -> Postprocessed {
+pub(crate) fn identity(text: &str, _language: &str) -> Postprocessed {
     Postprocessed::plain(text)
 }
 
@@ -70,7 +70,7 @@ pub fn identity(text: &str, _language: &str) -> Postprocessed {
 /// модель по стилю. Модель зовётся только когда стиль её просит, она включена в настройках,
 /// `--no-llm` не задан и слов больше `rules.llm_min_words`; отказ модели возвращает текст
 /// после правил, а не ошибку.
-pub struct FilePostprocessor {
+pub(crate) struct FilePostprocessor {
     dictionary: Dictionary,
     rules: RuleSet,
     style: Style,
@@ -85,7 +85,12 @@ pub struct FilePostprocessor {
 
 impl FilePostprocessor {
     /// Сборка по настройкам. `style_id` — стиль из `--style` или `style.default`.
-    pub fn from_config(cfg: &Config, config_path: &Path, style_id: &str, no_llm: bool) -> Self {
+    pub(crate) fn from_config(
+        cfg: &Config,
+        config_path: &Path,
+        style_id: &str,
+        no_llm: bool,
+    ) -> Self {
         let dictionary = cfg
             .dictionary_path_near(config_path)
             .ok()
@@ -104,7 +109,7 @@ impl FilePostprocessor {
     }
 
     /// Та же сборка, но с готовыми частями: тесты подставляют поддельную модель.
-    pub fn assemble(
+    pub(crate) fn assemble(
         cfg: &Config,
         dictionary: Dictionary,
         style: Style,
@@ -125,7 +130,7 @@ impl FilePostprocessor {
     }
 
     /// Словарь → правила → модель. `language` — язык реплики для правил.
-    pub fn apply(&self, raw: &str, language: &str) -> Postprocessed {
+    pub(crate) fn apply(&self, raw: &str, language: &str) -> Postprocessed {
         let (after_dictionary, dict_hits) = self.dictionary.apply(raw);
         let after_rules = self.rules.apply(&after_dictionary, language);
         let Some(llm) = self.llm.as_deref() else {
@@ -196,7 +201,7 @@ impl FilePostprocessor {
 }
 
 #[derive(Debug, clap::Args)]
-pub struct Args {
+pub(crate) struct Args {
     /// Аудиофайлы, каталоги или `-` для чтения потока со стандартного ввода
     #[arg(value_name = "PATH", required = true)]
     pub input: Vec<PathBuf>,
@@ -248,13 +253,13 @@ pub struct Args {
 
 /// Что расшифровываем: файл на диске или поток на входе.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum JobSource {
+pub(crate) enum JobSource {
     File(PathBuf),
     Stdin,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Job {
+pub(crate) struct Job {
     /// Имя для вывода и журнала.
     pub label: String,
     pub source: JobSource,
@@ -262,7 +267,7 @@ pub struct Job {
 
 /// Результат по одному входу.
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct FileResult {
+pub(crate) struct FileResult {
     pub file: String,
     pub text: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -275,20 +280,20 @@ pub struct FileResult {
 
 /// Итог пакета: что получилось и что нет.
 #[derive(Debug, Default)]
-pub struct Outcome {
+pub(crate) struct Outcome {
     pub results: Vec<FileResult>,
     /// Пары «вход → причина отказа».
     pub errors: Vec<(String, String)>,
 }
 
 impl Outcome {
-    pub fn ok(&self) -> bool {
+    pub(crate) fn ok(&self) -> bool {
         self.errors.is_empty()
     }
 }
 
 /// Собрать список входов: файлы по порядку аргументов, содержимое каталогов — по алфавиту.
-pub fn collect_jobs(inputs: &[PathBuf], recursive: bool) -> Result<Vec<Job>, CmdError> {
+pub(crate) fn collect_jobs(inputs: &[PathBuf], recursive: bool) -> Result<Vec<Job>, CmdError> {
     let mut jobs = Vec::new();
     for input in inputs {
         if input.as_os_str() == "-" {
@@ -317,9 +322,9 @@ pub fn collect_jobs(inputs: &[PathBuf], recursive: bool) -> Result<Vec<Job>, Cmd
     Ok(jobs)
 }
 
-fn collect_dir(dir: &Path, recursive: bool, jobs: &mut Vec<Job>) -> Result<(), CmdError> {
-    let mut entries: Vec<PathBuf> = std::fs::read_dir(dir)
-        .map_err(|e| CmdError::file(format!("{}: {e}", dir.display())))?
+fn collect_dir(directory: &Path, recursive: bool, jobs: &mut Vec<Job>) -> Result<(), CmdError> {
+    let mut entries: Vec<PathBuf> = std::fs::read_dir(directory)
+        .map_err(|e| CmdError::file(format!("{}: {e}", directory.display())))?
         .filter_map(Result::ok)
         .map(|e| e.path())
         .collect();
@@ -346,10 +351,10 @@ fn collect_dir(dir: &Path, recursive: bool, jobs: &mut Vec<Job>) -> Result<(), C
 /// `postprocess` — точка подключения конвейера обработки текста; `progress` вызывается
 /// перед каждым входом и пишет только в stderr.
 #[allow(clippy::too_many_arguments)]
-pub fn transcribe_jobs(
+pub(crate) fn transcribe_jobs(
     jobs: &[Job],
     engine: &mut dyn SttEngine,
-    opts: &SttOptions,
+    options: &SttOptions,
     stdin_format: Option<&str>,
     postprocess: &dyn Fn(&str, &str) -> Postprocessed,
     journal: &mut dyn Journal,
@@ -380,7 +385,7 @@ pub fn transcribe_jobs(
         let started = Instant::now();
         // Через политику, а не напрямую: язык выбирается среди разрешённых, и `auto` не заставляет
         // whisper считать полное окно в тридцать секунд.
-        let transcript = match transcribe_with_language_policy(engine, &ready, opts) {
+        let transcript = match transcribe_with_language_policy(engine, &ready, options) {
             Ok(transcript) => transcript,
             Err(e) => {
                 outcome.errors.push((job.label.clone(), e.to_string()));
@@ -394,7 +399,7 @@ pub fn transcribe_jobs(
         let rules_language = transcript
             .detected_language
             .clone()
-            .or_else(|| match &opts.language {
+            .or_else(|| match &options.language {
                 LanguageHint::Fixed(code) => Some(code.clone()),
                 LanguageHint::Auto => None,
             })
@@ -464,7 +469,7 @@ pub fn transcribe_jobs(
 }
 
 /// `12345` мс → `00:12.345`.
-pub fn format_timecode(ms: u32) -> String {
+pub(crate) fn format_timecode(ms: u32) -> String {
     let total_secs = ms / 1000;
     format!(
         "{:02}:{:02}.{:03}",
@@ -475,7 +480,7 @@ pub fn format_timecode(ms: u32) -> String {
 }
 
 /// Текст одного результата: либо сплошняком, либо строками с таймкодами.
-pub fn render_text(result: &FileResult, timecodes: bool) -> String {
+pub(crate) fn render_text(result: &FileResult, timecodes: bool) -> String {
     if !timecodes {
         return result.text.clone();
     }
@@ -505,7 +510,7 @@ pub fn render_text(result: &FileResult, timecodes: bool) -> String {
 }
 
 /// Собрать вывод для нескольких входов: перед каждым — заголовок с именем, если входов больше одного.
-pub fn render_all(results: &[FileResult], timecodes: bool) -> String {
+pub(crate) fn render_all(results: &[FileResult], timecodes: bool) -> String {
     if results.len() == 1 {
         return render_text(&results[0], timecodes);
     }
@@ -520,13 +525,13 @@ pub fn render_all(results: &[FileResult], timecodes: bool) -> String {
 ///
 /// Если в пакете есть `tone.mp3` и `tone.ogg`, одно имя `tone.txt` на двоих молча потеряло бы
 /// половину работы, поэтому при совпадении основы в имя добавляется исходное расширение.
-pub fn out_file_names(results: &[FileResult], json: bool) -> Vec<String> {
+pub(crate) fn out_file_names(results: &[FileResult], json: bool) -> Vec<String> {
     let ext = if json { "json" } else { "txt" };
     let stem_of = |result: &FileResult| {
-        Path::new(&result.file)
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "transcript".to_string())
+        Path::new(&result.file).file_stem().map_or_else(
+            || "transcript".to_string(),
+            |stem| stem.to_string_lossy().to_string(),
+        )
     };
     let mut counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for result in results {
@@ -550,7 +555,7 @@ pub fn out_file_names(results: &[FileResult], json: bool) -> Vec<String> {
 }
 
 /// Записать результаты туда, куда просил пользователь.
-pub fn write_output(
+pub(crate) fn write_output(
     outcome: &Outcome,
     args: &Args,
     stdout: &mut dyn Write,
@@ -601,7 +606,7 @@ pub fn write_output(
 }
 
 /// Точка входа подкоманды.
-pub fn run(args: &Args, cfg: &Config, config_path: &Path) -> Result<(), CmdError> {
+pub(crate) fn run(args: &Args, config: &Config, config_path: &Path) -> Result<(), CmdError> {
     let jobs = collect_jobs(&args.input, args.recursive)?;
 
     let choice = EngineChoice {
@@ -609,24 +614,25 @@ pub fn run(args: &Args, cfg: &Config, config_path: &Path) -> Result<(), CmdError
         model: args.model.clone(),
         fake_text: None,
     };
-    let mut engine = build_stt_with(cfg, &choice).map_err(|e| CmdError::engine(e.to_string()))?;
+    let mut engine =
+        build_stt_with(config, &choice).map_err(|e| CmdError::engine(e.to_string()))?;
 
-    let language = args.language.as_deref().unwrap_or(&cfg.stt.language);
-    let opts = SttOptions {
+    let language = args.language.as_deref().unwrap_or(&config.stt.language);
+    let options = SttOptions {
         language: LanguageHint::parse(language),
-        allowed_languages: cfg.stt.allowed_languages.clone(),
+        allowed_languages: config.stt.allowed_languages.clone(),
         initial_prompt: None,
-        threads: cfg.stt.threads as usize,
+        threads: config.stt.threads as usize,
         timestamps: args.timecodes,
     };
 
     let style = args
         .style
         .as_deref()
-        .unwrap_or(&cfg.style.default)
+        .unwrap_or(&config.style.default)
         .to_string();
     // Тот же конвейер текста, что и при диктовке: словарь, правила, модель по стилю.
-    let postprocessor = FilePostprocessor::from_config(cfg, config_path, &style, args.no_llm);
+    let postprocessor = FilePostprocessor::from_config(config, config_path, &style, args.no_llm);
     let postprocess = |raw: &str, language: &str| postprocessor.apply(raw, language);
     // Файловый журнал подключает конвейер дорожки D; здесь запись собирается и уходит
     // в приёмник, который передали.
@@ -645,7 +651,7 @@ pub fn run(args: &Args, cfg: &Config, config_path: &Path) -> Result<(), CmdError
     let outcome = transcribe_jobs(
         &jobs,
         engine.as_mut(),
-        &opts,
+        &options,
         args.stdin_format.as_deref(),
         &postprocess,
         &mut journal,
@@ -726,8 +732,8 @@ mod tests {
 
     #[test]
     fn single_file_is_transcribed() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("a.wav");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("a.wav");
         write_wav(&path, 1.0);
 
         let outcome = run_fake(&jobs_for(std::slice::from_ref(&path)), "привет мир");
@@ -739,8 +745,8 @@ mod tests {
 
     #[test]
     fn two_runs_on_the_same_file_give_the_same_text() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("a.wav");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("a.wav");
         write_wav(&path, 0.5);
         let jobs = jobs_for(&[path]);
 
@@ -753,10 +759,10 @@ mod tests {
 
     #[test]
     fn broken_file_does_not_stop_the_batch() {
-        let dir = tempfile::tempdir().unwrap();
-        let good = dir.path().join("good.wav");
+        let directory = tempfile::tempdir().unwrap();
+        let good = directory.path().join("good.wav");
         write_wav(&good, 0.3);
-        let bad = dir.path().join("bad.wav");
+        let bad = directory.path().join("bad.wav");
         std::fs::write(&bad, "не аудио").unwrap();
 
         let outcome = run_fake(&jobs_for(&[bad, good]), "текст");
@@ -768,13 +774,13 @@ mod tests {
 
     #[test]
     fn directory_is_walked_in_alphabetical_order() {
-        let dir = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir().unwrap();
         for name in ["c.wav", "a.wav", "b.wav"] {
-            write_wav(&dir.path().join(name), 0.1);
+            write_wav(&directory.path().join(name), 0.1);
         }
-        std::fs::write(dir.path().join("notes.txt"), "не аудио").unwrap();
+        std::fs::write(directory.path().join("notes.txt"), "не аудио").unwrap();
 
-        let jobs = collect_jobs(&[dir.path().to_path_buf()], false).unwrap();
+        let jobs = collect_jobs(&[directory.path().to_path_buf()], false).unwrap();
         let names: Vec<String> = jobs
             .iter()
             .map(|j| {
@@ -790,20 +796,20 @@ mod tests {
 
     #[test]
     fn nested_directories_need_recursive() {
-        let dir = tempfile::tempdir().unwrap();
-        let nested = dir.path().join("вложенный");
+        let directory = tempfile::tempdir().unwrap();
+        let nested = directory.path().join("вложенный");
         std::fs::create_dir(&nested).unwrap();
         write_wav(&nested.join("a.wav"), 0.1);
-        write_wav(&dir.path().join("b.wav"), 0.1);
+        write_wav(&directory.path().join("b.wav"), 0.1);
 
         assert_eq!(
-            collect_jobs(&[dir.path().to_path_buf()], false)
+            collect_jobs(&[directory.path().to_path_buf()], false)
                 .unwrap()
                 .len(),
             1
         );
         assert_eq!(
-            collect_jobs(&[dir.path().to_path_buf()], true)
+            collect_jobs(&[directory.path().to_path_buf()], true)
                 .unwrap()
                 .len(),
             2
@@ -819,8 +825,8 @@ mod tests {
 
     #[test]
     fn empty_directory_is_an_error_not_a_silent_success() {
-        let dir = tempfile::tempdir().unwrap();
-        let err = collect_jobs(&[dir.path().to_path_buf()], false).unwrap_err();
+        let directory = tempfile::tempdir().unwrap();
+        let err = collect_jobs(&[directory.path().to_path_buf()], false).unwrap_err();
         assert_eq!(err.code, CmdError::FILE);
     }
 
@@ -833,8 +839,8 @@ mod tests {
 
     #[test]
     fn journal_records_the_file_source() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("a.wav");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("a.wav");
         write_wav(&path, 1.5);
         let mut stt = FakeStt::returning("привет мир друзья");
         let mut journal = MemJournal::default();
@@ -860,8 +866,8 @@ mod tests {
 
     #[test]
     fn postprocess_hook_is_applied_to_the_text() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("a.wav");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("a.wav");
         write_wav(&path, 0.2);
         let mut stt = FakeStt::returning("привет");
         let mut journal = MemJournal::default();
@@ -1152,8 +1158,8 @@ mod tests {
 
     #[test]
     fn output_directory_gets_one_file_per_input() {
-        let dir = tempfile::tempdir().unwrap();
-        let out = dir.path().join("out");
+        let directory = tempfile::tempdir().unwrap();
+        let out = directory.path().join("out");
         std::fs::create_dir(&out).unwrap();
         let outcome = Outcome {
             results: vec![
@@ -1220,8 +1226,8 @@ mod tests {
 
     #[test]
     fn output_file_collects_everything_and_stdout_stays_empty() {
-        let dir = tempfile::tempdir().unwrap();
-        let target = dir.path().join("всё.txt");
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("всё.txt");
         let outcome = Outcome {
             results: vec![FileResult {
                 file: "a.wav".into(),
@@ -1290,8 +1296,8 @@ mod tests {
 
     #[test]
     fn engine_error_is_recorded_per_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("a.wav");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("a.wav");
         write_wav(&path, 0.2);
         let mut stt = FakeStt::with_responses(vec![Err(
             molva_core::domain::stt::SttError::Inference("сломалось".into()),
@@ -1314,8 +1320,8 @@ mod tests {
 
     #[test]
     fn segments_from_the_engine_reach_the_result() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("a.wav");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("a.wav");
         write_wav(&path, 0.5);
         let mut stt = FakeStt::with_responses(vec![Ok(Transcript {
             text: "привет".into(),

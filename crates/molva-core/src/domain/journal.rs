@@ -16,6 +16,6 @@ pub enum JournalError {
 }
 
 /// Приёмник записей. Одна запись — одна реплика; журнал только дописывается.
-pub trait Journal: Send {
+pub trait Journal: std::fmt::Debug + Send {
     fn append(&mut self, entry: &Entry) -> Result<(), JournalError>;
 }

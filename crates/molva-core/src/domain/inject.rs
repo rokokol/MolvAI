@@ -20,6 +20,7 @@ pub enum OutputMode {
 
 impl OutputMode {
     /// Разрешение `Auto` по длине текста в символах.
+    #[must_use]
     pub fn resolve(self, text: &str, auto_type_max_chars: usize) -> OutputMode {
         match self {
             OutputMode::Auto if text.chars().count() <= auto_type_max_chars => OutputMode::Type,
@@ -53,7 +54,7 @@ pub enum InjectError {
 }
 
 /// Доставка текста в активное окно.
-pub trait TextInjector: Send {
+pub trait TextInjector: std::fmt::Debug + Send {
     fn id(&self) -> &'static str;
     /// Доступен ли способ в текущем окружении (есть ли утилита, права, сессия).
     fn available(&self) -> bool;

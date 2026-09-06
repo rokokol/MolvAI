@@ -9,14 +9,23 @@ test_cmd := "cargo test --workspace --no-fail-fast"
 
 default: check
 
-# Полный гейт: форматирование, линтер, тесты, SPDX-заголовки, отсутствие заглушек
-check: fmt clippy test spdx-check no-stubs
+# Полный гейт: форматирование, линтер, зависимости, тесты, SPDX-заголовки, отсутствие заглушек
+check: fmt clippy lint-deps test spdx-check no-stubs
 
 fmt:
     cargo fmt --all --check
 
+# Правила линтера — в [workspace.lints] корневого Cargo.toml, пороги — в clippy.toml
 clippy:
     cargo clippy --workspace --all-targets -- -D warnings
+
+# Зависимость, которую никто не использует, тянет сборку и аудит на пустом месте
+lint-deps:
+    cargo machete
+
+# Документация без предупреждений: битые ссылки в docs — это deny (см. [workspace.lints.rustdoc])
+doc:
+    cargo doc --no-deps --workspace
 
 build:
     {{build_cmd}}

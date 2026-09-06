@@ -20,6 +20,7 @@ use crate::domain::stt::{LanguageHint, Segment, SttEngine, SttError, SttOptions,
 static LOGGING_HOOKS: Once = Once::new();
 
 /// Распознаватель на whisper.cpp: локальный, без сети.
+#[derive(Debug)]
 pub struct WhisperEngine {
     model_path: PathBuf,
     model_name: String,
@@ -81,7 +82,7 @@ impl WhisperEngine {
 }
 
 impl SttEngine for WhisperEngine {
-    fn id(&self) -> &str {
+    fn id(&self) -> &'static str {
         "whisper-cpp"
     }
 
@@ -89,12 +90,16 @@ impl SttEngine for WhisperEngine {
         &self.model_name
     }
 
-    fn transcribe(&mut self, audio: &PcmAudio, opts: &SttOptions) -> Result<Transcript, SttError> {
+    fn transcribe(
+        &mut self,
+        audio: &PcmAudio,
+        options: &SttOptions,
+    ) -> Result<Transcript, SttError> {
         if audio.samples.is_empty() {
             return Err(SttError::EmptyAudio);
         }
-        let language = whisper_language(&opts.language)?;
-        let threads = resolve_threads(opts.threads.max(self.threads));
+        let language = whisper_language(&options.language)?;
+        let threads = resolve_threads(options.threads.max(self.threads));
 
         // whisper.cpp принимает только моно 16 кГц; приведение здесь страхует вызывающего.
         let resampled;
@@ -113,7 +118,7 @@ impl SttEngine for WhisperEngine {
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
         params.set_n_threads(threads as i32);
         params.set_translate(false);
-        params.set_no_timestamps(!opts.timestamps);
+        params.set_no_timestamps(!options.timestamps);
         // Прогресс и текст whisper.cpp не должны попадать в stdout: там только данные (Y-15).
         params.set_print_special(false);
         params.set_print_progress(false);
@@ -129,7 +134,7 @@ impl SttEngine for WhisperEngine {
         // 85 % работы уходит на дополненную тишину. Окно ужимается под длину реплики — это
         // главный рычаг задержки на CPU.
         params.set_audio_ctx(audio_ctx_for(samples.len(), TARGET_SAMPLE_RATE) as i32);
-        if let Some(prompt) = opts.initial_prompt.as_deref() {
+        if let Some(prompt) = options.initial_prompt.as_deref() {
             // Нулевой байт внутри подсказки уронил бы CString в whisper-rs.
             if !prompt.is_empty() && !prompt.contains('\0') {
                 params.set_initial_prompt(prompt);
@@ -143,7 +148,7 @@ impl SttEngine for WhisperEngine {
         let elapsed = started.elapsed();
 
         let mut transcript = collect_transcript(&state)?;
-        if !opts.timestamps {
+        if !options.timestamps {
             transcript.segments.clear();
         }
         debug!(
@@ -389,9 +394,7 @@ fn resolve_threads(requested: usize) -> usize {
     if requested > 0 {
         return requested;
     }
-    let cores = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(1);
+    let cores = std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
     (cores / 2).max(1)
 }
 
@@ -408,12 +411,12 @@ mod tests {
         );
         let audio = PcmAudio::new(vec![0.1; 16_000], 16_000);
 
-        let err = engine
+        let error = engine
             .transcribe(&audio, &SttOptions::default())
             .expect_err("модели нет");
 
         assert_eq!(
-            err,
+            error,
             SttError::ModelMissing {
                 path: "/nonexistent/ggml-small.bin".into(),
                 model: "small".into()
@@ -425,10 +428,10 @@ mod tests {
     #[test]
     fn empty_audio_is_rejected_before_loading_the_model() {
         let mut engine = WhisperEngine::new(PathBuf::from("/nonexistent"), "small".into(), 1);
-        let err = engine
+        let error = engine
             .transcribe(&PcmAudio::default(), &SttOptions::default())
             .expect_err("пустое аудио");
-        assert_eq!(err, SttError::EmptyAudio);
+        assert_eq!(error, SttError::EmptyAudio);
     }
 
     #[test]
@@ -462,7 +465,7 @@ mod tests {
     fn broken_language_code_is_an_error_not_a_panic() {
         // Нулевой байт и мусор из конфига не должны доходить до CString в whisper-rs.
         assert!(whisper_language(&LanguageHint::Fixed("ru\0".into())).is_err());
-        assert!(whisper_language(&LanguageHint::Fixed("".into())).is_err());
+        assert!(whisper_language(&LanguageHint::Fixed(String::new())).is_err());
         assert!(whisper_language(&LanguageHint::Fixed("русский".into())).is_err());
     }
 
@@ -623,13 +626,15 @@ mod tests {
         let audio = read_wav_fixture(wav);
 
         let mut engine = WhisperEngine::new(PathBuf::from(path), "test".into(), 0);
-        let opts = SttOptions {
+        let options = SttOptions {
             language: LanguageHint::Auto,
             timestamps: true,
             ..SttOptions::default()
         };
 
-        let out = engine.transcribe(&audio, &opts).expect("речь распознаётся");
+        let out = engine
+            .transcribe(&audio, &options)
+            .expect("речь распознаётся");
 
         assert!(
             !out.text.trim().is_empty(),
@@ -656,13 +661,15 @@ mod tests {
         let audio = read_wav_fixture(wav);
 
         let mut engine = WhisperEngine::new(PathBuf::from(path), "test".into(), 0);
-        let opts = SttOptions {
+        let options = SttOptions {
             language: LanguageHint::Fixed("ru".into()),
             timestamps: false,
             ..SttOptions::default()
         };
 
-        let out = engine.transcribe(&audio, &opts).expect("речь распознаётся");
+        let out = engine
+            .transcribe(&audio, &options)
+            .expect("речь распознаётся");
 
         assert!(!out.text.trim().is_empty(), "текст пропал");
         assert!(
@@ -746,7 +753,7 @@ mod tests {
         let spec = reader.spec();
         let samples: Vec<f32> = reader
             .samples::<i16>()
-            .map(|s| s.expect("отсчёт читается") as f32 / i16::MAX as f32)
+            .map(|s| f32::from(s.expect("отсчёт читается")) / f32::from(i16::MAX))
             .collect();
         PcmAudio::new(
             crate::domain::audio::downmix_to_mono(&samples, spec.channels),

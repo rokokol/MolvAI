@@ -13,7 +13,7 @@ pub struct Style {
 }
 
 /// Правило преобразования текста без модели: пунктуация словами, «с новой строки», повторы.
-pub trait TextRule: Send + Sync {
+pub trait TextRule: std::fmt::Debug + Send + Sync {
     fn id(&self) -> &'static str;
     /// `lang` — код языка реплики (`ru`, `en`), чтобы правило выбирало свой словарь команд.
     fn apply(&self, text: &str, lang: &str) -> String;

@@ -108,7 +108,7 @@ impl fmt::Debug for OpenAiCompatClient {
             .field("model", &self.model)
             .field("is_local", &self.is_local)
             .field("api_key", &self.api_key)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -410,7 +410,7 @@ mod tests {
         OpenAiCompatClient::new(
             server.base_url(),
             "qwen3.5:4b",
-            key.map(|k| k.to_string()),
+            key.map(ToString::to_string),
             Duration::from_millis(700),
             "ollama",
             true,
