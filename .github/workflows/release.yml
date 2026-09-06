@@ -252,10 +252,14 @@ jobs:
 
       # Не bash: в PATH оболочки Git первым стоит coreutils-`link.exe` из /usr/bin, и rustc
       # линковал им вместо компоновщика MSVC. PowerShell сохраняет PATH от msvc-dev-cmd.
+      # На раннере Visual Studio новее, чем знает CUDA 12.6 (2017–2022): nvcc отказывается
+      # без флага -allow-unsupported-compiler. Он читается из NVCC_APPEND_FLAGS и CUDAFLAGS.
       - name: Сборка CLI с CUDA
         shell: pwsh
         env:
           CMAKE_GENERATOR: Ninja
+          NVCC_APPEND_FLAGS: -allow-unsupported-compiler
+          CUDAFLAGS: -allow-unsupported-compiler
         run: cargo build --locked --release --bin molva --features molva-core/cuda
 
       - name: Архив CLI с CUDA и рантаймом NVIDIA
