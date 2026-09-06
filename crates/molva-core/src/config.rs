@@ -250,7 +250,8 @@ pub struct LlmConfig {
     pub provider: String,
     pub base_url: String,
     pub model: String,
-    /// `keyring` | `env`.
+    /// `keyring` — хранилище ОС, `file` — `<каталог настроек>/secrets/llm-api-key-<provider>`,
+    /// `env` — только переменная окружения, `none` — ключа нет.
     pub api_key_source: String,
     pub api_key_env: String,
     pub temperature: f32,
@@ -420,9 +421,12 @@ pub struct JournalConfig {
     pub enabled: bool,
     /// `false` — режим приватности: строка без текста реплики.
     pub include_text: bool,
-    /// `true` — тексты реплик в журнале шифруются (XChaCha20-Poly1305), ключ в `key_path`.
+    /// `true` — тексты реплик в журнале шифруются (XChaCha20-Poly1305), ключ по `key_source`.
     /// Остальные поля строки остаются открытыми: статистика и фильтры работают без ключа.
     pub encrypt: bool,
+    /// Где лежит ключ: `file` — файл `key_path`, `keyring` — запись `journal-key`
+    /// в хранилище ОС. В обоих случаях ключ создаётся сам при первом открытии.
+    pub key_source: String,
     /// Файл ключа шифрования; пусто — `journal.key` рядом с журналом. Создаётся сам,
     /// права только для владельца.
     pub key_path: String,
@@ -438,6 +442,7 @@ impl Default for JournalConfig {
             enabled: true,
             include_text: true,
             encrypt: false,
+            key_source: "file".into(),
             key_path: String::new(),
             keep_audio: false,
             max_entries: 10_000,
@@ -627,6 +632,11 @@ impl Config {
         ))
     }
 
+    /// Каталог файлового хранилища секретов: `<каталог настроек>/secrets`, по файлу на запись.
+    pub fn secrets_directory() -> Result<PathBuf, ConfigError> {
+        Ok(Self::default_dir()?.join("secrets"))
+    }
+
     /// Путь к словарю: из настроек или `dictionary.toml` рядом с файлом настроек.
     pub fn dictionary_path(&self) -> Result<PathBuf, ConfigError> {
         self.dictionary_path_near(&Self::default_path()?)
@@ -719,9 +729,15 @@ impl Config {
         }
     }
 
-    /// Общие настройки приложения.
+    /// Общие настройки приложения и журнал.
     fn validate_general(&self, issues: &mut Vec<ConfigIssue>) {
         one_of(issues, "ui_language", &self.ui_language, &["ru", "en"]);
+        one_of(
+            issues,
+            "journal.key_source",
+            &self.journal.key_source,
+            &["file", "keyring"],
+        );
     }
 
     /// Захват звука: усиление, длительность, громкость сигналов.
@@ -824,7 +840,7 @@ impl Config {
             issues,
             "llm.api_key_source",
             &self.llm.api_key_source,
-            &["keyring", "env", "none"],
+            &["keyring", "file", "env", "none"],
         );
         in_range(
             issues,

@@ -15,6 +15,8 @@ use std::path::Path;
 use chacha20poly1305::aead::{Aead, AeadCore, KeyInit, OsRng};
 use chacha20poly1305::{XChaCha20Poly1305, XNonce};
 
+use super::secrets::{SecretError, SecretStore};
+
 /// Префикс зашифрованного поля: по нему `load_all` отличает шифротекст от открытого текста
 /// старых записей и не пытается расшифровать то, что никогда не шифровалось.
 pub const ENCRYPTED_PREFIX: &str = "enc1:";
@@ -24,13 +26,15 @@ pub const KEY_LEN: usize = 32;
 
 const NONCE_LEN: usize = 24;
 
-/// Ошибки ключа: файл не прочитан, не создан или содержит не ключ.
+/// Ошибки ключа: файл или хранилище не прочитаны, ключ не создан или значение — не ключ.
 #[derive(Debug, thiserror::Error)]
 pub enum KeyError {
     #[error("ключ журнала {path}: {reason}")]
     Io { path: String, reason: String },
     #[error("ключ журнала {path} повреждён: ожидалось {expected} hex-символов")]
     Malformed { path: String, expected: usize },
+    #[error("ключ журнала {entry}: {source}")]
+    Store { entry: String, source: SecretError },
 }
 
 /// Шифр журнала с загруженным ключом.
@@ -59,6 +63,12 @@ impl JournalCipher {
     /// Шифр из файла ключа; отсутствующий файл создаётся со случайным ключом и правами 0600.
     pub fn from_key_file(path: &Path) -> Result<Self, KeyError> {
         let key = load_or_create_key(path)?;
+        Ok(Self::from_key(&key))
+    }
+
+    /// Шифр из записи хранилища секретов; отсутствующая запись создаётся со случайным ключом.
+    pub fn from_store(store: &dyn SecretStore, name: &str) -> Result<Self, KeyError> {
+        let key = load_or_create_key_in(store, name)?;
         Ok(Self::from_key(&key))
     }
 
@@ -100,14 +110,7 @@ pub fn load_or_create_key(path: &Path) -> Result<[u8; KEY_LEN], KeyError> {
     };
     if path.is_file() {
         let text = std::fs::read_to_string(path).map_err(|e| io(&e))?;
-        let bytes = unhex(text.trim()).ok_or_else(|| KeyError::Malformed {
-            path: path.display().to_string(),
-            expected: KEY_LEN * 2,
-        })?;
-        return bytes.try_into().map_err(|_| KeyError::Malformed {
-            path: path.display().to_string(),
-            expected: KEY_LEN * 2,
-        });
+        return parse_key(text.trim(), &path.display().to_string());
     }
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
@@ -126,6 +129,35 @@ pub fn load_or_create_key(path: &Path) -> Result<[u8; KEY_LEN], KeyError> {
     writeln!(file, "{}", hex(&key)).map_err(|e| io(&e))?;
     file.sync_all().map_err(|e| io(&e))?;
     Ok(key)
+}
+
+/// Прочитать ключ из записи `name` хранилища или создать новый и сохранить его там же.
+/// Значение — 64 hex-символа, как и в файле; повреждённое значение — ошибка, а не новый ключ:
+/// иначе старые записи журнала стали бы нечитаемыми молча.
+pub fn load_or_create_key_in(
+    store: &dyn SecretStore,
+    name: &str,
+) -> Result<[u8; KEY_LEN], KeyError> {
+    let store_error = |source: SecretError| KeyError::Store {
+        entry: name.to_string(),
+        source,
+    };
+    if let Some(text) = store.get(name).map_err(store_error)? {
+        return parse_key(text.trim(), name);
+    }
+    let key: [u8; KEY_LEN] = XChaCha20Poly1305::generate_key(&mut OsRng).into();
+    store.set(name, &hex(&key)).map_err(store_error)?;
+    Ok(key)
+}
+
+/// Ключ из hex-строки; `path` — откуда он взят, для сообщения об ошибке.
+fn parse_key(text: &str, path: &str) -> Result<[u8; KEY_LEN], KeyError> {
+    let malformed = || KeyError::Malformed {
+        path: path.to_string(),
+        expected: KEY_LEN * 2,
+    };
+    let bytes = unhex(text).ok_or_else(malformed)?;
+    bytes.try_into().map_err(|_| malformed())
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -209,6 +241,34 @@ mod tests {
             let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
             assert_eq!(mode, 0o600, "ключ читает только владелец");
         }
+    }
+
+    #[test]
+    fn the_store_key_is_created_once_and_reused() {
+        use super::super::secrets::MemoryStore;
+        let store = MemoryStore::new();
+        let first = load_or_create_key_in(&store, "journal-key").unwrap();
+        let second = load_or_create_key_in(&store, "journal-key").unwrap();
+        assert_eq!(first, second, "повторное чтение отдаёт тот же ключ");
+        let stored = store.get("journal-key").unwrap().unwrap();
+        assert_eq!(stored.len(), KEY_LEN * 2);
+        assert_eq!(unhex(&stored).unwrap(), first.to_vec());
+    }
+
+    #[test]
+    fn a_damaged_store_value_or_a_silent_store_is_an_explicit_error() {
+        use super::super::secrets::MemoryStore;
+        let store = MemoryStore::new();
+        store.set("journal-key", "не ключ").unwrap();
+        assert!(matches!(
+            load_or_create_key_in(&store, "journal-key"),
+            Err(KeyError::Malformed { .. })
+        ));
+        let failing = MemoryStore::failing("нет Secret Service");
+        assert!(matches!(
+            load_or_create_key_in(&failing, "journal-key"),
+            Err(KeyError::Store { .. })
+        ));
     }
 
     #[test]

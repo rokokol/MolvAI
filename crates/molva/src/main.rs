@@ -132,6 +132,11 @@ enum Commands {
         #[arg(long, default_value_t = cmd::test_inject::DEFAULT_DELAY.as_secs())]
         delay: u64,
     },
+    /// Ключи в хранилище ОС или файле: значение читается из stdin
+    Secret {
+        #[command(subcommand)]
+        action: cmd::secret::SecretAction,
+    },
     /// Диагностика окружения
     Doctor,
     /// Скрипт автодополнения для оболочки
@@ -279,6 +284,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
                 std::time::Duration::from_secs(delay),
             )
         }
+        Commands::Secret { action } => cmd::secret::run(action, &config()?),
         Commands::Doctor => cmd::doctor::run(&socket, &config()?),
         Commands::Completions { shell } => {
             let mut stdout = std::io::stdout().lock();

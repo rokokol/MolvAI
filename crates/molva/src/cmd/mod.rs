@@ -22,6 +22,7 @@ pub(crate) mod doctor;
 pub(crate) mod history;
 pub(crate) mod models;
 pub(crate) mod record;
+pub(crate) mod secret;
 pub(crate) mod setup;
 pub(crate) mod stats;
 pub(crate) mod status;
