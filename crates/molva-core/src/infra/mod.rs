@@ -10,4 +10,5 @@ pub mod ipc;
 pub mod llm;
 pub mod notify;
 pub mod platform;
+pub mod sound;
 pub mod stt;

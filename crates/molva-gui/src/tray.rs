@@ -39,6 +39,41 @@ fn icon_bytes(state: Option<DaemonState>) -> &'static [u8] {
     }
 }
 
+/// Какая из трёх картинок соответствует состоянию: покой, запись, обработка.
+///
+/// Число, а не байты: его дёшево запомнить и сравнить с тем, что уже стоит в трее.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrayIcon {
+    Idle,
+    Recording,
+    Processing,
+}
+
+/// Значок для состояния демона.
+pub fn tray_icon(state: Option<DaemonState>) -> TrayIcon {
+    match state {
+        Some(DaemonState::Recording) => TrayIcon::Recording,
+        Some(DaemonState::Transcribing | DaemonState::PostProcessing | DaemonState::Injecting) => {
+            TrayIcon::Processing
+        }
+        _ => TrayIcon::Idle,
+    }
+}
+
+/// Нужно ли переставлять значок в трее.
+///
+/// Критерий AM-11: **иконка трея статична по настройке** — она меняется только когда меняется
+/// само состояние (покой → запись → обработка → покой), а не на каждое событие демона. Уровень
+/// сигнала приходит десять раз в секунду, и реакция на каждое событие превратила бы трей
+/// в мигалку. `gui.tray_animation = true` возвращает мигание тем, кому оно нужнее покоя.
+pub fn should_update_icon(shown: Option<TrayIcon>, next: TrayIcon, tray_animation: bool) -> bool {
+    if tray_animation && next == TrayIcon::Recording {
+        // Анимация записи: кадры сменяются, пока идёт запись, и только по явной настройке.
+        return true;
+    }
+    shown != Some(next)
+}
+
 /// Текст подсказки трея: короткая фраза о том, что происходит прямо сейчас.
 pub fn tooltip(state: Option<DaemonState>) -> &'static str {
     match state {
@@ -184,9 +219,31 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     )
 }
 
+/// Значок, который сейчас стоит в трее: 0 — ещё ни одного, дальше — по номеру картинки.
+static SHOWN_ICON: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+fn shown_icon() -> Option<TrayIcon> {
+    match SHOWN_ICON.load(std::sync::atomic::Ordering::Relaxed) {
+        1 => Some(TrayIcon::Idle),
+        2 => Some(TrayIcon::Recording),
+        3 => Some(TrayIcon::Processing),
+        _ => None,
+    }
+}
+
+fn remember_icon(icon: TrayIcon) {
+    let code = match icon {
+        TrayIcon::Idle => 1,
+        TrayIcon::Recording => 2,
+        TrayIcon::Processing => 3,
+    };
+    SHOWN_ICON.store(code, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// Создать значок в трее при запуске приложения.
 pub fn init(app: &AppHandle) -> tauri::Result<()> {
     let menu = build_menu(app)?;
+    remember_icon(TrayIcon::Idle);
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(Image::from_bytes(ICON_IDLE)?)
         .tooltip(tooltip(None))
@@ -211,12 +268,18 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
 
 /// Обновить значок, подсказку и меню под текущее состояние.
 pub fn refresh(app: &AppHandle) {
-    let state = app.state::<AppState>().last_state();
+    let app_state = app.state::<AppState>();
+    let state = app_state.last_state();
+    let tray_animation = app_state.config().gui.tray_animation;
     let Some(tray) = app.tray_by_id(TRAY_ID) else {
         return;
     };
-    if let Ok(image) = Image::from_bytes(icon_bytes(state)) {
-        let _ = tray.set_icon(Some(image));
+    let next = tray_icon(state);
+    if should_update_icon(shown_icon(), next, tray_animation) {
+        if let Ok(image) = Image::from_bytes(icon_bytes(state)) {
+            let _ = tray.set_icon(Some(image));
+            remember_icon(next);
+        }
     }
     let _ = tray.set_tooltip(Some(tooltip(state)));
     match build_menu(app) {
@@ -374,6 +437,57 @@ mod tests {
             "Остановить запись"
         );
         assert_eq!(record_label(None), "Начать запись");
+    }
+
+    /// Сколько раз трей переставит значок за перечисленные события.
+    fn icon_updates(events: &[Option<DaemonState>], tray_animation: bool) -> usize {
+        let mut shown = Some(TrayIcon::Idle);
+        let mut updates = 0;
+        for state in events {
+            let next = tray_icon(*state);
+            if should_update_icon(shown, next, tray_animation) {
+                updates += 1;
+                shown = Some(next);
+            }
+        }
+        updates
+    }
+
+    #[test]
+    fn the_tray_icon_changes_at_most_twice_during_a_reply() {
+        // Критерий AM-11: за реплику значок меняется на «запись» и на «обработку» — и всё.
+        // Уровень сигнала приходит десятками событий, но состояние при этом не меняется.
+        let mut reply = vec![Some(DaemonState::Recording); 40];
+        reply.extend([
+            Some(DaemonState::Transcribing),
+            Some(DaemonState::PostProcessing),
+            Some(DaemonState::Injecting),
+        ]);
+        assert_eq!(
+            icon_updates(&reply, false),
+            2,
+            "не больше двух обновлений значка на реплику"
+        );
+        // Возврат в покой — третье и последнее обновление цикла.
+        reply.push(Some(DaemonState::Idle));
+        assert_eq!(icon_updates(&reply, false), 3);
+    }
+
+    #[test]
+    fn repeated_events_with_the_same_state_do_not_touch_the_icon() {
+        let idle = vec![Some(DaemonState::Idle); 100];
+        assert_eq!(icon_updates(&idle, false), 0, "значок не должен мигать");
+    }
+
+    #[test]
+    fn the_setting_brings_the_recording_animation_back() {
+        let recording = vec![Some(DaemonState::Recording); 10];
+        assert_eq!(
+            icon_updates(&recording, true),
+            10,
+            "при tray_animation = true кадры записи сменяются"
+        );
+        assert!(!molva_core::Config::default().gui.tray_animation);
     }
 
     #[test]

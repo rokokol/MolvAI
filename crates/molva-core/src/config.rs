@@ -64,6 +64,7 @@ pub struct Config {
     pub stats: StatsConfig,
     pub privacy: PrivacyConfig,
     pub autostart: AutostartConfig,
+    pub gui: GuiConfig,
     pub log: LogConfig,
 }
 
@@ -85,6 +86,7 @@ impl Default for Config {
             stats: StatsConfig::default(),
             privacy: PrivacyConfig::default(),
             autostart: AutostartConfig::default(),
+            gui: GuiConfig::default(),
             log: LogConfig::default(),
         }
     }
@@ -313,6 +315,13 @@ pub struct OutputConfig {
     pub paste_backend: String,
     pub type_backend: String,
     pub type_delay_ms: u32,
+    /// Пауза перед вставкой, миллисекунды.
+    ///
+    /// Между отпусканием клавиши и вставкой окно должно успеть вернуть фокус в поле ввода.
+    /// Локально хватает 50 мс; удалённому рабочему столу (RDP, VNC, xrdp) и тяжёлым Electron-окнам
+    /// нужно заметно больше — до 1500 мс.
+    pub pre_inject_delay_ms: u32,
+    /// Вставлять в терминалы через Ctrl+Shift+V, глядя на класс активного окна.
     pub terminal_shortcut: bool,
     pub notify_on_fallback: bool,
 }
@@ -327,7 +336,10 @@ impl Default for OutputConfig {
             paste_backend: "auto".into(),
             type_backend: "auto".into(),
             type_delay_ms: 4,
-            terminal_shortcut: false,
+            pre_inject_delay_ms: 50,
+            // Терминалы — обычное место диктовки, а Ctrl+V в них не вставляет ничего:
+            // по умолчанию смотрим на класс окна и переключаемся на Ctrl+Shift+V.
+            terminal_shortcut: true,
             notify_on_fallback: true,
         }
     }
@@ -450,6 +462,17 @@ impl Default for PrivacyConfig {
 #[serde(default)]
 pub struct AutostartConfig {
     pub enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GuiConfig {
+    /// Анимировать значок в трее во время записи; по умолчанию `false`.
+    ///
+    /// Выключено намеренно: значок меняется только при смене состояния (покой, запись,
+    /// обработка), поэтому за реплику он обновляется считанные разы, а не на каждое событие
+    /// уровня сигнала. Кому мигающий индикатор нужнее спокойного трея — ставит `true`.
+    pub tray_animation: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -729,6 +752,13 @@ impl Config {
             "output.mode",
             &self.output.mode,
             &["auto", "paste", "type", "clipboard"],
+        );
+        in_range(
+            issues,
+            "output.pre_inject_delay_ms",
+            f64::from(self.output.pre_inject_delay_ms),
+            0.0,
+            5000.0,
         );
         if self.output.auto_type_max_chars == 0 {
             issues.push(ConfigIssue::new(

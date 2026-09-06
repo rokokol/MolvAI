@@ -4,6 +4,12 @@
 //! Здесь нет ни аудио, ни потоков: вход — событие, выход — список действий и, возможно, ошибка
 //! для ответа клиенту. Время берётся из `Clock`, поэтому все правила про удержание клавиши
 //! проверяются тестами без единой реальной паузы.
+//!
+//! Главное правило ввода: **удержание и переключатель доступны одновременно**, выбирать между
+//! ними в настройках не нужно. Долгое нажатие — это push-to-talk: запись идёт, пока клавиша
+//! зажата, и заканчивается на отпускании. Короткий тап той же клавиши (`hotkeys.tap_toggles`)
+//! защёлкивает запись hands-free, и она продолжается до следующего нажатия. Отдельная клавиша
+//! `hotkeys.toggle` включает и выключает запись нажатием всегда, независимо от первой.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -258,6 +264,8 @@ impl Machine {
         if !rec.latched && self.hotkeys.tap_toggles && held < Self::ms(self.hotkeys.short_press_ms)
         {
             // Короткий тап включает hands-free: запись продолжается без удержания клавиши.
+            // Удержание при этом никуда не девается — длинное нажатие той же клавиши остаётся
+            // push-to-talk, и оба способа работают одновременно (AM-01).
             rec.latched = true;
             return Outcome::nothing();
         }
@@ -545,6 +553,56 @@ mod tests {
             "{:?}",
             out.actions
         );
+    }
+
+    #[test]
+    fn hold_and_toggle_both_work() {
+        // Критерий AM-01: удержание и переключатель доступны одновременно, на одних настройках.
+        let (mut m, clock) = machine();
+
+        // Удержание: запись идёт, пока клавиша зажата, и заканчивается на отпускании.
+        m.on(start());
+        clock.advance(Duration::from_millis(900));
+        let held = m.on(Input::RecordStop);
+        assert_eq!(
+            held.actions,
+            vec![Action::StopCaptureAndProcess {
+                mode: Mode::Dictation,
+                style: None
+            }],
+            "удержание обязано работать при tap_toggles = true"
+        );
+        m.on(Input::ProcessingDone);
+
+        // Переключатель: нажал — пишет, нажал ещё раз — закончил, клавишу держать не надо.
+        clock.advance(Duration::from_secs(1));
+        let on = m.on(toggle());
+        assert_eq!(
+            on.actions,
+            vec![Action::StartCapture {
+                mode: Mode::Dictation,
+                style: None
+            }]
+        );
+        clock.advance(Duration::from_secs(2));
+        let off = m.on(toggle());
+        assert_eq!(
+            off.actions,
+            vec![Action::StopCaptureAndProcess {
+                mode: Mode::Dictation,
+                style: None
+            }],
+            "переключатель обязан работать на тех же настройках"
+        );
+        m.on(Input::ProcessingDone);
+
+        // Короткий тап клавиши удержания тоже защёлкивает запись: третий способ на той же клавише.
+        clock.advance(Duration::from_secs(1));
+        m.on(start());
+        clock.advance(Duration::from_millis(100));
+        let tapped = m.on(Input::RecordStop);
+        assert!(tapped.actions.is_empty(), "{:?}", tapped.actions);
+        assert!(m.recording().unwrap().latched);
     }
 
     #[test]

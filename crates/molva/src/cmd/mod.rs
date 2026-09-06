@@ -58,6 +58,10 @@ impl CmdError {
     pub(crate) const ENGINE: u8 = crate::exit::ENGINE;
     /// Не удалось прочитать или записать файл.
     pub(crate) const FILE: u8 = crate::exit::FILE;
+    /// Демон не запущен или не отвечает.
+    pub(crate) const NO_DAEMON: u8 = crate::exit::NO_DAEMON;
+    /// Демон уже запущен: вторая копия не нужна.
+    pub(crate) const ALREADY_RUNNING: u8 = crate::exit::ALREADY_RUNNING;
 
     pub(crate) fn args(message: impl Into<String>) -> Self {
         Self {
@@ -77,6 +81,22 @@ impl CmdError {
         Self {
             message: message.into(),
             code: Self::FILE,
+        }
+    }
+
+    /// Демон недоступен: команда сделала, что смогла, и честно об этом сообщает.
+    pub(crate) fn no_daemon(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            code: Self::NO_DAEMON,
+        }
+    }
+
+    /// Демон уже запущен: вторая копия завершается с сообщением и своим кодом.
+    pub(crate) fn already_running(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            code: Self::ALREADY_RUNNING,
         }
     }
 }

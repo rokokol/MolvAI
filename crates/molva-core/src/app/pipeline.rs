@@ -32,6 +32,7 @@ use crate::domain::text::word_count;
 
 use super::daemon::chunked::{self, ChunkContext, ChunkPrefix, ChunkText};
 use super::dictionary::Dictionary;
+use super::llm_output::sanitize_llm_output;
 use super::rules::RuleSet;
 use super::styles::Styles;
 use crate::infra::stt::{is_silence_hallucination, transcribe_with_language_policy};
@@ -94,6 +95,20 @@ fn output_mode(value: &str) -> OutputMode {
     }
 }
 
+/// Способ вставки, каким он попадёт в журнал.
+///
+/// Критерий AJ-09/AJ-10: если активного окна нет, вставлять некуда — текст остаётся в буфере
+/// обмена, реализация вставки говорит об этом уведомлением, а в журнале случай виден отдельно
+/// (`clipboard-no-focus`), а не выдаётся за удачную вставку в поле ввода.
+pub const NO_FOCUS_METHOD: &str = "clipboard-no-focus";
+
+fn inject_method_for(method: &str, app_hint: Option<&str>) -> String {
+    if app_hint.is_none() && method == "clipboard-only" {
+        return NO_FOCUS_METHOD.to_string();
+    }
+    method.to_string()
+}
+
 fn millis_since(start: Instant, now: Instant) -> u32 {
     now.saturating_duration_since(start)
         .as_millis()
@@ -113,6 +128,8 @@ pub struct Pipeline {
     rules: RuleSet,
     styles: Styles,
     session_id: Uuid,
+    /// От отпускания клавиши до закрытия потока микрофона: демон меряет, конвейер записывает.
+    stop_after_release_ms: Option<u32>,
     /// Начало реплики, распознанное кусками во время записи; `None` — обычная реплика целиком.
     chunk_prefix: Option<ChunkPrefix>,
 }
@@ -139,8 +156,16 @@ impl Pipeline {
             rules,
             styles,
             session_id: Uuid::new_v4(),
+            stop_after_release_ms: None,
             chunk_prefix: None,
         }
+    }
+
+    /// Записать замер демона: за сколько микрофон освободился после отпускания клавиши.
+    ///
+    /// Значение расходуется одной репликой: следующая реплика получит свой замер, а не чужой.
+    pub fn set_stop_after_release(&mut self, ms: u32) {
+        self.stop_after_release_ms = Some(ms);
     }
 
     /// Подключить словарь терминов.
@@ -283,6 +308,7 @@ impl Pipeline {
             latency_ms: LatencyMs {
                 stt: stt_ms,
                 rules: rules_ms,
+                stop_after_release: self.stop_after_release_ms.take(),
                 first_hypothesis: prefix.first_hypothesis_ms,
                 ..Default::default()
             },
@@ -314,10 +340,11 @@ impl Pipeline {
                 .resolve(&text, self.config.output.auto_type_max_chars as usize);
             // Способ вставки должен знать класс окна: в терминалах вставка идёт Ctrl+Shift+V.
             self.injector.set_window(app_hint);
+            self.wait_before_inject();
             let inject_started = self.clock.instant();
             match self.injector.inject(&text, resolved) {
                 Ok(report) => {
-                    entry.inject_method = Some(report.method);
+                    entry.inject_method = Some(inject_method_for(&report.method, app_hint));
                     entry.latency_ms.inject =
                         Some(millis_since(inject_started, self.clock.instant()));
                 }
@@ -336,6 +363,20 @@ impl Pipeline {
         }
         self.journal.append(&entry)?;
         Ok(entry)
+    }
+
+    /// Пауза перед вставкой, задаваемая настройкой `output.pre_inject_delay_ms`.
+    ///
+    /// Между отпусканием клавиши и вставкой окно должно успеть вернуть фокус в поле ввода.
+    /// Локально хватает 50 мс по умолчанию; на удалённом рабочем столе и в медленных приложениях
+    /// пауза ставится вручную вплоть до 1500 мс, иначе первые символы уходят в никуда.
+    fn wait_before_inject(&self) {
+        let delay = self.config.output.pre_inject_delay_ms;
+        if delay == 0 {
+            return;
+        }
+        self.clock
+            .sleep(std::time::Duration::from_millis(u64::from(delay)));
     }
 
     /// Распознать кусок ещё идущей записи (потоковая обработка, см. [`chunked`]).
@@ -501,7 +542,9 @@ impl Pipeline {
                             completion: completion.unwrap_or(0),
                         }),
                     };
-                    let text = response.text.trim().to_string();
+                    // Служебные теги, ограждения, вводные фразы и эхо словаря не должны
+                    // попасть в поле пользователя (AM-19).
+                    let text = sanitize_llm_output(&response.text, &self.dictionary.prompt_hint());
                     if text.is_empty() {
                         last = LlmError::BadResponse("модель вернула пустой текст".into());
                         continue;
@@ -601,6 +644,7 @@ mod tests {
         injector: Arc<Mutex<RecordingInjector>>,
         journal: Arc<Mutex<MemJournal>>,
         stt: Arc<Mutex<FakeStt>>,
+        clock: Arc<FakeClock>,
     }
 
     fn audio(secs: f32) -> PcmAudio {
@@ -619,12 +663,13 @@ mod tests {
         let stt = Arc::new(Mutex::new(FakeStt::returning(transcript)));
         let injector = Arc::new(Mutex::new(RecordingInjector::default()));
         let journal = Arc::new(Mutex::new(MemJournal::default()));
+        let clock = clock();
         let pipeline = Pipeline::new(
             Box::new(SharedStt(Arc::clone(&stt))),
             llm.map(|llm| llm as Arc<dyn LlmClient>),
             Box::new(SharedInjector(Arc::clone(&injector))),
             Box::new(SharedJournal(Arc::clone(&journal))),
-            clock(),
+            clock.clone(),
             config,
         );
         Harness {
@@ -632,6 +677,7 @@ mod tests {
             injector,
             journal,
             stt,
+            clock,
         }
     }
 
@@ -1072,6 +1118,144 @@ mod tests {
             .map(|(_, mode)| *mode)
             .collect();
         assert_eq!(modes, vec![OutputMode::Type], "короткий текст набирается");
+    }
+
+    #[test]
+    fn service_tags_from_the_model_never_reach_the_injector() {
+        // Критерий AM-19: рассуждения и ограждения остаются у модели, в поле идёт текст.
+        let llm = Arc::new(FakeLlm::echoing(
+            "<think>подумаю ещё</think>\n```\nСобрание переносится на среду.\n```",
+        ));
+        let text = "это достаточно длинная реплика из более чем десяти слов чтобы модель \
+                    точно вызвалась";
+        let mut harness = build(text, Some(llm), with_llm());
+        let entry = harness
+            .pipeline
+            .run(audio(8.0), Mode::Dictation, None, None)
+            .unwrap();
+        assert_eq!(injected(&harness), vec!["Собрание переносится на среду."]);
+        assert_eq!(
+            entry.text_final.as_deref(),
+            Some("Собрание переносится на среду.")
+        );
+    }
+
+    #[test]
+    fn command_mode_output_is_cleaned_up_too() {
+        let llm = Arc::new(FakeLlm::echoing(
+            "Вот исправленный текст: \"Добрый день, коллеги.\"",
+        ));
+        let mut harness = build("сделай официальным", Some(llm), with_llm());
+        harness.injector.lock().unwrap().selection = Some("привет как сам".into());
+        harness
+            .pipeline
+            .run(audio(3.0), Mode::Command, None, None)
+            .unwrap();
+        assert_eq!(injected(&harness), vec!["Добрый день, коллеги."]);
+    }
+
+    #[test]
+    fn a_model_that_echoes_the_dictionary_is_treated_as_a_failure() {
+        // Ответ, состоящий из одной подсказки словаря, — это не реплика: остаётся текст правил.
+        let llm = Arc::new(FakeLlm::echoing("MolvAI"));
+        let text = "это достаточно длинная реплика из более чем десяти слов чтобы модель \
+                    точно вызвалась";
+        let mut harness = build(text, Some(Arc::clone(&llm)), with_llm());
+        harness.pipeline.set_dictionary(Dictionary::from_terms(
+            vec![Term::new("MolvAI", &["молва"])],
+            false,
+        ));
+        let entry = harness
+            .pipeline
+            .run(audio(8.0), Mode::Dictation, None, None)
+            .unwrap();
+        assert!(!entry.llm_used, "эхо словаря — не ответ модели");
+        assert!(
+            injected(&harness)[0].starts_with("Это достаточно длинная"),
+            "{:?}",
+            injected(&harness)
+        );
+    }
+
+    #[test]
+    fn the_pause_before_the_injection_comes_from_the_configuration() {
+        // Критерий AM-20: пауза перед вставкой задаётся настройкой, а не зашита в код.
+        let mut harness = build("привет мир", None, PipelineConfig::default());
+        harness
+            .pipeline
+            .run(audio(4.0), Mode::Dictation, None, None)
+            .unwrap();
+        assert_eq!(
+            harness.clock.slept(),
+            vec![std::time::Duration::from_millis(50)],
+            "по умолчанию перед вставкой ждём 50 мс"
+        );
+
+        // Удалённому рабочему столу нужно больше времени на возврат фокуса.
+        let mut config = PipelineConfig::default();
+        config.output.pre_inject_delay_ms = 1500;
+        let mut harness = build("привет мир", None, config);
+        harness
+            .pipeline
+            .run(audio(4.0), Mode::Dictation, None, None)
+            .unwrap();
+        assert_eq!(
+            harness.clock.slept(),
+            vec![std::time::Duration::from_millis(1500)]
+        );
+    }
+
+    #[test]
+    fn the_microphone_release_measurement_lands_in_the_entry_once() {
+        // Гарантия приватности микрофона должна быть видна в журнале: замер демона попадает
+        // в запись той реплики, к которой относится, и не переезжает в следующую.
+        let mut harness = build("привет мир", None, PipelineConfig::default());
+        harness.pipeline.set_stop_after_release(120);
+        let first = harness
+            .pipeline
+            .run(audio(4.0), Mode::Dictation, None, None)
+            .unwrap();
+        assert_eq!(first.latency_ms.stop_after_release, Some(120));
+        let second = harness
+            .pipeline
+            .run(audio(4.0), Mode::Dictation, None, None)
+            .unwrap();
+        assert_eq!(second.latency_ms.stop_after_release, None);
+    }
+
+    #[test]
+    fn a_zero_pause_does_not_wait_at_all() {
+        let mut config = PipelineConfig::default();
+        config.output.pre_inject_delay_ms = 0;
+        let mut harness = build("привет мир", None, config);
+        harness
+            .pipeline
+            .run(audio(4.0), Mode::Dictation, None, None)
+            .unwrap();
+        assert!(harness.clock.slept().is_empty());
+    }
+
+    #[test]
+    fn nothing_to_inject_means_nothing_to_wait_for() {
+        // Пустая реплика не вставляется — и паузы перед вставкой тоже быть не должно.
+        let mut harness = build("   ", None, PipelineConfig::default());
+        harness
+            .pipeline
+            .run(audio(4.0), Mode::Dictation, None, None)
+            .unwrap();
+        assert!(harness.clock.slept().is_empty());
+    }
+
+    #[test]
+    fn without_an_active_window_the_journal_says_the_text_stayed_in_the_clipboard() {
+        // Критерий AJ-09/AJ-10: поля ввода нет — текст в буфере, и в истории это видно.
+        assert_eq!(inject_method_for("clipboard-only", None), NO_FOCUS_METHOD);
+        assert_eq!(
+            inject_method_for("clipboard-only", Some("kitty")),
+            "clipboard-only",
+            "окно есть: обычная вставка через буфер, пусть и с Ctrl+V руками"
+        );
+        assert_eq!(inject_method_for("wtype-type", None), "wtype-type");
     }
 
     #[test]

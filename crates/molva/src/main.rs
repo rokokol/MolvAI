@@ -28,7 +28,7 @@ use molva_core::Config;
 mod cmd;
 
 /// Коды выхода, общие для всех подкоманд: 0 ok, 2 аргументы, 3 демон недоступен, 4 занят,
-/// 5 ошибка движка, 6 ошибка файла.
+/// 5 ошибка движка, 6 ошибка файла, 7 демон уже запущен.
 mod exit {
     pub(crate) const OK: u8 = 0;
     pub(crate) const BAD_ARGS: u8 = 2;
@@ -36,6 +36,8 @@ mod exit {
     pub(crate) const BUSY: u8 = 4;
     pub(crate) const ENGINE: u8 = 5;
     pub(crate) const FILE: u8 = 6;
+    /// Демон уже запущен: вторая копия завершается с сообщением, а не дерётся за микрофон.
+    pub(crate) const ALREADY_RUNNING: u8 = 7;
 }
 
 #[derive(Parser)]
@@ -218,7 +220,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
     };
 
     match cli.command {
-        Commands::History(args) => cmd::history::run(args, &config()?),
+        Commands::History(args) => cmd::history::run(args, &config()?, &socket),
         Commands::Stats(args) => cmd::stats::run(args, &config()?),
         Commands::Styles { action } => cmd::styles::run(action, &config()?),
         Commands::Dictionary { action } => cmd::dictionary::run(action, &config()?, &config_path),
@@ -341,6 +343,7 @@ mod tests {
         assert_eq!(exit::BUSY, 4);
         assert_eq!(exit::ENGINE, 5);
         assert_eq!(exit::FILE, 6);
+        assert_eq!(exit::ALREADY_RUNNING, 7);
         assert_eq!(cmd::CmdError::ENGINE, exit::ENGINE);
         assert_eq!(cmd::CmdError::FILE, exit::FILE);
         assert_eq!(cmd::CmdError::BAD_ARGS, exit::BAD_ARGS);
