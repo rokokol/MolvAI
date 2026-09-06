@@ -9,6 +9,7 @@ use molva_core::app::daemon::{Daemon, DaemonParts};
 use molva_core::app::dictionary::Dictionary;
 use molva_core::app::engine;
 use molva_core::app::journal::{FileJournal, NullJournal};
+use molva_core::app::models;
 use molva_core::app::pipeline::{Pipeline, PipelineConfig};
 use molva_core::app::secrets;
 use molva_core::config::Config;
@@ -47,7 +48,30 @@ pub(crate) fn resolve_socket(flag: Option<PathBuf>) -> PathBuf {
 
 /// Движок распознавания по настройкам: единая фабрика ядра, та же, что у `transcribe` и `bench`.
 pub(crate) fn build_stt(config: &Config) -> anyhow::Result<Box<dyn SttEngine>> {
+    ensure_model_present(config)?;
     engine::build_stt(config, None).map_err(|err| anyhow!("{err}"))
+}
+
+/// Докачать веса, если их нет (`stt.auto_pull`): демон на чистой машине должен подняться
+/// одной командой, а не отправлять человека читать про `molva models pull`. Прогресс идёт в
+/// stderr полоской, как у `molva models pull`; с выключенной настройкой поведение прежнее —
+/// понятная ошибка с командой для скачивания.
+fn ensure_model_present(config: &Config) -> anyhow::Result<()> {
+    if config.stt.engine.trim() != "whisper-cpp" || !config.stt.auto_pull {
+        return Ok(());
+    }
+    let name = config.stt.model.trim();
+    match models::installed_path(config, name) {
+        Ok(_) => return Ok(()),
+        Err(models::ModelError::NotInstalled { .. }) => {}
+        Err(err) => return Err(anyhow!("{err}")),
+    }
+    let directory = models::models_dir(config)?;
+    tracing::info!(model = name, directory = %directory.display(), "весов нет, скачиваю");
+    let report = super::models::pull(name, &directory, false, !super::progress_enabled(false))
+        .map_err(|err| anyhow!("{err}"))?;
+    tracing::info!(path = %report.path.display(), "веса на месте, контрольная сумма совпала");
+    Ok(())
 }
 
 /// Источник звука: микрофон через cpal, а для фейкового движка — две секунды тишины,
@@ -226,6 +250,32 @@ mod tests {
     }
 
     #[test]
+    fn auto_pull_stays_quiet_for_the_fake_engine_and_when_switched_off() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut config = Config::default();
+        config.stt.model_path = directory.path().display().to_string();
+
+        // Поддельный движок весов не требует: сеть не трогается.
+        config.stt.engine = "fake".into();
+        ensure_model_present(&config).unwrap();
+
+        // Выключенная докачка при отсутствующих весах ничего не качает и не падает здесь:
+        // ошибку с командой pull даст сборка движка, как и раньше.
+        config.stt.engine = "whisper-cpp".into();
+        config.stt.auto_pull = false;
+        ensure_model_present(&config).unwrap();
+        assert!(
+            std::fs::read_dir(directory.path())
+                .unwrap()
+                .next()
+                .is_none(),
+            "в каталог моделей ничего не скачано"
+        );
+        let err = build_stt(&config).unwrap_err().to_string();
+        assert!(err.contains("molva models pull"), "{err}");
+    }
+
+    #[test]
     fn the_fake_engine_is_available_and_missing_weights_say_how_to_get_them() {
         let directory = tempfile::tempdir().unwrap();
         let mut config = Config::default();
@@ -236,6 +286,8 @@ mod tests {
         }
         config.stt.engine = "whisper-cpp".into();
         config.stt.model_path = directory.path().display().to_string();
+        // Тесты не ходят в сеть: без этого демон честно скачал бы веса во временный каталог.
+        config.stt.auto_pull = false;
         let err = match build_stt(&config) {
             Err(err) => err.to_string(),
             Ok(_) => panic!("без файла весов движок собираться не должен"),

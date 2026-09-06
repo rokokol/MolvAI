@@ -141,6 +141,9 @@ pub struct SttConfig {
     pub threads: u32,
     pub unload_after_secs: u32,
     pub no_speech_threshold: f32,
+    /// Докачивать веса при старте демона, если их нет: одна команда на чистой машине.
+    /// `false` — прежнее поведение, ошибка с командой `molva models pull`.
+    pub auto_pull: bool,
     /// Распознавать реплику кусками прямо во время записи.
     pub chunked: bool,
     /// Пауза, по которой режется кусок при потоковой обработке.
@@ -162,6 +165,7 @@ impl Default for SttConfig {
             threads: 0,
             unload_after_secs: 600,
             no_speech_threshold: 0.6,
+            auto_pull: true,
             chunked: true,
             // Пауза сегментации короче, чем `audio.vad_min_pause_ms`: там пауза решает, кончилась
             // ли реплика, а здесь — можно ли уже отправить кусок в модель.

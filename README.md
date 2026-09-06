@@ -79,7 +79,7 @@ cargo build --release --bin molva
 ## Быстрый старт
 
 ```sh
-molva models pull small   # веса с Hugging Face, проверяются по SHA-256
+molva models pull small   # веса с Hugging Face, проверяются по SHA-256; без этого шага демон скачает их сам при первом старте
 molva doctor                 # сессия, инструменты вставки, права, демон, веса whisper и sha256, провайдер модели
 molva devices                # список микрофонов
 molva test-inject            # проверить, что текст попадает в активное поле
@@ -150,6 +150,7 @@ bind  = CTRL ALT, C, exec, molva record cancel
 | `stt` | `threads` | `0` | потоков распознавания; `0` — все логические ядра |
 | `stt` | `unload_after_secs` | `600` | через сколько выгрузить модель из памяти |
 | `stt` | `no_speech_threshold` | `0.6` | порог, выше которого фрагмент считается не речью |
+| `stt` | `auto_pull` | `true` | демон сам скачивает веса при старте, если их нет, с прогрессом в stderr и проверкой SHA-256; `false` — ошибка с командой `molva models pull` |
 | `stt` | `chunked` | `true` | распознавать реплику кусками прямо во время записи |
 | `stt` | `chunk_pause_ms` | `700` | пауза, по которой кусок уходит в модель |
 | `stt` | `streaming_preview` | `true` | показывать черновик распознанного во время речи |

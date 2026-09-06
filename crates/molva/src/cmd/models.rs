@@ -117,8 +117,14 @@ pub(crate) fn needs_download(target: &Path, sha256: &str, force: bool) -> Result
     Ok(!ok)
 }
 
-/// Скачать модель с полоской прогресса в stderr.
-fn pull(name: &str, directory: &Path, force: bool, quiet: bool) -> Result<PullReport, CmdError> {
+/// Скачать модель с полоской прогресса в stderr. Тем же путём демон докачивает веса сам,
+/// когда их нет (`stt.auto_pull`).
+pub(crate) fn pull(
+    name: &str,
+    directory: &Path,
+    force: bool,
+    quiet: bool,
+) -> Result<PullReport, CmdError> {
     let info = models::find(name).map_err(|e| CmdError::args(e.to_string()))?;
     let target = directory.join(info.file_name);
     if !needs_download(&target, info.sha256, force)? {
