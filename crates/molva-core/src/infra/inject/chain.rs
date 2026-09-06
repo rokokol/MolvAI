@@ -520,6 +520,19 @@ mod tests {
     }
 
     #[test]
+    fn the_terminal_shortcut_is_on_by_default() {
+        // Критерий AM-08: вставка в терминал работает из коробки, без правки настроек.
+        let notifier = Arc::new(RecordingNotifier::default());
+        let mut chain =
+            ChainInjector::for_platform(&OutputConfig::default(), &Platform::X11, notifier);
+        assert!(chain.terminal_shortcut, "по умолчанию включено");
+        chain.apply_window(Some("kitty"));
+        assert!(chain.fallback.terminal, "в терминале нужен Ctrl+Shift+V");
+        chain.apply_window(Some("code"));
+        assert!(!chain.fallback.terminal, "в редакторе — обычный Ctrl+V");
+    }
+
+    #[test]
     fn terminal_shortcut_is_off_unless_the_config_asks_for_it() {
         let (mut chain, _clip, _n) = chain(vec![]);
         chain.apply_window(Some("kitty"));

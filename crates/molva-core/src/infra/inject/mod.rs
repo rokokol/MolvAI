@@ -29,6 +29,10 @@ pub fn parse_output_mode(value: &str) -> OutputMode {
 }
 
 /// Классы окон терминалов: в них Ctrl+V не вставляет, нужен Ctrl+Shift+V.
+///
+/// Только реальные классы окон X11 и Wayland — те, что показывает `hyprctl activewindow`,
+/// `xprop WM_CLASS` или `swaymsg -t get_tree`. Имена программ, у которых своего окна нет
+/// (tmux, screen), сюда не годятся: класс окна у них чужой.
 const TERMINAL_CLASSES: &[&str] = &[
     "kitty",
     "alacritty",
@@ -36,20 +40,44 @@ const TERMINAL_CLASSES: &[&str] = &[
     "footclient",
     "wezterm",
     "org.wezfurlong.wezterm",
+    "ghostty",
+    "com.mitchellh.ghostty",
     "konsole",
+    "org.kde.konsole",
+    "yakuake",
+    "org.kde.yakuake",
     "gnome-terminal",
+    "org.gnome.terminal",
+    "org.gnome.console",
+    "kgx",
+    "xfce4-terminal",
+    "lxterminal",
+    "qterminal",
     "xterm",
+    "uxterm",
     "urxvt",
+    "rxvt",
+    "st",
     "terminator",
     "tilix",
+    "guake",
+    "contour",
+    "rio",
+    "hyper",
+    "com.raggesilver.blackbox",
 ];
 
 /// Похож ли класс окна на терминал.
+///
+/// Совпадение либо точное, либо по последнему сегменту обратного DNS
+/// (`org.wezfurlong.wezterm` → `wezterm`). Просто «оканчивается на» здесь не годится: короткое
+/// имя вроде `st` тогда сделало бы терминалом каждое окно, чей класс кончается на эти буквы.
 pub fn is_terminal_class(class: &str) -> bool {
     let class = class.trim().to_ascii_lowercase();
+    let tail = class.rsplit('.').next().unwrap_or(&class);
     TERMINAL_CLASSES
         .iter()
-        .any(|known| class == *known || class.ends_with(known))
+        .any(|known| class == *known || tail == *known)
 }
 
 #[cfg(test)]
@@ -77,5 +105,36 @@ mod tests {
         assert!(is_terminal_class("org.wezfurlong.wezterm"));
         assert!(!is_terminal_class("firefox"));
         assert!(!is_terminal_class("org.telegram.desktop"));
+    }
+
+    #[test]
+    fn the_terminals_people_actually_use_are_in_the_list() {
+        // Классы взяты у настоящих окон: hyprctl activewindow, xprop WM_CLASS, swaymsg get_tree.
+        for class in [
+            "com.mitchellh.ghostty",
+            "ghostty",
+            "org.kde.konsole",
+            "konsole",
+            "foot",
+            "footclient",
+            "st",
+            "xterm",
+            "tilix",
+            "terminator",
+            "org.gnome.Terminal",
+            "kgx",
+            "xfce4-terminal",
+        ] {
+            assert!(is_terminal_class(class), "{class} — терминал");
+        }
+    }
+
+    #[test]
+    fn a_class_that_merely_ends_with_a_terminal_name_is_not_a_terminal() {
+        // Короткое `st` не должно превращать в терминал каждое окно с такими буквами в хвосте.
+        assert!(!is_terminal_class("gnome-text-editor"));
+        assert!(!is_terminal_class("libreoffice-writer-st"));
+        assert!(!is_terminal_class("code"));
+        assert!(!is_terminal_class("org.gnome.Nautilus"));
     }
 }

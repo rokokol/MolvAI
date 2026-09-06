@@ -18,6 +18,7 @@ use super::inject::{InjectError, InjectReport, OutputMode, TextInjector};
 use super::journal::{Journal, JournalError};
 use super::llm::{ChatRequest, ChatResponse, LlmClient, LlmError};
 use super::notify::Notifier;
+use super::sound::{CueKind, SoundCue};
 use super::stt::{SttEngine, SttError, SttOptions, Transcript};
 
 /// Источник, отдающий заранее заданный буфер.
@@ -264,6 +265,8 @@ pub struct FakeClock {
     now: Mutex<DateTime<Utc>>,
     base: Instant,
     offset: Mutex<Duration>,
+    /// Каждая пауза, о которой попросил код продукта: тест проверяет её, не ожидая по-настоящему.
+    slept: Mutex<Vec<Duration>>,
 }
 
 impl FakeClock {
@@ -272,7 +275,13 @@ impl FakeClock {
             now: Mutex::new(now),
             base: Instant::now(),
             offset: Mutex::new(Duration::ZERO),
+            slept: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Паузы в порядке запроса.
+    pub fn slept(&self) -> Vec<Duration> {
+        self.slept.lock().map(|s| s.clone()).unwrap_or_default()
     }
 
     pub fn advance(&self, by: Duration) {
@@ -294,6 +303,14 @@ impl Clock for FakeClock {
         let offset = self.offset.lock().map(|o| *o).unwrap_or_default();
         self.base + offset
     }
+
+    /// Пауза в тесте не ждёт: она записывается и двигает часы вперёд.
+    fn sleep(&self, duration: Duration) {
+        if let Ok(mut slept) = self.slept.lock() {
+            slept.push(duration);
+        }
+        self.advance(duration);
+    }
 }
 
 /// Собирает уведомления в память.
@@ -306,6 +323,31 @@ impl Notifier for RecordingNotifier {
     fn notify(&self, title: &str, body: &str) {
         if let Ok(mut messages) = self.messages.lock() {
             messages.push((title.to_string(), body.to_string()));
+        }
+    }
+}
+
+/// Запоминает сыгранные сигналы: тест считает, сколько их было на реплику.
+#[derive(Debug, Default)]
+pub struct RecordingSoundCue {
+    played: Mutex<Vec<CueKind>>,
+}
+
+impl RecordingSoundCue {
+    /// Сигналы в порядке воспроизведения.
+    pub fn played(&self) -> Vec<CueKind> {
+        self.played.lock().map(|p| p.clone()).unwrap_or_default()
+    }
+}
+
+impl SoundCue for RecordingSoundCue {
+    fn id(&self) -> &'static str {
+        "recording"
+    }
+
+    fn play(&self, kind: CueKind) {
+        if let Ok(mut played) = self.played.lock() {
+            played.push(kind);
         }
     }
 }

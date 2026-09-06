@@ -410,7 +410,7 @@ defect 'llm/auth-error-is-not-retryable' 'crates/molva-core/src/infra/llm/openai
   'неверный ключ выглядит как временная недоступность: конвейер повторяет запрос впустую'
 
 defect 'llm/timeout-is-reported-as-timeout' 'crates/molva-core/src/infra/llm/openai_compat.rs' \
-  '                LlmError::Timeout(self.timeout.as_secs())' \
+  '                LlmError::Timeout(self.timeout.as_secs().max(1))' \
   '                LlmError::Unavailable("timeout".into())' \
   'таймаут модели неотличим от отказа сервера: пользователю нечего чинить'
 
@@ -470,6 +470,108 @@ defect 'config/validation-collects-every-issue' 'crates/molva-core/src/config.rs
   '                issues.push(ConfigIssue::allowed(key, value, allowed));' \
   '                let _ = (key, value, allowed);' \
   'неверное значение из списка допустимых проходит проверку молча'
+
+# --- дорожка H: признаки для чекера ---
+
+defect 'sound/start-cue-on-record' 'crates/molva-core/src/app/daemon/mod.rs' \
+  '                                        sound.play(CueKind::RecordStart);' \
+  '                                        let _ = &sound;' \
+  'начало записи ничем не отмечено: пользователь говорит в закрытый микрофон и узнаёт об этом потом'
+
+defect 'sound/stop-cue-on-record' 'crates/molva-core/src/app/daemon/mod.rs' \
+  '                                        sound.play(CueKind::RecordStop);' \
+  '                                        let _ = &sound;' \
+  'конец записи не слышен: непонятно, отпустил ли ты клавишу и ушла ли реплика в обработку'
+
+defect 'pipeline/no-focus-is-visible-in-the-journal' 'crates/molva-core/src/app/pipeline.rs' \
+  '    if app_hint.is_none() && method == "clipboard-only" {' \
+  '    if false {' \
+  'реплика без активного поля ввода выглядит в истории как успешно вставленная'
+
+defect 'gui/tray-icon-is-static-between-states' 'crates/molva-gui/src/tray.rs' \
+  '    shown != Some(next)' \
+  '    shown != Some(next) || true' \
+  'значок трея переставляется на каждое событие демона и мигает всю реплику'
+
+defect 'cli/second-instance-refuses-to-start' 'crates/molva/src/cmd/daemon.rs' \
+  '    let Some(pid) = ping(socket) else {' \
+  '    let Some(pid) = ping(socket).filter(|_| false) else {' \
+  'вторая копия демона стартует молча: две копии дерутся за микрофон и за вставку'
+
+defect 'config/terminal-shortcut-on-by-default' 'crates/molva-core/src/config.rs' \
+  '            terminal_shortcut: true,' \
+  '            terminal_shortcut: false,' \
+  'из коробки вставка в терминал идёт Ctrl+V и не работает: реплика пропадает молча'
+
+defect 'inject/terminal-class-matches-exactly' 'crates/molva-core/src/infra/inject/mod.rs' \
+  '        .any(|known| class == *known || tail == *known)' \
+  '        .any(|known| class == *known || class.ends_with(known))' \
+  'терминалом считается любое окно с похожим хвостом класса: в редактор уходит Ctrl+Shift+V'
+
+defect 'daemon/hold-still-works-with-tap-toggles' 'crates/molva-core/src/app/daemon/state.rs' \
+  '        if !rec.latched && self.hotkeys.tap_toggles && held < Self::ms(self.hotkeys.short_press_ms)' \
+  '        if !rec.latched && self.hotkeys.tap_toggles && held < Duration::MAX' \
+  'удержание перестаёт работать при включённом переключателе: остаётся только hands-free'
+
+defect 'audio/mic-release-is-measured' 'crates/molva-core/src/app/daemon/mod.rs' \
+  '                                            stop_after_release_ms,' \
+  '                                            stop_after_release_ms: u32::MAX,' \
+  'время освобождения микрофона в журнале выдумано: проверить приватность нечем'
+
+defect 'audio/mic-release-reaches-the-entry' 'crates/molva-core/src/app/daemon/processor.rs' \
+  '                stop_after_release: self.stop_after_release_ms.take(),' \
+  '                stop_after_release: None,' \
+  'замер освобождения микрофона теряется по дороге в запись журнала'
+
+defect 'pipeline/mic-release-reaches-the-entry' 'crates/molva-core/src/app/pipeline.rs' \
+  '                stop_after_release: self.stop_after_release_ms.take(),' \
+  '                stop_after_release: None,' \
+  'в журнале конвейера нет времени освобождения микрофона: гарантия приватности недоказуема'
+
+defect 'daemon/inject-text-repeats-a-reply' 'crates/molva-core/src/app/daemon/mod.rs' \
+  '            Command::InjectText { text, mode } => self.inject_text(&text, mode),' \
+  '            Command::InjectText { text, mode } => { let _ = (text, mode); Err(internal("нет")) }' \
+  'реплику из истории нельзя вставить заново: демон отвечает отказом на inject.text'
+
+defect 'cli/paste-needs-an-id-or-last' 'crates/molva/src/cmd/history.rs' \
+  '    if !last {' \
+  '    if false {' \
+  '`molva history paste` без аргументов молча вставляет последнюю реплику вместо подсказки'
+
+defect 'llm/output-is-sanitized' 'crates/molva-core/src/app/pipeline.rs' \
+  '                    let text = sanitize_llm_output(&response.text, &self.dictionary.prompt_hint());' \
+  '                    let text = response.text.trim().to_string();' \
+  'ответ модели уходит в поле как есть: рассуждения и ограждения вставляются пользователю'
+
+defect 'llm/thinking-tags-are-stripped' 'crates/molva-core/src/app/llm_output.rs' \
+  '        out = strip_tag_block(&out, tag);' \
+  '        let _ = tag;' \
+  '<think>…</think> остаётся в тексте: рассуждение модели вставляется вместе с репликой'
+
+defect 'llm/code-fences-are-stripped' 'crates/molva-core/src/app/llm_output.rs' \
+  '    out = strip_code_fences(&out);' \
+  '    out = out.trim().to_string();' \
+  'ответ приезжает в ```-ограждении: в поле ввода попадают три обратные кавычки'
+
+defect 'llm/dictionary-echo-is-not-a-reply' 'crates/molva-core/src/app/llm_output.rs' \
+  '    out = strip_dictionary_echo(&out, dictionary_prompt);' \
+  '    let _ = dictionary_prompt;' \
+  'модель возвращает подсказку словаря, и список терминов вставляется вместо реплики'
+
+defect 'pipeline/pause-before-injection' 'crates/molva-core/src/app/pipeline.rs' \
+  '            self.wait_before_inject();' \
+  '            let _ = self.config.output.pre_inject_delay_ms;' \
+  'вставка идёт сразу после отпускания клавиши: на удалённом рабочем столе текст уходит мимо поля'
+
+defect 'pipeline/pause-comes-from-the-config' 'crates/molva-core/src/app/pipeline.rs' \
+  '        let delay = self.config.output.pre_inject_delay_ms;' \
+  '        let delay = 50u32;' \
+  'настройка паузы перед вставкой ни на что не влияет: медленному приложению её не увеличить'
+
+defect 'sound/setting-turns-cues-off' 'crates/molva-core/src/infra/sound.rs' \
+  '    if !audio.sounds {' \
+  '    if false {' \
+  'настройка audio.sounds = false не выключает звук: молчания добиться нечем'
 
 defect 'cli/history-limit-keeps-the-newest' 'crates/molva/src/cmd/history.rs' \
   '        selected = selected.split_off(selected.len() - args.limit);' \

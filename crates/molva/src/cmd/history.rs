@@ -7,10 +7,17 @@ use chrono::Utc;
 use clap::{Args, Subcommand, ValueEnum};
 use molva_core::app::journal::{self, FileJournal};
 use molva_core::domain::entry::Entry;
+use molva_core::domain::inject::{OutputMode, TextInjector};
+use molva_core::domain::notify::Notifier;
+use molva_core::infra::inject::ClipboardOnlyInjector;
+use molva_core::infra::ipc::{Client, IpcClientError};
+use molva_core::infra::notify::LogNotifier;
+use molva_core::ipc::protocol::Command;
 use molva_core::Config;
 
 use super::{
-    confirm, one_line, open_journal, parse_moment, truncate, ID_SEPARATOR, LINE_TEXT_LIMIT,
+    confirm, one_line, open_journal, parse_moment, truncate, CmdError, ID_SEPARATOR,
+    LINE_TEXT_LIMIT,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -55,6 +62,14 @@ pub enum HistoryAction {
         /// Идентификатор или его начало
         id: String,
     },
+    /// Вставить реплику из истории заново, не диктуя её ещё раз
+    Paste {
+        /// Идентификатор или его начало
+        id: Option<String>,
+        /// Взять последнюю реплику
+        #[arg(long)]
+        last: bool,
+    },
     /// Удалить одну запись
     Delete { id: String },
     /// Очистить историю целиком
@@ -66,11 +81,12 @@ pub enum HistoryAction {
     Export { file: PathBuf },
 }
 
-pub fn run(args: HistoryArgs, config: &Config) -> anyhow::Result<()> {
+pub fn run(args: HistoryArgs, config: &Config, socket: &std::path::Path) -> anyhow::Result<()> {
     let journal = open_journal(config)?;
     match args.action {
         None => list(&journal, &args, config),
         Some(HistoryAction::Show { id }) => show(&journal, &id),
+        Some(HistoryAction::Paste { id, last }) => paste(&journal, id.as_deref(), last, socket),
         Some(HistoryAction::Delete { id }) => delete(&journal, &id),
         Some(HistoryAction::Clear { yes }) => clear(&journal, yes),
         Some(HistoryAction::Export { file }) => export(&journal, &file),
@@ -189,6 +205,99 @@ fn show(journal: &FileJournal, id: &str) -> anyhow::Result<()> {
     let entries = journal.load_all()?;
     let entry = find(&entries, id)?;
     println!("{}", serde_json::to_string_pretty(entry)?);
+    Ok(())
+}
+
+/// Выбрать реплику для повтора: по идентификатору или последнюю.
+///
+/// Чистая функция: правило выбора проверяется без журнала и без демона.
+pub fn pick_for_paste<'a>(
+    entries: &'a [Entry],
+    id: Option<&str>,
+    last: bool,
+) -> anyhow::Result<&'a Entry> {
+    if let Some(id) = id.filter(|id| !id.trim().is_empty()) {
+        return find(entries, id);
+    }
+    if !last {
+        anyhow::bail!("укажите идентификатор реплики или --last");
+    }
+    entries
+        .last()
+        .ok_or_else(|| anyhow::anyhow!("история пуста: повторять нечего"))
+}
+
+/// Текст реплики для повтора; запись без текста повторить нельзя, и это не «пустая вставка».
+pub fn text_to_paste(entry: &Entry) -> anyhow::Result<&str> {
+    let text = entry
+        .text_final
+        .as_deref()
+        .map(str::trim)
+        .filter(|text| !text.is_empty());
+    text.ok_or_else(|| {
+        anyhow::anyhow!(
+            "в записи {} нет текста: журнал вёлся с journal.include_text = false",
+            entry.id
+        )
+    })
+}
+
+/// Что сказать, когда демона нет: текст уже в буфере обмена, повторять диктовку не нужно.
+fn daemon_is_down(err: &IpcClientError) -> CmdError {
+    CmdError::no_daemon(format!(
+        "демон не запущен ({err}); текст реплики скопирован в буфер обмена, нажмите Ctrl+V"
+    ))
+}
+
+/// Повторить реплику из истории: вставка идёт тем же способом, что и у обычной диктовки.
+///
+/// Критерий AM-17: повтор доступен из истории, а когда демон недоступен — текст остаётся
+/// в буфере обмена, и команда честно сообщает об этом кодом выхода 3, а не молчаливым успехом.
+fn paste(
+    journal: &FileJournal,
+    id: Option<&str>,
+    last: bool,
+    socket: &std::path::Path,
+) -> anyhow::Result<()> {
+    let entries = journal.load_all()?;
+    let entry = pick_for_paste(&entries, id, last)?;
+    let text = text_to_paste(entry)?.to_string();
+
+    let mut client = match Client::connect(socket) {
+        Ok(client) => client,
+        Err(err) => {
+            copy_to_clipboard(&text)?;
+            return Err(daemon_is_down(&err).into());
+        }
+    };
+    match client.call_ok(Command::InjectText {
+        text: text.clone(),
+        mode: None,
+    }) {
+        Ok(result) => {
+            let method = result
+                .get("method")
+                .and_then(|m| m.as_str())
+                .unwrap_or("вставка");
+            println!("Реплика {} вставлена заново ({method}).", entry.id);
+            Ok(())
+        }
+        Err(err) => {
+            copy_to_clipboard(&text)?;
+            Err(CmdError::no_daemon(format!(
+                "демон не вставил текст ({err}); он скопирован в буфер обмена, нажмите Ctrl+V"
+            ))
+            .into())
+        }
+    }
+}
+
+/// Положить текст в буфер обмена: последний рубеж, когда вставить некуда.
+fn copy_to_clipboard(text: &str) -> anyhow::Result<()> {
+    let notifier: std::sync::Arc<dyn Notifier> = std::sync::Arc::new(LogNotifier);
+    ClipboardOnlyInjector::system(notifier)
+        .inject(text, OutputMode::Clipboard)
+        .map_err(|err| CmdError::file(format!("буфер обмена недоступен: {err}")))?;
     Ok(())
 }
 
@@ -392,6 +501,55 @@ mod tests {
         assert_eq!(table.lines().count(), 3);
         assert!(table.starts_with("ВРЕМЯ (UTC)"), "{table}");
         assert!(table.contains("kitty"), "{table}");
+    }
+
+    #[test]
+    fn paste_takes_the_last_entry_or_the_one_asked_for() {
+        let entries = vec![
+            entry("2026-09-05T10:00:00Z", "kitty", "первая"),
+            entry("2026-09-05T10:01:00Z", "kitty", "последняя"),
+        ];
+        assert_eq!(
+            pick_for_paste(&entries, None, true).unwrap().id,
+            entries[1].id
+        );
+        let id = entries[0].id.to_string();
+        assert_eq!(
+            pick_for_paste(&entries, Some(&id[..8]), false).unwrap().id,
+            entries[0].id
+        );
+    }
+
+    #[test]
+    fn paste_without_an_id_and_without_last_is_an_explicit_error() {
+        let entries = vec![entry("2026-09-05T10:00:00Z", "kitty", "текст")];
+        let err = pick_for_paste(&entries, None, false)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("--last"), "{err}");
+        let err = pick_for_paste(&[], None, true).unwrap_err().to_string();
+        assert!(err.contains("пуста"), "{err}");
+    }
+
+    #[test]
+    fn an_entry_without_text_cannot_be_repeated() {
+        let mut without_text = entry("2026-09-05T10:00:00Z", "kitty", "текст");
+        without_text.text_final = None;
+        let err = text_to_paste(&without_text).unwrap_err().to_string();
+        assert!(err.contains("include_text"), "{err}");
+        let with_text = entry("2026-09-05T10:00:00Z", "kitty", "  реплика  ");
+        assert_eq!(text_to_paste(&with_text).unwrap(), "реплика");
+    }
+
+    #[test]
+    fn a_missing_daemon_is_reported_honestly_with_exit_code_3() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = daemon_is_down(&IpcClientError::NotRunning {
+            path: dir.path().join("absent.sock"),
+            message: "сокета нет".into(),
+        });
+        assert_eq!(err.code, 3, "код выхода «демон недоступен»");
+        assert!(err.message.contains("буфер обмена"), "{}", err.message);
     }
 
     #[test]

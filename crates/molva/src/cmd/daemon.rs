@@ -25,6 +25,7 @@ use molva_core::infra::ipc::{self, Server};
 use molva_core::infra::llm::openai_compat::OpenAiCompatClient;
 use molva_core::infra::notify::{LogNotifier, SystemNotifier};
 use molva_core::infra::platform;
+use molva_core::infra::sound;
 use uuid::Uuid;
 
 /// Путь к сокету: флаг важнее переменной окружения, переменная — умолчания.
@@ -105,6 +106,26 @@ fn build_dictionary(config: &Config, config_path: &Path) -> Dictionary {
     }
 }
 
+/// Один экземпляр на пользователя: вторая копия завершается с сообщением.
+///
+/// Признак `single_instance` (критерий O-14): если по сокету отвечает живой демон, второй
+/// запуск не стартует вовсе — две копии подрались бы за микрофон и за вставку. Проверка идёт
+/// через пинг сокета, а не через pid-файл: файл переживает падение процесса, а ответ по сокету —
+/// нет. Код выхода отдельный, `7` (`exit::ALREADY_RUNNING`), чтобы автозапуск отличал
+/// «уже работает» от настоящей ошибки.
+pub fn single_instance_guard(
+    socket: &Path,
+    ping: impl Fn(&Path) -> Option<u32>,
+) -> Result<(), crate::cmd::CmdError> {
+    let Some(pid) = ping(socket) else {
+        return Ok(());
+    };
+    Err(crate::cmd::CmdError::already_running(format!(
+        "демон уже запущен (pid {pid}), сокет {}",
+        socket.display()
+    )))
+}
+
 pub struct Options {
     pub socket: PathBuf,
     pub foreground: bool,
@@ -114,13 +135,7 @@ pub fn run(config_path: &Path, options: Options) -> anyhow::Result<()> {
     let config = Config::load_or_create(config_path)
         .with_context(|| format!("настройки {}", config_path.display()))?;
 
-    // Один экземпляр на пользователя: две копии подрались бы за микрофон и за вставку.
-    if let Some(pid) = ipc::ping(&options.socket) {
-        return Err(anyhow!(
-            "демон уже запущен (pid {pid}), сокет {}",
-            options.socket.display()
-        ));
-    }
+    single_instance_guard(&options.socket, ipc::ping)?;
 
     let notifier: Arc<dyn Notifier> = if options.foreground {
         Arc::new(LogNotifier)
@@ -139,6 +154,9 @@ pub fn run(config_path: &Path, options: Options) -> anyhow::Result<()> {
     );
 
     let injector = ChainInjector::for_platform(&config.output, &detected, notifier.clone());
+    // Второй экземпляр — для повтора реплик из истории по `inject.text`: он не должен ждать,
+    // пока конвейер закончит свою реплику.
+    let repeat_injector = ChainInjector::for_platform(&config.output, &detected, notifier.clone());
     let mut pipeline = Pipeline::new(
         build_stt(&config)?,
         build_llm(&config),
@@ -154,6 +172,9 @@ pub fn run(config_path: &Path, options: Options) -> anyhow::Result<()> {
         audio: build_audio(&config),
         processor: Box::new(pipeline),
         notifier,
+        // Звук начала и конца записи; `audio.sounds = false` даёт молчаливую реализацию.
+        sound: sound::build_sound_cue(&config.audio),
+        injector: Some(Box::new(repeat_injector)),
         clock,
         config: config.clone(),
     });
@@ -182,6 +203,22 @@ mod tests {
         // Значение переменной окружения тест не подменяет: результат либо она, либо умолчание.
         let path = resolve_socket(None);
         assert!(path.to_string_lossy().contains("molva"), "{path:?}");
+    }
+
+    #[test]
+    fn a_second_instance_refuses_to_start_and_says_which_one_is_running() {
+        // Критерий O-14: вторая копия завершается с сообщением, а не молча и не дракой за микрофон.
+        let socket = PathBuf::from("/tmp/molva-test.sock");
+        let err = single_instance_guard(&socket, |_| Some(4242)).unwrap_err();
+        assert_eq!(err.code, 7, "код выхода «демон уже запущен»");
+        assert!(err.message.contains("4242"), "{}", err.message);
+        assert!(err.message.contains("molva-test.sock"), "{}", err.message);
+    }
+
+    #[test]
+    fn the_first_instance_starts_normally() {
+        let socket = PathBuf::from("/tmp/molva-test.sock");
+        assert!(single_instance_guard(&socket, |_| None).is_ok());
     }
 
     #[test]

@@ -108,6 +108,8 @@ pub struct CpalSource {
     active: Option<Active>,
     /// Упёрлась ли в лимит последняя завершённая запись; читается уже после `stop`.
     truncated: bool,
+    /// Записанное освобождённой записи: микрофон отпускается раньше, чем звук у него забирают.
+    released: Option<Result<PcmAudio, AudioError>>,
 }
 
 /// Состояние идущей записи: нить-хозяин потока и общий буфер.
@@ -140,6 +142,7 @@ impl CpalSource {
             max_duration_secs,
             active: None,
             truncated: false,
+            released: None,
         }
     }
 
@@ -215,50 +218,12 @@ impl AudioSource for CpalSource {
     }
 
     fn stop(&mut self) -> Result<PcmAudio, AudioError> {
-        let Some(active) = self.active.take() else {
+        if !self.release_microphone() {
             return Err(AudioError::NotRecording);
-        };
-        // Ошибка отправки означает, что нить уже завершилась сама (например, потеряв устройство).
-        let _ = active.stop_tx.send(());
-        if active.thread.join().is_err() {
-            return Err(AudioError::Backend(
-                "нить захвата аварийно завершилась".into(),
-            ));
         }
-
-        let lost = active.shared.lost.load(Ordering::Relaxed);
-        let truncated = active.shared.truncated.load(Ordering::Relaxed);
-        self.truncated = truncated;
-        let mut samples = match active.shared.samples.lock() {
-            Ok(mut guard) => std::mem::take(&mut *guard),
-            Err(poisoned) => std::mem::take(&mut *poisoned.into_inner()),
-        };
-
-        if samples.is_empty() && lost {
-            return Err(AudioError::DeviceLost);
-        }
-        if lost {
-            warn!(
-                secs = samples.len() as f32 / active.sample_rate as f32,
-                "устройство пропало во время записи, сохранено то, что успели записать"
-            );
-        }
-        if truncated {
-            warn!(
-                max_duration_secs = self.max_duration_secs,
-                "достигнут лимит длительности записи, хвост не сохранён"
-            );
-        }
-
-        apply_gain(&mut samples, self.gain);
-        info!(
-            secs = samples.len() as f32 / active.sample_rate as f32,
-            sample_rate = active.sample_rate,
-            "запись остановлена"
-        );
-        // Частота остаётся родной: приведение к 16 кГц делает вызывающий через `to_16k()`,
-        // чтобы сохранить исходник для отладки и не ресемплить дважды.
-        Ok(PcmAudio::new(samples, active.sample_rate))
+        self.released
+            .take()
+            .unwrap_or(Err(AudioError::NotRecording))
     }
 
     fn is_recording(&self) -> bool {
@@ -282,13 +247,74 @@ impl AudioSource for CpalSource {
     }
 }
 
+impl CpalSource {
+    /// Закрыть поток захвата и отпустить микрофон.
+    ///
+    /// Гарантия AG-01/AG-03: между репликами устройство свободно, индикатор записи в системе
+    /// погашен. Метод зовётся и из [`AudioSource::stop`], и из `Drop`, поэтому аварийное
+    /// завершение реплики микрофон открытым не оставляет. Записанное складывается в `released`
+    /// и достаётся `stop`, чтобы освобождение устройства не зависело от того, забрали ли звук.
+    ///
+    /// Возвращает `false`, если записи и не было.
+    pub fn release_microphone(&mut self) -> bool {
+        let Some(active) = self.active.take() else {
+            return false;
+        };
+        // Ошибка отправки означает, что нить уже завершилась сама (например, потеряв устройство).
+        let _ = active.stop_tx.send(());
+        let joined = active.thread.join().is_ok();
+        info!(device = %self.device, "микрофон освобождён");
+        self.released = Some(if joined {
+            self.collect(active.shared, active.sample_rate)
+        } else {
+            Err(AudioError::Backend(
+                "нить захвата аварийно завершилась".into(),
+            ))
+        });
+        true
+    }
+
+    /// Забрать накопленные отсчёты закончившейся записи.
+    fn collect(&mut self, shared: Arc<Shared>, sample_rate: u32) -> Result<PcmAudio, AudioError> {
+        let lost = shared.lost.load(Ordering::Relaxed);
+        let truncated = shared.truncated.load(Ordering::Relaxed);
+        self.truncated = truncated;
+        let mut samples = match shared.samples.lock() {
+            Ok(mut guard) => std::mem::take(&mut *guard),
+            Err(poisoned) => std::mem::take(&mut *poisoned.into_inner()),
+        };
+
+        if samples.is_empty() && lost {
+            return Err(AudioError::DeviceLost);
+        }
+        if lost {
+            warn!(
+                secs = samples.len() as f32 / sample_rate as f32,
+                "устройство пропало во время записи, сохранено то, что успели записать"
+            );
+        }
+        if truncated {
+            warn!(
+                max_duration_secs = self.max_duration_secs,
+                "достигнут лимит длительности записи, хвост не сохранён"
+            );
+        }
+
+        apply_gain(&mut samples, self.gain);
+        info!(
+            secs = samples.len() as f32 / sample_rate as f32,
+            sample_rate, "запись остановлена"
+        );
+        // Частота остаётся родной: приведение к 16 кГц делает вызывающий через `to_16k()`,
+        // чтобы сохранить исходник для отладки и не ресемплить дважды.
+        Ok(PcmAudio::new(samples, sample_rate))
+    }
+}
+
 impl Drop for CpalSource {
     fn drop(&mut self) {
         // Микрофон не должен остаться открытым, если источник уронили без stop().
-        if let Some(active) = self.active.take() {
-            let _ = active.stop_tx.send(());
-            let _ = active.thread.join();
-        }
+        self.release_microphone();
     }
 }
 
