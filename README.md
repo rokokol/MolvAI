@@ -87,11 +87,17 @@ molva history paste --last   # вставить последнюю реплик�
 Горячие клавиши в Hyprland — две строки в `~/.config/hypr/hyprland.conf`, где `bindr` срабатывает на отпускание:
 
 ```
-bind  = , Control_R, exec, molva start
-bindr = , Control_R, exec, molva stop
+bind  = , F9, exec, molva record start
+bindr = , F9, exec, molva record stop
+bind  = CTRL ALT, Z, exec, molva record toggle
+bind  = CTRL ALT, X, exec, molva record toggle --mode command
+bind  = CTRL ALT, C, exec, molva record cancel
 ```
 
-Удержание и переключатель работают одновременно и на одних настройках: зажали `RightCtrl` — пишется, пока держите; коротко нажали её же — запись защёлкивается и идёт без клавиши до следующего нажатия; `Ctrl+Shift+Space` включает и выключает запись нажатием всегда
+Удержание и переключатель работают одновременно и на одних настройках: зажали `F9` — пишется, пока держите; коротко нажали её же — запись защёлкивается и идёт без клавиши до следующего нажатия; `Ctrl+Alt+Z` включает и выключает запись нажатием всегда
+
+> [!NOTE]
+> Сочетания по умолчанию выбраны неэргономичными сознательно: `F9` и `Ctrl+Alt` свободны почти в любой системе и приложении, поэтому на чужом стенде они срабатывают без настройки. Пока приложение в тестировании, это важнее удобства; под свою руку клавиши меняются в секции `[hotkeys]`
 
 В GNOME и KDE те же две команды вешаются на пользовательскую комбинацию в настройках клавиатуры, на X11 без окружения годится `sxhkd`, а на Windows и macOS комбинацию регистрирует само приложение
 
@@ -173,9 +179,11 @@ bindr = , Control_R, exec, molva stop
 | `output` | `terminal_shortcut` | `true` | в терминалах вставлять через Ctrl+Shift+V, определяя их по классу окна |
 | `output` | `notify_on_fallback` | `true` | сообщать, когда способ вставки пришлось сменить |
 | `hotkeys` | `backend` | `auto` | `auto`, `external`, `evdev` или `gui` |
-| `hotkeys` | `push_to_talk` | `RightCtrl` | клавиша удержания |
-| `hotkeys` | `toggle` | `Ctrl+Shift+Space` | включить и выключить запись нажатием |
-| `hotkeys` | `command` | `Ctrl+Shift+Alt+Space` | режим команд над выделением |
+| `hotkeys` | `push_to_talk` | `F9` | клавиша удержания; сочетания по умолчанию нарочно простые, чтобы работать на любом стенде |
+| `hotkeys` | `toggle` | `Ctrl+Alt+Z` | включить и выключить запись нажатием |
+| `hotkeys` | `command` | `Ctrl+Alt+X` | режим команд над выделением |
+| `hotkeys` | `cancel` | `Ctrl+Alt+C` | отменить запись, не создавая реплику |
+| `hotkeys` | `style_next` | `Ctrl+Alt+S` | следующий стиль по кругу |
 | `hotkeys` | `min_hold_ms` | `200` | удержание короче не создаёт реплику |
 | `journal` | `enabled` | `true` | вести журнал реплик |
 | `journal` | `include_text` | `true` | `false` — строка журнала без текста реплики |

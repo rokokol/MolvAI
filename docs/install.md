@@ -77,15 +77,17 @@ molva record --seconds 3
 
 ### Шаг 7. Настрой горячие клавиши
 
-Открой `~/.config/molva/config.toml` и покажи пользователю секцию `[hotkeys]`. По умолчанию удержание правого Ctrl — запись, `Ctrl+Shift+Space` — переключатель
+Открой `~/.config/molva/config.toml` и покажи пользователю секцию `[hotkeys]`. По умолчанию удержание `F9` — запись, `Ctrl+Alt+Z` — переключатель, `Ctrl+Alt+X` — режим команд над выделением; сочетания нарочно простые, чтобы работать на любом стенде без настройки
 
 Дальше зависит от сессии, определённой на шаге 1:
 
 - **Hyprland** — предложи добавить в `~/.config/hypr/hyprland.conf` две строки и объясни, что `bindr` срабатывает на отпускание:
 
   ```
-  bind  = , Control_R, exec, molva start
-  bindr = , Control_R, exec, molva stop
+  bind  = , F9, exec, molva record start
+  bindr = , F9, exec, molva record stop
+  bind  = CTRL ALT, Z, exec, molva record toggle
+  bind  = CTRL ALT, X, exec, molva record toggle --mode command
   ```
 
 - **GNOME, KDE** — покажи, как завести пользовательскую комбинацию в настройках клавиатуры на команды `molva start` и `molva stop`

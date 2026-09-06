@@ -290,8 +290,9 @@ mod tests {
     fn the_ptt_flag_overrides_the_config() {
         let text = snippet(Target::Hyprland, &HotkeysConfig::default(), Some("Pause"));
         assert!(text.contains(", Pause, exec, molva record start"), "{text}");
+        // Умолчание — F9: нарочно простая клавиша, которая свободна на любом стенде.
         let default = snippet(Target::Hyprland, &HotkeysConfig::default(), None);
-        assert!(default.contains("Control_R"), "{default}");
+        assert!(default.contains(", F9, exec, molva record start"), "{default}");
     }
 
     #[test]

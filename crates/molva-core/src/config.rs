@@ -372,11 +372,15 @@ impl Default for HotkeysConfig {
     fn default() -> Self {
         Self {
             backend: "auto".into(),
-            push_to_talk: "RightCtrl".into(),
-            toggle: "Ctrl+Shift+Space".into(),
-            command: "Ctrl+Shift+Alt+Space".into(),
-            cancel: "Escape".into(),
-            style_next: "Ctrl+Shift+Alt+S".into(),
+            // Сочетания по умолчанию намеренно неэргономичны: F9 и Ctrl+Alt свободны почти
+            // в любой системе и приложении, поэтому на чужом стенде они сработают без
+            // настройки. Пока приложение в тестировании, это важнее удобства; под свою руку
+            // клавиши меняются в этой же секции.
+            push_to_talk: "F9".into(),
+            toggle: "Ctrl+Alt+Z".into(),
+            command: "Ctrl+Alt+X".into(),
+            cancel: "Ctrl+Alt+C".into(),
+            style_next: "Ctrl+Alt+S".into(),
             tap_toggles: true,
             short_press_ms: 250,
             min_hold_ms: 200,
