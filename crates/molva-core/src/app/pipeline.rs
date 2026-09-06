@@ -1004,7 +1004,8 @@ mod tests {
             "{}",
             request.user
         );
-        assert!(request.system.contains("ВЫДЕЛЕНИЮ"), "{}", request.system);
+        // Промпт по умолчанию велит вернуть только текст: без заголовков и пояснений.
+        assert!(request.system.contains("только получившийся текст"), "{}", request.system);
         assert_eq!(injected(&harness), vec!["Исправленный выделенный текст."]);
         assert_eq!(entry.mode, Mode::Command);
         assert!(entry.llm_used);
