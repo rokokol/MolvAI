@@ -89,7 +89,7 @@ mod platform {
     }
 
     /// Нажатие и отпускание: удержание — это start/stop, короткие — toggle/cancel.
-    pub fn on_shortcut<R: Runtime>(app: &AppHandle<R>, pressed: bool, binding: &str) {
+    pub(crate) fn on_shortcut<R: Runtime>(app: &AppHandle<R>, pressed: bool, binding: &str) {
         let state = app.state::<AppState>();
         if state.hotkeys_paused() {
             return;

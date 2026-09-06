@@ -63,9 +63,8 @@ pub fn socket_path() -> PathBuf {
     }
     #[cfg(target_os = "macos")]
     {
-        let directory = std::env::var_os("TMPDIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("/tmp"));
+        let directory =
+            std::env::var_os("TMPDIR").map_or_else(|| PathBuf::from("/tmp"), PathBuf::from);
         directory.join("molva.sock")
     }
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
