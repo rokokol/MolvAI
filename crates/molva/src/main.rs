@@ -224,7 +224,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         Commands::Stats(args) => cmd::stats::run(args, &config()?),
         Commands::Styles { action } => cmd::styles::run(action, &config()?),
         Commands::Dictionary { action } => cmd::dictionary::run(action, &config()?, &config_path),
-        Commands::Config { action } => cmd::config::run(action, &config_path),
+        Commands::Config { action } => cmd::config::run(action, &config_path, &socket),
         Commands::Daemon { foreground } => {
             let config = Config::load(&config_path)?;
             init_logging(&config.log.level);

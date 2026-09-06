@@ -29,12 +29,20 @@ pub(crate) enum ConfigAction {
     Export { file: PathBuf },
     /// Загрузить профиль настроек из файла
     Import { file: PathBuf },
+    /// Попросить работающий демон перечитать файл настроек
+    Reload,
 }
 
-pub(crate) fn run(action: ConfigAction, config_path: &Path) -> anyhow::Result<()> {
+pub(crate) fn run(action: ConfigAction, config_path: &Path, socket: &Path) -> anyhow::Result<()> {
     match action {
         ConfigAction::Path => {
             println!("{}", config_path.display());
+            Ok(())
+        }
+        ConfigAction::Reload => {
+            let mut client = molva_core::infra::ipc::Client::connect(socket)?;
+            client.call_ok(molva_core::ipc::protocol::Command::ConfigReload)?;
+            println!("демон перечитал настройки");
             Ok(())
         }
         ConfigAction::Get { key } => {
