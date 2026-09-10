@@ -1,3 +1,4 @@
+---
 name: vendor-sync
 
 # The files listed in .github/vendor.lock are copies of files other repositories own. This
@@ -58,9 +59,9 @@ jobs:
   verify:
     needs: bump
     if: needs.bump.outputs.moved == '1'
-    # >>> EXAMPLE: this repository's build workflow, which declares workflow_call with a ref input
+    # The same in every copy: a repository whose build workflow has another name renames it to
+    # build.yml rather than edit this line, which its gate would refuse as an edit in place
     uses: ./.github/workflows/build.yml
-    # <<<
     with:
       ref: ${{ needs.bump.outputs.branch }}
 

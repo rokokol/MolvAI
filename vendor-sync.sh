@@ -12,17 +12,19 @@
 #
 # check is offline and belongs in the repository's gate: every copy must still be the blob
 # its line records, and a copy that is not was edited in place and is named. update refuses
-# to run over such a copy, then takes each source's current HEAD and rewrites every copy
+# to run over such a copy, then takes each source's current HEAD and replaces every copy
 # whose content moved, with its line; a copy whose content did not move keeps its line, so
 # a source's unrelated commits never touch the lock. add takes a new copy and writes its
 # line. A PATH ending in / is a directory kept whole: a file deleted or added in the source
-# is deleted or added here.
+# is deleted or added here; one holding a symlink is refused, since a copy cannot keep it.
 #
-# A copy under .github/workflows/ is taken only with --manual, and update skips manual
-# lines unless it is given --manual too: the token a workflow runs with cannot push a
-# workflow file, so those copies are refreshed by a person. BASE is where OWNER/REPO is
-# fetched from (default https://github.com, file://DIR for a local source). Run it from
-# the repository root.
+# A copy that lands under .github/workflows/ is taken only with --manual: the token a
+# workflow runs with cannot push a workflow file, so such copies are refreshed by a person.
+# update takes the ordinary lines, and names each manual line whose source has moved
+# rather than skipping it in silence; update --manual takes the manual lines and only
+# those. BASE is where OWNER/REPO is fetched from (default https://github.com, file://DIR
+# for a local source), and a source has to be reachable there without credentials. Run it
+# from the repository root.
 #
 # Exit 1 with `vendor-sync: <what>` on a finding or a failed fetch, 2 on a usage error.
 # Needs bash 3.2, git and POSIX tools only.
@@ -80,7 +82,8 @@ done
 # ---- what a copy is -------------------------------------------------------------------
 # A file is its git blob. A directory is the blob of its listing — one "BLOB PATH" line per
 # file, sorted by path — computed the same way on either side, so a file added, deleted or
-# changed anywhere under it changes the digest.
+# changed anywhere under it changes the digest. Names are taken raw on both sides: git's
+# -z keeps a name it would otherwise quote, a Cyrillic one say, as the bytes find prints.
 
 local_digest() { # local_digest LOCAL -> the digest of the copy here, empty when it is missing
   local p="$1" f
@@ -122,12 +125,23 @@ fetch() {
   printf '%s %s\n' "$repo" "$fetched_sha" >>"$tmp/fetched"
 }
 
+# no_symlink OWNER/REPO SHA PATH -> refuses a source directory that holds a symlink: find
+# sees none of it here and git lists it there, so the copy would read as edited forever
+no_symlink() {
+  local repo="$1" sha="$2" path="$3" found
+  case "$path" in */) ;; *) return 0 ;; esac
+  found=$(git -C "$src" ls-tree -r "$sha:${path%/}" | awk '$1 == "120000" { sub(/^[^\t]*\t/, ""); print; exit }')
+  [[ -z "$found" ]] || fail "$repo's $path holds a symlink, $found, which a copy cannot keep byte for byte"
+}
+
 source_digest() { # source_digest SHA PATH -> the digest of PATH at SHA, as local_digest has it
-  local sha="$1" path="$2"
+  local sha="$1" path="$2" entry
   case "$path" in
     */)
-      git -C "$src" ls-tree -r "$sha:${path%/}" |
-        while IFS=$'\t' read -r meta name; do printf '%s\t%s\n' "$name" "${meta##* }"; done |
+      git -C "$src" ls-tree -r -z "$sha:${path%/}" |
+        while IFS= read -r -d '' entry; do
+          printf '%s\t%s\n' "${entry#*	}" "$(printf '%s' "${entry%%	*}" | awk '{ print $3 }')"
+        done |
         LC_ALL=C sort | awk -F'\t' '{ print $2 " " $1 }' | git hash-object --stdin
       ;;
     *) git -C "$src" rev-parse "$sha:$path" ;;
@@ -183,18 +197,33 @@ check() {
 }
 
 update() {
-  local n=0 moved=0 l r p c b m blob
+  local n=0 moved=0 behind=0 l r p c b m blob is_manual
   check >/dev/null || fail "refusing to update over the copy named above"
   : >"$tmp/lock"
   while IFS= read -r line <&3; do
     read -r l r p c b m <<<"$line" || true
-    if [[ -z "${l:-}" || "$l" == \#* ]] || { [[ "${m:-}" == manual ]] && ((manual == 0)); }; then
+    if [[ -z "${l:-}" || "$l" == \#* ]]; then
+      printf '%s\n' "$line" >>"$tmp/lock"
+      continue
+    fi
+    is_manual=0
+    [[ "${m:-}" != manual ]] || is_manual=1
+    fetch "$r"
+    no_symlink "$r" "$fetched_sha" "$p"
+    blob=$(source_digest "$fetched_sha" "$p") || fail "$r has no $p at ${fetched_sha:0:12}"
+    # A line this run does not take — a manual one without --manual, an ordinary one with it —
+    # keeps its line. A manual one is still named when its source has moved: nothing else
+    # would ever tell a person to refresh it
+    if ((is_manual != manual)); then
+      if ((is_manual == 1)) && [[ "$blob" != "$b" ]]; then
+        behind=$((behind + 1))
+        echo "vendor-sync: $l is behind $p of $r — refresh it with vendor-sync.sh update --manual" >&2
+        [[ -z "${GITHUB_ACTIONS:-}" ]] || echo "::warning file=$l::$l is behind $p of $r; refresh it with vendor-sync.sh update --manual"
+      fi
       printf '%s\n' "$line" >>"$tmp/lock"
       continue
     fi
     n=$((n + 1))
-    fetch "$r"
-    blob=$(source_digest "$fetched_sha" "$p") || fail "$r has no $p at ${fetched_sha:0:12}"
     if [[ "$blob" == "$b" ]]; then
       printf '%s\n' "$line" >>"$tmp/lock"
       continue
@@ -204,7 +233,7 @@ update() {
     printf '%s %s %s %s %s%s\n' "$l" "$r" "$p" "$fetched_sha" "$blob" "${m:+ $m}" >>"$tmp/lock"
   done 3<"$lock"
   cmp -s "$tmp/lock" "$lock" || cp "$tmp/lock" "$lock"
-  echo "vendor-sync: $n cop$( ((n == 1)) && echo y || echo ies) checked against their source, $moved taken anew"
+  echo "vendor-sync: $n cop$( ((n == 1)) && echo y || echo ies) checked against their source, $moved taken anew$( ((behind == 0)) || echo ", $behind manual behind")"
 }
 
 header() {
@@ -218,22 +247,24 @@ EOF
 
 add() {
   (($# == 3)) || usage_error "add needs LOCAL OWNER/REPO PATH"
-  local l="$1" r="$2" p="$3" blob ldir=0 pdir=0
+  local l="${1#./}" r="$2" p="$3" blob ldir=0 pdir=0 workflow=0
+  [[ -n "$l" ]] || usage_error "LOCAL is empty"
   case "$l$r$p" in *[[:space:]]*) usage_error "a path with whitespace cannot be written to the lock" ;; esac
   [[ "$r" == */* ]] || usage_error "$r is not OWNER/REPO"
   [[ "$l" != */ ]] || ldir=1
   [[ "$p" != */ ]] || pdir=1
   ((ldir == pdir)) || usage_error "LOCAL and PATH both end in / for a directory, or neither does"
-  case "$l" in
-    .github/workflows/*)
-      ((manual == 1)) ||
-        fail "$l is a workflow file: the token the cascade runs with cannot push one, so take it with --manual and refresh it by hand"
-      ;;
-  esac
+  # Where the copy lands decides it, however the path is spelled: a file under
+  # .github/workflows/, or a directory that holds that directory
+  case "$l" in .github/workflows/*) workflow=1 ;; esac
+  if ((ldir == 1)) && [[ .github/workflows/ == "$l"* ]]; then workflow=1; fi
+  ((workflow == 0 || manual == 1)) ||
+    fail "$l lands a workflow file: the token the cascade runs with cannot push one, so take it with --manual and refresh it by hand"
   if [[ -f "$lock" ]] && awk -v l="$l" '$1 == l { found = 1 } END { exit !found }' "$lock"; then
     fail "$l is already vendored — update refreshes it"
   fi
   fetch "$r"
+  no_symlink "$r" "$fetched_sha" "$p"
   blob=$(source_digest "$fetched_sha" "$p") || fail "$r has no $p at ${fetched_sha:0:12}"
   take "$l" "$r" "$p" "$fetched_sha"
   if [[ ! -f "$lock" ]]; then
