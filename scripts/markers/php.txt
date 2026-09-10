@@ -1,0 +1,15 @@
+# PHP (PHPUnit): lines that mean a run answered about less than you think.
+#
+# Opt in with `-m php`. Short on purpose. PHPUnit 13 is honest with its exit status about
+# most of what can go wrong — a missing bootstrap is 2, a path that does not exist is 2, a
+# filter matching nothing is 1, a class with no test methods is 1 — and a marker for any of
+# those would be a second opinion nobody needs. Only the shapes that exit 0 are here.
+
+# pointed at a directory holding no test file at all: exit 0, and nothing ran
+No tests executed!
+
+# a run in which every test was skipped exits 0 and reports OK, having verified nothing.
+# The marker is the count and not `OK, but some tests were skipped!`, which a healthy suite
+# prints the moment one test is platform-specific — that line would cry wolf, and a marker
+# that cries wolf gets the whole check switched off within a day
+Assertions: 0

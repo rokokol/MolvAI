@@ -1,0 +1,12 @@
+# .NET (dotnet test, VSTest): lines that mean a run answered about less than you think.
+#
+# Opt in with `-m dotnet`. This is the ecosystem the whole idea is clearest in: both lines
+# below were printed by a real `dotnet test` that exited 0. A wrapper reading only the exit
+# status calls each of them a pass.
+
+# a --filter that matched nothing: exit 0, and not one test ran
+No test matches the given testcase filter
+
+# the assembly held no test the adapter could see — a missing adapter package, a framework
+# mismatch, a project that is not a test project. Exit 0 either way
+No test is available in

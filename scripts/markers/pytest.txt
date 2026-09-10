@@ -5,7 +5,7 @@
 # skips prints `skipped`, so adopt this where skips are meant to be rare and visible.
 
 # collection failed for a file: those tests are absent, not passing
-errors during collection
+during collection
 ERROR collecting
 
 # a to-do list that never turns red

@@ -15,10 +15,16 @@
 # marker that cries wolf gets the whole check switched off within a day, which protects
 # nothing — so those live in the per-ecosystem files beside this one and are opted into
 # with `-m NAME`. check.sh enforces the difference: every entry here must catch a line in
-# tests/fixtures/lying/default.log AND stay silent on tests/fixtures/clean.log.
+# tests/fixtures/lying/default.log AND stay silent on every healthy run kept under
+# tests/fixtures/clean/, one per ecosystem; an ecosystem set must stay silent on its own.
 #
 # Adding one: put a real line from a real run into the lying fixture in the same commit,
 # and make sure the marker is the shortest text that identifies it.
+#
+# Fixtures do not move and the tools do. tests/upstream.sh runs the real runners and asks
+# whether each marker still matches a real lie and still stays quiet on a real healthy run —
+# a line renamed upstream otherwise stops catching anything without a word, and every run
+# stays green. It needs a network, so it is not part of check.sh; CI runs it weekly.
 
 # the suite never ran
 no tests ran

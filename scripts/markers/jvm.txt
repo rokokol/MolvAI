@@ -1,0 +1,17 @@
+# JVM (Maven surefire, Gradle): lines that mean a run answered about less than you think.
+#
+# Opt in with `-m jvm`. Both lines below came from a real `mvn test` that printed BUILD
+# SUCCESS and exited 0.
+#
+# What is NOT here, and cannot be: a module with no test class at all. surefire prints
+# nothing for it — no counts, no "no tests to run", just the plugin's own header and BUILD
+# SUCCESS — so there is no line to match, and the only guard is surefire's own
+# `failIfNoTests`. A marker set cannot cover what the tool does not say.
+
+# a test class was found and nothing in it ran. In a multi-module build this is one module
+# reporting on itself, so read the module name beside it
+Tests run: 0
+
+# -DskipTests or -Dmaven.test.skip left in a command line, a profile or a CI variable: the
+# build succeeds having compiled the tests and run none of them
+Tests are skipped.
