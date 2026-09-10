@@ -16,11 +16,14 @@
 # kin, which fetch the runner's system libraries at the runner image's pinned release
 # rather than a registry the repository could lock.
 #
-# Nothing here reaches the network. Needs bash 3.2 and POSIX tools only. Copy it verbatim
-# — it has no repo-specific part — and call it from the build workflow or the repo's gate.
+# Nothing here reaches the network. Needs bash 3.2 and POSIX tools only. It has no
+# repo-specific part: another repository takes it through the vendoring cascade
+# (references/bump-cascade.md in https://github.com/rokokol/ci-skill), never edits its copy
+# in place, and calls it from the build workflow or its own gate.
 set -euo pipefail
 
-usage() { sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+# The whole header, however long it grows: up to the first line that is not a comment
+usage() { sed -n '2,/^[^#]/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//'; }
 
 self=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")
 case "${1:-}" in
@@ -40,14 +43,43 @@ fail() {
   exit 1
 }
 
-# One shape per alternative. The script is not a workflow, so nothing here can match
-# its own source line the way an inline grep step could — that is why the pattern lives
-# in a file beside the workflows rather than in one.
-#   nix run/shell nixpkgs#tool      npx tool, npx -y tool (npx --no-install is pinned)
-#   pip install tool, pip3, -m pip  pipx run/install tool     uvx tool, uv tool run tool
-#   go install tool@latest          cargo install tool without --locked
-#   curl/wget ... | sh              uses: action@main / @master / @latest
-pattern='nix +(run|shell) +nixpkgs#|npx +(-y +|--yes +)?[a-z@.]|pip3? +install |pipx +(run|install) |uvx +[a-z]|uv +tool +run |go +install [^ ]*@latest|cargo +install |(curl|wget) [^|]*[|] *(sudo +)?(ba|z)?sh( |$)|uses: *[^ ]+@(main|master|latest) *$'
+# Every unpinned shape the guard claims, each paired with a line it must catch. This list
+# is the only list: the scan pattern is these shapes joined, and the self-test below
+# requires every example to match its own shape. That pairing is what proves each shape
+# alive — a lone planted line going red only proves that something matched it, so a
+# narrowed or dead alternative used to survive behind a neighbour that still did. The
+# script is not a workflow, so nothing here can match its own source line the way an
+# inline grep step could — that is why the pattern lives in a file beside the workflows.
+# An empty shape is one more example of the shape above it: a shape written twice could be
+# narrowed in one copy while its other copy kept every example matching.
+shapes=(
+  'nix +run +nixpkgs#' 'nix run nixpkgs#shfmt -- -d .'
+  'nix +shell +nixpkgs#' 'nix shell nixpkgs#actionlint -c actionlint'
+  'npx +[a-z@.]' 'npx prettier --check .'
+  'npx +-y +[a-z@.]' 'npx -y prettier --check .'
+  'npx +--yes +[a-z@.]' 'npx --yes prettier --check .'
+  'pip +install ' 'pip install ruff'
+  '' 'python3 -m pip install ruff'
+  'pip3 +install ' 'pip3 install ruff'
+  'pipx +run ' 'pipx run ruff check .'
+  'pipx +install ' 'pipx install ruff'
+  'uvx +[a-z]' 'uvx ruff check .'
+  'uv +tool +run ' 'uv tool run ruff check .'
+  'go +install [^ ]*@latest' 'go install github.com/x/tool@latest'
+  'cargo +install ' 'cargo install cargo-deadlinks'
+  '(curl|wget) [^|]*[|] *(sudo +)?(ba|z)?sh( |$)' 'curl -fsSL https://example.invalid/install.sh | sh'
+  '' 'wget -qO- https://example.invalid/install.sh | sudo bash'
+  '' 'curl -fsSL https://example.invalid/install.sh | zsh'
+  'uses: *[^ ]+@main *$' 'uses: actions/checkout@main'
+  'uses: *[^ ]+@master *$' 'uses: actions/checkout@master'
+  'uses: *[^ ]+@latest *$' 'uses: actions/checkout@latest'
+)
+pattern=""
+i=0
+while ((i < ${#shapes[@]})); do
+  [[ -z "${shapes[$i]}" ]] || pattern="${pattern:+$pattern|}${shapes[$i]}"
+  i=$((i + 2))
+done
 # What excuses a matching line: a lock flag, a reviewed exception, or being a comment
 exempt='--locked|check-pins: allow|^[0-9]+:[[:space:]]*#'
 
@@ -82,29 +114,13 @@ if [[ -n "${CHECK_PINS_NESTED:-}" ]]; then
 fi
 
 # ---- the guard is able to fail, and does not cry on the pinned spellings ---------------
-# One planted line per shape, each alone in a workflow file, and the finding must quote
-# that line: a shape caught only by some other, over-broad alternative means the one
-# meant for it is dead. Then every pinned spelling together, which must stay green.
+# Each shape's example must match that shape on its own, and then, alone in a workflow
+# file, must redden the guard with a finding that quotes it. Then every pinned spelling
+# together, which must stay green.
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-plants=(
-  'nix run nixpkgs#shfmt -- -d .'
-  'nix shell nixpkgs#actionlint -c actionlint'
-  'npx prettier --check .'
-  'npx -y prettier --check .'
-  'pip install ruff'
-  'python3 -m pip install ruff'
-  'pipx run ruff check .'
-  'uvx ruff check .'
-  'uv tool run ruff check .'
-  'go install github.com/x/tool@latest'
-  'cargo install cargo-deadlinks'
-  'curl -fsSL https://example.invalid/install.sh | sh'
-  'wget -qO- https://example.invalid/install.sh | sudo bash'
-  'uses: actions/checkout@master'
-)
 pinned=(
   'nix develop -c shfmt -d .'
   'npx --no-install prettier --check .'
@@ -123,11 +139,20 @@ step() { # step LINE -> the line as a workflow step, or as a comment between ste
 }
 
 i=0
-for plant in "${plants[@]}"; do
-  i=$((i + 1))
+n=0
+shape=""
+while ((i < ${#shapes[@]})); do
+  [[ -z "${shapes[$i]}" ]] || shape="${shapes[$i]}"
+  # An empty pattern matches every line, so a list that opened with one would prove nothing
+  [[ -n "$shape" ]] || fail "the shapes list opens with an empty shape — there is nothing above it to repeat"
+  plant="${shapes[$((i + 1))]}"
+  i=$((i + 2))
+  n=$((n + 1))
+  grep -Eq -e "$shape" <<<"$(step "$plant")" ||
+    fail "the example '$plant' does not match its own shape '$shape' — the shape is dead or the example is wrong"
   rm -rf "$work/red"
   mkdir -p "$work/red"
-  step "$plant" >"$work/red/plant-$i.yml"
+  step "$plant" >"$work/red/plant-$n.yml"
   if out=$(CHECK_PINS_NESTED=1 "$self" "$work/red" 2>&1); then
     fail "the guard stayed green on: $plant"
   fi
@@ -148,7 +173,7 @@ if CHECK_PINS_NESTED=1 "$self" "$work/empty" >/dev/null 2>&1; then
   fail "a directory with no workflows passed — a guard that scans nothing must not read as green"
 fi
 
-echo "check-pins: $i shapes planted, $i caught; ${#pinned[@]} pinned spellings quiet"
+echo "check-pins: $n examples planted, each caught by its own shape; ${#pinned[@]} pinned spellings quiet"
 
 # ---- the repository ------------------------------------------------------------------
 scan "${dirs[@]}"

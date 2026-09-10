@@ -1,0 +1,84 @@
+name: vendor-sync
+
+# The files listed in .github/vendor.lock are copies of files other repositories own. This
+# takes each one's current revision weekly, verifies the result by running this
+# repository's real CI workflow against it, and lands it only on green; red leaves the
+# dated branch standing, with the new copies on it, for a human to look at. How it works:
+# references/bump-cascade.md in https://github.com/rokokol/ci-skill
+on:
+  schedule:
+    # Ahead of any dependency bump in the same repository, so a week's fixes to the shared
+    # checkers are already in place when the bump is verified
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+# Two runs would push the same branch from different bases
+concurrency: vendor-sync
+
+permissions:
+  contents: read
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      branch: ${{ steps.push.outputs.branch }}
+      moved: ${{ steps.push.outputs.moved }}
+    steps:
+      # Full history: pushing from a shallow clone is refused
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Lines marked manual are skipped: the token this job runs with cannot push a workflow
+      # file, so those copies are refreshed by a person running vendor-sync.sh update --manual
+      - id: push
+        run: |
+          ./vendor-sync.sh update
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "every vendored file is already current"
+            echo "moved=0" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          branch=vendor/$(date -u +%Y-%m-%d)
+          git switch -c "$branch"
+          git add -A
+          git commit -qm "take the vendored files' current revisions"
+          git push -f origin "$branch"
+          echo "branch=$branch" >>"$GITHUB_OUTPUT"
+          echo "moved=1" >>"$GITHUB_OUTPUT"
+
+  # The whole point of the temp branch: a reusable workflow checks out a ref, so the new
+  # copies have to exist somewhere before the real checks can see them
+  verify:
+    needs: bump
+    if: needs.bump.outputs.moved == '1'
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.bump.outputs.branch }}
+
+  # Red leaves the branch alone, with the copies on it, so the failure can be looked at
+  land:
+    needs: [bump, verify]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.bump.outputs.branch }}
+          fetch-depth: 0
+      # GITHUB_REF_NAME is the branch the run started on: the default branch for the weekly
+      # schedule, whose event carries no repository payload to read the default branch from
+      - name: fast-forward the branch the run started on onto the verified tree
+        env:
+          BRANCH: ${{ needs.bump.outputs.branch }}
+        run: |
+          git push origin "HEAD:$GITHUB_REF_NAME"
+          git push origin --delete "$BRANCH"
