@@ -1,6 +1,6 @@
 # MolvAI
 
-[![ci](https://github.com/rokokol/MolvAI/actions/workflows/ci.yml/badge.svg)](https://github.com/rokokol/MolvAI/actions/workflows/ci.yml)
+[![ci](https://github.com/rokokol/MolvAI/actions/workflows/build.yml/badge.svg)](https://github.com/rokokol/MolvAI/actions/workflows/build.yml)
 [![deny](https://github.com/rokokol/MolvAI/actions/workflows/deny.yml/badge.svg)](https://github.com/rokokol/MolvAI/actions/workflows/deny.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 

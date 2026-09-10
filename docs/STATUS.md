@@ -127,7 +127,7 @@
 
 - Ядро `molva-core`: конфигурация в TOML со значениями по умолчанию, доменные типы аудио, текста, реплик, журнала и вставки, протокол IPC. 39 тестов
 - Гейт `just check`: `fmt`, `clippy -D warnings`, тесты через `scripts/t.sh`, проверка SPDX-заголовков, проверка на `todo!`/`unimplemented!`
-- CI: `ci.yml` — гейт на ubuntu-24.04, windows-latest и macos-latest плюс покрытие артефактом; `deny.yml` — лицензии и уязвимости как детектор по расписанию; `release.yml` — сборка по тегу `v*`
+- CI: `build.yml` — гейт на ubuntu-24.04, windows-latest и macos-latest плюс покрытие артефактом; `deny.yml` — лицензии и уязвимости как детектор по расписанию; `release.yml` — сборка по тегу `v*`
 - Лицензии: `THIRD-PARTY.md` из cargo-about, `NOTICE`, SBOM в CycloneDX (`just sbom`), лицензии весов отдельным документом
 - Фикстуры: две речевые записи автора под CC0, синтетические тишина и тон
 - `nix run github:rokokol/MolvAI` собирает и запускает CLI без клонирования; `nix build .#molva` проверен
