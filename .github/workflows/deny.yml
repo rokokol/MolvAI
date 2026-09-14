@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
@@ -34,13 +34,16 @@ jobs:
     name: cargo-audit
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    # Действие публикует результат как check run, для этого нужна запись в checks;
-    # без неё job падал с «Resource not accessible by integration» при нуле уязвимостей
+    # На schedule действие по каждой новой находке создаёт issue (checks: write
+    # для check run, issues: write для issue); на push в main и руками — только check.
+    # Без issues: write запланированный прогон падал с «Resource not accessible
+    # by integration», едва база-RustSec пополнялась новой уязвимостью
     permissions:
       contents: read
       checks: write
+      issues: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: rustsec/audit-check@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
