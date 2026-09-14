@@ -222,21 +222,27 @@ cmd_run() {
   while (($#)); do
     case "$1" in
       -l)
-        logdir="${2:?-l needs a directory}"
+        # Not ${2:?}: that exits 1 with bash's own message, and 1 is what a failing CMD
+        # exits — a usage error has to be 64 to be told apart
+        (($# >= 2)) || die "run: -l needs a directory"
+        logdir="$2"
         shift 2
         ;;
       -m)
         # Additive: the default set always applies, and a repository opts into more
-        resolve_markers "${2:?-m needs a marker set or file}"
+        (($# >= 2)) || die "run: -m needs a marker set or file"
+        resolve_markers "$2"
         add_marker_file "$RESOLVED"
         shift 2
         ;;
       -p)
-        extra+=("${2:?-p needs a pattern}")
+        (($# >= 2)) || die "run: -p needs a pattern"
+        extra+=("$2")
         shift 2
         ;;
       -t)
-        tail_n="${2:?-t needs a number}"
+        (($# >= 2)) || die "run: -t needs a number"
+        tail_n="$2"
         # (( )) reads a word as the variable of that name, which is zero, so `-t abc`
         # would silently mean "no tail" rather than refuse
         [[ "$tail_n" =~ ^[0-9]+$ ]] || die "run: -t needs a number of lines, got '$tail_n'"
@@ -346,20 +352,23 @@ cmd_flaky() {
   while (($#)); do
     case "$1" in
       -l)
-        logdir="${2:?-l needs a directory}"
+        (($# >= 2)) || die "flaky: -l needs a directory"
+        logdir="$2"
         shift 2
         ;;
       -m)
         # Resolved here as well as in run, so a set that does not exist is refused
         # before the first of twenty runs rather than inside it
-        resolve_markers "${2:?-m needs a marker set or file}"
+        (($# >= 2)) || die "flaky: -m needs a marker set or file"
+        resolve_markers "$2"
         pass+=("$1" "$2")
         shift 2
         ;;
       -p | -t)
         # Forwarded to run, which validates them. Named here rather than swept up by a
         # catch-all, so the gate can read from this parser which flags flaky accepts.
-        pass+=("$1" "${2:?$1 needs a value}")
+        (($# >= 2)) || die "flaky: $1 needs a value"
+        pass+=("$1" "$2")
         shift 2
         ;;
       --) break ;;
@@ -437,11 +446,13 @@ cmd_bisect_probe() {
   while (($#)); do
     case "$1" in
       -b)
-        build="${2:?-b needs a command}"
+        (($# >= 2)) || die "-b needs a command"
+        build="$2"
         shift 2
         ;;
       -l | -m | -p | -t)
-        pass+=("$1" "${2:?$1 needs a value}")
+        (($# >= 2)) || die "$1 needs a value"
+        pass+=("$1" "$2")
         shift 2
         ;;
       --) break ;;
@@ -513,7 +524,8 @@ cmd_pollute() { # pollute [-l DIR] [-m SET] [-p PATTERN] VICTIM -- CMD...
   while (($#)); do
     case "$1" in
       -l | -m | -p | -t)
-        pass+=("$1" "${2:?$1 needs a value}")
+        (($# >= 2)) || die "$1 needs a value"
+        pass+=("$1" "$2")
         shift 2
         ;;
       --)
@@ -605,7 +617,8 @@ cmd_quarantine() { # quarantine [--on YYYY-MM-DD] [FILE]
   while (($#)); do
     case "$1" in
       --on)
-        on="${2:?--on needs a date}"
+        (($# >= 2)) || die "--on needs a date"
+        on="$2"
         [[ "$on" =~ ^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$ ]] ||
           die "quarantine: --on needs a date as YYYY-MM-DD, got '$on'"
         shift 2
@@ -773,7 +786,8 @@ cmd_bisect() {
       -b | -m | -p | -t)
         # -b for the probe, the rest for run. No -l: the logs of a bisect go outside the
         # working tree on purpose, because bisect checks other commits out over it.
-        pass+=("$1" "${2:?$1 needs a value}")
+        (($# >= 2)) || die "$1 needs a value"
+        pass+=("$1" "$2")
         shift 2
         ;;
       --first-parent | --no-checkout)
@@ -1044,7 +1058,8 @@ cmd_falsify() {
   while (($#)); do
     case "$1" in
       -d)
-        defects="${2:?-d needs a file}"
+        (($# >= 2)) || die "-d needs a file"
+        defects="$2"
         shift 2
         ;;
       --any-file)
@@ -1056,11 +1071,13 @@ cmd_falsify() {
         shift
         ;;
       --since)
-        since="${2:?--since needs a git ref}"
+        (($# >= 2)) || die "--since needs a git ref"
+        since="$2"
         shift 2
         ;;
       --shard)
-        shard="${2:?--shard needs I/N}"
+        (($# >= 2)) || die "--shard needs I/N"
+        shard="$2"
         # Refused here rather than producing an empty or overlapping selection later: a
         # shard nobody runs, or one run twice, is a defect list that silently stops
         # covering what it names
@@ -1073,27 +1090,32 @@ cmd_falsify() {
         shift 2
         ;;
       --out)
-        out="${2:?--out needs a directory}"
+        (($# >= 2)) || die "--out needs a directory"
+        out="$2"
         shift 2
         ;;
       --timeout)
-        deadline="${2:?--timeout needs a number of seconds}"
+        (($# >= 2)) || die "--timeout needs a number of seconds"
+        deadline="$2"
         [[ "$deadline" =~ ^[0-9]+$ ]] || die "falsify: --timeout needs a number of seconds, got '$deadline'"
         shift 2
         ;;
       -b)
-        build="${2:?-b needs a command}"
+        (($# >= 2)) || die "-b needs a command"
+        build="$2"
         shift 2
         ;;
       -l)
         # Kept here as well as forwarded: the suite runs go through run, but the log
         # each run's verdict is read from has to be a path this function chose
-        logdir="${2:?-l needs a directory}"
+        (($# >= 2)) || die "-l needs a directory"
+        logdir="$2"
         pass+=("$1" "$2")
         shift 2
         ;;
       -m | -p | -t)
-        pass+=("$1" "${2:?$1 needs a value}")
+        (($# >= 2)) || die "$1 needs a value"
+        pass+=("$1" "$2")
         shift 2
         ;;
       --) break ;;
@@ -1493,11 +1515,13 @@ cmd_prove() {
   while (($#)); do
     case "$1" in
       -b)
-        build="${2:?-b needs a command}"
+        (($# >= 2)) || die "-b needs a command"
+        build="$2"
         shift 2
         ;;
       --timeout)
-        deadline="${2:?--timeout needs a number of seconds}"
+        (($# >= 2)) || die "--timeout needs a number of seconds"
+        deadline="$2"
         [[ "$deadline" =~ ^[0-9]+$ ]] || die "prove: --timeout needs a number of seconds, got '$deadline'"
         shift 2
         ;;
@@ -1510,12 +1534,14 @@ cmd_prove() {
         shift
         ;;
       -l)
-        logdir="${2:?-l needs a directory}"
+        (($# >= 2)) || die "-l needs a directory"
+        logdir="$2"
         pass+=("$1" "$2")
         shift 2
         ;;
       -m | -p | -t)
-        pass+=("$1" "${2:?$1 needs a value}")
+        (($# >= 2)) || die "$1 needs a value"
+        pass+=("$1" "$2")
         shift 2
         ;;
       --) break ;;
