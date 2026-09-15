@@ -1,29 +1,32 @@
 #!/usr/bin/env bash
-# The pin guard, in one file that travels: every tool a workflow runs comes from the
-# repository's own lockfile, never from whatever a registry serves that morning. It greps
-# the workflows for the unpinned shapes — and proves, on every run, that it catches each
-# shape it claims to and stays quiet on the pinned spellings, so a copy is falsified in
-# its own repository each time it runs.
-#
-#   check-pins.sh [DIR...]
-#
-# DIR is a directory of workflow files (default: .github/workflows). Every *.yml and
-# *.yaml under it is scanned. Exit 1 with one `check-pins: FILE:LINE: ...` per finding,
-# 2 when there is nothing to scan — a guard that finds no workflows is not a pass.
-#
-# A reviewed exception carries `# check-pins: allow` on its own line and is skipped;
-# comment lines are never findings. Not covered on purpose: `apt-get install` and its
-# kin, which fetch the runner's system libraries at the runner image's pinned release
-# rather than a registry the repository could lock.
-#
-# Nothing here reaches the network. Needs bash 3.2 and POSIX tools only. It has no
+# Needs bash 3.2 and POSIX tools only. It has no
 # repo-specific part: another repository takes it through the vendoring cascade
 # (references/bump-cascade.md in https://github.com/rokokol/ci-skill), never edits its copy
-# in place, and calls it from the build workflow or its own gate.
+# in place, and calls it from the build workflow or its own gate
 set -euo pipefail
 
-# The whole header, however long it grows: up to the first line that is not a comment
-usage() { sed -n '2,/^[^#]/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//'; }
+usage() {
+  cat <<'EOF'
+The pin guard, in one file that travels: every tool a workflow runs comes from the
+repository's own lockfile, never from whatever a registry serves that morning. It greps
+the workflows for the unpinned shapes — and proves, on every run, that it catches each
+shape it claims to and stays quiet on the pinned spellings, so a copy is falsified in
+its own repository each time it runs
+
+  check-pins.sh [DIR...]
+
+DIR is a directory of workflow files (default: .github/workflows). Every *.yml and
+*.yaml under it is scanned. Exit 1 with one `check-pins: FILE:LINE: ...` per finding,
+2 when there is nothing to scan — a guard that finds no workflows is not a pass
+
+Nothing here reaches the network
+
+A reviewed exception carries `# check-pins: allow` on its own line and is skipped;
+comment lines are never findings. Not covered on purpose: `apt-get install` and its
+kin, which fetch the runner's system libraries at the runner image's pinned release
+rather than a registry the repository could lock
+EOF
+}
 
 self=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")
 case "${1:-}" in

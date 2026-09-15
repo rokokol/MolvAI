@@ -1,15 +1,7 @@
 #!/usr/bin/env bash
-# t.sh — the local test harness: one subcommand per question a test run raises.
-#
-# `t.sh help [SUBCOMMAND]` is the reference: every subcommand, every flag, the T_ variables,
-# the exit codes. It is the only list on purpose — this header used to carry a second one,
-# and it fell three subcommands behind the dispatch before anyone noticed.
-# The command is always explicit, after `--`; nothing here guesses what your suite is.
-# A repository keeps its policy — marker sets, excused lines, log directory — in
-# ./tests/t.conf, read from the current directory only, and never the command.
-# Another repository takes this file and markers/ beside it through the ci skill's
-# vendoring cascade (references/bump-cascade.md in https://github.com/rokokol/ci-skill)
-# and never edits its copies in place: a fix belongs in rokokol/tests-skill.
+# The help is the only list on purpose — this header used to carry a second one, and it
+# fell three subcommands behind the dispatch before anyone noticed. A copy is never edited
+# in place: a fix belongs in rokokol/tests-skill
 set -uo pipefail
 
 # 64 is EX_USAGE and 70 is EX_SOFTWARE in sysexits(3): the caller asked wrongly, or the
@@ -98,6 +90,7 @@ read_markers() {
 EXTRA_PATTERNS=()
 POLICY_LOGDIR=""
 POLICY_ALLOW=""
+POLICY_TESTS=()
 load_config() {
   local conf="${T_CONFIG-tests/t.conf}"
   [[ -n "$conf" ]] || return 0
@@ -138,9 +131,10 @@ load_config() {
         POLICY_ALLOW="$value"
         ;;
       logdir) POLICY_LOGDIR="$value" ;;
+      tests) POLICY_TESTS+=("$value") ;;
       # An unknown key is a typo, and a typo that is ignored is a policy silently not in
       # effect — the failure this whole file exists to avoid
-      *) die "config: $conf:$n — unknown key '$key' (markers, pattern, allow, logdir)" ;;
+      *) die "config: $conf:$n — unknown key '$key' (markers, pattern, allow, logdir, tests)" ;;
     esac
   done <"$conf"
 
@@ -206,12 +200,22 @@ scan_log() {
   return "$found"
 }
 
+# own_dir DIR -> DIR exists. One this creates is its own and ignores itself: a .gitignore
+# holding * keeps the logs and the findings out of a `git add -A`, which a line asking every
+# repository to add them to its own .gitignore did not. A directory that was already there
+# is somebody's and is left alone, so `-l .` cannot make the repository ignore itself
+own_dir() {
+  [[ -d "$1" ]] && return 0
+  mkdir -p "$1" && printf '*\n' >"$1/.gitignore"
+}
+
 cmd_run() {
   local tail_n=40 saw_ddash="" logdir=""
   MARKER_FILES=("$MARKER_DIR/default.txt")
   EXTRA_PATTERNS=()
   POLICY_LOGDIR=""
   POLICY_ALLOW=""
+  POLICY_TESTS=()
 
   # Policy first, then the flags on top: what you type adds to the repository's own
   # settings rather than silently replacing them
@@ -275,7 +279,7 @@ cmd_run() {
     [[ -z "$complaint" ]] || die "allow: '$allow' is not a regex grep -E accepts — $complaint"
   fi
 
-  mkdir -p "$logdir" || fatal "run: cannot create $logdir"
+  own_dir "$logdir" || fatal "run: cannot create $logdir"
   local log="${T_LOGFILE:-}"
   [[ -n "$log" ]] || log="$logdir/run-$(date +%Y%m%d-%H%M%S)-$$.log"
   # Refuse before running rather than discover it afterwards: a run whose log could not be
@@ -379,6 +383,7 @@ cmd_flaky() {
 
   local stamp
   stamp="$logdir/flaky-$(date +%Y%m%d-%H%M%S)-$$"
+  own_dir "$logdir" || fatal "flaky: cannot create $logdir"
   mkdir -p "$stamp" || fatal "flaky: cannot create $stamp"
 
   local i status baseline="" differed=0 agreed=0 first_divergence=""
@@ -473,7 +478,7 @@ cmd_bisect_probe() {
   local log="${T_LOGFILE:-}"
   if [[ -z "$log" ]]; then
     local dir="${T_LOGDIR:-.test-logs}"
-    mkdir -p "$dir" || fatal "bisect-probe: cannot create $dir"
+    own_dir "$dir" || fatal "bisect-probe: cannot create $dir"
     log="$dir/probe-$(date +%Y%m%d-%H%M%S)-$$.log"
   fi
 
@@ -964,8 +969,14 @@ count_occurrences() {
 # A defect aimed at a test file proves nothing: the test file is executed, so the edit is
 # "caught" by whatever it breaks, and the report reads as coverage the suite does not
 # have. Vendored and generated code is nobody's guard either. The shapes are the usual
-# ones; --any-file is for a list that knows better.
+# ones, and the policy's `tests` adds a repository's own, such as a gate kept at the root;
+# --any-file is for a list that knows better.
 looks_like_test_file() {
+  local glob
+  for glob in ${POLICY_TESTS[@]+"${POLICY_TESTS[@]}"}; do
+    # shellcheck disable=SC2053  # unquoted on purpose: the policy's value is a glob
+    [[ "$1" == $glob ]] && return 0
+  done
   case "$1" in
     tests/* | test/* | spec/* | __tests__/* | */tests/* | */test/* | */spec/* | */__tests__/*) return 0 ;;
     *_test.* | *.test.* | *.spec.* | test_*.py | */test_*.py | *_spec.rb) return 0 ;;
@@ -1136,7 +1147,8 @@ cmd_falsify() {
   rm -f "$out"/caught.txt "$out"/survived.txt "$out"/stale.txt "$out"/unusable.txt "$out"/timeout.txt \
     "$out"/expected.txt "$out"/results.json "$out"/in-flight
   rm -rf "$out/logs"
-  mkdir -p "$out/logs" || fatal "falsify: cannot create $out"
+  own_dir "$out" || fatal "falsify: cannot create $out"
+  mkdir -p "$out/logs" || fatal "falsify: cannot create $out/logs"
   # Absolute, because the run may move into a worktree and the findings belong here
   out=$(cd -- "$out" && pwd)
   local -a RES_NAME=() RES_FILE=() RES_LINE=() RES_VERDICT=() RES_WHY=()
@@ -1195,9 +1207,12 @@ cmd_falsify() {
   local -a files=()
   local f i
   if [[ -z "$any_file" ]]; then
+    # The policy's `tests` decide what a test file is, so it is read before the check
+    POLICY_TESTS=()
+    load_config
     for i in "${!DEF_NAME[@]}"; do
       looks_like_test_file "${DEF_FILE[$i]}" || continue
-      die "falsify: ${DEF_NAME[$i]} edits ${DEF_FILE[$i]}, which looks like a test, vendored or generated file — a defect there proves nothing about the suite (--any-file if the list knows better)"
+      die "falsify: ${DEF_NAME[$i]} edits ${DEF_FILE[$i]}, which looks like a test, vendored or generated file, or one the policy's tests names — a defect there proves nothing about the suite (--any-file if the list knows better)"
     done
   fi
 
@@ -1564,6 +1579,11 @@ cmd_prove() {
     die "prove: the working tree has uncommitted changes — commit or stash them first, so an interrupted restore cannot be mistaken for your own edits"
   fi
 
+  # The policy first: its `tests` decide which of the commit's files are tests
+  POLICY_LOGDIR=""
+  POLICY_TESTS=()
+  load_config
+
   # What the commit changed, split the way falsify splits a defect's file: test files
   # stay, everything else is the fix. A commit that changed no source has nothing to
   # take away; one that changed no test is provable only by tests written before it,
@@ -1583,10 +1603,8 @@ cmd_prove() {
   ((${#tests[@]} > 0)) ||
     echo "t.sh: prove: $ref changes no test file — whatever notices its fix going away was written before it" >&2
 
-  POLICY_LOGDIR=""
-  load_config
   [[ -n "$logdir" ]] || logdir="${T_LOGDIR:-${POLICY_LOGDIR:-.test-logs}}"
-  mkdir -p "$logdir" || fatal "prove: cannot create $logdir"
+  own_dir "$logdir" || fatal "prove: cannot create $logdir"
   logdir=$(cd -- "$logdir" && pwd)
 
   # In place when the commit is what is checked out and nobody asked otherwise; in a
@@ -1714,8 +1732,7 @@ cmd_prove() {
   esac
 }
 
-# The reference, as text rather than as the file's header: a header has to read as a
-# description of the file, a reference has to be complete, and one text cannot be both.
+# The reference for whoever runs the harness; the header says only what an editor needs.
 # The gate reads every flag out of every parser, every T_ variable out of this file and
 # every exit code out of every return, and requires each to appear here.
 help_general() {
@@ -1744,8 +1761,9 @@ runs the wrong thing on the day it matters. The flags every subcommand forwards 
   -t N         how many lines of the log to show after a verdict that is not a pass (run: 40)
 
 A repository keeps its policy in ./tests/t.conf, read from the current directory only and
-never the command: `markers NAME`, `pattern TEXT`, `allow REGEX`, `logdir PATH`. An unknown
-key, a key with no value or a set that does not exist stops the run and names the line.
+never the command: `markers NAME`, `pattern TEXT`, `allow REGEX`, `logdir PATH`, `tests GLOB`.
+An unknown key, a key with no value or a set that does not exist stops the run and names
+the line. Each log or findings directory the harness creates holds a .gitignore of its own
 
 The environment:
 
@@ -1755,8 +1773,11 @@ The environment:
   T_LOGFILE    one log file for one run, instead of a name chosen under the log directory
   T_CONFIG     another policy file; T_CONFIG= (empty) reads none
 
+Another repository takes this file and markers/ beside it through the ci skill's
+vendoring cascade (references/bump-cascade.md in https://github.com/rokokol/ci-skill)
+
 Exit status: CMD's own, passed through unchanged, and the harness's own verdicts in a band
-no test runner uses — `t.sh help codes`.
+no test runner uses — `t.sh help codes`
 EOF
 }
 
@@ -1768,13 +1789,13 @@ Runs CMD once. The status reported is CMD's own — read from PIPESTATUS, never 
 tee that keeps the log — and the log is read even when CMD exited 0, because that is not
 always a success: `collected 0 items`, `no tests ran`, a traceback in a passing run. The
 markers of such a run live in markers/*.txt as data; markers/default.txt always applies,
--m adds a set, -p adds one line.
+-m adds a set, -p adds one line
 
 The kind of verdict — pass, fail or lied — is written beside the log as LOG.verdict, one
-word, so a wrapper can read it without guessing from the number.
+word, so a wrapper can read it without guessing from the number
 
 Exit: CMD's own; 79 when CMD exited 0 but its log says otherwise; 64 for a usage error;
-70 when the log could not be written.
+70 when the log could not be written
 EOF
 }
 
@@ -1784,7 +1805,7 @@ t.sh focused [--any-file] [PATH...]
 
 Finds the modifier that runs one test and skips the rest of its file — `test.only`,
 `it.only`, `describe.only`, and jasmine's `fit` and `fdescribe` — left in the source. PATH
-defaults to the working directory.
+defaults to the working directory
 
   --any-file          look inside node_modules, vendor, third_party, dist, build and
                       target as well, which are skipped by default because somebody
@@ -1793,9 +1814,9 @@ defaults to the working directory.
 No runner reports one. jest and vitest print a skip count, which is what a suite skipping
 a platform test prints too, and both exit 0 — so this cannot be a marker, and a log cannot
 show it. Where the switch lives in a config instead, forbid it there: vitest's
-`allowOnly: false`, playwright's `forbidOnly: true`, eslint's `jest/no-focused-tests`.
+`allowOnly: false`, playwright's `forbidOnly: true`, eslint's `jest/no-focused-tests`
 
-Exit: 0 when the source holds none; 80 when it holds any, with every line named.
+Exit: 0 when the source holds none; 80 when it holds any, with every line named
 EOF
 }
 
@@ -1804,7 +1825,7 @@ help_pollute() {
 t.sh pollute [-l DIR] [-m SET] [-p PATTERN] [-t N] VICTIM -- CMD...
 
 A test that passes alone and fails in the suite was polluted by something that ran before
-it. This halves the order the way bisect halves commits, and names the test that does it.
+it. This halves the order the way bisect halves commits, and names the test that does it
 
 The candidates arrive on stdin, one per line, in the order they run — which is what a
 collector prints:
@@ -1813,16 +1834,16 @@ collector prints:
 
 CMD is given the selection as trailing arguments, so it must be a runner that takes a list
 of tests that way: pytest, vitest, jest, phpunit. `go test -run` takes a regex instead, and
-turning a list into one is a wrapper the adopter writes.
+turning a list into one is a wrapper the adopter writes
 
 Each probe goes through `run`, so a suite that exits 0 while its log says otherwise counts
 as a failure here too. Both ends are checked before any halving: a victim that fails by
 itself is a broken test rather than a polluted one, and a victim that survives the whole
-order has nothing to find.
+order has nothing to find
 
 Exit: 0 when it names the test, or when the order holds nothing to find; 82 when no single
 test explains it and the smallest reproducing set is printed instead; 85 when the victim
-fails on its own.
+fails on its own
 EOF
 }
 
@@ -1832,7 +1853,7 @@ t.sh quarantine [--on YYYY-MM-DD] [FILE]
 
 Reads the quarantine table — `tests/quarantine.md` by default, the shape is in
 references/curation.md — and refuses a row nobody came back to. The columns are found by
-their headings, so a column added in the middle shifts nothing.
+their headings, so a column added in the middle shifts nothing
 
   --on YYYY-MM-DD     judge the rows as of this date rather than today, which is how a
                       gate checks the check without waiting for a deadline to pass
@@ -1840,9 +1861,9 @@ their headings, so a column added in the middle shifts nothing.
 Two rows are refused. One whose `expires` is before the date being judged: the deadline
 was a promise to look again, and it passed. And one whose `expires` is not a date at all,
 because a row that cannot expire never comes up for review — the same silence an unknown
-config key gives.
+config key gives
 
-Exit: 0 when every row is still within its date; 81 when any is not, with each named.
+Exit: 0 when every row is still within its date; 81 when any is not, with each named
 EOF
 }
 
@@ -1852,10 +1873,10 @@ t.sh flaky N [-l DIR] [-m SET] [-p PATTERN] [-t N] -- CMD...
 
 Runs CMD N times, N at least 2, and reports how many runs disagreed with the first, with
 the first divergent log named. Evidence that a test is unstable, never a way to tolerate
-one: nothing here retries, and the logs of every run are kept under one directory.
+one: nothing here retries, and the logs of every run are kept under one directory
 
 Exit: the runs' common status when they agree; 86 when they disagreed; 64 for a usage
-error; 70 when a run produced no verdict at all.
+error; 70 when a run produced no verdict at all
 EOF
 }
 
@@ -1869,15 +1890,15 @@ whose run exited 0 while its log says nothing ran, and one where the runner is n
 A crash of the suite is bad; a Ctrl-C is passed through so git aborts. --first-parent and
 --no-checkout are git's own. The working tree must be clean and no bisect may already be
 in progress; the tree is put back afterwards, interrupt included, and git's session log
-is kept beside the run's logs as bisect.log for `git bisect replay`.
+is kept beside the run's logs as bisect.log for `git bisect replay`
 
 Exit: 0 with the first bad commit named on its own line; 89 when only commits that could
-not answer are left between good and bad; 64 for a usage error; 70 when git failed.
+not answer are left between good and bad; 64 for a usage error; 70 when git failed
 
 t.sh bisect-probe [-b BUILD] [-l DIR] [-m SET] [-p PATTERN] [-t N] -- CMD...
 
 Internal: the single-commit verdict git bisect run calls, in git's vocabulary — 0 good,
-1 bad, 125 cannot answer.
+1 bad, 125 cannot answer
 EOF
 }
 
@@ -1889,7 +1910,7 @@ t.sh falsify [-d FILE] [-b BUILD] [--timeout SECONDS] [--out DIR] [--since REF] 
 
 Breaks one guard at a time, as written by hand in FILE (default tests/defects.sh, see
 templates/defects.sh), and requires the suite to notice. FILTER runs only the defects
-whose name contains it. Nothing is generated, and the defect list is sourced: it is code.
+whose name contains it. Nothing is generated, and the defect list is sourced: it is code
 
   -d FILE             the defect list
   -b BUILD            a command that must succeed before the suite is asked; an edit that
@@ -1907,20 +1928,22 @@ whose name contains it. Nothing is generated, and the defect list is sourced: it
   --worktree          edit a checkout of HEAD in a git worktree instead of the files in
                       front of you, so an editor, a watcher or a commit cannot meet a mutant
   --any-file          allow a defect in a test, vendored or generated file, which is
-                      otherwise refused because it proves nothing about the suite
+                      otherwise refused because it proves nothing about the suite; the
+                      policy's `tests` names a repository's own test files beyond the
+                      usual shapes
 
 Verdicts: caught, SURVIVED with the file, the line and the edit, expected (declared with
 `expect survived REASON`), stale, unusable, TIMEDOUT. On a GitHub runner each finding is
-also an annotation on its file and line.
+also an annotation on its file and line
 
 A defect list entry may end with `expect survived REASON`, for an edit nothing can
 observe, or `expect caught FRAGMENT`, naming what should do the catching — a test name or
 an assertion message. Caught while FRAGMENT is nowhere in that run's output is stale: the
-suite went red without the named guard being involved, so the run says nothing about it.
+suite went red without the named guard being involved, so the run says nothing about it
 
 Exit: 0 all caught; 83 a survivor; 84 a timeout; 85 the suite red or never really run
 before any edit; 87 the list drifted, or a declared exception was disproved; 88 an edit
-only stopped the build; 64 for a usage error; 70 when a file could not be written back.
+only stopped the build; 64 for a usage error; 70 when a file could not be written back
 EOF
 }
 
@@ -1930,14 +1953,14 @@ t.sh prove [-b BUILD] [--timeout SECONDS] [--worktree] [--any-file] [-l DIR] [-m
 
 Takes the fix out of one commit (default HEAD), keeps its tests, and requires the suite
 to go red: a commit that adds a test and the code it pins has to demonstrate itself. The
-commit's files are split the way falsify splits a defect's file — test files stay, the
-rest is the fix, --any-file counts everything as the fix. The suite must be green with
+commit's files are split the way falsify splits a defect's file — test files, the policy's
+`tests` among them, stay, the rest is the fix, --any-file counts everything as the fix. The suite must be green with
 the fix in first. A commit other than HEAD is proven in a worktree at that commit;
---worktree does the same for HEAD. -b and --timeout as in falsify.
+--worktree does the same for HEAD. -b and --timeout as in falsify
 
 Exit: 0 proven; 83 VACUOUS, the tests pass without the fix; 84 the suite did not finish;
 85 the suite red or never really run with the fix in; 88 without the fix nothing builds;
-64 when the commit changes no source file, or for any other usage error.
+64 when the commit changes no source file, or for any other usage error
 EOF
 }
 
@@ -1945,7 +1968,7 @@ help_codes() {
   cat <<'EOF'
 Exit status: CMD's own, passed through unchanged, and the harness's own verdicts in a band
 no test runner uses. 2, 3 and 4 were tried first and collide: GNU make exits 2 on any
-error, pytest uses 2 to 5, cargo-nextest exits 4 for "no tests ran".
+error, pytest uses 2 to 5, cargo-nextest exits 4 for "no tests ran"
 
   64  a usage error — a flag, the config, a missing --, an allow regex grep rejects
   70  the harness itself failed — a log it cannot write, a file it cannot put back
