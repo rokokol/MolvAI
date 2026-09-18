@@ -107,7 +107,7 @@ reqwest = { version = "0.13", default-features = false, features = [
     "webpki-roots",
     "system-proxy",
 ] }
-sha2 = "0.10"
+sha2 = "0.11"
 # Шифрование текстов журнала по настройке journal.encrypt (AEAD, RustCrypto, MIT/Apache-2.0)
 chacha20poly1305 = "0.10"
 # Хранилище ключей ОС: Secret Service (Linux, чистый Rust через zbus, без libdbus),
