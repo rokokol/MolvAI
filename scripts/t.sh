@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 # The help is the only list on purpose — this header used to carry a second one, and it
-# fell three subcommands behind the dispatch before anyone noticed. A copy is never edited
-# in place: a fix belongs in rokokol/tests-skill
+# fell three subcommands behind the dispatch before anyone noticed. Taken from
+# rokokol/tests-skill, with markers/ beside it, through the ci skill's vendoring cascade
+# (references/bump-cascade.md in https://github.com/rokokol/ci-skill): a copy is never
+# edited in place, a fix belongs there
+#
+# No -e: CMD's non-zero status is the answer this harness exists to report, not a failure
+# of the harness, so every run of it is captured with `|| status=$?` and passed through
 set -uo pipefail
 
 # 64 is EX_USAGE and 70 is EX_SOFTWARE in sysexits(3): the caller asked wrongly, or the
@@ -148,6 +153,19 @@ RUN_VERDICT=""
 # falsify's marker of a defect in flight, removed with the restore; global for the traps
 FLIGHT=""
 
+# The worktree falsify or prove made and where they started from, global for the same
+# reason: t.sh returns its verdicts from the function, so an EXIT trap set inside one runs
+# after it has returned, and a worktree known only to a local was left behind
+WORKTREE="" WORKTREE_ROOT=""
+# shellcheck disable=SC2317  # reached through the traps
+cleanup_worktree() {
+  [[ -n "$WORKTREE" ]] || return 0
+  cd -- "$WORKTREE_ROOT" || :
+  git -C "$WORKTREE_ROOT" worktree remove --force "$WORKTREE" >/dev/null 2>&1 || :
+  rm -rf "$(dirname -- "$WORKTREE")"
+  WORKTREE=""
+}
+
 # Fills MARKER_PATTERNS from MARKER_FILES. Called from the shell that can actually exit.
 MARKER_PATTERNS=()
 load_markers() {
@@ -289,7 +307,13 @@ cmd_run() {
   # CMD's own status, never the pipeline's. `cmd | tee` reports tee and `cmd | tail`
   # reports tail — both are 0 for a suite that just failed, which is how a red run
   # gets committed as a green one.
-  "$@" 2>&1 | tee "$log"
+  # T_LOGFILE names this run's log, and flaky, prove and bisect-probe set it for the run they
+  # start. Left in the command's environment, a suite that runs t.sh itself wrote into this
+  # very log and cut it short, so the command runs without it
+  (
+    unset T_LOGFILE
+    "$@"
+  ) 2>&1 | tee "$log"
   # Copied whole, in the one command that still can: bash resets PIPESTATUS after every
   # simple command, and an assignment or a `local` is one. A second reference on the next
   # line would already read empty.
@@ -871,7 +895,9 @@ cmd_bisect() {
   # "bisect found first bad commit" in one git, "first 'bad' commit" in another, and the
   # term is whatever `git bisect terms` says: the quotes and the word are both optional
   if grep -qE "^bisect found first '?[a-z]*'? commit" "$out"; then
-    culprit=$(sed -n "s/^\([0-9a-f]\{7,40\}\) is the first '\{0,1\}[a-z]*'\{0,1\} commit$/\1/p" "$out" | head -1)
+    # `sed -n 1p` rather than `head -1`: head stops reading, the sed before it dies of
+    # SIGPIPE, and pipefail makes that the status of a line that found its commit
+    culprit=$(sed -n "s/^\([0-9a-f]\{7,40\}\) is the first '\{0,1\}[a-z]*'\{0,1\} commit$/\1/p" "$out" | sed -n 1p)
     printf 't.sh: first bad commit is %s — the session is in %s/bisect.log, replayable with git bisect replay\n' \
       "$culprit" "$logdir"
     return 0
@@ -881,7 +907,7 @@ cmd_bisect() {
       "$logdir" >&2
     return 89
   fi
-  code=$(sed -n 's/^error: bisect run failed: exit code \([0-9]*\) from .*/\1/p' "$out" | head -1)
+  code=$(sed -n 's/^error: bisect run failed: exit code \([0-9]*\) from .*/\1/p' "$out" | sed -n 1p)
   if [[ -n "$code" ]] && ((code >= 128)); then
     # The probe passed a signal through so git would abort; end with the same one
     return "$code"
@@ -896,11 +922,61 @@ cmd_bisect() {
 # not compile, and a compiler error is not a test noticing anything.
 DEF_NAME=()
 DEF_FILE=()
+DEF_HOW=()
 DEF_FIND=()
 DEF_REPLACE=()
 DEF_WHY=()
 DEF_EXPECT=()
 DEF_EXPECT_KIND=()
+# The further edits of an entry that needs several at once, serialised: fields of one edit
+# separated by a unit separator, edits by a record separator. Two control characters rather
+# than another pair of parallel arrays, because an entry holds a variable number of them and
+# `declare -A` is bash 4.0+, which macOS does not ship
+DEF_MORE=()
+MORE_UNIT=$'\037'
+MORE_REC=$'\036'
+
+# The files an entry's further edits touch, one per line, so both the collector and the
+# refusal below read them the same way rather than each unpacking the records itself
+more_files() { # more_files INDEX
+  local rest="${DEF_MORE[$1]}" rec
+  while [[ -n "$rest" ]]; do
+    rec="${rest%%"$MORE_REC"*}"
+    if [[ "$rec" == "$rest" ]]; then rest=""; else rest="${rest#*"$MORE_REC"}"; fi
+    printf '%s\n' "${rec%%"$MORE_UNIT"*}"
+  done
+}
+
+# Reads the trailing words every entry may end with, whichever verb wrote it: any number of
+# `--and FILE FIND REPLACE`, then at most one `expect survived|caught VALUE`. Assigns to
+# TAIL_MORE, TAIL_EXPECT and TAIL_EXPECT_KIND rather than printing, because a `die` inside a
+# $(...) would end only the subshell and let a malformed list through
+read_tail() { # read_tail VERB POSITION ARGS...
+  local verb="$1" i="$2"
+  shift 2
+  local -a a=("$@")
+  local n=${#a[@]}
+  TAIL_MORE=""
+  TAIL_EXPECT=""
+  TAIL_EXPECT_KIND=""
+  if ((n - i >= 3)) && [[ "${a[n - 3]}" == expect ]]; then
+    case "${a[n - 2]}" in
+      survived | caught) TAIL_EXPECT_KIND="${a[n - 2]}" ;;
+      *) die "defects: after the consequence, the only words allowed are: expect survived REASON, or expect caught FRAGMENT" ;;
+    esac
+    [[ -n "${a[n - 1]}" ]] ||
+      die "defects: after the consequence, the only words allowed are: expect survived REASON, or expect caught FRAGMENT"
+    TAIL_EXPECT="${a[n - 1]}"
+    n=$((n - 3))
+  fi
+  while ((i < n)); do
+    [[ "${a[i]}" == --and ]] ||
+      die "defects: $verb takes '--and FILE FIND REPLACE' after the consequence, and an expectation last, not '${a[i]}'"
+    ((n - i >= 4)) || die "defects: --and takes three words after it: FILE FIND REPLACE"
+    TAIL_MORE="$TAIL_MORE${TAIL_MORE:+$MORE_REC}${a[i + 1]}$MORE_UNIT${a[i + 2]}$MORE_UNIT${a[i + 3]}"
+    i=$((i + 4))
+  done
+}
 
 # The one call a defects file makes. Sourced, so the file is plain bash and needs no parser.
 #
@@ -924,24 +1000,72 @@ DEF_EXPECT_KIND=()
 # Stryker and cargo-mutants do it, because an exception kept elsewhere is one nobody
 # rereads.
 defect() {
-  local expect="" expect_kind=""
-  if (($# == 8)); then
-    [[ "$6" == expect && -n "$8" ]] ||
-      die "defects: after the consequence, the only words allowed are: expect survived REASON, or expect caught FRAGMENT"
-    case "$7" in
-      survived | caught) expect_kind="$7" ;;
-      *) die "defects: after the consequence, the only words allowed are: expect survived REASON, or expect caught FRAGMENT" ;;
-    esac
-    expect="$8"
-    set -- "$1" "$2" "$3" "$4" "$5"
-  fi
-  (($# == 5)) ||
-    die "defects: defect takes 5 arguments (name file find replace consequence), or 8 with 'expect survived REASON' or 'expect caught FRAGMENT', got $#"
+  (($# >= 5)) ||
+    die "defects: defect takes 5 arguments (name file find replace consequence), and may end with '--and FILE FIND REPLACE' or an expectation, got $#"
+  read_tail defect 5 "$@"
   DEF_NAME+=("$1")
   DEF_FILE+=("$2")
+  DEF_HOW+=(replace)
   DEF_FIND+=("$3")
   DEF_REPLACE+=("$4")
   DEF_WHY+=("$5")
+  DEF_MORE+=("$TAIL_MORE")
+  DEF_EXPECT+=("$TAIL_EXPECT")
+  DEF_EXPECT_KIND+=("$TAIL_EXPECT_KIND")
+}
+
+# The defects a replacement cannot express, because there is nothing unique to find: a bad
+# line added to the end, a file that should not be there, a file replaced whole, a file
+# taken away. A gate's planted defects take these shapes as often as they take a
+# replacement, and a list that cannot write them down leaves those guards unfalsified.
+#
+#   plant NAME FILE append TEXT     CONSEQUENCE
+#   plant NAME FILE create CONTENT  CONSEQUENCE
+#   plant NAME FILE write  CONTENT  CONSEQUENCE
+#   plant NAME FILE rm              CONSEQUENCE
+#
+# A second verb rather than another shape of `defect`, because `defect NAME FILE append …`
+# cannot be told from a replacement whose find text is the word "append" — the grammar
+# would decide by guessing, and a list nobody can read by eye is a list nobody reviews.
+# Both verbs take the same `expect survived REASON` and `expect caught FRAGMENT` endings.
+#
+# Each form answers "has this stopped being an edit at all" its own way, which is what
+# `stale` means for a replacement whose find text no longer matches once: append is stale
+# when the text is already in the file, create when the file is already there, write when
+# the content already matches, rm when the file is already gone. Without that, a list goes
+# on reporting `caught` for an edit that changed nothing.
+plant() {
+  local -a a=("$@")
+  local text="" why="" fixed=0
+  # Where the positional words end and the trailing ones begin differs by form, because rm
+  # carries no text of its own
+  case "${a[2]-}" in
+    append | create | write)
+      (($# >= 5)) ||
+        die "defects: plant ${a[2]} takes 5 arguments (name file ${a[2]} text consequence), got $#"
+      text="${a[3]}"
+      why="${a[4]}"
+      fixed=5
+      ;;
+    rm)
+      (($# >= 4)) ||
+        die "defects: plant rm takes 4 arguments (name file rm consequence), got $#"
+      why="${a[3]}"
+      fixed=4
+      ;;
+    *) die "defects: plant takes append, create, write or rm as its third word, got '${a[2]-}'" ;;
+  esac
+  read_tail plant "$fixed" "$@"
+  local expect="$TAIL_EXPECT" expect_kind="$TAIL_EXPECT_KIND"
+  DEF_NAME+=("${a[0]}")
+  DEF_FILE+=("${a[1]}")
+  DEF_HOW+=("${a[2]}")
+  DEF_MORE+=("$TAIL_MORE")
+  # The find text is what the entry looks for before it edits; only a replacement has one.
+  # What the file becomes goes in the same place for every form, so one loop applies them
+  DEF_FIND+=("")
+  DEF_REPLACE+=("$text")
+  DEF_WHY+=("$why")
   DEF_EXPECT+=("$expect")
   DEF_EXPECT_KIND+=("$expect_kind")
 }
@@ -957,13 +1081,30 @@ slurp() { # slurp VARNAME FILE
   printf -v "$1" '%s' "${__content%x}"
 }
 
-count_occurrences() {
-  local haystack="$1" needle="$2" n=0
-  while [[ "$haystack" == *"$needle"* ]]; do
-    haystack="${haystack#*"$needle"}"
-    n=$((n + 1))
+# Where NEEDLE occurs in HAYSTACK, for a caller that needs it exactly once: assigns to the
+# variable NAMED by $1 the offset of the one occurrence, -1 when there is none and -2 when
+# there are more. Every removal form grows with the square of the text — ${h#*"$n"} and
+# ${h%%"$n"*} alike, sixteen times the cost for four times the text under bash 3.2 and 5.3
+# both, and 27 s for ${h%%"$n"*} on 495 KB under 3.2 — while containment, a substring and a
+# length are linear. So the offset is found by halving the length of a prefix that still
+# holds the needle: the shortest such prefix ends where the first occurrence ends, and it
+# takes log2 of the length in linear steps. A second occurrence is looked for after the end
+# of the first, so two that overlap count once. An empty needle occurs nowhere
+locate_once() { # locate_once VARNAME HAYSTACK NEEDLE
+  local __haystack="$2" __needle="$3" __lo __hi __mid __at
+  if [[ -z "$__needle" || "$__haystack" != *"$__needle"* ]]; then
+    printf -v "$1" '%s' -1
+    return 0
+  fi
+  __lo=$((${#__needle} - 1))
+  __hi=${#__haystack}
+  while ((__hi - __lo > 1)); do
+    __mid=$(((__lo + __hi) / 2))
+    if [[ "${__haystack:0:__mid}" == *"$__needle"* ]]; then __hi=$__mid; else __lo=$__mid; fi
   done
-  printf '%d' "$n"
+  __at=$((__hi - ${#__needle}))
+  if [[ "${__haystack:__hi}" == *"$__needle"* ]]; then __at=-2; fi
+  printf -v "$1" '%s' "$__at"
 }
 
 # A defect aimed at a test file proves nothing: the test file is executed, so the edit is
@@ -999,13 +1140,21 @@ looks_like_test_file() {
 # it spawned, not just the shell around them; without GNU timeout(1), which macOS does not
 # have, that is what a watchdog is.
 #
+# The watchdog sleeps the whole deadline in a process group of its own while this shell
+# waits on the suite, so the run ends when the suite does. Polling `kill -0` every tenth
+# of a second held each run 0.06 s longer on a one-second suite — the rest of the tick,
+# and a sleep started per tick — and a fast suite a whole tick. `wait -n`, which would
+# wait on whichever ends first, is bash 4.3. The watchdog leaves LOG.timedout before its
+# TERM, so a run ended by the deadline is never read as a verdict of the suite's own.
+#
 # Reads three things from the calling subcommand's locals, which bash scopes dynamically:
 # `build`, the command that must succeed before the suite is asked; `deadline`, in
 # seconds, empty for none; and `pass`, the flags forwarded to run.
 VERDICT=""
 MUTANT_PGID=""
+WATCHDOG_PGID=""
 suite_verdict() { # suite_verdict LOG CMD...
-  local log="$1" kind="" pid waited=0 grace=0
+  local log="$1" kind="" pid
   shift
   VERDICT=none
   if [[ -n "$build" ]]; then
@@ -1014,30 +1163,43 @@ suite_verdict() { # suite_verdict LOG CMD...
       return
     fi
   fi
+  rm -f "$log.timedout"
   set -m
   (T_LOGFILE="$log" cmd_run -t 0 "${pass[@]+"${pass[@]}"}" "$@") >/dev/null 2>&1 &
   pid=$!
-  set +m
   MUTANT_PGID="$pid"
-  # Tenths of a second, so a fast suite is not held for a whole second per defect
-  while kill -0 "$pid" 2>/dev/null; do
-    if [[ -n "$deadline" ]] && ((waited >= deadline * 10)); then
+  if [[ -n "$deadline" ]]; then
+    # Five seconds of grace after TERM, polled, since only a run that already missed its
+    # deadline gets here. The group rather than the runner, which this shell has reaped
+    # by then: what outlives the runner is what the KILL is for
+    (
+      grace=0
+      sleep "$deadline"
+      : >"$log.timedout"
       kill -TERM -- -"$pid" 2>/dev/null || :
-      while kill -0 "$pid" 2>/dev/null && ((grace < 50)); do
+      while kill -0 -- -"$pid" 2>/dev/null && ((grace < 50)); do
         sleep 0.1
         grace=$((grace + 1))
       done
       kill -KILL -- -"$pid" 2>/dev/null || :
-      wait "$pid" 2>/dev/null || :
-      MUTANT_PGID=""
-      VERDICT=timedout
-      return
-    fi
-    sleep 0.1
-    waited=$((waited + 1))
-  done
+    ) >/dev/null 2>&1 &
+    WATCHDOG_PGID=$!
+  fi
+  set +m
   wait "$pid" 2>/dev/null || :
   MUTANT_PGID=""
+  if [[ -n "$WATCHDOG_PGID" ]]; then
+    # A watchdog that has fired is finishing its grace and its KILL, and is waited for;
+    # one still asleep is ended with its sleep
+    [[ -e "$log.timedout" ]] || kill -KILL -- -"$WATCHDOG_PGID" 2>/dev/null || :
+    wait "$WATCHDOG_PGID" 2>/dev/null || :
+    WATCHDOG_PGID=""
+  fi
+  if [[ -e "$log.timedout" ]]; then
+    rm -f "$log.timedout"
+    VERDICT=timedout
+    return
+  fi
   [[ ! -r "$log.verdict" ]] || kind=$(cat "$log.verdict")
   case "$kind" in
     pass) VERDICT=survived ;;
@@ -1046,9 +1208,12 @@ suite_verdict() { # suite_verdict LOG CMD...
   esac
 }
 
-# The suite's process group does not get the Ctrl-C the terminal sends, so a trap ends it
+# The suite's process group does not get the Ctrl-C the terminal sends, so a trap ends it,
+# and the watchdog's with it: left asleep, it would wake at the deadline and signal a
+# process group id that may belong to something else by then
 # shellcheck disable=SC2317  # reached through the traps
 end_mutant() {
+  [[ -z "$WATCHDOG_PGID" ]] || kill -KILL -- -"$WATCHDOG_PGID" 2>/dev/null || :
   [[ -z "$MUTANT_PGID" ]] || kill -TERM -- -"$MUTANT_PGID" 2>/dev/null || :
 }
 
@@ -1210,9 +1375,19 @@ cmd_falsify() {
     # The policy's `tests` decide what a test file is, so it is read before the check
     POLICY_TESTS=()
     load_config
+    local candidate
     for i in "${!DEF_NAME[@]}"; do
-      looks_like_test_file "${DEF_FILE[$i]}" || continue
-      die "falsify: ${DEF_NAME[$i]} edits ${DEF_FILE[$i]}, which looks like a test, vendored or generated file, or one the policy's tests names — a defect there proves nothing about the suite (--any-file if the list knows better)"
+      # Every file the entry edits, not only the one it names first: a second edit lands on
+      # disk exactly as the first does, and a defect list could otherwise reach a test file
+      # through --and while the refusal watched the wrong half of the entry
+      while IFS= read -r candidate; do
+        [[ -n "$candidate" ]] || continue
+        looks_like_test_file "$candidate" || continue
+        die "falsify: ${DEF_NAME[$i]} edits $candidate, which looks like a test, vendored or generated file, or one the policy's tests names — a defect there proves nothing about the suite (--any-file if the list knows better)"
+      done < <(
+        printf '%s\n' "${DEF_FILE[$i]}"
+        more_files "$i"
+      )
     done
   fi
 
@@ -1272,36 +1447,63 @@ cmd_falsify() {
   # from nothing. Either way a marker names the defect in flight — FALSIFY-IN-PROGRESS at
   # the root of the worktree, in-flight under the findings directory in place — so a
   # mutant that somehow outlives the run is found by the name of what put it there.
-  local root wt=""
-  root=$(pwd)
+  WORKTREE_ROOT=$(pwd)
   if [[ -n "$worktree" ]]; then
-    wt=$(mktemp -d "${TMPDIR:-/tmp}/t.sh.XXXXXX")/wt || fatal "falsify: cannot create a directory for the worktree"
-    git worktree add --detach "$wt" HEAD >/dev/null 2>&1 || fatal "falsify: git could not add a worktree at $wt"
-    cd -- "$wt" || fatal "falsify: cannot enter the worktree at $wt"
-    FLIGHT="$wt/FALSIFY-IN-PROGRESS"
+    WORKTREE=$(mktemp -d "${TMPDIR:-/tmp}/t.sh.XXXXXX")/wt || fatal "falsify: cannot create a directory for the worktree"
+    git worktree add --detach "$WORKTREE" HEAD >/dev/null 2>&1 || fatal "falsify: git could not add a worktree at $WORKTREE"
+    cd -- "$WORKTREE" || fatal "falsify: cannot enter the worktree at $WORKTREE"
+    FLIGHT="$WORKTREE/FALSIFY-IN-PROGRESS"
   else
     FLIGHT="$out/in-flight"
   fi
-  # shellcheck disable=SC2317  # reached through the traps
-  cleanup_worktree() {
-    [[ -n "$wt" ]] || return 0
-    cd -- "$root" || :
-    git -C "$root" worktree remove --force "$wt" >/dev/null 2>&1 || :
-    rm -rf "$(dirname -- "$wt")"
-    wt=""
-  }
-  for f in "${DEF_FILE[@]}"; do
+  local more_f
+  for i in "${!DEF_FILE[@]}"; do
+    f="${DEF_FILE[$i]}"
     [[ " ${files[*]-} " == *" $f "* ]] || files+=("$f")
+    while IFS= read -r more_f; do
+      [[ -n "$more_f" ]] || continue
+      [[ " ${files[*]-} " == *" $more_f "* ]] || files+=("$more_f")
+    done < <(more_files "$i")
   done
   # Two parallel arrays rather than one associative array: `declare -A` is bash 4.0+, and
   # macOS ships 3.2. `files` holds at most a handful of paths, so a linear lookup costs
   # nothing and the harness stays runnable wherever bash is.
-  local -a originals=()
+  local -a originals=() existed=()
   local __slurped=""
   for f in "${files[@]}"; do
-    [[ -r "$f" ]] || die "falsify: $defects names $f, which cannot be read"
-    slurp __slurped "$f" || fatal "falsify: cannot read $f"
-    originals+=("$__slurped")
+    # A file absent before the run is a state to record, not a fault: `create` is about a
+    # file that is not there yet, and `rm` may name one that has already gone, which is
+    # that entry's own way of being stale. Whether a form may meet an absent file is
+    # decided per entry below, where the form is known; here it is only remembered, so
+    # that restoring means removing what the run made rather than leaving an empty file
+    # where there was nothing.
+    if [[ -e "$f" ]]; then
+      [[ -r "$f" ]] || die "falsify: $defects names $f, which cannot be read"
+      slurp __slurped "$f" || fatal "falsify: cannot read $f"
+      originals+=("$__slurped")
+      # x rather than 1 where the file is executable. An `rm` defect makes the restore
+      # create the file anew, and a new file is born under the umask without that bit: the
+      # bytes match, so the byte-for-byte check stays quiet, while git sees a mode change
+      # nobody made and the next run meets a source it cannot execute. The bit and not the
+      # whole mode, because `stat` spells its format differently on BSD and GNU, and this
+      # is the only part of a mode a suite trips over
+      if [[ -x "$f" ]]; then existed+=(x); else existed+=(1); fi
+    else
+      # Absent is legal only while every entry naming this file is a create or an rm. A
+      # replacement, an append or a write aimed at a file that is not there is a typo in
+      # the list, and saying so at once beats reporting each of its entries stale.
+      local needs=""
+      for i in "${!DEF_FILE[@]}"; do
+        [[ "${DEF_FILE[$i]}" == "$f" ]] || continue
+        case "${DEF_HOW[$i]}" in
+          create | rm) ;;
+          *) needs=1 ;;
+        esac
+      done
+      [[ -z "$needs" ]] || die "falsify: $defects names $f, which cannot be read"
+      originals+=("")
+      existed+=("")
+    fi
   done
 
   # Assigns to the variable NAMED by $1, for the same reason slurp does: a value fetched
@@ -1317,6 +1519,19 @@ cmd_falsify() {
     fatal "falsify: $wanted has no recorded original — the defect list and the file list disagree"
   }
 
+  # Whether the file was in the tree before the run, assigned rather than printed for the
+  # same reason: an empty answer is a real answer here, and a $(...) would make "absent"
+  # and "the lookup failed" the same empty string
+  existed_of() { # existed_of VARNAME FILE
+    local wanted="$2" i
+    for i in "${!files[@]}"; do
+      [[ "${files[$i]}" == "$wanted" ]] || continue
+      printf -v "$1" '%s' "${existed[$i]}"
+      return 0
+    done
+    fatal "falsify: $wanted has no recorded original — the defect list and the file list disagree"
+  }
+
   # Restoration happens here and not only at the end of the loop, so an interrupt, a
   # failure or a kill cannot leave the source edited. The contents come from memory rather
   # than from git, so this needs neither a clean checkout nor git to be working.
@@ -1324,7 +1539,15 @@ cmd_falsify() {
   restore_all() {
     local i
     for i in "${!files[@]}"; do
-      printf '%s' "${originals[$i]}" >"${files[$i]}" 2>/dev/null || :
+      # A file that was not there before the run is put back by being removed again.
+      # Writing its recorded original would leave an empty file behind, which is a tree
+      # nobody meant to leave and a `git diff` that is not clean.
+      if [[ -n "${existed[$i]}" ]]; then
+        printf '%s' "${originals[$i]}" >"${files[$i]}" 2>/dev/null || :
+        [[ "${existed[$i]}" != x ]] || chmod +x "${files[$i]}" 2>/dev/null || :
+      else
+        rm -f "${files[$i]}" 2>/dev/null || :
+      fi
     done
     rm -f "$FLIGHT"
   }
@@ -1369,11 +1592,13 @@ cmd_falsify() {
     *) fatal "falsify: the baseline run ended without a verdict — the harness could not run the suite (see $logdir)" ;;
   esac
 
-  local name file find replace why expect expect_kind content mutated occurrences pristine line
-  local -a caught=() survived=() stale=() unusable=() timedout=() expected=() ran=()
+  local name file how exists find replace why expect expect_kind content mutated at pristine line
+  local more_ok more_rest more_rec more_file more_find more_replace more_content k slot before
+  local -a caught=() survived=() stale=() unusable=() timedout=() expected=() ran=() edit_files=() edit_new=()
   for i in "${selected[@]}"; do
     name="${DEF_NAME[$i]}"
     file="${DEF_FILE[$i]}"
+    how="${DEF_HOW[$i]}"
     find="${DEF_FIND[$i]}"
     replace="${DEF_REPLACE[$i]}"
     why="${DEF_WHY[$i]}"
@@ -1382,33 +1607,157 @@ cmd_falsify() {
     ran+=("$name")
 
     original_of content "$file"
-    occurrences=$(count_occurrences "$content" "$find")
-    if ((occurrences != 1)); then
-      # Not guessed at: a list that no longer describes the code has to say so, or it
-      # quietly stops testing the thing it was written for
-      printf 'stale     %s: its find text matches %s times in %s, not once\n' "$name" "$occurrences" "$file"
-      annotate warning "$file" "" "stale $name: its find text matches $occurrences times, not once"
+    existed_of exists "$file"
+    # Every form answers the same question before it edits anything: is this still an edit
+    # at all? A replacement whose find text no longer matches once, an append of text the
+    # file already carries, a create of a file already there, a write of content already
+    # in place, an rm of something already gone — each of those changes nothing, and a
+    # suite that stays green against no change would be credited with catching one.
+    drifted() { # drifted SENTENCE
+      printf 'stale     %s: %s\n' "$name" "$1"
+      annotate warning "$file" "" "stale $name: $1"
       stale+=("$name")
       record stale "$name" "$file" "" "$why"
-      continue
-    fi
-    # The line the find text starts on, because a survivor is only actionable next to the
-    # code it names: how many newlines come before it, plus one
-    line=$(($(printf '%s' "${content%%"$find"*}" | wc -l) + 1))
+    }
+    case "$how" in
+      replace)
+        locate_once at "$content" "$find"
+        if ((at < 0)); then
+          # Not guessed at: a list that no longer describes the code has to say so, or it
+          # quietly stops testing the thing it was written for
+          if ((at == -1)); then
+            drifted "its find text matches nowhere in $file"
+          else
+            drifted "its find text matches more than once in $file"
+          fi
+          continue
+        fi
+        # Everything before the one occurrence, taken by index at the offset locate_once
+        # found; the line and the mutant are both cut from it
+        before="${content:0:at}"
+        # The line the find text starts on, because a survivor is only actionable next to
+        # the code it names: how many newlines come before it, plus one
+        line=$(($(printf '%s' "$before" | wc -l) + 1))
+        # Cut around the one occurrence rather than ${content//"$find"/"$replace"}: bash
+        # 3.2 keeps the quotes around the replacement as literal text, so every mutant on
+        # macOS was `"if false"` and unusable, and unquoted, a `&` in the replacement is
+        # the match itself from bash 5.2 on. Prefix and suffix have neither problem.
+        mutated="$before$replace${content:$((${#before} + ${#find}))}"
+        ;;
+      append)
+        if [[ "$content" == *"$replace"* ]]; then
+          drifted "the text it appends is already in $file, so the edit changes nothing"
+          continue
+        fi
+        # Where the appended text lands, so a survivor points at the end of the file
+        line=$(($(printf '%s' "$content" | wc -l) + 1))
+        mutated="$content$replace"
+        ;;
+      create)
+        if [[ -n "$exists" ]]; then
+          drifted "$file is already in the repository, so there is nothing to create"
+          continue
+        fi
+        line=1
+        mutated="$replace"
+        ;;
+      write)
+        if [[ -z "$exists" ]]; then
+          drifted "$file is not there to be rewritten"
+          continue
+        fi
+        if [[ "$content" == "$replace" ]]; then
+          drifted "$file already holds exactly what this entry would write"
+          continue
+        fi
+        line=1
+        mutated="$replace"
+        ;;
+      rm)
+        if [[ -z "$exists" ]]; then
+          drifted "$file is not there to remove"
+          continue
+        fi
+        line=1
+        ;;
+      *) fatal "falsify: $name has no form — the defect list and the harness disagree" ;;
+    esac
 
-    # Cut around the one occurrence rather than ${content//"$find"/"$replace"}: bash 3.2
-    # keeps the quotes around the replacement as literal text, so every mutant on macOS
-    # was `"if false"` and unusable, and unquoted, a `&` in the replacement is the match
-    # itself from bash 5.2 on. Prefix and suffix have neither problem.
-    mutated="${content%%"$find"*}$replace${content#*"$find"}"
+    # An entry that needs several edits at once has the rest worked out here, before
+    # anything is written. A second edit that has drifted must not leave the first one on
+    # disk: the suite would then be measured against a mutant nobody wrote down, and its
+    # verdict would be filed under a name that does not describe it
+    more_ok=1
+    more_rest="${DEF_MORE[$i]}"
+    edit_files=()
+    edit_new=()
+    # What each file of this entry becomes, starting from the first edit. An `rm` has no
+    # content to carry forward, so it is applied on its own below
+    if [[ "$how" != rm ]]; then
+      edit_files+=("$file")
+      edit_new+=("$mutated")
+    fi
+    while [[ -n "$more_rest" ]]; do
+      more_rec="${more_rest%%"$MORE_REC"*}"
+      if [[ "$more_rec" == "$more_rest" ]]; then more_rest=""; else more_rest="${more_rest#*"$MORE_REC"}"; fi
+      more_file="${more_rec%%"$MORE_UNIT"*}"
+      more_rec="${more_rec#*"$MORE_UNIT"}"
+      more_find="${more_rec%%"$MORE_UNIT"*}"
+      more_replace="${more_rec#*"$MORE_UNIT"}"
+      # Every edit sees what the ones before it did, and its find text is counted in that
+      # text rather than in the original. Computed from the original instead, two edits to
+      # one file each carry the other's pristine half back, the later write undoes the
+      # earlier, and the suite is measured against half a defect — green, and reported as
+      # a survivor that never existed. It is also what makes an edit whose find text is a
+      # substring of another's readable: once the longer one has been applied, the shorter
+      # one matches in exactly one place
+      slot=""
+      for k in ${edit_files[@]+"${!edit_files[@]}"}; do
+        [[ "${edit_files[$k]}" == "$more_file" ]] || continue
+        slot="$k"
+        break
+      done
+      if [[ -n "$slot" ]]; then
+        more_content="${edit_new[$slot]}"
+      else
+        original_of more_content "$more_file"
+      fi
+      locate_once at "$more_content" "$more_find"
+      if ((at < 0)); then
+        if ((at == -1)); then
+          drifted "one of its --and edits matches nowhere in $more_file"
+        else
+          drifted "one of its --and edits matches more than once in $more_file"
+        fi
+        more_ok=""
+        break
+      fi
+      more_content="${more_content:0:at}$more_replace${more_content:$((at + ${#more_find}))}"
+      if [[ -n "$slot" ]]; then
+        edit_new[slot]="$more_content"
+      else
+        edit_files+=("$more_file")
+        edit_new+=("$more_content")
+      fi
+    done
+    [[ -n "$more_ok" ]] || continue
+
     # Checked, because a write that fails leaves the pristine code in place, the suite
     # then passes against it, and that would be reported as a survivor: a read-only file
     # once made a guard the suite does cover read as one nobody checks
     printf '%s\n' "$name" >"$FLIGHT"
-    printf '%s' "$mutated" >"$file" || fatal "falsify: cannot write $file — the tree is untouched, and nothing was measured"
+    if [[ "$how" == rm ]]; then
+      rm -f "$file" || fatal "falsify: cannot remove $file — the tree is untouched, and nothing was measured"
+    fi
+    for k in ${edit_files[@]+"${!edit_files[@]}"}; do
+      printf '%s' "${edit_new[$k]}" >"${edit_files[$k]}" ||
+        fatal "falsify: cannot write ${edit_files[$k]} — the tree holds half of a defect, so restore it from git before doing anything else"
+    done
     suite_verdict "$out/logs/$(log_name "$name").log" "$@"
-    printf '%s' "$content" >"$file"
-    rm -f "$FLIGHT"
+    # Everything this entry touched goes back through the one function that knows how:
+    # recorded bytes and the executable bit for a file that was there, removal for one the
+    # run created. A second copy of that reasoning lived here and drifted from it once
+    restore_all
 
     # A declared exception: surviving is the expected outcome and no finding; being caught
     # means the declaration has outlived its truth, which is the list's fault, like stale
@@ -1453,8 +1802,19 @@ cmd_falsify() {
         printf 'SURVIVED  %s: %s\n' "$name" "$why"
         # Where, and what the edit was — the first line of each, which is the whole edit
         # for the shapes worth writing
-        printf '          %s:%s  - %s\n' "$file" "$line" "${find%%$'\n'*}"
-        printf '          %s:%s  + %s\n' "$file" "$line" "${replace%%$'\n'*}"
+        # A form with no find text has to say what it did instead: printed the same way,
+        # a survivor of an append or an rm would show an empty minus line and leave the
+        # reader to guess which of the two it was looking at
+        case "$how" in
+          replace)
+            printf '          %s:%s  - %s\n' "$file" "$line" "${find%%$'\n'*}"
+            printf '          %s:%s  + %s\n' "$file" "$line" "${replace%%$'\n'*}"
+            ;;
+          append) printf '          %s:%s  appended  + %s\n' "$file" "$line" "${replace%%$'\n'*}" ;;
+          create) printf '          %s  created  + %s\n' "$file" "${replace%%$'\n'*}" ;;
+          write) printf '          %s  rewritten whole  + %s\n' "$file" "${replace%%$'\n'*}" ;;
+          rm) printf '          %s  removed\n' "$file" ;;
+        esac
         annotate error "$file" "$line" "SURVIVED $name: $why"
         survived+=("$name")
         ;;
@@ -1483,7 +1843,17 @@ cmd_falsify() {
 
   restore_all
   trap - EXIT INT TERM
+  local was=""
   for f in "${files[@]}"; do
+    existed_of was "$f"
+    # A file that was not in the tree before the run is restored by being gone again, so
+    # the question asked of it is the opposite one. Reading it back would fail on exactly
+    # the state that is correct — a check sharing the blind spot of what it checks
+    if [[ -z "$was" ]]; then
+      [[ ! -e "$f" ]] ||
+        fatal "falsify: $f was not in the tree before this run and is still here — remove it before doing anything else"
+      continue
+    fi
     slurp __slurped "$f" || fatal "falsify: cannot re-read $f to confirm it was restored"
     original_of pristine "$f"
     [[ "$__slurped" == "$pristine" ]] ||
@@ -1609,21 +1979,12 @@ cmd_prove() {
 
   # In place when the commit is what is checked out and nobody asked otherwise; in a
   # worktree at the commit when it is not, or on request — the same trade as falsify's
-  local root wt=""
-  root=$(pwd)
+  WORKTREE_ROOT=$(pwd)
   if [[ -n "$worktree" || "$commit" != "$(git rev-parse HEAD)" ]]; then
-    wt=$(mktemp -d "${TMPDIR:-/tmp}/t.sh.XXXXXX")/wt || fatal "prove: cannot create a directory for the worktree"
-    git worktree add --detach "$wt" "$commit" >/dev/null 2>&1 || fatal "prove: git could not add a worktree at $wt"
-    cd -- "$wt" || fatal "prove: cannot enter the worktree at $wt"
+    WORKTREE=$(mktemp -d "${TMPDIR:-/tmp}/t.sh.XXXXXX")/wt || fatal "prove: cannot create a directory for the worktree"
+    git worktree add --detach "$WORKTREE" "$commit" >/dev/null 2>&1 || fatal "prove: git could not add a worktree at $WORKTREE"
+    cd -- "$WORKTREE" || fatal "prove: cannot enter the worktree at $WORKTREE"
   fi
-  # shellcheck disable=SC2317  # reached through the traps
-  cleanup_worktree() {
-    [[ -n "$wt" ]] || return 0
-    cd -- "$root" || :
-    git -C "$root" worktree remove --force "$wt" >/dev/null 2>&1 || :
-    rm -rf "$(dirname -- "$wt")"
-    wt=""
-  }
 
   # The fix as it is, held in memory for the restore, and as it was before the commit,
   # for the taking away. A file the commit added has no "before" and is removed; a file
@@ -1734,7 +2095,7 @@ cmd_prove() {
 
 # The reference for whoever runs the harness; the header says only what an editor needs.
 # The gate reads every flag out of every parser, every T_ variable out of this file and
-# every exit code out of every return, and requires each to appear here.
+# every exit code out of every return, and requires each to appear here
 help_general() {
   cat <<'EOF'
 t.sh — the local test harness: one subcommand per question a test run raises
@@ -1772,9 +2133,6 @@ The environment:
   T_LOGDIR     where the logs go; -l overrides it, the policy's `logdir` is under it
   T_LOGFILE    one log file for one run, instead of a name chosen under the log directory
   T_CONFIG     another policy file; T_CONFIG= (empty) reads none
-
-Another repository takes this file and markers/ beside it through the ci skill's
-vendoring cascade (references/bump-cascade.md in https://github.com/rokokol/ci-skill)
 
 Exit status: CMD's own, passed through unchanged, and the harness's own verdicts in a band
 no test runner uses — `t.sh help codes`
@@ -1936,6 +2294,26 @@ Verdicts: caught, SURVIVED with the file, the line and the edit, expected (decla
 `expect survived REASON`), stale, unusable, TIMEDOUT. On a GitHub runner each finding is
 also an annotation on its file and line
 
+A list carries two verbs. `defect NAME FILE FIND REPLACE CONSEQUENCE` replaces text that
+appears in FILE exactly once. `plant NAME FILE HOW ... CONSEQUENCE` writes the edits a
+replacement cannot express, because there is nothing unique to find:
+
+  plant NAME FILE append TEXT     CONSEQUENCE   add TEXT to the end of FILE
+  plant NAME FILE create CONTENT  CONSEQUENCE   create FILE, which the repository lacks
+  plant NAME FILE write  CONTENT  CONSEQUENCE   replace FILE whole
+  plant NAME FILE rm              CONSEQUENCE   delete FILE
+
+Each form goes stale its own way, the way a replacement does when its find text no longer
+matches once: append when the text is already in the file, create when the file is already
+there, write when the content already matches, rm when the file is already gone. A file
+absent before the run is only allowed where every entry naming it is a create or an rm
+
+Either verb may end with any number of `--and FILE FIND REPLACE` before its expectation,
+for one defect that takes several edits at once. They are applied together and reported
+under one name, because they are one thing going wrong: a guard whose halves are both
+needed proves nothing when only one of them is broken. Any of them matching other than
+once is stale, and nothing is written for that entry
+
 A defect list entry may end with `expect survived REASON`, for an edit nothing can
 observe, or `expect caught FRAGMENT`, naming what should do the catching — a test name or
 an assertion message. Caught while FRAGMENT is nowhere in that run's output is stale: the
@@ -1953,10 +2331,10 @@ t.sh prove [-b BUILD] [--timeout SECONDS] [--worktree] [--any-file] [-l DIR] [-m
 
 Takes the fix out of one commit (default HEAD), keeps its tests, and requires the suite
 to go red: a commit that adds a test and the code it pins has to demonstrate itself. The
-commit's files are split the way falsify splits a defect's file — test files, the policy's
-`tests` among them, stay, the rest is the fix, --any-file counts everything as the fix. The suite must be green with
-the fix in first. A commit other than HEAD is proven in a worktree at that commit;
---worktree does the same for HEAD. -b and --timeout as in falsify
+commit's files are split the way falsify splits a defect's file: test files, the policy's
+`tests` among them, stay and the rest is the fix; --any-file counts everything as the fix.
+The suite must be green with the fix in first. A commit other than HEAD is proven in a
+worktree at that commit; --worktree does the same for HEAD. -b and --timeout as in falsify
 
 Exit: 0 proven; 83 VACUOUS, the tests pass without the fix; 84 the suite did not finish;
 85 the suite red or never really run with the fix in; 88 without the fix nothing builds;

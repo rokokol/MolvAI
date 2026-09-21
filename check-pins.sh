@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Needs bash 3.2 and POSIX tools only. It has no
-# repo-specific part: another repository takes it through the vendoring cascade
-# (references/bump-cascade.md in https://github.com/rokokol/ci-skill), never edits its copy
-# in place, and calls it from the build workflow or its own gate
+# Needs bash 3.2 and POSIX tools only. It has no repo-specific part: another repository
+# takes it through the vendoring cascade (references/bump-cascade.md in
+# https://github.com/rokokol/ci-skill), never edits its copy in place, and calls it from
+# the build workflow or its own gate
 set -euo pipefail
 
 usage() {
