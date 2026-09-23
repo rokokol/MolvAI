@@ -50,6 +50,13 @@ jobs:
       - name: actionlint
         uses: raven-actions/actionlint@v2
 
+      # Гейт на трёх ОС ставит тулчейн напрямую и nix не знает, поэтому проверка
+      # форматирования Nix живёт здесь. `nix fmt` берёт форматтер из выхода флейка,
+      # то есть из того же lock-файла, а не из реестра
+      - uses: cachix/install-nix-action@v31
+      - name: nix fmt --ci (Nix здесь такой, каким его пишет форматтер)
+        run: nix fmt -- --ci
+
   gate:
     name: gate (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
