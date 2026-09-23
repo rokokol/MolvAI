@@ -27,7 +27,25 @@
               # Версия читается из Cargo.toml, а не повторяется здесь: два источника
               # разъезжаются, и первым это замечает пользователь
               version = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.version;
-              src = self;
+              # Только то, что читают сборка и `cargo test`. С `src = self` правка README
+              # или docs/ меняла хэш деривации и пересобирала бинарь.
+              # Список включающий, а не исключающий: забытый исходник тогда ломает сборку
+              # громко, а забытый документ просто молча пересобирал бы её каждый раз
+              src = pkgs.lib.fileset.toSource {
+                root = ./.;
+                fileset = pkgs.lib.fileset.unions [
+                  ./Cargo.toml
+                  ./Cargo.lock
+                  ./crates
+                  # Тесты крейтов читают фикстуры и голдены по
+                  # CARGO_MANIFEST_DIR/../../tests, поэтому они часть исходника
+                  ./tests/fixtures
+                  ./tests/golden
+                  ./rust-toolchain.toml
+                  ./rustfmt.toml
+                  ./clippy.toml
+                ];
+              };
               cargoLock.lockFile = ./Cargo.lock;
               cargoBuildFlags = [
                 "--bin"
