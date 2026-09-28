@@ -1481,12 +1481,9 @@ cmd_falsify() {
       [[ -r "$f" ]] || die "falsify: $defects names $f, which cannot be read"
       slurp __slurped "$f" || fatal "falsify: cannot read $f"
       originals+=("$__slurped")
-      # x rather than 1 where the file is executable. An `rm` defect makes the restore
-      # create the file anew, and a new file is born under the umask without that bit: the
-      # bytes match, so the byte-for-byte check stays quiet, while git sees a mode change
-      # nobody made and the next run meets a source it cannot execute. The bit and not the
-      # whole mode, because `stat` spells its format differently on BSD and GNU, and this
-      # is the only part of a mode a suite trips over
+      # x rather than 1 where the file is executable, because a restore has to put the bit
+      # back and a byte-for-byte check cannot see that it is gone. PITFALLS.md has why the
+      # bit and not the whole mode, under "A restored file is a new file"
       if [[ -x "$f" ]]; then existed+=(x); else existed+=(1); fi
     else
       # Absent is legal only while every entry naming this file is a create or an rm. A
