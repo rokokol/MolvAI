@@ -8,6 +8,7 @@
 
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -272,6 +273,45 @@ pub fn pull(
     )
 }
 
+/// Сколько `.part` может не меняться, чтобы загрузку всё ещё считали идущей.
+///
+/// Обрывок прерванной загрузки лежит до следующего `pull` и без этого окна выглядел бы
+/// вечной загрузкой на одном проценте.
+pub const ACTIVE_DOWNLOAD_WINDOW: Duration = Duration::from_secs(15);
+
+/// Загрузка модели, которую сейчас ведёт этот или другой процесс.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DownloadProgress {
+    pub model: String,
+    pub downloaded: u64,
+    pub total: u64,
+}
+
+/// Файл, куда `download_verified` пишет байты до проверки контрольной суммы.
+pub fn partial_path(directory: &Path, file_name: &str) -> PathBuf {
+    directory.join(format!("{file_name}.part"))
+}
+
+/// Идёт ли загрузка модели `name` в каталог из настроек, судя по её `.part`.
+///
+/// Процесс загрузки не важен: демон с `stt.auto_pull`, `molva models pull` или GUI.
+pub fn active_download(cfg: &Config, name: &str, now: SystemTime) -> Option<DownloadProgress> {
+    let info = find(name).ok()?;
+    let metadata = std::fs::metadata(partial_path(&models_dir(cfg).ok()?, info.file_name)).ok()?;
+    // Часы, ушедшие назад, дают ошибку: такой файл считаем свежим, а не брошенным.
+    let idle = now
+        .duration_since(metadata.modified().ok()?)
+        .unwrap_or(Duration::ZERO);
+    if idle > ACTIVE_DOWNLOAD_WINDOW {
+        return None;
+    }
+    Some(DownloadProgress {
+        model: info.name.to_string(),
+        downloaded: metadata.len(),
+        total: info.size_bytes.max(metadata.len()),
+    })
+}
+
 /// Загрузка произвольного файла с проверкой SHA-256 — ядро `pull`, вынесенное ради тестов.
 pub fn download_verified(
     url: &str,
@@ -293,7 +333,7 @@ pub fn download_verified(
     }
     std::fs::create_dir_all(directory).map_err(|e| io_err(directory, &e))?;
 
-    let part = directory.join(format!("{file_name}.part"));
+    let part = partial_path(directory, file_name);
     let already = std::fs::metadata(&part).map_or(0, |m| m.len());
 
     let client = reqwest::blocking::Client::builder()
@@ -494,6 +534,91 @@ mod tests {
             model_path(&cfg, "small").unwrap(),
             PathBuf::from("/opt/weights/ggml-small.bin")
         );
+    }
+
+    fn config_in(directory: &Path) -> Config {
+        let mut cfg = Config::default();
+        cfg.stt.model_path = directory.display().to_string();
+        cfg
+    }
+
+    #[test]
+    fn a_fresh_part_file_is_an_active_download() {
+        let directory = tempfile::tempdir().unwrap();
+        let cfg = config_in(directory.path());
+        let info = find("small").unwrap();
+        std::fs::write(
+            partial_path(directory.path(), info.file_name),
+            vec![0u8; 4096],
+        )
+        .unwrap();
+        let progress = active_download(&cfg, "small", SystemTime::now()).unwrap();
+        assert_eq!(
+            progress,
+            DownloadProgress {
+                model: "small".into(),
+                downloaded: 4096,
+                total: info.size_bytes,
+            }
+        );
+    }
+
+    #[test]
+    fn without_a_part_file_nothing_is_downloading() {
+        let directory = tempfile::tempdir().unwrap();
+        let cfg = config_in(directory.path());
+        assert_eq!(active_download(&cfg, "small", SystemTime::now()), None);
+    }
+
+    #[test]
+    fn a_part_file_left_by_an_interrupted_download_is_not_active() {
+        let directory = tempfile::tempdir().unwrap();
+        let cfg = config_in(directory.path());
+        let part = partial_path(directory.path(), find("small").unwrap().file_name);
+        std::fs::write(&part, vec![0u8; 4096]).unwrap();
+        let later = SystemTime::now() + ACTIVE_DOWNLOAD_WINDOW + Duration::from_secs(1);
+        assert_eq!(active_download(&cfg, "small", later), None);
+    }
+
+    #[test]
+    fn an_unknown_model_has_no_download() {
+        let directory = tempfile::tempdir().unwrap();
+        let cfg = config_in(directory.path());
+        // Каждая модель каталога качается: неизвестное имя не должно взять чужую загрузку.
+        for info in CATALOG {
+            std::fs::write(partial_path(directory.path(), info.file_name), b"x").unwrap();
+        }
+        assert_eq!(active_download(&cfg, "huge", SystemTime::now()), None);
+    }
+
+    #[test]
+    fn the_downloader_writes_where_active_download_looks() {
+        let body = vec![5u8; 300_000];
+        let sha = sha_of(&body);
+        let (url, _) = serve(body, 1);
+        let directory = tempfile::tempdir().unwrap();
+        let part = partial_path(directory.path(), "m.bin");
+        let mut seen_mid_download = false;
+        download_verified(
+            &url,
+            directory.path(),
+            "m.bin",
+            &sha,
+            "m",
+            &mut |done, total| {
+                if done > 0 && done < total {
+                    let on_disk = std::fs::metadata(&part).map_or(0, |m| m.len());
+                    assert!(on_disk > 0, "{} пуст посреди загрузки", part.display());
+                    seen_mid_download = true;
+                }
+            },
+        )
+        .unwrap();
+        assert!(
+            seen_mid_download,
+            "прогресс не сообщил ни одной середины загрузки"
+        );
+        assert!(!part.exists(), "{} остался после загрузки", part.display());
     }
 
     #[test]

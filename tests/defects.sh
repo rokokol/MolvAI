@@ -281,6 +281,21 @@ defect 'models/missing-model-hint' 'crates/molva-core/src/app/models.rs' \
   '    if true {' \
   'отсутствующая модель не сообщает команду скачивания, а падает где-то в движке'
 
+defect 'models/stale-part-is-not-a-download' 'crates/molva-core/src/app/models.rs' \
+  '    if idle > ACTIVE_DOWNLOAD_WINDOW {' \
+  '    if false {' \
+  'обрывок прерванной загрузки выглядит в окне вечным скачиванием на одном проценте'
+
+defect 'models/downloader-writes-the-watched-part' 'crates/molva-core/src/app/models.rs' \
+  '    let part = partial_path(directory, file_name);' \
+  '    let part = directory.join(format!("{file_name}.tmp"));' \
+  'загрузчик пишет не в тот файл, на который смотрит окно: скачивание модели не видно'
+
+defect 'models/unknown-model-has-no-download' 'crates/molva-core/src/app/models.rs' \
+  '    let info = find(name).ok()?;' \
+  '    let info = find(name).unwrap_or(&CATALOG[0]);' \
+  'имя модели не из каталога показывает загрузку чужой модели'
+
 # --- дорожка E: метрики качества ---
 
 defect 'wer/normalization-lowercase' 'crates/molva-core/src/app/wer.rs' \
