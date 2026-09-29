@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 
 import { api, asCommandError } from "./api";
-import { I18nContext, isLang, translate, type Lang } from "./i18n";
+import { I18nContext, resolveLang, translate, type Lang } from "./i18n";
 import type {
   CommandError,
   Config,
@@ -54,7 +54,7 @@ export default function App() {
   const [hypothesis, setHypothesis] = useState("");
   const [error, setError] = useState<CommandError | null>(null);
 
-  const lang: Lang = config && isLang(config.ui_language) ? config.ui_language : "ru";
+  const lang: Lang = resolveLang(config?.ui_language, navigator.language);
   const t = useCallback(
     (key: string, vars?: Record<string, string | number>) => translate(lang, key, vars),
     [lang],

@@ -20,6 +20,22 @@ export function isLang(value: string): value is Lang {
   return value === "ru" || value === "en";
 }
 
+/** Значение `ui_language`, при котором язык берётся из системы. */
+export const AUTO_LANG = "auto";
+
+/**
+ * Язык интерфейса: явная настройка, иначе язык системы.
+ * `systemLanguage` — это `navigator.language`, его webview берёт из системы.
+ */
+export function resolveLang(configured: string | undefined, systemLanguage: string): Lang {
+  if (configured !== undefined && isLang(configured)) {
+    return configured;
+  }
+  // Английский — запасной: каталоги и сборочные машины запускают приложение с локалью C
+  const primary = systemLanguage.toLowerCase().split(/[-_]/)[0];
+  return isLang(primary) ? primary : "en";
+}
+
 /** Подстановка `{name}` из `vars`; отсутствующая переменная остаётся в тексте. */
 export function translate(
   lang: Lang,

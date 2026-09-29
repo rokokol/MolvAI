@@ -130,6 +130,7 @@
   "settings.section.output": "Вывод",
   "settings.section.privacy": "Приватность",
   "settings.language": "Язык интерфейса",
+  "settings.languageAuto": "Как в системе",
   "settings.theme": "Оформление",
   "settings.theme.system": "Как в системе",
   "settings.theme.light": "Светлое",

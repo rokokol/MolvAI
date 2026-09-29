@@ -141,7 +141,6 @@ fn in_range(field: &str, value: f32, min: f32, max: f32) -> Result<(), Validatio
 
 /// Проверка настроек перед записью на диск: пользователь видит поле и допустимые значения.
 pub fn validate_config(config: &Config) -> Result<(), ValidationError> {
-    one_of("ui_language", &config.ui_language, &["ru", "en"])?;
     one_of(
         "output.mode",
         &config.output.mode,
@@ -855,6 +854,13 @@ mod tests {
             ..Config::default()
         };
         assert_eq!(validate_config(&config).unwrap_err().field, "ui_language");
+        for ok in ["auto", "ru", "en"] {
+            let config = Config {
+                ui_language: ok.into(),
+                ..Config::default()
+            };
+            assert!(validate_config(&config).is_ok(), "{ok}");
+        }
     }
 
     #[test]

@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import { api, asCommandError, copyToClipboard } from "../api";
-import { LANGUAGES, useI18n, type Lang } from "../i18n";
+import { AUTO_LANG, LANGUAGES, useI18n } from "../i18n";
 import type { Theme, ViewProps } from "../App";
 import type { CommandError, Config, DeviceInfo, StyleOption } from "../types";
 
@@ -186,10 +186,11 @@ export default function Settings({
               value={draft.ui_language}
               onChange={(event) =>
                 patch((next) => {
-                  next.ui_language = event.target.value as Lang;
+                  next.ui_language = event.target.value;
                 })
               }
             >
+              <option value={AUTO_LANG}>{t("settings.languageAuto")}</option>
               {LANGUAGES.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}

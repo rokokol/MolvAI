@@ -49,7 +49,8 @@ pub enum ConfigError {
 #[serde(default)]
 pub struct Config {
     pub version: u32,
-    /// Язык интерфейса CLI и GUI: `ru` | `en`.
+    /// Язык интерфейса GUI: `auto` | `ru` | `en`. `auto` берёт язык системы, а незнакомый
+    /// язык системы даёт английский.
     pub ui_language: String,
     pub audio: AudioConfig,
     pub stt: SttConfig,
@@ -72,7 +73,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             version: CONFIG_VERSION,
-            ui_language: "ru".into(),
+            ui_language: "auto".into(),
             audio: AudioConfig::default(),
             stt: SttConfig::default(),
             dictionary: DictionaryConfig::default(),
@@ -739,7 +740,12 @@ impl Config {
 
     /// Общие настройки приложения и журнал.
     fn validate_general(&self, issues: &mut Vec<ConfigIssue>) {
-        one_of(issues, "ui_language", &self.ui_language, &["ru", "en"]);
+        one_of(
+            issues,
+            "ui_language",
+            &self.ui_language,
+            &["auto", "ru", "en"],
+        );
         one_of(
             issues,
             "journal.key_source",
@@ -1257,6 +1263,13 @@ mod tests {
         assert!(text.contains("output.mode"), "{text}");
         assert!(text.contains("пасте"), "{text}");
         assert!(text.contains("auto, paste, type, clipboard"), "{text}");
+    }
+
+    #[test]
+    fn interface_language_follows_the_system_out_of_the_box() {
+        let config = Config::default();
+        assert_eq!(config.ui_language, "auto");
+        assert!(config.validate().is_ok());
     }
 
     #[test]

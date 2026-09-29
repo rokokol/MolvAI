@@ -130,6 +130,7 @@
   "settings.section.output": "Output",
   "settings.section.privacy": "Privacy",
   "settings.language": "Interface language",
+  "settings.languageAuto": "System language",
   "settings.theme": "Appearance",
   "settings.theme.system": "Follow system",
   "settings.theme.light": "Light",
