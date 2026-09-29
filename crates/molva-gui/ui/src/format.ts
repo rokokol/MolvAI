@@ -2,7 +2,7 @@
 // Чистые функции представления и геометрия графика.
 // Всё, что можно посчитать в ядре, считается в Rust; здесь только форматирование.
 
-import type { DayPoint } from "./types";
+import type { DayPoint, DownloadProgress } from "./types";
 
 /** Темп с одним знаком после запятой; отсутствующее значение — прочерк. */
 export function formatWpm(value: number | null | undefined, dash = "—"): string {
@@ -24,6 +24,19 @@ export function formatCount(value: number): string {
   return Math.round(value)
     .toString()
     .replace(/\B(?=(\d{3})+(?!\d))/g, GROUP_SEPARATOR);
+}
+
+/** Доля скачанных весов в процентах; 100 — только когда скачано всё. */
+export function downloadPercent(download: DownloadProgress): number {
+  if (download.total <= 0) {
+    return 0;
+  }
+  return Math.min(100, Math.floor((download.downloaded / download.total) * 100));
+}
+
+/** Байты в целых мегабайтах (MiB): 487 601 967 → «465». */
+export function formatMegabytes(bytes: number): string {
+  return formatCount(bytes / (1024 * 1024));
 }
 
 /** Минуты: до часа — числом, дальше «2:05»; меньше минуты — «<1». */

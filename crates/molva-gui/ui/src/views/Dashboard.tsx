@@ -4,7 +4,13 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { api, asCommandError, copyToClipboard } from "../api";
-import { formatLatency, formatMinutes, formatWpm } from "../format";
+import {
+  downloadPercent,
+  formatLatency,
+  formatMegabytes,
+  formatMinutes,
+  formatWpm,
+} from "../format";
 import { useI18n } from "../i18n";
 import type { ViewProps } from "../App";
 import type { Entry, StatsSummary, StyleOption } from "../types";
@@ -35,6 +41,7 @@ export default function Dashboard({
 
   const running = status?.daemon_running ?? false;
   const recording = status?.state === "recording";
+  const download = running ? undefined : status?.download;
 
   const loadToday = useCallback(async () => {
     try {
@@ -103,17 +110,43 @@ export default function Dashboard({
                 </button>
               </>
             ) : (
-              <button
-                type="button"
-                className="primary"
-                onClick={() => run(() => api.startDaemon())}
-              >
-                {t("daemon.start")}
-              </button>
+              // Пока идёт загрузка, сокета ещё нет, и проверка единственного экземпляра
+              // пропустила бы второй демон писать в тот же .part
+              !download && (
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={() => run(() => api.startDaemon())}
+                >
+                  {t("daemon.start")}
+                </button>
+              )
             )}
           </div>
         </div>
-        {!running && (
+        {download && (
+          <div className="notice" role="status">
+            <strong>{t("daemon.downloading", { model: download.model })}</strong>
+            <div
+              className="meter"
+              role="progressbar"
+              aria-valuenow={downloadPercent(download)}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
+              <div className="fill" style={{ width: `${downloadPercent(download)}%` }} />
+            </div>
+            <p>
+              {t("daemon.downloadProgress", {
+                done: formatMegabytes(download.downloaded),
+                total: formatMegabytes(download.total),
+                percent: String(downloadPercent(download)),
+              })}
+            </p>
+            <p>{t("daemon.downloadHint")}</p>
+          </div>
+        )}
+        {!running && !download && (
           <div className="notice warning" role="status">
             <strong>{t("daemon.stopped")}</strong>
             <p>{status?.hint ?? t("daemon.hint")}</p>

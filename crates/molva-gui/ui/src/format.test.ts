@@ -6,9 +6,11 @@ import { describe, expect, it } from "vitest";
 import {
   axisTicks,
   chartGeometry,
+  downloadPercent,
   formatCount,
   formatDayTick,
   formatLatency,
+  formatMegabytes,
   formatMinutes,
   formatWpm,
   GROUP_SEPARATOR,
@@ -138,6 +140,24 @@ describe("chartGeometry", () => {
     const geometry = chartGeometry([day("2026-09-01", 0, null)], 200, 100);
     expect(geometry.maxWords).toBe(1);
     expect(geometry.points[0].height).toBe(0);
+  });
+});
+
+describe("downloadPercent", () => {
+  it("считает долю скачанного целым процентом", () => {
+    expect(downloadPercent({ model: "small", downloaded: 120, total: 480 })).toBe(25);
+  });
+
+  it("держит процент в пределах 0–100", () => {
+    expect(downloadPercent({ model: "small", downloaded: 900, total: 480 })).toBe(100);
+    expect(downloadPercent({ model: "small", downloaded: 10, total: 0 })).toBe(0);
+  });
+});
+
+describe("formatMegabytes", () => {
+  it("переводит байты в целые мегабайты с разделителем разрядов", () => {
+    expect(formatMegabytes(487_601_967)).toBe("465");
+    expect(formatMegabytes(3_095_033_483)).toBe(`2${GROUP_SEPARATOR}952`);
   });
 });
 

@@ -70,6 +70,15 @@ export interface Status {
   hotkeys_paused: boolean;
   message?: string;
   hint?: string;
+  /** Демон ещё не поднял сокет, потому что качает веса. */
+  download?: DownloadProgress;
+}
+
+/** Загрузка весов модели: байты по файлу `.part` и размер из каталога. */
+export interface DownloadProgress {
+  model: string;
+  downloaded: number;
+  total: number;
 }
 
 /** Ошибка команды: вид, сообщение, следующий шаг и поле формы. */

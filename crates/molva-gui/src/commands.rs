@@ -13,6 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use chrono::Utc;
+use molva_core::app::models::{self, DownloadProgress};
 use molva_core::config::ConfigError;
 use molva_core::domain::entry::Mode;
 use molva_core::domain::{DeviceInfo, Entry, OutputMode};
@@ -345,6 +346,33 @@ pub struct Status {
     pub message: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
+    /// Демон ещё не поднял сокет, потому что качает веса (`stt.auto_pull`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub download: Option<DownloadProgress>,
+}
+
+/// Статус, когда демон не ответил.
+fn unreachable_status(
+    config: &Config,
+    daemon_ours: bool,
+    hotkeys_paused: bool,
+    err: CommandError,
+) -> Status {
+    let download = models::active_download(
+        config,
+        config.stt.model.trim(),
+        std::time::SystemTime::now(),
+    );
+    Status {
+        daemon_running: false,
+        daemon_ours,
+        state: None,
+        style: None,
+        hotkeys_paused,
+        message: Some(err.message),
+        hint: err.hint,
+        download,
+    }
 }
 
 /// Разбор ответа `status`: демон может ещё не отдавать все поля, отсутствие — не ошибка.
@@ -392,19 +420,17 @@ pub async fn get_status(state: State<'_, AppState>) -> Result<Status, CommandErr
                 hotkeys_paused: state.hotkeys_paused(),
                 message: None,
                 hint: None,
+                download: None,
             })
         }
         Err(err) => {
             state.remember_state(None);
-            Ok(Status {
-                daemon_running: false,
+            Ok(unreachable_status(
+                &state.config(),
                 daemon_ours,
-                state: None,
-                style: None,
-                hotkeys_paused: state.hotkeys_paused(),
-                message: Some(err.message),
-                hint: err.hint,
-            })
+                state.hotkeys_paused(),
+                err,
+            ))
         }
     }
 }
@@ -826,6 +852,36 @@ mod tests {
         .into();
         assert_eq!(err.kind, "daemon_unavailable");
         assert!(err.hint.is_some());
+    }
+
+    #[test]
+    fn an_unreachable_daemon_reports_the_model_being_downloaded() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut config = Config::default();
+        config.stt.model_path = directory.path().display().to_string();
+        let info = models::find(config.stt.model.trim()).unwrap();
+        std::fs::write(
+            models::partial_path(directory.path(), info.file_name),
+            vec![0u8; 1024],
+        )
+        .unwrap();
+
+        let status = unreachable_status(&config, false, false, CommandError::new("x", "нет"));
+        let json = serde_json::to_value(&status).unwrap();
+        assert_eq!(json["daemon_running"], false);
+        assert_eq!(json["download"]["model"], info.name);
+        assert_eq!(json["download"]["downloaded"], 1024);
+        assert_eq!(json["download"]["total"], info.size_bytes);
+    }
+
+    #[test]
+    fn without_a_download_the_status_has_no_download_field() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut config = Config::default();
+        config.stt.model_path = directory.path().display().to_string();
+        let status = unreachable_status(&config, false, false, CommandError::new("x", "нет"));
+        let json = serde_json::to_value(&status).unwrap();
+        assert!(json.get("download").is_none(), "{json}");
     }
 
     #[test]
