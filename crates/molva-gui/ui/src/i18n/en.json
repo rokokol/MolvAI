@@ -37,6 +37,8 @@
   "daemon.start": "Start daemon",
   "daemon.stop": "Stop daemon",
   "daemon.hint": "The daemon owns the microphone and the model: recording is impossible without it.",
+  "daemon.crashed": "The daemon exited with an error",
+  "daemon.crashedHint": "Fix the cause and start the daemon again",
   "daemon.downloading": "Downloading the {model} model",
   "daemon.downloadProgress": "{done} of {total} MB, {percent}%",
   "daemon.downloadHint": "The daemon starts by itself when the weights are downloaded and their checksum is verified",

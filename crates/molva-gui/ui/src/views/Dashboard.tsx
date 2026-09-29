@@ -146,7 +146,14 @@ export default function Dashboard({
             <p>{t("daemon.downloadHint")}</p>
           </div>
         )}
-        {!running && !download && (
+        {!running && !download && status?.exit_reason && (
+          <div className="notice error" role="alert">
+            <strong>{t("daemon.crashed")}</strong>
+            <p>{status.exit_reason}</p>
+            <p>{t("daemon.crashedHint")}</p>
+          </div>
+        )}
+        {!running && !download && !status?.exit_reason && (
           <div className="notice warning" role="status">
             <strong>{t("daemon.stopped")}</strong>
             <p>{status?.hint ?? t("daemon.hint")}</p>

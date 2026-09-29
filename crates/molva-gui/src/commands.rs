@@ -26,7 +26,7 @@ use uuid::Uuid;
 use crate::history::{self, Filter, HistoryError};
 use crate::ipc::{self, IpcClientError};
 use crate::lock;
-use crate::sidecar::{self, Daemon, SidecarError, Transcriptions};
+use crate::sidecar::{self, Daemon, DaemonFailure, SidecarError, Transcriptions};
 use crate::stats::{self, StatsSummary};
 
 /// Ошибка команды в том виде, в котором её показывает интерфейс: причина, подсказка, поле.
@@ -349,12 +349,16 @@ pub struct Status {
     /// Демон ещё не поднял сокет, потому что качает веса (`stt.auto_pull`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub download: Option<DownloadProgress>,
+    /// Запущенный этим GUI демон упал: код выхода и его последняя строка stderr.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_reason: Option<String>,
 }
 
 /// Статус, когда демон не ответил.
 fn unreachable_status(
     config: &Config,
     daemon_ours: bool,
+    failure: Option<&DaemonFailure>,
     hotkeys_paused: bool,
     err: CommandError,
 ) -> Status {
@@ -363,6 +367,17 @@ fn unreachable_status(
         config.stt.model.trim(),
         std::time::SystemTime::now(),
     );
+    let exit_reason = failure.map(|failure| {
+        let code = failure.code.map_or_else(
+            || "по сигналу".to_string(),
+            |code| format!("с кодом {code}"),
+        );
+        if failure.last_line.is_empty() {
+            format!("демон завершился {code}")
+        } else {
+            format!("демон завершился {code}: {}", failure.last_line)
+        }
+    });
     Status {
         daemon_running: false,
         daemon_ours,
@@ -372,6 +387,7 @@ fn unreachable_status(
         message: Some(err.message),
         hint: err.hint,
         download,
+        exit_reason,
     }
 }
 
@@ -421,13 +437,16 @@ pub async fn get_status(state: State<'_, AppState>) -> Result<Status, CommandErr
                 message: None,
                 hint: None,
                 download: None,
+                exit_reason: None,
             })
         }
         Err(err) => {
             state.remember_state(None);
+            let failure = lock(&state.daemon).failure();
             Ok(unreachable_status(
                 &state.config(),
                 daemon_ours,
+                failure.as_ref(),
                 state.hotkeys_paused(),
                 err,
             ))
@@ -866,7 +885,7 @@ mod tests {
         )
         .unwrap();
 
-        let status = unreachable_status(&config, false, false, CommandError::new("x", "нет"));
+        let status = unreachable_status(&config, false, None, false, CommandError::new("x", "нет"));
         let json = serde_json::to_value(&status).unwrap();
         assert_eq!(json["daemon_running"], false);
         assert_eq!(json["download"]["model"], info.name);
@@ -875,13 +894,33 @@ mod tests {
     }
 
     #[test]
+    fn a_crashed_daemon_explains_itself_in_the_status() {
+        let config = Config::default();
+        let failure = DaemonFailure {
+            code: Some(5),
+            last_line: "ошибка: сеть недоступна".into(),
+        };
+        let status = unreachable_status(
+            &config,
+            true,
+            Some(&failure),
+            false,
+            CommandError::new("daemon_unavailable", "демон не отвечает"),
+        );
+        let reason = status.exit_reason.unwrap();
+        assert!(reason.contains("сеть недоступна"), "{reason}");
+        assert!(reason.contains('5'), "{reason}");
+    }
+
+    #[test]
     fn without_a_download_the_status_has_no_download_field() {
         let directory = tempfile::tempdir().unwrap();
         let mut config = Config::default();
         config.stt.model_path = directory.path().display().to_string();
-        let status = unreachable_status(&config, false, false, CommandError::new("x", "нет"));
+        let status = unreachable_status(&config, false, None, false, CommandError::new("x", "нет"));
         let json = serde_json::to_value(&status).unwrap();
         assert!(json.get("download").is_none(), "{json}");
+        assert!(json.get("exit_reason").is_none(), "{json}");
     }
 
     #[test]

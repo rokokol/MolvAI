@@ -508,6 +508,21 @@ defect 'gui/tray-icon-is-static-between-states' 'crates/molva-gui/src/tray.rs' \
   '    shown != Some(next) || true' \
   'значок трея переставляется на каждое событие демона и мигает всю реплику'
 
+defect 'gui/crash-reason-is-the-last-line' 'crates/molva-gui/src/sidecar.rs' \
+  '            last_line = lock(&self.stderr_tail).back().cloned();' \
+  '            last_line = lock(&self.stderr_tail).front().cloned();' \
+  'окно показывает первую строку журнала упавшего демона вместо его фатальной ошибки'
+
+defect 'gui/clean-exit-is-not-a-crash' 'crates/molva-gui/src/sidecar.rs' \
+  '        if status.success() {' \
+  '        if false {' \
+  'демон, остановленный штатно, выглядит в окне упавшим'
+
+defect 'gui/download-is-shown-while-daemon-is-down' 'crates/molva-gui/src/commands.rs' \
+  '        download,' \
+  '        download: None,' \
+  'пока демон качает веса, окно пишет «Демон не запущен» вместо прогресса'
+
 defect 'cli/second-instance-refuses-to-start' 'crates/molva/src/cmd/daemon.rs' \
   '    let Some(pid) = ping(socket) else {' \
   '    let Some(pid) = ping(socket).filter(|_| false) else {' \

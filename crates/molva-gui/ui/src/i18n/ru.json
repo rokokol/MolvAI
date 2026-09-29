@@ -37,6 +37,8 @@
   "daemon.start": "Запустить демон",
   "daemon.stop": "Остановить демон",
   "daemon.hint": "Микрофоном и моделью владеет демон: без него запись невозможна.",
+  "daemon.crashed": "Демон завершился с ошибкой",
+  "daemon.crashedHint": "Устраните причину и запустите демон снова",
   "daemon.downloading": "Скачивается модель {model}",
   "daemon.downloadProgress": "{done} из {total} МБ, {percent}%",
   "daemon.downloadHint": "Демон запустится сам, когда веса скачаются и пройдут проверку контрольной суммы",

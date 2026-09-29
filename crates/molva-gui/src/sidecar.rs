@@ -3,6 +3,7 @@
 //!
 //! GUI останавливает только тот демон, который запустил сам: чужой процесс переживает Quit.
 
+use std::collections::VecDeque;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command as OsCommand, Stdio};
@@ -46,10 +47,45 @@ pub fn locate() -> Result<PathBuf, SidecarError> {
     Ok(PathBuf::from(exe_name))
 }
 
+/// Как завершился запущенный нами демон, если он упал.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DaemonFailure {
+    /// `None`, если процесс убит сигналом.
+    pub code: Option<i32>,
+    /// Последняя строка stderr: `molva` печатает фатальную ошибку последней.
+    pub last_line: String,
+}
+
+/// Убрать цветовые коды ANSI, которые tracing пишет и в трубу.
+pub fn strip_ansi(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut chars = line.chars();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' {
+            // CSI: ESC [ параметры… финальный байт из диапазона @–~.
+            if chars.next() == Some('[') {
+                for c in chars.by_ref() {
+                    if ('@'..='~').contains(&c) {
+                        break;
+                    }
+                }
+            }
+            continue;
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// Сколько последних строк stderr демона держится в памяти.
+const STDERR_TAIL: usize = 20;
+
 /// Демон, запущенный этим процессом.
 #[derive(Debug, Default)]
 pub struct Daemon {
     child: Option<Child>,
+    /// Хвост stderr: его читает отдельный поток, иначе полная труба остановила бы демона.
+    stderr_tail: Arc<Mutex<VecDeque<String>>>,
 }
 
 impl Daemon {
@@ -59,18 +95,64 @@ impl Daemon {
             return Ok(());
         }
         let program = locate()?;
-        let child = OsCommand::new(&program)
-            .arg("daemon")
+        let mut command = OsCommand::new(&program);
+        command.arg("daemon");
+        self.spawn(command, &program.display().to_string())
+    }
+
+    fn spawn(&mut self, mut command: OsCommand, program: &str) -> Result<(), SidecarError> {
+        let mut child = command
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()
             .map_err(|source| SidecarError::Spawn {
-                program: program.display().to_string(),
+                program: program.to_string(),
                 source,
             })?;
+        let tail = Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_TAIL)));
+        if let Some(stderr) = child.stderr.take() {
+            let writer = Arc::clone(&tail);
+            std::thread::spawn(move || {
+                for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                    let line = strip_ansi(&line);
+                    if line.trim().is_empty() {
+                        continue;
+                    }
+                    let mut tail = lock(&writer);
+                    if tail.len() == STDERR_TAIL {
+                        tail.pop_front();
+                    }
+                    tail.push_back(line);
+                }
+            });
+        }
         self.child = Some(child);
+        self.stderr_tail = tail;
         Ok(())
+    }
+
+    /// Упал ли запущенный нами демон, и что он сказал последним.
+    ///
+    /// Поток чтения может ещё не дочитать трубу в момент выхода процесса, поэтому последняя
+    /// строка ждётся недолго: без неё окно показало бы код выхода без причины.
+    pub fn failure(&mut self) -> Option<DaemonFailure> {
+        let status = self.child.as_mut()?.try_wait().ok()??;
+        if status.success() {
+            return None;
+        }
+        let mut last_line = None;
+        for _ in 0..20 {
+            last_line = lock(&self.stderr_tail).back().cloned();
+            if last_line.is_some() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        Some(DaemonFailure {
+            code: status.code(),
+            last_line: last_line.unwrap_or_default(),
+        })
     }
 
     /// Жив ли запущенный нами процесс.
@@ -224,6 +306,66 @@ mod tests {
         assert!(!daemon.is_alive());
         // Остановка того, чего мы не запускали, ничего не ломает.
         daemon.stop();
+    }
+
+    #[test]
+    fn colour_codes_are_stripped_from_a_log_line() {
+        assert_eq!(
+            strip_ansi("\u{1b}[2m2026\u{1b}[0m \u{1b}[32m INFO\u{1b}[0m демон запускается"),
+            "2026  INFO демон запускается"
+        );
+        assert_eq!(
+            strip_ansi("ошибка: сеть недоступна"),
+            "ошибка: сеть недоступна"
+        );
+    }
+
+    #[cfg(unix)]
+    fn daemon_from_script(script: &str) -> Daemon {
+        let mut command = OsCommand::new("sh");
+        command.arg("-c").arg(script);
+        let mut daemon = Daemon::default();
+        daemon.spawn(command, "sh").unwrap();
+        daemon
+    }
+
+    #[cfg(unix)]
+    fn wait_for_exit(daemon: &mut Daemon) {
+        for _ in 0..200 {
+            if !daemon.is_alive() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        panic!("скрипт не завершился");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_daemon_reports_its_last_stderr_line_and_exit_code() {
+        let mut daemon = daemon_from_script(
+            "printf '\\033[32m INFO\\033[0m весов нет, скачиваю\\n' >&2; \
+             echo 'ошибка: сеть недоступна (https://huggingface.co)' >&2; exit 5",
+        );
+        wait_for_exit(&mut daemon);
+        let exit = daemon.failure().unwrap();
+        assert_eq!(exit.code, Some(5));
+        assert_eq!(
+            exit.last_line,
+            "ошибка: сеть недоступна (https://huggingface.co)"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_running_or_cleanly_stopped_daemon_has_no_failure() {
+        let mut running = daemon_from_script("sleep 5");
+        assert!(running.failure().is_none());
+        running.stop();
+
+        let mut clean = daemon_from_script("echo 'всё хорошо' >&2; exit 0");
+        wait_for_exit(&mut clean);
+        assert!(clean.failure().is_none());
     }
 
     #[test]
