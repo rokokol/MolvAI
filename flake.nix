@@ -198,12 +198,15 @@
             }
           );
 
-          # Сборка whisper.cpp с Vulkan (cargo build --features vulkan)
+          # Сборка whisper.cpp с Vulkan (cargo build --features vulkan).
+          # В готовых биндингах whisper-rs-sys нет функций ggml_backend_vk_*, поэтому здесь
+          # биндинги генерируются: переменная из base снята, а bindgenHook даёт libclang
           vulkan = pkgs.mkShell (
-            base
+            builtins.removeAttrs base [ "WHISPER_DONT_GENERATE_BINDINGS" ]
             // {
               packages =
                 base.packages
+                ++ [ pkgs.rustPlatform.bindgenHook ]
                 ++ pkgs.lib.optionals isLinux (
                   with pkgs;
                   [
