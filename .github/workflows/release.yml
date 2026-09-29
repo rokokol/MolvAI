@@ -66,12 +66,17 @@ jobs:
           # Самая старая поддерживаемая LTS: бинарь требует glibc не новее той, на которой
           # собран. На ubuntu-24.04 это 2.39, и каталог appimage.github.io, который проверяет
           # AppImage на ubuntu-22.04, отверг образ с GLIBC_2.39 not found
+          # Vulkan считает whisper на видеокарте любого производителя, а без устройства
+          # Vulkan whisper.cpp сам уходит на процессор
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
+            features: molva-core/vulkan
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+            features: molva-core/vulkan
           - os: macos-latest
             target: aarch64-apple-darwin
+            features: ""
     steps:
       - uses: actions/checkout@v7
 
@@ -82,7 +87,13 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
             librsvg2-dev libasound2-dev libxkbcommon-dev libwayland-dev \
-            cmake patchelf squashfs-tools
+            cmake patchelf squashfs-tools libvulkan-dev libclang-dev
+
+      # Шейдеры ggml-vulkan компилирует glslc из Vulkan SDK: в Ubuntu 22.04 пакета glslc нет
+      - uses: jakoch/install-vulkan-sdk-action@v1.6.0
+        if: contains(matrix.features, 'vulkan')
+        with:
+          vulkan_version: 1.4.363.0
 
       - name: Тулчейн Rust из rust-toolchain.toml
         shell: bash
@@ -90,10 +101,11 @@ jobs:
           rustup show
           rustup target add ${{ matrix.target }}
 
-      # Готовые биндинги whisper-rs совпадают по ABI с Linux и macOS; на Windows раскладка
-      # структур другая, поэтому биндинги генерируются предустановленным LLVM
-      - name: Биндинги whisper-rs из крейта (Linux, macOS)
-        if: runner.os != 'Windows'
+      # Готовые биндинги whisper-rs совпадают по ABI с macOS, но в них нет функций
+      # ggml_backend_vk_*: сборке с Vulkan биндинги генерирует libclang. На Windows раскладка
+      # структур другая, и биндинги генерируются там всегда
+      - name: Биндинги whisper-rs из крейта (macOS)
+        if: runner.os == 'macOS'
         shell: bash
         run: echo "WHISPER_DONT_GENERATE_BINDINGS=1" >> "$GITHUB_ENV"
 
@@ -139,7 +151,11 @@ jobs:
 
       - name: Сборка CLI
         shell: bash
-        run: cargo build --locked --release --target ${{ matrix.target }} --bin molva
+        env:
+          FEATURES: ${{ matrix.features }}
+        run: |
+          cargo build --locked --release --target ${{ matrix.target }} --bin molva \
+            ${FEATURES:+--features "$FEATURES"}
 
       # Tauri ждёт sidecar с именем, оканчивающимся на target triple
       - name: Бинарник как sidecar для GUI

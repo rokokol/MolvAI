@@ -1,6 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "bundle": {
-    "externalBin": ["binaries/molva"]
+    "externalBin": ["binaries/molva"],
+    "linux": {
+      "deb": {
+        "depends": ["libvulkan1"]
+      }
+    }
   }
 }
