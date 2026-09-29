@@ -68,8 +68,14 @@ fn ensure_model_present(config: &Config) -> anyhow::Result<()> {
     }
     let directory = models::models_dir(config)?;
     tracing::info!(model = name, directory = %directory.display(), "весов нет, скачиваю");
-    let report = super::models::pull(name, &directory, false, !super::progress_enabled(false))
-        .map_err(|err| anyhow!("{err}"))?;
+    let report = super::models::pull(
+        name,
+        &directory,
+        &config.stt.models_mirror,
+        false,
+        !super::progress_enabled(false),
+    )
+    .map_err(|err| anyhow!("{err}"))?;
     tracing::info!(path = %report.path.display(), "веса на месте, контрольная сумма совпала");
     Ok(())
 }

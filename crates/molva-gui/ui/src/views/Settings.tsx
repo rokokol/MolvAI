@@ -451,6 +451,21 @@ export default function Settings({
               }
             />
           </div>
+          <div className="field wide">
+            <label htmlFor="stt-models-mirror">{t("settings.modelsMirror")}</label>
+            <input
+              id="stt-models-mirror"
+              type="url"
+              placeholder="https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
+              value={draft.stt.models_mirror}
+              onChange={(event) =>
+                patch((next) => {
+                  next.stt.models_mirror = event.target.value;
+                })
+              }
+            />
+            <p className="muted small">{t("settings.modelsMirrorHint")}</p>
+          </div>
         </div>
 
         <h3>{t("settings.allowedLanguages")}</h3>

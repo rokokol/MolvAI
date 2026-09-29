@@ -154,6 +154,8 @@
   "settings.engine": "Движок",
   "settings.model": "Модель",
   "settings.modelPath": "Каталог моделей",
+  "settings.modelsMirror": "Зеркало весов",
+  "settings.modelsMirrorHint": "Пусто — Hugging Face. Адрес каталога, где лежат файлы ggml-*.bin; скачанное всё равно сверяется по SHA-256",
   "settings.sttLanguage": "Язык распознавания",
   "settings.allowedLanguages": "Разрешённые языки",
   "settings.addLanguage": "Добавить язык",

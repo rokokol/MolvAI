@@ -134,6 +134,9 @@ pub struct SttConfig {
     pub model: String,
     /// Пусто — каталог моделей по умолчанию.
     pub model_path: String,
+    /// Откуда качать веса вместо Hugging Face: адрес каталога, к нему добавляется имя файла.
+    /// Пусто — Hugging Face. Подмену файла ловит проверка SHA-256, поэтому годится и `http://`.
+    pub models_mirror: String,
     /// `auto` или код ISO-639-1; фиксированный язык отключает автоопределение.
     pub language: String,
     pub allowed_languages: Vec<String>,
@@ -158,6 +161,7 @@ impl Default for SttConfig {
             engine: "whisper-cpp".into(),
             model: "small".into(),
             model_path: String::new(),
+            models_mirror: String::new(),
             // Фиксированный язык: автоопределение в whisper.cpp на CPU в пять раз медленнее
             // (23 с против 4 с на реплику в 4 с с моделью small). `auto` остаётся опцией.
             language: "ru".into(),
@@ -798,6 +802,14 @@ impl Config {
             &self.stt.remote.api_key_source,
             &["keyring", "env", "none"],
         );
+        let mirror = self.stt.models_mirror.trim();
+        if !mirror.is_empty() && !mirror.starts_with("https://") && !mirror.starts_with("http://") {
+            issues.push(ConfigIssue::new(
+                "stt.models_mirror",
+                mirror,
+                "ожидается пусто (Hugging Face) или адрес, начинающийся с https:// или http://",
+            ));
+        }
     }
 
     /// Доставка текста в активное окно.
@@ -1210,6 +1222,27 @@ mod tests {
             issues
                 .iter()
                 .any(|i| i.to_string().contains("chunk_pause_ms")),
+            "{issues:?}"
+        );
+    }
+
+    #[test]
+    fn a_models_mirror_must_be_an_http_address() {
+        let mut config = Config::default();
+        for good in [
+            "",
+            "https://hf-mirror.com/whisper",
+            "http://192.168.1.5:8000/models",
+        ] {
+            config.stt.models_mirror = good.into();
+            assert!(config.validate().is_ok(), "{good}");
+        }
+        config.stt.models_mirror = "hf-mirror.com/whisper".into();
+        let issues = config.validate().unwrap_err();
+        assert!(
+            issues
+                .iter()
+                .any(|i| i.to_string().contains("stt.models_mirror")),
             "{issues:?}"
         );
     }

@@ -154,6 +154,8 @@
   "settings.engine": "Engine",
   "settings.model": "Model",
   "settings.modelPath": "Models directory",
+  "settings.modelsMirror": "Weights mirror",
+  "settings.modelsMirrorHint": "Empty means Hugging Face. The address of a directory with the ggml-*.bin files; each download is still checked against its SHA-256",
   "settings.sttLanguage": "Recognition language",
   "settings.allowedLanguages": "Allowed languages",
   "settings.addLanguage": "Add language",

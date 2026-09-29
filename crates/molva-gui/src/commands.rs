@@ -196,6 +196,16 @@ pub fn validate_config(config: &Config) -> Result<(), ValidationError> {
             allowed: vec!["http://localhost:11434/v1".into()],
         });
     }
+    // Остальные правила — в ядре: демон проверяет тот же файл той же функцией.
+    if let Err(issues) = config.validate() {
+        if let Some(issue) = issues.into_iter().next() {
+            return Err(ValidationError {
+                field: issue.key,
+                message: issue.message,
+                allowed: Vec::new(),
+            });
+        }
+    }
     Ok(())
 }
 
@@ -805,6 +815,14 @@ mod tests {
         let shown: CommandError = err.into();
         assert_eq!(shown.kind, "validation");
         assert!(shown.hint.unwrap().contains("clipboard"));
+    }
+
+    #[test]
+    fn rules_of_the_core_are_checked_before_saving() {
+        let mut config = Config::default();
+        config.stt.models_mirror = "hf-mirror.com/whisper".into();
+        let err = validate_config(&config).unwrap_err();
+        assert_eq!(err.field, "stt.models_mirror");
     }
 
     #[test]

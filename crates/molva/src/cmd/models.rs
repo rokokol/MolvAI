@@ -122,6 +122,7 @@ pub(crate) fn needs_download(target: &Path, sha256: &str, force: bool) -> Result
 pub(crate) fn pull(
     name: &str,
     directory: &Path,
+    mirror: &str,
     force: bool,
     quiet: bool,
 ) -> Result<PullReport, CmdError> {
@@ -147,7 +148,7 @@ pub(crate) fn pull(
     });
     eprintln!("скачиваю {name} ({})", human_size(info.size_bytes));
 
-    let result = models::pull(name, directory, &mut |downloaded, total| {
+    let result = models::pull(name, directory, mirror, &mut |downloaded, total| {
         if let Some(bar) = &bar {
             if total > 0 {
                 bar.set_length(total);
@@ -200,7 +201,13 @@ pub(crate) fn run(
                 name.iter().cloned().collect()
             };
             for name in &names {
-                let report = pull(name, &directory, *force, !progress_enabled(false))?;
+                let report = pull(
+                    name,
+                    &directory,
+                    &config.stt.models_mirror,
+                    *force,
+                    !progress_enabled(false),
+                )?;
                 if report.downloaded {
                     eprintln!("готово: контрольная сумма {name} совпала");
                 } else {

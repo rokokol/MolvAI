@@ -296,6 +296,11 @@ defect 'models/unknown-model-has-no-download' 'crates/molva-core/src/app/models.
   '    let info = find(name).unwrap_or(&CATALOG[0]);' \
   'имя модели не из каталога показывает загрузку чужой модели'
 
+defect 'models/mirror-joined-by-one-slash' 'crates/molva-core/src/app/models.rs' \
+  "    format!(\"{}/{}\", mirror.trim_end_matches('/'), info.file_name)" \
+  '    format!("{}/{}", mirror, info.file_name)' \
+  'зеркало с косой чертой на конце даёт адрес с двумя, и часть серверов отвечает 404'
+
 # --- дорожка E: метрики качества ---
 
 defect 'wer/normalization-lowercase' 'crates/molva-core/src/app/wer.rs' \
@@ -522,6 +527,11 @@ defect 'gui/download-is-shown-while-daemon-is-down' 'crates/molva-gui/src/comman
   '        download,' \
   '        download: None,' \
   'пока демон качает веса, окно пишет «Демон не запущен» вместо прогресса'
+
+defect 'gui/core-rules-checked-before-saving' 'crates/molva-gui/src/commands.rs' \
+  '        if let Some(issue) = issues.into_iter().next() {' \
+  '        if let Some(issue) = issues.into_iter().next().filter(|_| false) {' \
+  'окно сохраняет настройки, которые демон потом отвергнет, например адрес зеркала без схемы'
 
 defect 'cli/second-instance-refuses-to-start' 'crates/molva/src/cmd/daemon.rs' \
   '    let Some(pid) = ping(socket) else {' \

@@ -166,6 +166,7 @@ export interface Config {
     engine: string;
     model: string;
     model_path: string;
+    models_mirror: string;
     language: string;
     allowed_languages: string[];
     threads: number;

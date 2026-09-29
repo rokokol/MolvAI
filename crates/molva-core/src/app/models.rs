@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MIT
 //! Каталог весов whisper.cpp: где лежат, откуда качать, как проверить.
 //!
-//! Загрузка идёт только по HTTPS и только на известный SHA-256: хеши зафиксированы в каталоге
-//! из LFS-указателей репозитория `ggerganov/whisper.cpp`, поэтому подменённый или недокачанный
-//! файл до диска не доезжает. Скачивание идёт в `<имя>.bin.part` и переименовывается только
-//! после успешной проверки, а прерванная загрузка продолжается запросом `Range`.
+//! Веса качаются с Hugging Face по HTTPS или с зеркала из `stt.models_mirror`, и только на
+//! известный SHA-256: хеши зафиксированы в каталоге из LFS-указателей репозитория
+//! `ggerganov/whisper.cpp`, поэтому подменённый или недокачанный файл до диска не доезжает,
+//! даже если зеркало отдаёт его по `http://`. Скачивание идёт в `<имя>.bin.part` и
+//! переименовывается только после успешной проверки, а прерванная загрузка продолжается
+//! запросом `Range`.
 
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -260,17 +262,27 @@ fn hex(bytes: &[u8]) -> String {
 pub fn pull(
     name: &str,
     directory: &Path,
+    mirror: &str,
     progress: &mut dyn FnMut(u64, u64),
 ) -> Result<PathBuf, ModelError> {
     let info = find(name)?;
     download_verified(
-        info.url,
+        &download_url(info, mirror),
         directory,
         info.file_name,
         info.sha256,
         name,
         progress,
     )
+}
+
+/// Адрес файла модели: зеркало из `stt.models_mirror` или Hugging Face из каталога.
+pub fn download_url(info: &ModelInfo, mirror: &str) -> String {
+    let mirror = mirror.trim();
+    if mirror.is_empty() {
+        return info.url.to_string();
+    }
+    format!("{}/{}", mirror.trim_end_matches('/'), info.file_name)
 }
 
 /// Сколько `.part` может не меняться, чтобы загрузку всё ещё считали идущей.
@@ -619,6 +631,46 @@ mod tests {
             "прогресс не сообщил ни одной середины загрузки"
         );
         assert!(!part.exists(), "{} остался после загрузки", part.display());
+    }
+
+    #[test]
+    fn without_a_mirror_the_catalog_url_is_used() {
+        let info = find("small").unwrap();
+        assert_eq!(download_url(info, ""), info.url);
+        assert_eq!(download_url(info, "  "), info.url);
+    }
+
+    #[test]
+    fn a_mirror_is_joined_with_the_file_name_by_one_slash() {
+        let info = find("small").unwrap();
+        for mirror in [
+            "https://hf-mirror.com/whisper",
+            "https://hf-mirror.com/whisper/",
+        ] {
+            assert_eq!(
+                download_url(info, mirror),
+                "https://hf-mirror.com/whisper/ggml-small.bin"
+            );
+        }
+    }
+
+    #[test]
+    fn pull_downloads_from_the_mirror() {
+        // Порт 9 закрыт: запрос падает сразу, а ошибка называет адрес, куда ходили.
+        let directory = tempfile::tempdir().unwrap();
+        let err = pull(
+            "tiny",
+            directory.path(),
+            "http://127.0.0.1:9/weights",
+            &mut no_progress(),
+        )
+        .unwrap_err();
+        match err {
+            ModelError::Http { url, .. } => {
+                assert_eq!(url, "http://127.0.0.1:9/weights/ggml-tiny.bin");
+            }
+            other => panic!("ожидалась ошибка сети, получено {other}"),
+        }
     }
 
     #[test]
