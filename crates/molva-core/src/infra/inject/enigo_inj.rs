@@ -55,6 +55,25 @@ impl EnigoInjector {
             .ok_or_else(|| InjectError::Unavailable("enigo не поднялся".into()))
     }
 
+    /// Клавиша V сочетания вставки.
+    ///
+    /// Windows и macOS ищут `Key::Unicode('v')` в текущей раскладке, и в ЙЦУКЕН такой
+    /// клавиши нет: Ctrl+V не доходит до приложения. Физический код от раскладки не зависит.
+    fn paste_key() -> Key {
+        #[cfg(target_os = "windows")]
+        {
+            Key::Other(0x56) // VK_V
+        }
+        #[cfg(target_os = "macos")]
+        {
+            Key::Other(9) // kVK_ANSI_V
+        }
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        {
+            Key::Unicode('v')
+        }
+    }
+
     /// Клавиша-модификатор вставки: на macOS это Cmd, на остальных — Ctrl.
     fn paste_modifier() -> Key {
         #[cfg(target_os = "macos")]
@@ -78,7 +97,7 @@ impl EnigoInjector {
         if shift {
             map(enigo.key(Key::Shift, Direction::Press))?;
         }
-        map(enigo.key(Key::Unicode('v'), Direction::Click))?;
+        map(enigo.key(Self::paste_key(), Direction::Click))?;
         if shift {
             map(enigo.key(Key::Shift, Direction::Release))?;
         }
@@ -150,6 +169,19 @@ mod tests {
             Key::Control
         };
         assert_eq!(EnigoInjector::paste_modifier(), expected);
+    }
+
+    #[test]
+    fn paste_key_is_the_physical_v_key_where_the_layout_would_translate_it() {
+        // Символ 'v' Windows и macOS ищут в текущей раскладке, а в ЙЦУКЕН его нет.
+        let expected = if cfg!(target_os = "windows") {
+            Key::Other(0x56) // VK_V
+        } else if cfg!(target_os = "macos") {
+            Key::Other(9) // kVK_ANSI_V
+        } else {
+            Key::Unicode('v')
+        };
+        assert_eq!(EnigoInjector::paste_key(), expected);
     }
 
     #[test]
