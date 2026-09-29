@@ -149,13 +149,28 @@ jobs:
             exit 1
           fi
 
+      # На Windows ggml-vulkan собирает генератор шейдеров вложенным проектом CMake глубоко
+      # внутри каталога сборки, и путь вылезает за 260 символов: cl.exe падает с C1083.
+      # Короткий каталог и сборка без --target (цель совпадает с хостом) дают запас.
+      # Путь к бинарю шаги ниже берут из CLI_OUT
       - name: Сборка CLI
         shell: bash
         env:
           FEATURES: ${{ matrix.features }}
         run: |
-          cargo build --locked --release --target ${{ matrix.target }} --bin molva \
-            ${FEATURES:+--features "$FEATURES"}
+          args=(--locked --release --bin molva)
+          if [ -n "$FEATURES" ]; then
+            args+=(--features "$FEATURES")
+          fi
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            export CARGO_TARGET_DIR=C:/t
+            out=C:/t/release
+          else
+            args+=(--target "${{ matrix.target }}")
+            out="target/${{ matrix.target }}/release"
+          fi
+          cargo build "${args[@]}"
+          echo "CLI_OUT=$out" >> "$GITHUB_ENV"
 
       # Tauri ждёт sidecar с именем, оканчивающимся на target triple
       - name: Бинарник как sidecar для GUI
@@ -163,11 +178,9 @@ jobs:
         run: |
           mkdir -p crates/molva-gui/binaries
           if [ "$RUNNER_OS" = "Windows" ]; then
-            cp "target/${{ matrix.target }}/release/molva.exe" \
-               "crates/molva-gui/binaries/molva-${{ matrix.target }}.exe"
+            cp "$CLI_OUT/molva.exe" "crates/molva-gui/binaries/molva-${{ matrix.target }}.exe"
           else
-            cp "target/${{ matrix.target }}/release/molva" \
-               "crates/molva-gui/binaries/molva-${{ matrix.target }}"
+            cp "$CLI_OUT/molva" "crates/molva-gui/binaries/molva-${{ matrix.target }}"
           fi
 
       - name: Архив CLI
@@ -177,9 +190,9 @@ jobs:
           stage="molva-${{ github.ref_name }}-${{ matrix.target }}"
           mkdir -p "$stage"
           if [ "$RUNNER_OS" = "Windows" ]; then
-            cp "target/${{ matrix.target }}/release/molva.exe" "$stage/"
+            cp "$CLI_OUT/molva.exe" "$stage/"
           else
-            cp "target/${{ matrix.target }}/release/molva" "$stage/"
+            cp "$CLI_OUT/molva" "$stage/"
           fi
           cp README.md LICENSE NOTICE THIRD-PARTY.md "$stage/"
           tar -czf "dist/$stage.tar.gz" "$stage"
