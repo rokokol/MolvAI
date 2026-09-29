@@ -79,7 +79,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
             librsvg2-dev libasound2-dev libxkbcommon-dev libwayland-dev \
-            cmake patchelf
+            cmake patchelf squashfs-tools
 
       - name: Тулчейн Rust из rust-toolchain.toml
         shell: bash
@@ -192,6 +192,24 @@ jobs:
         working-directory: crates/molva-gui/ui
         run: npm ci
 
+      # Бандлер Tauri сохраняет скачанный AppRun-<arch> с правами 0770, и в образ он попадает
+      # как AppRun.wrapped с теми же правами. firejail --appimage и тест каталога
+      # appimage.github.io запускают образ не от владельца файлов и падают с Permission denied.
+      # Файл, который уже лежит в кэше, бандлер не скачивает и не трогает, поэтому шаг кладёт
+      # его туда с 0755. Upstream: https://github.com/tauri-apps/tauri/issues/16155
+      # Шаг можно убрать, когда scripts/check-appimage.sh проходит на образе, собранном без него
+      - name: AppRun для AppImage с правами для всех (Linux)
+        if: steps.tauri.outputs.present == 'true' && runner.os == 'Linux'
+        shell: bash
+        run: |
+          arch="${{ matrix.target }}"
+          arch="${arch%%-*}"
+          tools="${XDG_CACHE_HOME:-$HOME/.cache}/tauri"
+          mkdir -p "$tools"
+          curl -fsSL --retry 3 -o "$tools/AppRun-$arch" \
+            "https://github.com/tauri-apps/binary-releases/releases/download/apprun-old/AppRun-$arch"
+          chmod 755 "$tools/AppRun-$arch"
+
       - uses: tauri-apps/tauri-action@v1
         if: steps.tauri.outputs.present == 'true'
         env:
@@ -203,6 +221,12 @@ jobs:
           # binaries/molva-<triple>, который появляется лишь после сборки CLI выше.
           # Без сайдкара установщик кладёт один MolvAI.exe, и GUI не находит molva.
           args: --target ${{ matrix.target }} --config tauri.sidecar.conf.json
+
+      # Проверка ловит и возврат бага в бандлере, и шаг выше, который перестал срабатывать
+      - name: AppImage может запустить любой пользователь
+        if: steps.tauri.outputs.present == 'true' && runner.os == 'Linux'
+        shell: bash
+        run: scripts/check-appimage.sh target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
 
       - uses: actions/upload-artifact@v7
         if: steps.tauri.outputs.present == 'true'
