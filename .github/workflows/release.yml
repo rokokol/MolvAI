@@ -90,7 +90,7 @@ jobs:
             cmake patchelf squashfs-tools libvulkan-dev libclang-dev
 
       # Шейдеры ggml-vulkan компилирует glslc из Vulkan SDK: в Ubuntu 22.04 пакета glslc нет
-      - uses: jakoch/install-vulkan-sdk-action@v1.6.0
+      - uses: jakoch/install-vulkan-sdk-action@v1.7.0
         if: contains(matrix.features, 'vulkan')
         with:
           vulkan_version: 1.4.363.0
