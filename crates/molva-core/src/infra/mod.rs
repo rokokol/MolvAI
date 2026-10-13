@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-//! Инфраструктура: реальные реализации контрактов `domain` поверх ОС, сети и внешних библиотек.
+//! Infrastructure: real implementations of the `domain` contracts on top of the OS, the network and external libraries
 //!
-//! Объявления по одному на строку: файл общий для нескольких дорожек, так меньше конфликтов.
+//! One declaration per line: several tracks share this file, so there are fewer conflicts
 
 pub mod audio;
 pub mod hotkeys;

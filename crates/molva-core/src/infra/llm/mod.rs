@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
-//! Клиенты языковых моделей. Все провайдеры говорят на диалекте OpenAI `/chat/completions`,
-//! поэтому клиент один, а различается только базовый адрес, модель и наличие ключа.
+//! Clients of language models. All providers use the OpenAI `/chat/completions` dialect,
+//! so there is one client, and only the base URL, the model and the presence of a key differ
 
 pub mod openai_compat;
 

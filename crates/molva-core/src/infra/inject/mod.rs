@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-//! Вставка текста в активное окно.
+//! Paste text into the active window
 //!
-//! Единого способа нет ни на одной платформе, поэтому здесь их несколько, а `ChainInjector`
-//! перебирает их в порядке, который зависит от сессии и композитора. Последний в цепочке —
-//! буфер обмена: он работает всегда, пусть и требует от пользователя нажать Ctrl+V.
+//! No platform has one single method, so this module has several. `ChainInjector` tries them
+//! in an order that depends on the session and the compositor. The last one in the chain is the
+//! clipboard: it always works, even if the user must press Ctrl+V
 
 pub mod chain;
 pub mod clipboard;
@@ -18,7 +18,7 @@ use crate::domain::inject::OutputMode;
 pub use chain::{ChainInjector, ClipboardOnlyInjector};
 pub use clipboard::ClipboardGuard;
 
-/// Разбор `output.mode` из конфига; незнакомое значение — это `auto`.
+/// Parse `output.mode` from the config; an unknown value is `auto`
 pub fn parse_output_mode(value: &str) -> OutputMode {
     match value.trim().to_ascii_lowercase().as_str() {
         "paste" => OutputMode::Paste,
@@ -28,11 +28,11 @@ pub fn parse_output_mode(value: &str) -> OutputMode {
     }
 }
 
-/// Классы окон терминалов: в них Ctrl+V не вставляет, нужен Ctrl+Shift+V.
+/// Window classes of terminals: Ctrl+V does not paste in them, they need Ctrl+Shift+V
 ///
-/// Только реальные классы окон X11 и Wayland — те, что показывает `hyprctl activewindow`,
-/// `xprop WM_CLASS` или `swaymsg -t get_tree`. Имена программ, у которых своего окна нет
-/// (tmux, screen), сюда не годятся: класс окна у них чужой.
+/// Only real X11 and Wayland window classes — those that `hyprctl activewindow`,
+/// `xprop WM_CLASS` or `swaymsg -t get_tree` show. Names of programs that have no window of
+/// their own (tmux, screen) do not belong here: their window class is a foreign one
 const TERMINAL_CLASSES: &[&str] = &[
     "kitty",
     "alacritty",
@@ -67,11 +67,11 @@ const TERMINAL_CLASSES: &[&str] = &[
     "com.raggesilver.blackbox",
 ];
 
-/// Похож ли класс окна на терминал.
+/// Whether the window class looks like a terminal
 ///
-/// Совпадение либо точное, либо по последнему сегменту обратного DNS
-/// (`org.wezfurlong.wezterm` → `wezterm`). Просто «оканчивается на» здесь не годится: короткое
-/// имя вроде `st` тогда сделало бы терминалом каждое окно, чей класс кончается на эти буквы.
+/// The match is either exact or on the last segment of a reverse DNS name
+/// (`org.wezfurlong.wezterm` → `wezterm`). A plain "ends with" test does not work here: a short
+/// name such as `st` would then make every window a terminal if its class ends with these letters
 pub fn is_terminal_class(class: &str) -> bool {
     let class = class.trim().to_ascii_lowercase();
     let tail = class.rsplit('.').next().unwrap_or(&class);
@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn unknown_output_mode_falls_back_to_auto_instead_of_failing() {
-        assert_eq!(parse_output_mode("телепатия"), OutputMode::Auto);
+        assert_eq!(parse_output_mode("telepathy"), OutputMode::Auto);
         assert_eq!(parse_output_mode(""), OutputMode::Auto);
     }
 
@@ -109,7 +109,7 @@ mod tests {
 
     #[test]
     fn the_terminals_people_actually_use_are_in_the_list() {
-        // Классы взяты у настоящих окон: hyprctl activewindow, xprop WM_CLASS, swaymsg get_tree.
+        // The classes come from real windows: hyprctl activewindow, xprop WM_CLASS, swaymsg get_tree
         for class in [
             "com.mitchellh.ghostty",
             "ghostty",
@@ -125,13 +125,13 @@ mod tests {
             "kgx",
             "xfce4-terminal",
         ] {
-            assert!(is_terminal_class(class), "{class} — терминал");
+            assert!(is_terminal_class(class), "{class} is a terminal");
         }
     }
 
     #[test]
     fn a_class_that_merely_ends_with_a_terminal_name_is_not_a_terminal() {
-        // Короткое `st` не должно превращать в терминал каждое окно с такими буквами в хвосте.
+        // The short `st` must not make a terminal of every window with these letters at the tail
         assert!(!is_terminal_class("gnome-text-editor"));
         assert!(!is_terminal_class("libreoffice-writer-st"));
         assert!(!is_terminal_class("code"));

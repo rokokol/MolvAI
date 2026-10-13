@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-//! Определение платформы и активного окна.
+//! Detection of the platform and of the active window
 //!
-//! Порядок способов вставки полностью зависит от того, где мы запущены, поэтому определение
-//! сессии — не диагностика, а часть логики. Оно читает окружение один раз и складывает его в
-//! `SessionEnv`, чтобы правила проверялись тестами без `std::env::set_var`.
+//! The order of the paste methods depends fully on where the daemon runs, so session detection
+//! is not diagnostics but a part of the logic. It reads the environment once and stores it in
+//! `SessionEnv`, so tests can check the rules without `std::env::set_var`
 
 use serde::{Deserialize, Serialize};
 
@@ -24,7 +24,7 @@ pub enum Platform {
     Wayland(Compositor),
     Windows,
     MacOs,
-    /// Сессии нет: демон запущен в tty, контейнере или по ssh.
+    /// No session: the daemon runs in a tty, in a container or over ssh
     Headless,
 }
 
@@ -40,19 +40,19 @@ impl Platform {
         }
     }
 
-    /// Короткое имя для `doctor` и журнала.
+    /// Short name for `doctor` and the journal
     pub fn label(self) -> String {
         match self {
             Platform::X11 => "X11".into(),
             Platform::Wayland(c) => format!("Wayland/{c:?}"),
             Platform::Windows => "Windows".into(),
             Platform::MacOs => "macOS".into(),
-            Platform::Headless => "без графической сессии".into(),
+            Platform::Headless => "no graphical session".into(),
         }
     }
 }
 
-/// Снимок переменных окружения, по которым определяется сессия.
+/// Snapshot of the environment variables that decide the session
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SessionEnv {
     pub session_type: Option<String>,
@@ -77,12 +77,12 @@ impl SessionEnv {
     }
 }
 
-/// Определить платформу по окружению текущего процесса.
+/// Detect the platform from the environment of the current process
 pub fn detect() -> Platform {
     detect_from(&SessionEnv::from_env())
 }
 
-/// То же, но по явному снимку окружения: так правила проверяются тестами.
+/// The same, but from an explicit environment snapshot: tests check the rules this way
 pub fn detect_from(env: &SessionEnv) -> Platform {
     if cfg!(target_os = "windows") {
         return Platform::Windows;
@@ -113,7 +113,7 @@ fn compositor_from(env: &SessionEnv) -> Compositor {
         .as_deref()
         .unwrap_or("")
         .to_ascii_lowercase();
-    // XDG_CURRENT_DESKTOP бывает списком через двоеточие, например `KDE:wayland`.
+    // XDG_CURRENT_DESKTOP can be a colon-separated list, for example `KDE:wayland`
     for part in desktop.split(':') {
         match part {
             "hyprland" => return Compositor::Hyprland,
@@ -126,9 +126,9 @@ fn compositor_from(env: &SessionEnv) -> Compositor {
     Compositor::Other
 }
 
-/// Класс активного окна для подсказки стиля и выбора сочетания вставки.
+/// Class of the active window, for the style hint and for the choice of the paste key combination
 ///
-/// Известен только там, где композитор его сообщает; на остальных — `None`, и это штатно.
+/// It is known only where the compositor reports it; elsewhere it is `None`, and this is normal
 pub fn active_window_class() -> Option<String> {
     match detect() {
         Platform::Wayland(Compositor::Hyprland) => hyprland_active_class(),
@@ -151,7 +151,7 @@ fn hyprland_active_class() -> Option<String> {
         .filter(|c| !c.is_empty())
 }
 
-/// Внешние утилиты, которые нашлись в `PATH`: для `doctor` и для выбора цепочки.
+/// External utilities found in `PATH`: for `doctor` and for the choice of the chain
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Tools {
     pub hyprctl: bool,
@@ -173,8 +173,8 @@ impl Tools {
     }
 }
 
-// Правила определения сессии описывают Linux и BSD; на Windows и macOS `detect_from`
-// отвечает по `cfg!` и проверять там нечего.
+// The session detection rules describe Linux and BSD; on Windows and macOS `detect_from`
+// answers by `cfg!` and there is nothing to check
 #[cfg(all(test, not(any(target_os = "windows", target_os = "macos"))))]
 mod tests {
     use super::*;

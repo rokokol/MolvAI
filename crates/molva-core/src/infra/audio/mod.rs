@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-//! Аудио-инфраструктура: захват с микрофона через cpal и чтение файлов.
+//! Audio infrastructure: microphone capture through cpal and file reading
 //!
-//! Объявления по одному на строку: файл общий для нескольких дорожек, так меньше конфликтов.
+//! One declaration per line: several tracks share this file, so there are fewer conflicts
 
 pub mod cpal_source;
 pub mod decode;

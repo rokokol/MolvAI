@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
-//! Уведомления рабочего стола.
+//! Desktop notifications
 //!
-//! Уведомление всегда говорит, что делать дальше («нажмите Ctrl+V»), а не просто сообщает о
-//! сбое: пользователь в этот момент уже потерял свою реплику из виду.
+//! A notification always says what to do next ("press Ctrl+V"), and does not only report a
+//! failure: at that moment the user has already lost sight of the phrase
 
 use crate::domain::notify::Notifier;
 
-/// Уведомления через штатную службу рабочего стола.
+/// Notifications through the standard desktop service
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SystemNotifier;
 
@@ -19,30 +19,30 @@ impl SystemNotifier {
 impl Notifier for SystemNotifier {
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     fn notify(&self, title: &str, body: &str) {
-        // Отсутствие службы уведомлений не должно ронять диктовку: пишем в лог и живём дальше.
+        // A missing notification service must not crash the dictation: write to the log and go on
         if let Err(error) = notify_rust::Notification::new()
             .summary(title)
             .body(body)
             .appname("MolvAI")
             .show()
         {
-            tracing::debug!(%error, title, body, "уведомление не показано");
+            tracing::debug!(%error, title, body, "notification not shown");
         }
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     fn notify(&self, title: &str, body: &str) {
-        tracing::info!(title, body, "уведомление");
+        tracing::info!(title, body, "notification");
     }
 }
 
-/// Уведомления в лог: для `--foreground` и для окружений без службы уведомлений.
+/// Notifications to the log: for `--foreground` and for environments with no notification service
 #[derive(Debug, Default, Clone, Copy)]
 pub struct LogNotifier;
 
 impl Notifier for LogNotifier {
     fn notify(&self, title: &str, body: &str) {
-        tracing::info!(title, body, "уведомление");
+        tracing::info!(title, body, "notification");
     }
 }
 
@@ -53,6 +53,6 @@ mod tests {
     #[test]
     fn log_notifier_never_fails_and_is_shareable() {
         let notifier: std::sync::Arc<dyn Notifier> = std::sync::Arc::new(LogNotifier);
-        notifier.notify("MolvAI", "текст в буфере обмена");
+        notifier.notify("MolvAI", "the text is in the clipboard");
     }
 }

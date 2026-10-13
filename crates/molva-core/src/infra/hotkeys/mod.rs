@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-//! Источники горячих клавиш.
+//! Hotkey sources
 //!
-//! Основной путь на Wayland — бинды композитора, вызывающие `molva record ...` (см.
-//! `docs/hotkeys-wayland.md`): композитор уже держит клавиатурный фокус, и ему не нужны права на
-//! устройства ввода. `evdev` — запасной путь для окружений, где биндов нет.
+//! The main path on Wayland is compositor binds that call `molva record ...` (see
+//! `docs/hotkeys-wayland.md`): the compositor already holds the keyboard focus, so it needs no
+//! permission to read input devices. `evdev` is the fallback for environments with no binds
 
 #[cfg(target_os = "linux")]
 pub mod evdev_source;

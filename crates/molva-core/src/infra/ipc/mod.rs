@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! Транспорт IPC поверх локального сокета.
+//! IPC transport over a local socket
 
 pub mod transport;
 
