@@ -1,22 +1,22 @@
 // SPDX-License-Identifier: MIT
-//! Статистика по журналу реплик: сводка, ряды по дням, разбивка по приложениям, сессии.
+//! Statistics over the phrase journal: summary, series by day, split by application, sessions
 //!
-//! Все средние скорости взвешены по времени (`sum(words) / sum(audio_secs) * 60`), а не
-//! усреднены по полю `wpm`: иначе одна короткая реплика перевешивает час диктовки.
+//! All average speeds are weighted by time (`sum(words) / sum(audio_secs) * 60`), not averaged
+//! over the `wpm` field. Otherwise one short phrase would outweigh an hour of dictation
 //!
-//! ## Границы дня
+//! ## Day boundaries
 //!
-//! Дни считаются по календарной дате UTC — той же, что стоит в поле `ts` каждой строки журнала.
-//! Так сводка воспроизводима на любой машине и совпадает с тем, что лежит в файле; цена — в
-//! часовых поясах далеко от UTC «сегодня» в статистике смещено относительно местного дня.
+//! Days count by the UTC calendar date, the same date as in the `ts` field of each journal
+//! line. So the summary is reproducible on any machine and matches the file. The price is that
+//! in time zones far from UTC, "today" in the statistics is shifted relative to the local day
 //!
-//! ## Что за какой период
+//! ## What belongs to which period
 //!
-//! - за всё время (после маркера сброса): `total_words`, `avg_wpm_all`, `record_wpm`,
+//! - all time (after the reset marker): `total_words`, `avg_wpm_all`, `record_wpm`,
 //!   `record_at`, `streak_days`, `minutes_recorded`, `saved_minutes`;
-//! - за сегодня: `words_today`, `avg_wpm_today`;
-//! - за 7 дней: `avg_wpm_7d`;
-//! - за запрошенное окно `range_days`: `series`, `by_app`, `latency_ms`, `tokens`.
+//! - today: `words_today`, `avg_wpm_today`;
+//! - 7 days: `avg_wpm_7d`;
+//! - the requested window `range_days`: `series`, `by_app`, `latency_ms`, `tokens`
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -29,24 +29,24 @@ use uuid::Uuid;
 use crate::config::StatsConfig;
 use crate::domain::entry::Entry;
 
-/// Реплики короче этого не претендуют на личный рекорд.
+/// Phrases shorter than this do not qualify for the personal record
 pub const RECORD_MIN_AUDIO_SECS: f32 = 3.0;
-/// И короче этого — тоже.
+/// Phrases with fewer words than this do not qualify either
 pub const RECORD_MIN_WORDS: u32 = 5;
-/// Разрыв, после которого статистика делит сессию, даже если `session_id` тот же.
+/// Gap after which the statistics split a session, even if `session_id` is the same
 pub const SESSION_GAP_MINUTES: i64 = 30;
-/// Имя файла с маркером сброса статистики рядом с журналом.
+/// Name of the file with the statistics reset marker, next to the journal
 pub const RESET_MARKER_FILE: &str = "stats-reset.json";
 
 #[derive(Debug, Error)]
 pub enum StatsError {
-    #[error("не удалось прочитать маркер сброса {path}: {source}")]
+    #[error("cannot read the reset marker {path}: {source}")]
     Read {
         path: PathBuf,
         #[source]
         source: std::io::Error,
     },
-    #[error("не удалось записать маркер сброса {path}: {source}")]
+    #[error("cannot write the reset marker {path}: {source}")]
     Write {
         path: PathBuf,
         #[source]
@@ -54,28 +54,28 @@ pub enum StatsError {
     },
 }
 
-/// Средние задержки стадий за период, миллисекунды.
+/// Average latencies of the stages over the period, in milliseconds
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct LatencySummary {
     pub stt: u32,
-    /// `None`, если модель постобработки не вызывалась ни разу.
+    /// `None` if the post-processing model was never called
     pub llm: Option<u32>,
-    /// `None`, если ни одна реплика не дошла до вставки.
+    /// `None` if no phrase reached the paste step
     pub inject: Option<u32>,
     pub total: u32,
 }
 
-/// Суммарные токены модели постобработки за период.
+/// Total tokens of the post-processing model over the period
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct TokenSummary {
     pub prompt: u64,
     pub completion: u64,
 }
 
-/// Один день ряда: основа графика скорости и спарклайна.
+/// One day of the series: the basis of the speed chart and the sparkline
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DayStats {
-    /// `YYYY-MM-DD`, UTC.
+    /// `YYYY-MM-DD`, UTC
     pub day: String,
     pub entries: u32,
     pub words: u64,
@@ -84,7 +84,7 @@ pub struct DayStats {
     pub avg_latency_ms: u32,
 }
 
-/// Разбивка по приложениям за период.
+/// Split by application over the period
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AppStats {
     pub app: String,
@@ -93,7 +93,7 @@ pub struct AppStats {
     pub avg_wpm: Option<f32>,
 }
 
-/// Сводка статистики. Форма JSON — контракт для GUI и `molva stats --json`.
+/// Statistics summary. The JSON shape is a contract for the GUI and for `molva stats --json`
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StatsSummary {
     pub total_words: u64,
@@ -112,7 +112,7 @@ pub struct StatsSummary {
     pub by_app: Vec<AppStats>,
 }
 
-/// Отрезок непрерывной работы: один `session_id` без пауз длиннее 30 минут.
+/// Segment of continuous work: one `session_id` with no pauses longer than 30 minutes
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Session {
     pub session_id: Uuid,
@@ -124,9 +124,9 @@ pub struct Session {
     pub avg_wpm: Option<f32>,
 }
 
-/// Средняя скорость, взвешенная по времени: `sum(words) / sum(audio_secs) * 60`.
+/// Average speed weighted by time: `sum(words) / sum(audio_secs) * 60`
 ///
-/// `None`, когда суммарной длительности нет — делить не на что.
+/// `None` when there is no total duration, because there is nothing to divide by
 pub fn weighted_wpm(entries: &[&Entry]) -> Option<f32> {
     let secs: f32 = entries.iter().map(|e| e.audio_secs).sum();
     if secs <= 0.0 {
@@ -136,7 +136,7 @@ pub fn weighted_wpm(entries: &[&Entry]) -> Option<f32> {
     Some(words as f32 / secs * 60.0)
 }
 
-/// Скорость реплики: пересчитывается из слов и длительности, а не берётся на веру из поля.
+/// Speed of a phrase: recomputed from the words and the duration, not taken on trust from the field
 fn entry_wpm(entry: &Entry) -> Option<f32> {
     Entry::wpm_for(entry.words, entry.audio_secs)
 }
@@ -145,8 +145,8 @@ fn day_key(ts: DateTime<Utc>) -> NaiveDate {
     ts.date_naive()
 }
 
-/// Убрать минус у нуля: сумма пустого итератора в Rust равна `-0.0`, а «-0.0 мин» в отчёте
-/// выглядит как ошибка вычислений.
+/// Remove the minus sign from zero: the sum of an empty iterator in Rust is `-0.0`, and
+/// "-0.0 min" in a report looks like a calculation error
 fn no_minus_zero(value: f32) -> f32 {
     if value == 0.0 {
         0.0
@@ -155,7 +155,8 @@ fn no_minus_zero(value: f32) -> f32 {
     }
 }
 
-/// Сводка по журналу. `range_days` — окно рядов и разбивок; `0` — все дни, где что-то было.
+/// Summary over the journal. `range_days` is the window of series and splits; `0` means all
+/// days with any activity
 pub fn summary(
     entries: &[Entry],
     now: DateTime<Utc>,
@@ -213,7 +214,7 @@ pub fn summary(
     }
 }
 
-/// То же, но с маркером сброса: записи раньше маркера в сводку не попадают.
+/// The same, with a reset marker: entries before the marker do not enter the summary
 pub fn summary_since_reset(
     entries: &[Entry],
     reset_at: Option<DateTime<Utc>>,
@@ -225,7 +226,7 @@ pub fn summary_since_reset(
     summary(&kept, now, cfg, range_days)
 }
 
-/// Записи, попадающие в статистику после сброса. История при этом не теряется.
+/// Entries that count in the statistics after a reset. The history is not lost
 pub fn entries_since_reset(entries: &[Entry], reset_at: Option<DateTime<Utc>>) -> Vec<Entry> {
     match reset_at {
         None => entries.to_vec(),
@@ -233,7 +234,7 @@ pub fn entries_since_reset(entries: &[Entry], reset_at: Option<DateTime<Utc>>) -
     }
 }
 
-/// Личный рекорд: максимальная скорость среди достаточно длинных реплик.
+/// Personal record: the maximum speed among phrases that are long enough
 pub fn personal_record(entries: &[&Entry]) -> (Option<f32>, Option<DateTime<Utc>>) {
     let mut best: Option<(f32, DateTime<Utc>)> = None;
     for entry in entries {
@@ -253,10 +254,10 @@ pub fn personal_record(entries: &[&Entry]) -> (Option<f32>, Option<DateTime<Utc>
     }
 }
 
-/// Дни подряд с диктовкой, считая назад от сегодня.
+/// Days in a row with dictation, counted back from today
 ///
-/// Если сегодня записей ещё нет, серия отсчитывается от вчера: день не считается пропущенным,
-/// пока он не закончился.
+/// If there are no entries today yet, the streak counts from yesterday: a day does not count as
+/// missed until it ends
 pub fn streak_days(entries: &[&Entry], today: NaiveDate) -> u32 {
     if entries.is_empty() {
         return 0;
@@ -281,7 +282,7 @@ pub fn streak_days(entries: &[&Entry], today: NaiveDate) -> u32 {
     streak
 }
 
-/// Сэкономленные минуты против набора руками: `words / baseline - audio_secs / 60`.
+/// Minutes saved against typing by hand: `words / baseline - audio_secs / 60`
 pub fn saved_minutes(entries: &[&Entry], cfg: &StatsConfig) -> f32 {
     if cfg.typing_baseline_wpm == 0 {
         return 0.0;
@@ -293,7 +294,7 @@ pub fn saved_minutes(entries: &[&Entry], cfg: &StatsConfig) -> f32 {
         .sum()
 }
 
-/// Средние задержки стадий: арифметическое среднее по репликам, где стадия была.
+/// Average latencies of the stages: the arithmetic mean over the phrases where the stage ran
 pub fn latency_summary(entries: &[&Entry]) -> LatencySummary {
     fn mean<I: Iterator<Item = u32>>(values: I) -> Option<u32> {
         let mut sum = 0u64;
@@ -313,7 +314,7 @@ pub fn latency_summary(entries: &[&Entry]) -> LatencySummary {
     }
 }
 
-/// Суммарные токены: prompt и completion считаются раздельно (критерий S-05).
+/// Total tokens: prompt and completion count separately (criterion S-05)
 pub fn token_summary(entries: &[&Entry]) -> TokenSummary {
     let mut sum = TokenSummary::default();
     for entry in entries {
@@ -325,7 +326,8 @@ pub fn token_summary(entries: &[&Entry]) -> TokenSummary {
     sum
 }
 
-/// Ряд по дням. При заданном окне пустые дни тоже попадают в ряд — иначе график врёт о форме.
+/// Series by day. With a set window, empty days also enter the series, or the chart misstates
+/// the shape
 pub fn series(
     entries: &[&Entry],
     range_start: Option<NaiveDate>,
@@ -363,7 +365,8 @@ pub fn series(
         .collect()
 }
 
-/// Разбивка по приложениям, по убыванию числа слов. Реплики без приложения идут как `unknown`.
+/// Split by application, by descending word count. Phrases without an application count as
+/// `unknown`
 pub fn by_app(entries: &[&Entry]) -> Vec<AppStats> {
     let mut buckets: BTreeMap<String, Vec<&Entry>> = BTreeMap::new();
     for entry in entries {
@@ -383,7 +386,7 @@ pub fn by_app(entries: &[&Entry]) -> Vec<AppStats> {
     stats
 }
 
-/// Сессии: группировка по `session_id` с дополнительным разрывом больше 30 минут.
+/// Sessions: grouping by `session_id`, with an extra split at a gap longer than 30 minutes
 pub fn sessions(entries: &[Entry]) -> Vec<Session> {
     let mut sorted: Vec<&Entry> = entries.iter().collect();
     sorted.sort_by_key(|e| e.ts);
@@ -421,7 +424,7 @@ pub fn sessions(entries: &[Entry]) -> Vec<Session> {
         .collect()
 }
 
-/// CSV-выгрузка статистики по репликам.
+/// CSV export of the statistics per phrase
 pub fn export_csv(entries: &[Entry]) -> String {
     let mut out = String::from("ts,wpm,words,audio_secs,app,style,latency_total_ms\n");
     for entry in entries {
@@ -443,7 +446,7 @@ pub fn export_csv(entries: &[Entry]) -> String {
     out
 }
 
-/// Путь к маркеру сброса рядом с журналом.
+/// Path to the reset marker next to the journal
 pub fn reset_marker_path(journal_path: &Path) -> PathBuf {
     journal_path
         .parent()
@@ -456,7 +459,7 @@ struct ResetMarker {
     reset_at: DateTime<Utc>,
 }
 
-/// Записать маркер сброса: статистика начинает считаться с этого момента, история цела.
+/// Write the reset marker: the statistics count from this moment, and the history stays whole
 pub fn write_reset_marker(journal_path: &Path, at: DateTime<Utc>) -> Result<(), StatsError> {
     let path = reset_marker_path(journal_path);
     if let Some(parent) = path.parent() {
@@ -472,7 +475,7 @@ pub fn write_reset_marker(journal_path: &Path, at: DateTime<Utc>) -> Result<(), 
     std::fs::write(&path, text).map_err(|source| StatsError::Write { path, source })
 }
 
-/// Прочитать маркер сброса. Нет файла или он повреждён — считаем, что сброса не было.
+/// Read the reset marker. If the file is missing or damaged, we treat it as no reset
 pub fn read_reset_marker(journal_path: &Path) -> Option<DateTime<Utc>> {
     let path = reset_marker_path(journal_path);
     let text = std::fs::read_to_string(path).ok()?;
@@ -481,7 +484,7 @@ pub fn read_reset_marker(journal_path: &Path) -> Option<DateTime<Utc>> {
         .map(|marker| marker.reset_at)
 }
 
-/// Убрать маркер: статистика снова считается по всей истории.
+/// Remove the marker: the statistics count over the whole history again
 pub fn clear_reset_marker(journal_path: &Path) -> Result<(), StatsError> {
     let path = reset_marker_path(journal_path);
     match std::fs::remove_file(&path) {
@@ -491,10 +494,10 @@ pub fn clear_reset_marker(journal_path: &Path) -> Result<(), StatsError> {
     }
 }
 
-/// Блоки спарклайна от пустого к полному.
+/// Blocks of the sparkline, from empty to full
 const SPARK_BLOCKS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 
-/// Спарклайн для ряда значений; шкала от нуля, чтобы столбики были сравнимы между собой.
+/// Sparkline for a series of values; the scale starts at zero, so the bars compare with each other
 pub fn sparkline(values: &[f32]) -> String {
     if values.is_empty() {
         return String::new();
@@ -530,7 +533,7 @@ mod tests {
 
     #[test]
     fn average_speed_is_weighted_by_time_not_by_entry() {
-        // 100 слов за 60 с и 1 слово за 6 с: арифметическое среднее дало бы 55 wpm.
+        // 100 words in 60 s and 1 word in 6 s: the arithmetic mean would give 55 wpm
         let entries = [
             test_entry("2026-09-05T10:00:00Z", 100, 60.0, "kitty"),
             test_entry("2026-09-05T10:05:00Z", 1, 6.0, "kitty"),
@@ -586,11 +589,11 @@ mod tests {
     #[test]
     fn record_ignores_short_and_thin_utterances() {
         let mut entries = vec![
-            // Полторы секунды, шесть слов — 240 wpm, но реплика слишком короткая.
+            // One and a half seconds, six words: 240 wpm, but the phrase is too short
             test_entry("2026-09-05T10:00:00Z", 6, 1.5, "kitty"),
-            // Три слова за пять секунд — слов слишком мало.
+            // Three words in five seconds: too few words
             test_entry("2026-09-05T10:01:00Z", 3, 5.0, "kitty"),
-            // Настоящий рекорд.
+            // A real record
             test_entry("2026-09-05T10:02:00Z", 30, 10.0, "kitty"),
         ];
         entries[2].ts = now_at("2026-09-05T10:02:00Z");
@@ -611,7 +614,7 @@ mod tests {
     fn streak_counts_consecutive_days_back_from_today() {
         let entries = vec![
             test_entry("2026-09-01T10:00:00Z", 5, 4.0, "kitty"),
-            // 2 сентября пропущено — серия обрывается здесь.
+            // 2 September is missing: the streak ends here
             test_entry("2026-09-03T10:00:00Z", 5, 4.0, "kitty"),
             test_entry("2026-09-04T10:00:00Z", 5, 4.0, "kitty"),
             test_entry("2026-09-05T10:00:00Z", 5, 4.0, "kitty"),
@@ -626,7 +629,8 @@ mod tests {
             test_entry("2026-09-04T10:00:00Z", 5, 4.0, "kitty"),
             test_entry("2026-09-05T10:00:00Z", 5, 4.0, "kitty"),
         ];
-        // Сегодня 6-е и записей ещё нет: серия считается от вчера и равна 2.
+        // Today is the 6th and there are no entries yet: the streak counts from yesterday and
+        // equals 2
         let summary = summary(&entries, now_at("2026-09-06T09:00:00Z"), &cfg(), 7);
         assert_eq!(summary.streak_days, 2);
     }
@@ -640,7 +644,7 @@ mod tests {
 
     #[test]
     fn saved_minutes_compare_dictation_with_typing_baseline() {
-        // 80 слов за 60 с: набор на 40 wpm занял бы 2 минуты, диктовка — одну.
+        // 80 words in 60 s: typing at 40 wpm would take 2 minutes, and dictation takes one
         let entries = vec![test_entry("2026-09-05T10:00:00Z", 80, 60.0, "kitty")];
         let summary = summary(&entries, now_at("2026-09-05T12:00:00Z"), &cfg(), 7);
         assert!((summary.saved_minutes - 1.0).abs() < 1e-4, "{summary:?}");
@@ -692,7 +696,7 @@ mod tests {
         let summary = summary(&[first, second], now_at("2026-09-05T12:00:00Z"), &cfg(), 7);
         assert_eq!(summary.latency_ms.stt, 500);
         assert_eq!(summary.latency_ms.total, 600);
-        // Средняя по стадии считается только там, где стадия была.
+        // The average of a stage counts only where the stage ran
         assert_eq!(summary.latency_ms.llm, Some(1000));
         assert_eq!(summary.latency_ms.inject, Some(150));
         assert_eq!(summary.tokens.prompt, 120);
@@ -708,12 +712,12 @@ mod tests {
         assert_eq!(summary.series.len(), 7);
         assert!(summary.by_app.is_empty());
         assert_eq!(summary.latency_ms.total, 0);
-        // Ноль без минуса: «-0.0 мин» в отчёте выглядит как ошибка вычислений.
-        assert!(summary.minutes_recorded.is_sign_positive(), "минус у нуля");
-        assert!(summary.saved_minutes.is_sign_positive(), "минус у нуля");
+        // Zero without a minus: "-0.0 min" in a report looks like a calculation error
+        assert!(summary.minutes_recorded.is_sign_positive(), "minus on zero");
+        assert!(summary.saved_minutes.is_sign_positive(), "minus on zero");
         assert!(
             summary.series[0].audio_secs.is_sign_positive(),
-            "минус у нуля"
+            "minus on zero"
         );
     }
 
@@ -740,9 +744,9 @@ mod tests {
             "by_app",
         ];
         for key in expected {
-            assert!(object.contains_key(key), "нет поля {key}: {value}");
+            assert!(object.contains_key(key), "missing field {key}: {value}");
         }
-        assert_eq!(object.len(), expected.len(), "лишние поля: {value}");
+        assert_eq!(object.len(), expected.len(), "extra fields: {value}");
         let day = &value["series"][0];
         for key in [
             "day",
@@ -752,11 +756,11 @@ mod tests {
             "avg_wpm",
             "avg_latency_ms",
         ] {
-            assert!(day.get(key).is_some(), "нет поля series.{key}: {day}");
+            assert!(day.get(key).is_some(), "missing field series.{key}: {day}");
         }
         let app = &value["by_app"][0];
         for key in ["app", "entries", "words", "avg_wpm"] {
-            assert!(app.get(key).is_some(), "нет поля by_app.{key}: {app}");
+            assert!(app.get(key).is_some(), "missing field by_app.{key}: {app}");
         }
         assert_eq!(value["latency_ms"]["stt"], 400);
         assert_eq!(value["tokens"]["prompt"], 0);
@@ -812,7 +816,7 @@ mod tests {
         let after =
             summary_since_reset(&entries, marker, now_at("2026-09-05T12:00:00Z"), &cfg(), 7);
         assert_eq!(after.total_words, 10);
-        // Сами записи на месте.
+        // The entries themselves stay in place
         assert_eq!(entries.len(), 2);
 
         clear_reset_marker(&journal_path).unwrap();
@@ -824,7 +828,7 @@ mod tests {
     fn corrupt_reset_marker_is_treated_as_no_reset() {
         let directory = tempfile::tempdir().unwrap();
         let journal_path = directory.path().join("journal.jsonl");
-        std::fs::write(reset_marker_path(&journal_path), "не json").unwrap();
+        std::fs::write(reset_marker_path(&journal_path), "not json").unwrap();
         assert_eq!(read_reset_marker(&journal_path), None);
     }
 

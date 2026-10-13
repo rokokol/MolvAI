@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
-//! Конвейер одной реплики: аудио → распознавание → словарь → правила → модель → вставка → журнал.
+//! Pipeline of one phrase: audio → recognition → dictionary → rules → model → paste → journal
 //!
-//! Главное свойство конвейера — реплику нельзя потерять. Модель не ответила, ключ протух, сервер
-//! лёг: текст после правил всё равно доходит до вставки, в журнале стоит `llm_used = false`, а в
-//! логе — предупреждение. Ошибка вставки тоже не роняет `run`: она попадает в `Entry.error`, а
-//! текст остаётся в буфере обмена стараниями самой реализации вставки.
+//! The main property of the pipeline is that a phrase cannot be lost. The model did not answer,
+//! the key expired, the server went down: the text after the rules still reaches the paste step,
+//! the journal holds `llm_used = false`, and the log holds a warning. A paste error does not
+//! fail `run` either: it goes to `Entry.error`, and the text stays in the clipboard through the
+//! effort of the paste implementation itself
 //!
-//! Модель зовётся только когда сошлось всё сразу: стиль её требует, постобработка включена,
-//! приватность разрешает и в реплике больше `rules.llm_min_words` слов. Короткие реплики
-//! обрабатываются правилами — это и быстрее, и дешевле по токенам.
+//! The model is called only when all conditions hold at once: the style needs it, post-processing
+//! is on, privacy allows it, and the phrase has more than `rules.llm_min_words` words. Short
+//! phrases go through the rules only, which is both faster and cheaper in tokens
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -39,19 +40,19 @@ use crate::infra::stt::{is_silence_hallucination, transcribe_with_language_polic
 
 #[derive(Debug, Error)]
 pub enum PipelineError {
-    #[error("распознавание не удалось: {0}")]
+    #[error("recognition failed: {0}")]
     Stt(#[from] SttError),
-    #[error("журнал недоступен: {0}")]
+    #[error("journal not available: {0}")]
     Journal(#[from] JournalError),
-    #[error("не удалось получить выделенный текст: {0}")]
+    #[error("cannot get the selected text: {0}")]
     Selection(String),
-    #[error("режим команд выключен в настройках")]
+    #[error("command mode is turned off in the settings")]
     CommandModeDisabled,
-    #[error("режим команд требует модели постобработки: {0}")]
+    #[error("command mode needs a post-processing model: {0}")]
     CommandModeNeedsLlm(LlmError),
 }
 
-/// Настройки, которые нужны конвейеру. Собираются из [`Config`] одним вызовом.
+/// Settings that the pipeline needs. They are built from [`Config`] in one call
 #[derive(Debug, Clone, PartialEq)]
 pub struct PipelineConfig {
     pub stt: SttConfig,
@@ -85,7 +86,7 @@ impl PipelineConfig {
     }
 }
 
-/// Разбор `output.mode` из настроек; неизвестное значение — `auto`.
+/// Parsing of `output.mode` from the settings; an unknown value gives `auto`
 fn output_mode(value: &str) -> OutputMode {
     match value.trim().to_lowercase().as_str() {
         "paste" => OutputMode::Paste,
@@ -95,11 +96,12 @@ fn output_mode(value: &str) -> OutputMode {
     }
 }
 
-/// Способ вставки, каким он попадёт в журнал.
+/// Paste method as it goes to the journal
 ///
-/// Критерий AJ-09/AJ-10: если активного окна нет, вставлять некуда — текст остаётся в буфере
-/// обмена, реализация вставки говорит об этом уведомлением, а в журнале случай виден отдельно
-/// (`clipboard-no-focus`), а не выдаётся за удачную вставку в поле ввода.
+/// Criterion AJ-09/AJ-10: if there is no active window, there is nowhere to paste. The text
+/// stays in the clipboard, the paste implementation tells the user with a notification, and the
+/// journal shows the case separately (`clipboard-no-focus`), and does not pass it off as a
+/// successful paste into an input field
 pub const NO_FOCUS_METHOD: &str = "clipboard-no-focus";
 
 fn inject_method_for(method: &str, app_hint: Option<&str>) -> String {
@@ -115,7 +117,7 @@ fn millis_since(start: Instant, now: Instant) -> u32 {
         .min(u128::from(u32::MAX)) as u32
 }
 
-/// Конвейер одной реплики.
+/// Pipeline of one phrase
 #[derive(Debug)]
 pub struct Pipeline {
     stt: Box<dyn SttEngine>,
@@ -128,9 +130,11 @@ pub struct Pipeline {
     rules: RuleSet,
     styles: Styles,
     session_id: Uuid,
-    /// От отпускания клавиши до закрытия потока микрофона: демон меряет, конвейер записывает.
+    /// Time from the key release to the close of the microphone stream: the daemon measures
+    /// it, and the pipeline records it
     stop_after_release_ms: Option<u32>,
-    /// Начало реплики, распознанное кусками во время записи; `None` — обычная реплика целиком.
+    /// Start of the phrase, recognized in chunks during recording; `None` means an ordinary
+    /// whole phrase
     chunk_prefix: Option<ChunkPrefix>,
 }
 
@@ -161,14 +165,14 @@ impl Pipeline {
         }
     }
 
-    /// Записать замер демона: за сколько микрофон освободился после отпускания клавиши.
+    /// Record the daemon measurement: how long the microphone took to free after the key release
     ///
-    /// Значение расходуется одной репликой: следующая реплика получит свой замер, а не чужой.
+    /// One phrase consumes the value: the next phrase gets its own measurement, not the old one
     pub fn set_stop_after_release(&mut self, ms: u32) {
         self.stop_after_release_ms = Some(ms);
     }
 
-    /// Подключить словарь терминов.
+    /// Attach the dictionary of terms
     #[must_use]
     pub fn with_dictionary(mut self, dictionary: Dictionary) -> Self {
         self.dictionary = dictionary;
@@ -183,18 +187,18 @@ impl Pipeline {
         &self.dictionary
     }
 
-    /// Перечитать словарь, если файл изменился.
+    /// Reread the dictionary if the file changed
     pub fn reload_dictionary(&mut self) -> bool {
         match self.dictionary.reload_if_changed() {
             Ok(changed) => changed,
             Err(err) => {
-                warn!(error = %err, "словарь не перечитан, остаётся прежний");
+                warn!(error = %err, "dictionary not reread, the old one stays");
                 false
             }
         }
     }
 
-    /// Применить новые настройки: правила и стили пересобираются.
+    /// Apply new settings: the rules and the styles are rebuilt
     pub fn set_config(&mut self, config: PipelineConfig) {
         self.rules = RuleSet::from_config(&config.rules);
         self.styles = Styles::from_config(&config.style);
@@ -217,10 +221,10 @@ impl Pipeline {
         self.session_id = session_id;
     }
 
-    /// Прогнать реплику через конвейер целиком.
+    /// Run a phrase through the whole pipeline
     ///
-    /// Запись приходит по значению: дальше она конвейеру и принадлежит, а вызывающему
-    /// незачем держать в памяти второй такой буфер.
+    /// The recording comes by value: from here on it belongs to the pipeline, and the caller has
+    /// no reason to keep a second such buffer in memory
     #[allow(clippy::needless_pass_by_value)]
     pub fn run(
         &mut self,
@@ -231,12 +235,12 @@ impl Pipeline {
     ) -> Result<Entry, PipelineError> {
         let started = self.clock.instant();
         let audio = audio.to_16k();
-        // Куски, распознанные во время записи; здесь на входе тогда только хвост реплики, а её
-        // длительность знает префикс.
+        // Chunks recognized during recording; the input here is then only the tail of the
+        // phrase, and the prefix knows its duration
         let prefix = self.chunk_prefix.take().unwrap_or_default();
         let audio_secs = prefix.audio_secs.unwrap_or_else(|| audio.duration_secs());
 
-        // Выделение забирается до распознавания: пока пользователь говорил, оно ещё на месте.
+        // The selection is taken before recognition: while the user spoke, it was still in place
         let selection = match mode {
             Mode::Command => {
                 if !self.config.command_mode.enabled {
@@ -258,8 +262,9 @@ impl Pipeline {
         let transcript = self.transcribe_utterance(&audio, &options, &prefix)?;
         let stt_ms = millis_since(stt_started, self.clock.instant()) + prefix.stt_ms;
 
-        // Тишина и шум: whisper уверенно печатает «Продолжение следует» на пустом входе.
-        // Такую реплику не вставляем и не отдаём в модель, но в журнал она попадает (F-22).
+        // Silence and noise: whisper confidently prints "Продолжение следует" on an empty input.
+        // We do not paste such a phrase and do not give it to the model, but it enters the
+        // journal (F-22)
         let text_raw = if is_silence_hallucination(&transcript, self.config.stt.no_speech_threshold)
         {
             String::new()
@@ -278,7 +283,8 @@ impl Pipeline {
         let rules_started = self.clock.instant();
         let (after_dictionary, dict_hits) = self.dictionary.apply(&text_raw);
         let after_rules = match mode {
-            // Инструкция режима команд уходит в модель как есть: правила исказили бы команду.
+            // The command mode instruction goes to the model as it is: the rules would distort
+            // the command
             Mode::Command => after_dictionary,
             Mode::Dictation => self.rules.apply(&after_dictionary, &lang),
         };
@@ -332,13 +338,13 @@ impl Pipeline {
         entry.text_final = Some(text.clone());
 
         if text.trim().is_empty() {
-            // Вставлять нечего: тишина или галлюцинация на пустом аудио.
-            entry.error = Some("пустая реплика: вставлять нечего".into());
-            warn!("реплика пустая после постобработки, вставка пропущена");
+            // Nothing to paste: silence or a hallucination on empty audio
+            entry.error = Some("empty phrase: nothing to paste".into());
+            warn!("the phrase is empty after post-processing, paste skipped");
         } else {
             let resolved = output_mode(&self.config.output.mode)
                 .resolve(&text, self.config.output.auto_type_max_chars as usize);
-            // Способ вставки должен знать класс окна: в терминалах вставка идёт Ctrl+Shift+V.
+            // The paste method must know the window class: terminals paste with Ctrl+Shift+V
             self.injector.set_window(app_hint);
             self.wait_before_inject();
             let inject_started = self.clock.instant();
@@ -349,7 +355,7 @@ impl Pipeline {
                         Some(millis_since(inject_started, self.clock.instant()));
                 }
                 Err(err) => {
-                    warn!(error = %err, "вставка не удалась, текст остаётся в буфере");
+                    warn!(error = %err, "paste failed, the text stays in the clipboard");
                     entry.error = Some(err.to_string());
                 }
             }
@@ -358,18 +364,18 @@ impl Pipeline {
         entry.latency_ms.total = millis_since(started, self.clock.instant());
 
         if self.config.privacy.no_record_mode {
-            // Режим «не записывать»: журнал не трогаем вовсе.
+            // The "do not record" mode: the journal is not touched at all
             return Ok(entry);
         }
         self.journal.append(&entry)?;
         Ok(entry)
     }
 
-    /// Пауза перед вставкой, задаваемая настройкой `output.pre_inject_delay_ms`.
+    /// Pause before the paste, set by the setting `output.pre_inject_delay_ms`
     ///
-    /// Между отпусканием клавиши и вставкой окно должно успеть вернуть фокус в поле ввода.
-    /// Локально хватает 50 мс по умолчанию; на удалённом рабочем столе и в медленных приложениях
-    /// пауза ставится вручную вплоть до 1500 мс, иначе первые символы уходят в никуда.
+    /// Between the key release and the paste, the window must have time to return focus to the
+    /// input field. Locally the default of 50 ms is enough. On a remote desktop and in slow
+    /// applications the pause is set by hand, up to 1500 ms, or the first characters go nowhere
     fn wait_before_inject(&self) {
         let delay = self.config.output.pre_inject_delay_ms;
         if delay == 0 {
@@ -379,10 +385,11 @@ impl Pipeline {
             .sleep(std::time::Duration::from_millis(u64::from(delay)));
     }
 
-    /// Распознать кусок ещё идущей записи (потоковая обработка, см. [`chunked`]).
+    /// Recognize a chunk of a recording that is still running (streaming processing, see
+    /// [`chunked`])
     ///
-    /// Куски копит демон, а конвейер только читает их моделью — со словарём, языком реплики и
-    /// хвостом предыдущего текста в подсказке.
+    /// The daemon collects the chunks, and the pipeline only reads them with the model, with the
+    /// dictionary, the phrase language and the tail of the previous text in the hint
     pub fn transcribe_chunk(
         &mut self,
         audio: &PcmAudio,
@@ -401,13 +408,13 @@ impl Pipeline {
         Ok(chunk)
     }
 
-    /// Отдать конвейеру начало реплики, распознанное кусками: следующий [`Pipeline::run`] получит
-    /// только хвост.
+    /// Give the pipeline the start of the phrase, recognized in chunks: the next
+    /// [`Pipeline::run`] gets only the tail
     pub fn set_chunk_prefix(&mut self, prefix: ChunkPrefix) {
         self.chunk_prefix = (!prefix.is_empty()).then_some(prefix);
     }
 
-    /// Распознать реплику целиком или, если начало уже есть кусками, только её хвост.
+    /// Recognize the whole phrase or, if the start already exists as chunks, only its tail
     fn transcribe_utterance(
         &mut self,
         audio: &PcmAudio,
@@ -418,7 +425,8 @@ impl Pipeline {
             return transcribe_with_language_policy(self.stt.as_mut(), audio, options);
         }
         let tail = if audio.samples.is_empty() {
-            // Последний кусок совпал с концом реплики: распознавать нечего, всё уже готово.
+            // The last chunk ended exactly at the end of the phrase: nothing to recognize, all is
+            // ready
             None
         } else {
             let options = chunked::tail_options(options, prefix);
@@ -431,7 +439,7 @@ impl Pipeline {
         Ok(chunked::merge(prefix, tail))
     }
 
-    /// Параметры распознавания из настроек и словаря.
+    /// Recognition parameters from the settings and the dictionary
     fn stt_options(&self) -> SttOptions {
         let initial_prompt = if self.config.dictionary.in_prompt {
             let hint = self.dictionary.prompt_hint();
@@ -448,7 +456,7 @@ impl Pipeline {
         }
     }
 
-    /// Нужна ли модель для этой реплики.
+    /// Whether this phrase needs the model
     fn wants_llm(&self, style_uses_llm: bool, text: &str) -> bool {
         style_uses_llm
             && self.config.llm.enabled
@@ -457,7 +465,7 @@ impl Pipeline {
             && word_count(text) > self.config.rules.llm_min_words
     }
 
-    /// Диктовка: правила плюс, при необходимости, модель.
+    /// Dictation: the rules plus, if needed, the model
     fn run_dictation(
         &mut self,
         entry: &mut Entry,
@@ -480,14 +488,14 @@ impl Pipeline {
                 text
             }
             Err(err) => {
-                // Реплика не теряется: возвращаем текст после правил.
-                warn!(error = %err, "постобработка не удалась, отдаю текст после правил");
+                // The phrase is not lost: we return the text after the rules
+                warn!(error = %err, "post-processing failed, returning the text after the rules");
                 after_rules
             }
         }
     }
 
-    /// Режим команд: инструкция применяется к выделенному тексту.
+    /// Command mode: the instruction is applied to the selected text
     fn run_command(
         &mut self,
         entry: &mut Entry,
@@ -503,8 +511,8 @@ impl Pipeline {
         let request = ChatRequest {
             model: self.config.llm.model.clone(),
             system: self.config.command_mode.system_prompt.clone(),
-            // Сначала инструкция, потом текст: так модель не принимает фрагмент за задание.
-            // Ответ должен быть только текстом — без заголовков, пояснений и кавычек.
+            // The instruction comes first, then the text, so the model does not take a fragment
+            // for the task. The reply must be text only, without headings, explanations and quotes
             user: format!(
                 "ИНСТРУКЦИЯ: {instruction}\n\nТЕКСТ:\n{selection}\n\n\
                  Верни только текст после применения инструкции, одной репликой, без \
@@ -522,9 +530,9 @@ impl Pipeline {
         }
     }
 
-    /// Запрос к модели с ограниченным числом повторов.
+    /// Request to the model with a limited number of retries
     ///
-    /// Ошибка авторизации не повторяется: ключ от повтора не починится.
+    /// An authorization error is not retried: a retry does not fix the key
     fn complete_with_retries(
         &self,
         request: &ChatRequest,
@@ -545,18 +553,18 @@ impl Pipeline {
                             completion: completion.unwrap_or(0),
                         }),
                     };
-                    // Служебные теги, ограждения, вводные фразы и эхо словаря не должны
-                    // попасть в поле пользователя (AM-19).
+                    // Service tags, fences, introductory phrases and the dictionary echo must not
+                    // reach the user's field (AM-19)
                     let text = sanitize_llm_output(&response.text, &self.dictionary.prompt_hint());
                     if text.is_empty() {
-                        last = LlmError::BadResponse("модель вернула пустой текст".into());
+                        last = LlmError::BadResponse("the model returned empty text".into());
                         continue;
                     }
                     return Ok((text, tokens, millis_since(started, self.clock.instant())));
                 }
                 Err(LlmError::Auth) => return Err(LlmError::Auth),
                 Err(err) => {
-                    warn!(attempt, attempts, error = %err, "повтор запроса к модели");
+                    warn!(attempt, attempts, error = %err, "retry of the request to the model");
                     last = err;
                 }
             }
@@ -564,7 +572,7 @@ impl Pipeline {
         Err(last)
     }
 
-    /// Отметить в записи, что модель отработала.
+    /// Mark in the entry that the model ran
     fn record_llm(&self, entry: &mut Entry, tokens: Option<Tokens>, elapsed_ms: u32) {
         entry.llm_used = true;
         entry.llm_provider = self.llm.as_ref().map(|llm| llm.id().to_string());
@@ -586,7 +594,7 @@ mod tests {
     use crate::domain::journal::Journal as JournalTrait;
     use crate::domain::stt::Transcript;
 
-    /// Фейк, к которому у теста остаётся доступ после передачи в конвейер.
+    /// A fake that the test can still reach after it is passed to the pipeline
     #[derive(Debug)]
     struct SharedInjector(Arc<Mutex<RecordingInjector>>);
 
@@ -684,7 +692,7 @@ mod tests {
         }
     }
 
-    /// Настройки с включённой моделью: по умолчанию `llm.enabled = false`.
+    /// Settings with the model on: by default `llm.enabled = false`
     fn with_llm() -> PipelineConfig {
         let mut config = PipelineConfig::default();
         config.llm.enabled = true;
@@ -740,9 +748,9 @@ mod tests {
             .run(audio(8.0), Mode::Dictation, None, None)
             .unwrap();
 
-        assert!(llm.calls() >= 1, "модель должна была вызваться");
+        assert!(llm.calls() >= 1, "the model must have been called");
         assert!(!entry.llm_used);
-        assert_eq!(entry.error, None, "отказ модели не ошибка реплики");
+        assert_eq!(entry.error, None, "a model failure is not a phrase error");
         assert_eq!(injected(&harness).len(), 1);
         assert!(
             injected(&harness)[0].ends_with('.'),
@@ -828,7 +836,7 @@ mod tests {
         let llm = Arc::new(FakeLlm::echoing("переписано"));
         let text = "это достаточно длинная реплика из более чем десяти слов чтобы модель \
                     точно вызвалась";
-        // llm.enabled = false в настройках по умолчанию.
+        // llm.enabled = false in the default settings
         let mut harness = build(text, Some(Arc::clone(&llm)), PipelineConfig::default());
         harness
             .pipeline
@@ -839,7 +847,7 @@ mod tests {
 
     #[test]
     fn retries_are_bounded_by_the_configuration() {
-        let llm = Arc::new(FakeLlm::failing(LlmError::Unavailable("лежит".into())));
+        let llm = Arc::new(FakeLlm::failing(LlmError::Unavailable("down".into())));
         let mut config = with_llm();
         config.llm.max_retries = 2;
         let text = "это достаточно длинная реплика из более чем десяти слов чтобы модель \
@@ -849,7 +857,7 @@ mod tests {
             .pipeline
             .run(audio(8.0), Mode::Dictation, None, None)
             .unwrap();
-        assert_eq!(llm.calls(), 3, "одна попытка плюс два повтора");
+        assert_eq!(llm.calls(), 3, "one attempt plus two retries");
     }
 
     #[test]
@@ -864,7 +872,7 @@ mod tests {
             .pipeline
             .run(audio(8.0), Mode::Dictation, None, None)
             .unwrap();
-        assert_eq!(llm.calls(), 1, "ключ от повтора не починится");
+        assert_eq!(llm.calls(), 1, "a retry does not fix the key");
         assert!(!entry.llm_used);
     }
 
@@ -903,16 +911,13 @@ mod tests {
     fn a_failed_injection_lands_in_the_entry_and_the_journal() {
         let mut harness = build("привет мир", None, PipelineConfig::default());
         harness.injector.lock().unwrap().fail_with =
-            Some(InjectError::Failed("нет активного окна".into()));
+            Some(InjectError::Failed("no active window".into()));
         let entry = harness
             .pipeline
             .run(audio(4.0), Mode::Dictation, None, None)
             .unwrap();
-        assert!(
-            entry.error.is_some(),
-            "ошибка вставки должна попасть в запись"
-        );
-        assert!(entry.error.unwrap().contains("нет активного окна"));
+        assert!(entry.error.is_some(), "a paste error must reach the entry");
+        assert!(entry.error.unwrap().contains("no active window"));
         assert_eq!(entry.text_final.as_deref(), Some("Привет мир"));
         assert_eq!(harness.journal.lock().unwrap().entries.len(), 1);
     }
@@ -1004,7 +1009,7 @@ mod tests {
             "{}",
             request.user
         );
-        // Промпт по умолчанию велит вернуть только текст: без заголовков и пояснений.
+        // The default prompt tells the model to return only text: no headings, no explanations
         assert!(
             request.system.contains("только получившийся текст"),
             "{}",
@@ -1017,7 +1022,8 @@ mod tests {
 
     #[test]
     fn command_mode_is_short_even_though_the_model_is_still_called() {
-        // Порог llm_min_words к режиму команд не применяется: без модели он бессмыслен.
+        // The llm_min_words threshold does not apply to command mode: without the model it is
+        // meaningless
         let llm = Arc::new(FakeLlm::echoing("Готово."));
         let mut harness = build("покороче", Some(Arc::clone(&llm)), with_llm());
         harness.injector.lock().unwrap().selection = Some("длинный выделенный текст".into());
@@ -1070,7 +1076,7 @@ mod tests {
     #[test]
     fn a_recognition_failure_is_an_error_and_nothing_is_injected() {
         let stt = Arc::new(Mutex::new(FakeStt::with_responses(vec![Err(
-            SttError::ModelLoad("нет файла модели".into()),
+            SttError::ModelLoad("no model file".into()),
         )])));
         let injector = Arc::new(Mutex::new(RecordingInjector::default()));
         let journal = Arc::new(Mutex::new(MemJournal::default()));
@@ -1125,12 +1131,12 @@ mod tests {
             .iter()
             .map(|(_, mode)| *mode)
             .collect();
-        assert_eq!(modes, vec![OutputMode::Type], "короткий текст набирается");
+        assert_eq!(modes, vec![OutputMode::Type], "a short text is typed");
     }
 
     #[test]
     fn service_tags_from_the_model_never_reach_the_injector() {
-        // Критерий AM-19: рассуждения и ограждения остаются у модели, в поле идёт текст.
+        // Criterion AM-19: reasoning and fences stay with the model, and the field gets text
         let llm = Arc::new(FakeLlm::echoing(
             "<think>подумаю ещё</think>\n```\nСобрание переносится на среду.\n```",
         ));
@@ -1164,7 +1170,7 @@ mod tests {
 
     #[test]
     fn a_model_that_echoes_the_dictionary_is_treated_as_a_failure() {
-        // Ответ, состоящий из одной подсказки словаря, — это не реплика: остаётся текст правил.
+        // A reply that is only the dictionary hint is not a phrase: the text from the rules stays
         let llm = Arc::new(FakeLlm::echoing("MolvAI"));
         let text = "это достаточно длинная реплика из более чем десяти слов чтобы модель \
                     точно вызвалась";
@@ -1177,7 +1183,7 @@ mod tests {
             .pipeline
             .run(audio(8.0), Mode::Dictation, None, None)
             .unwrap();
-        assert!(!entry.llm_used, "эхо словаря — не ответ модели");
+        assert!(!entry.llm_used, "the dictionary echo is not a model reply");
         assert!(
             injected(&harness)[0].starts_with("Это достаточно длинная"),
             "{:?}",
@@ -1187,7 +1193,7 @@ mod tests {
 
     #[test]
     fn the_pause_before_the_injection_comes_from_the_configuration() {
-        // Критерий AM-20: пауза перед вставкой задаётся настройкой, а не зашита в код.
+        // Criterion AM-20: the pause before the paste is set by a setting, and is not hard-coded
         let mut harness = build("привет мир", None, PipelineConfig::default());
         harness
             .pipeline
@@ -1199,7 +1205,7 @@ mod tests {
             "по умолчанию перед вставкой ждём 50 мс"
         );
 
-        // Удалённому рабочему столу нужно больше времени на возврат фокуса.
+        // A remote desktop needs more time to return the focus
         let mut config = PipelineConfig::default();
         config.output.pre_inject_delay_ms = 1500;
         let mut harness = build("привет мир", None, config);
@@ -1215,8 +1221,9 @@ mod tests {
 
     #[test]
     fn the_microphone_release_measurement_lands_in_the_entry_once() {
-        // Гарантия приватности микрофона должна быть видна в журнале: замер демона попадает
-        // в запись той реплики, к которой относится, и не переезжает в следующую.
+        // The microphone privacy guarantee must be visible in the journal: the daemon
+        // measurement goes into the entry of the phrase it belongs to, and does not move to the
+        // next
         let mut harness = build("привет мир", None, PipelineConfig::default());
         harness.pipeline.set_stop_after_release(120);
         let first = harness
@@ -1245,7 +1252,7 @@ mod tests {
 
     #[test]
     fn nothing_to_inject_means_nothing_to_wait_for() {
-        // Пустая реплика не вставляется — и паузы перед вставкой тоже быть не должно.
+        // An empty phrase is not pasted, and there must be no pause before the paste either
         let mut harness = build("   ", None, PipelineConfig::default());
         harness
             .pipeline
@@ -1256,12 +1263,13 @@ mod tests {
 
     #[test]
     fn without_an_active_window_the_journal_says_the_text_stayed_in_the_clipboard() {
-        // Критерий AJ-09/AJ-10: поля ввода нет — текст в буфере, и в истории это видно.
+        // Criterion AJ-09/AJ-10: there is no input field, so the text is in the clipboard, and
+        // the history shows it
         assert_eq!(inject_method_for("clipboard-only", None), NO_FOCUS_METHOD);
         assert_eq!(
             inject_method_for("clipboard-only", Some("kitty")),
             "clipboard-only",
-            "окно есть: обычная вставка через буфер, пусть и с Ctrl+V руками"
+            "a window exists: an ordinary paste through the clipboard, even if with Ctrl+V by hand"
         );
         assert_eq!(inject_method_for("wtype-type", None), "wtype-type");
     }
@@ -1271,6 +1279,6 @@ mod tests {
         assert_eq!(output_mode("paste"), OutputMode::Paste);
         assert_eq!(output_mode(" TYPE "), OutputMode::Type);
         assert_eq!(output_mode("clipboard"), OutputMode::Clipboard);
-        assert_eq!(output_mode("что-то не то"), OutputMode::Auto);
+        assert_eq!(output_mode("something else"), OutputMode::Auto);
     }
 }

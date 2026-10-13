@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
-//! Ключи облачных провайдеров и хранилище секретов ОС: чтение и маскирование.
+//! Keys of cloud providers and the OS secret store: reading and masking
 //!
-//! В файле настроек ключа нет и быть не может — там лежит только имя переменной окружения
-//! (`api_key_env`) и источник (`api_key_source`). Источник `keyring` — хранилище ОС
-//! ([`OsKeyring`]: Secret Service на Linux, Credential Manager на Windows, Keychain на macOS);
-//! если записи там нет или хранилище недоступно, ключ читается из той же переменной окружения
-//! и об этом пишется предупреждение, а не тихо возвращается `None`.
+//! The settings file holds no key and cannot hold one. It holds only the name of an environment
+//! variable (`api_key_env`) and a source (`api_key_source`). The source `keyring` is the OS
+//! store ([`OsKeyring`]: Secret Service on Linux, Credential Manager on Windows, Keychain on
+//! macOS). If the entry is not there or the store is not available, the key is read from the
+//! same environment variable, and a warning is logged instead of a silent `None`
 //!
-//! Всё, что может попасть в лог, оборачивается в [`ApiKey`]: его `Debug` и `Display` печатают
-//! маску, поэтому «случайно залогировали структуру целиком» не приводит к утечке. Значения
-//! записей хранилища в лог не попадают никогда — только их имена.
+//! Everything that can reach the log is wrapped in [`ApiKey`]: its `Debug` and `Display` print
+//! a mask, so "the whole struct was logged by accident" does not leak the key. The values of
+//! store entries never reach the log, only their names
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -20,36 +20,36 @@ use tracing::warn;
 
 use crate::config::{Config, LlmConfig};
 
-/// Имя службы в хранилище ОС: под ним лежат все записи molva.
+/// Service name in the OS store: all molva entries live under it
 pub const SERVICE: &str = "molva";
 
-/// Имя записи с ключом журнала.
+/// Name of the entry with the journal key
 pub const JOURNAL_KEY_ENTRY: &str = "journal-key";
 
-/// Сколько символов ключа видно в маске с каждой стороны.
+/// How many characters of the key are visible in the mask on each side
 const VISIBLE_HEAD: usize = 3;
 const VISIBLE_TAIL: usize = 4;
 
-/// Ошибка хранилища секретов: значение недоступно, а не «его нет».
+/// Error of the secret store: the value is not available, which differs from "there is none"
 #[derive(Debug, thiserror::Error)]
 pub enum SecretError {
-    #[error("хранилище ключей недоступно: {0}")]
+    #[error("key store not available: {0}")]
     Unavailable(String),
-    #[error("хранилище ключей: {0}")]
+    #[error("key store: {0}")]
     Other(String),
 }
 
-/// Хранилище секретов: пара «имя записи — значение».
+/// Secret store: a pair of "entry name — value"
 ///
-/// `get` отдаёт `Ok(None)` для отсутствующей записи и `Err` только когда хранилище не
-/// ответило; вызывающий код различает эти случаи в сообщениях, но в обоих ведёт себя одинаково.
+/// `get` returns `Ok(None)` for a missing entry, and `Err` only when the store did not answer.
+/// The calling code tells these cases apart in messages, but acts the same in both
 pub trait SecretStore {
     fn get(&self, name: &str) -> Result<Option<String>, SecretError>;
     fn set(&self, name: &str, value: &str) -> Result<(), SecretError>;
     fn delete(&self, name: &str) -> Result<(), SecretError>;
 }
 
-/// Хранилище ОС через крейт `keyring`; служба — [`SERVICE`], пользователь — имя записи.
+/// OS store through the `keyring` crate; the service is [`SERVICE`], the user is the entry name
 #[derive(Debug, Default, Clone, Copy)]
 pub struct OsKeyring;
 
@@ -91,8 +91,8 @@ impl SecretStore for OsKeyring {
     }
 }
 
-/// Хранилище в файлах: запись `name` — файл `<directory>/<name>` из одной строки с правами
-/// только для владельца (unix). Каталог создаётся при первой записи.
+/// Store in files: the entry `name` is the file `<directory>/<name>` with one line and
+/// owner-only permissions (unix). The directory is created at the first write
 #[derive(Debug, Clone)]
 pub struct FileStore {
     directory: PathBuf,
@@ -109,7 +109,7 @@ impl FileStore {
         &self.directory
     }
 
-    /// Файл записи; имя с разделителями пути не принимается, чтобы не выйти из каталога.
+    /// File of an entry; a name with path separators is rejected, to stay inside the directory
     pub fn path_of(&self, name: &str) -> Result<PathBuf, SecretError> {
         let valid = !name.is_empty()
             && name != "."
@@ -117,9 +117,7 @@ impl FileStore {
             && !name.contains(['/', '\\'])
             && !name.contains(char::is_control);
         if !valid {
-            return Err(SecretError::Other(format!(
-                "недопустимое имя записи {name:?}"
-            )));
+            return Err(SecretError::Other(format!("invalid entry name {name:?}")));
         }
         Ok(self.directory.join(name))
     }
@@ -165,11 +163,11 @@ impl SecretStore for FileStore {
     }
 }
 
-/// Хранилище в памяти для тестов и для «хранилища нет»: `Debug` не показывает значений.
+/// Store in memory, for tests and for the case "there is no store": `Debug` shows no values
 #[derive(Default)]
 pub struct MemoryStore {
     values: Mutex<BTreeMap<String, String>>,
-    /// `Some` — каждая операция отвечает этой ошибкой: так тесты проверяют путь отказа.
+    /// With `Some`, every operation answers with this error, so tests can check the failure path
     failure: Option<String>,
 }
 
@@ -193,7 +191,7 @@ impl MemoryStore {
         Self::default()
     }
 
-    /// Хранилище, которое всегда отвечает ошибкой.
+    /// A store that always answers with an error
     pub fn failing(reason: &str) -> Self {
         Self {
             values: Mutex::new(BTreeMap::new()),
@@ -215,7 +213,7 @@ impl SecretStore for MemoryStore {
         let values = self
             .values
             .lock()
-            .map_err(|_| SecretError::Other("хранилище в памяти отравлено".into()))?;
+            .map_err(|_| SecretError::Other("the in-memory store is poisoned".into()))?;
         Ok(values.get(name).cloned())
     }
 
@@ -224,7 +222,7 @@ impl SecretStore for MemoryStore {
         let mut values = self
             .values
             .lock()
-            .map_err(|_| SecretError::Other("хранилище в памяти отравлено".into()))?;
+            .map_err(|_| SecretError::Other("the in-memory store is poisoned".into()))?;
         values.insert(name.to_string(), value.to_string());
         Ok(())
     }
@@ -234,13 +232,13 @@ impl SecretStore for MemoryStore {
         let mut values = self
             .values
             .lock()
-            .map_err(|_| SecretError::Other("хранилище в памяти отравлено".into()))?;
+            .map_err(|_| SecretError::Other("the in-memory store is poisoned".into()))?;
         values.remove(name);
         Ok(())
     }
 }
 
-/// Ключ, который нельзя случайно напечатать.
+/// A key that cannot be printed by accident
 #[derive(Clone, PartialEq, Eq)]
 pub struct ApiKey(String);
 
@@ -249,7 +247,7 @@ impl ApiKey {
         Self(value.into())
     }
 
-    /// Явное раскрытие: вызывается ровно там, где ключ уходит в заголовок запроса.
+    /// Explicit reveal: called exactly where the key goes into a request header
     pub fn expose(&self) -> &str {
         &self.0
     }
@@ -275,7 +273,7 @@ impl fmt::Display for ApiKey {
     }
 }
 
-/// Маска ключа для логов: короткий ключ скрывается целиком.
+/// Mask of the key for logs: a short key is hidden whole
 pub fn mask(key: &str) -> String {
     let chars: Vec<char> = key.chars().collect();
     if chars.len() <= VISIBLE_HEAD + VISIBLE_TAIL {
@@ -286,7 +284,7 @@ pub fn mask(key: &str) -> String {
     format!("{head}…{tail}")
 }
 
-/// Имя записи хранилища с ключом провайдера: `llm-api-key-<provider>`.
+/// Name of the store entry with the provider key: `llm-api-key-<provider>`
 pub fn llm_key_entry(provider: &str) -> String {
     let provider = provider.trim().to_lowercase();
     let provider = if provider.is_empty() {
@@ -297,8 +295,9 @@ pub fn llm_key_entry(provider: &str) -> String {
     format!("llm-api-key-{provider}")
 }
 
-/// Хранилище по имени источника: `keyring` — ОС, `file` — файлы в `<каталог настроек>/secrets`,
-/// остальное — хранилище, которое всегда отвечает отказом (источник `env` его не читает).
+/// Store by source name: `keyring` is the OS store, `file` is files in
+/// `<settings directory>/secrets`, and anything else is a store that always refuses (the
+/// source `env` does not read it)
 pub fn store_for_source(source: &str) -> Box<dyn SecretStore> {
     match source.trim().to_lowercase().as_str() {
         "keyring" => Box::new(OsKeyring),
@@ -307,35 +306,32 @@ pub fn store_for_source(source: &str) -> Box<dyn SecretStore> {
             Err(error) => Box::new(MemoryStore::failing(&error.to_string())),
         },
         other => Box::new(MemoryStore::failing(&format!(
-            "источник {other:?} хранилища не использует"
+            "the source {other:?} does not use a store"
         ))),
     }
 }
 
-/// Ключ для настроенного провайдера; `None` — ключа нет, и это не ошибка для локальных моделей.
+/// Key for the configured provider; `None` means there is no key, which is no error for local
+/// models
 pub fn api_key(cfg: &LlmConfig) -> Option<String> {
     let store = store_for_source(&cfg.api_key_source);
     api_key_with_store(cfg, store.as_ref(), |name| std::env::var(name).ok())
 }
 
-/// То же, но с явным источником переменных окружения и без хранилища ОС: путь `env`
-/// и запасной путь для `keyring`, когда хранилища нет.
+/// The same, but with an explicit source of environment variables and no OS store: the `env`
+/// path, and the fallback path for `keyring` when there is no store
 pub fn api_key_with<F>(cfg: &LlmConfig, lookup: F) -> Option<String>
 where
     F: Fn(&str) -> Option<String>,
 {
-    api_key_with_store(
-        cfg,
-        &MemoryStore::failing("хранилище не подключено"),
-        lookup,
-    )
+    api_key_with_store(cfg, &MemoryStore::failing("no store connected"), lookup)
 }
 
-/// Ключ из хранилища или переменной окружения по `api_key_source`.
+/// Key from the store or from an environment variable, by `api_key_source`
 ///
-/// `keyring` и `file`: запись [`llm_key_entry`] в `store`; если её нет или хранилище не
-/// ответило, читается переменная `api_key_env` с предупреждением, где названа запись,
-/// но не значение.
+/// For `keyring` and `file`, the entry [`llm_key_entry`] in `store` is read. If it is missing or
+/// the store did not answer, the variable `api_key_env` is read, with a warning that names the
+/// entry but not the value
 pub fn api_key_with_store<F>(cfg: &LlmConfig, store: &dyn SecretStore, lookup: F) -> Option<String>
 where
     F: Fn(&str) -> Option<String>,
@@ -353,19 +349,19 @@ where
                 }
                 warn!(
                     entry,
-                    "запись хранилища пуста, читаю переменную {}", cfg.api_key_env
+                    "the store entry is empty, reading the variable {}", cfg.api_key_env
                 );
             }
             Ok(None) => warn!(
                 entry,
-                "записи в хранилище ключей нет, читаю переменную {}; \
-                 добавить: printf '%s' \"$KEY\" | molva secret set llm",
+                "no entry in the key store, reading the variable {}; \
+                 to add one: printf '%s' \"$KEY\" | molva secret set llm",
                 cfg.api_key_env
             ),
             Err(error) => warn!(
                 entry,
                 %error,
-                "хранилище ключей не ответило, читаю переменную {}",
+                "the key store did not answer, reading the variable {}",
                 cfg.api_key_env
             ),
         }
@@ -452,7 +448,7 @@ mod tests {
 
     #[test]
     fn a_store_error_falls_back_to_the_environment() {
-        let store = MemoryStore::failing("нет Secret Service");
+        let store = MemoryStore::failing("no Secret Service");
         let key = api_key_with_store(
             &cfg("keyring", "MOLVA_TEST_KEY"),
             &store,
@@ -525,7 +521,7 @@ mod tests {
         {
             use std::os::unix::fs::PermissionsExt as _;
             let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
-            assert_eq!(mode, 0o600, "ключ читает только владелец");
+            assert_eq!(mode, 0o600, "only the owner reads the key");
         }
         store.delete("llm-api-key-groq").unwrap();
         assert!(!path.exists());
@@ -576,7 +572,7 @@ mod tests {
 
     #[test]
     fn a_log_line_with_the_key_inside_a_struct_stays_masked() {
-        // Поля существуют ровно для того, чтобы попасть в `Debug`: читать их незачем.
+        // The fields exist only to reach `Debug`: there is no need to read them
         #[derive(Debug)]
         #[allow(dead_code)]
         struct Client {

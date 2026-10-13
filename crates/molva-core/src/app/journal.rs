@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
-//! Журнал реплик: JSONL-файл, одна строка — одна реплика.
+//! Phrase journal: a JSONL file, one line per phrase
 //!
-//! Схема строки описана в `docs/journal-schema.md`, эталон типа — `domain::entry::Entry`.
-//! Файл только дописывается; удаление, очистка и ротация выполняются атомарной перезаписью
-//! (временный файл рядом + `rename`), чтобы падение посреди операции не оставило огрызок.
+//! The line schema is described in `docs/journal-schema.md`, and the reference type is
+//! `domain::entry::Entry`. The file is append-only. Deletion, clearing and rotation work by an
+//! atomic rewrite (a temporary file next to it + `rename`), so a crash in the middle of an
+//! operation leaves no stump
 //!
-//! Дескриптор между записями не держится: каждая запись открывает файл заново. Так `&self`-методы,
-//! подменяющие файл через `rename`, не оставляют журнал писать в удалённый inode.
+//! No file handle is kept between writes: each write opens the file again. So the `&self`
+//! methods that replace the file through `rename` do not leave the journal writing to a deleted
+//! inode
 
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Write};
@@ -22,7 +24,7 @@ use crate::app::secrets;
 use crate::domain::entry::{Entry, SCHEMA_VERSION};
 use crate::domain::journal::{Journal, JournalError};
 
-/// Заголовок файла: версия схемы и момент создания. `load_all` его пропускает.
+/// File header: the schema version and the creation time. `load_all` skips it
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct Header {
     schema: u32,
@@ -33,23 +35,24 @@ fn io_err(path: &Path, err: &std::io::Error) -> JournalError {
     JournalError::Io(format!("{}: {err}", path.display()))
 }
 
-/// Журнал в файле JSONL.
+/// Journal in a JSONL file
 #[derive(Debug, Clone)]
 pub struct FileJournal {
     path: PathBuf,
-    /// `false` — режим приватности: строка пишется без текстов и пути к аудио.
+    /// `false` means privacy mode: a line is written without texts and without the audio path
     include_text: bool,
-    /// Шифр текстов реплики (`journal.encrypt`); `None` — тексты пишутся открыто.
+    /// Cipher of the phrase texts (`journal.encrypt`); with `None` the texts are written in
+    /// plain text
     cipher: Option<JournalCipher>,
 }
 
 impl FileJournal {
-    /// Открыть (и при необходимости создать) журнал; каталог создаётся вместе с файлом.
+    /// Open the journal, and create it if needed; the directory is created together with the file
     pub fn open(path: &Path) -> Result<Self, JournalError> {
         Self::open_with(path, true)
     }
 
-    /// То же, но с явным режимом приватности: `include_text = false` убирает тексты из строк.
+    /// The same, with an explicit privacy mode: `include_text = false` removes texts from lines
     pub fn open_with(path: &Path, include_text: bool) -> Result<Self, JournalError> {
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
@@ -81,10 +84,10 @@ impl FileJournal {
         })
     }
 
-    /// Журнал по настройкам: путь, режим приватности и шифр из одного места, чтобы демон,
-    /// CLI и GUI открывали один и тот же файл одинаково. С `journal.encrypt = true` ключ
-    /// читается или создаётся по `journal.key_source`: в хранилище ОС (запись `journal-key`)
-    /// или в файле `journal.key_path`.
+    /// Journal by the settings: the path, the privacy mode and the cipher come from one place,
+    /// so the daemon, the CLI and the GUI open the same file in the same way. With
+    /// `journal.encrypt = true`, the key is read or created by `journal.key_source`: in the OS
+    /// store (entry `journal-key`) or in the file `journal.key_path`
     pub fn open_for(config: &crate::config::Config) -> Result<Self, JournalError> {
         let path = config
             .journal_path()
@@ -110,21 +113,21 @@ impl FileJournal {
         Ok(journal.with_cipher(Some(cipher)))
     }
 
-    /// Включить шифрование текстов: с `Some` тексты новых строк пишутся шифротекстом, а при
-    /// чтении расшифровываются; строки, записанные открыто, читаются как раньше.
+    /// Turn on text encryption: with `Some`, the texts of new lines are written as ciphertext
+    /// and decrypted on read; lines written in plain text are read as before
     #[must_use]
     pub fn with_cipher(mut self, cipher: Option<JournalCipher>) -> Self {
         self.cipher = cipher;
         self
     }
 
-    /// Шифруются ли тексты новых строк.
+    /// Whether the texts of new lines are encrypted
     pub fn encrypts(&self) -> bool {
         self.cipher.is_some()
     }
 
-    /// Расшифровать текстовые поля строки. Поле, которое не удалось прочитать (чужой ключ,
-    /// подменённые байты, ключа нет вовсе), становится пустым, а не шифротекстом в истории.
+    /// Decrypt the text fields of a line. A field that could not be read (a foreign key, changed
+    /// bytes, no key at all) becomes empty, and does not show as ciphertext in the history
     fn decrypted(&self, mut entry: Entry) -> Entry {
         let unlock = |field: Option<String>| -> Option<String> {
             let value = field?;
@@ -152,14 +155,14 @@ impl FileJournal {
         self.include_text = include_text;
     }
 
-    /// Файл, куда уезжают строки, которые не удалось разобрать.
+    /// File where lines that could not be parsed are moved
     pub fn broken_path(&self) -> PathBuf {
         let mut name = self.path.as_os_str().to_os_string();
         name.push(".broken");
         PathBuf::from(name)
     }
 
-    /// Все записи по порядку. Битые строки не роняют загрузку: они уходят в `<path>.broken`.
+    /// All entries in order. Broken lines do not fail the load: they go to `<path>.broken`
     pub fn load_all(&self) -> Result<Vec<Entry>, JournalError> {
         let text = match std::fs::read_to_string(&self.path) {
             Ok(text) => text,
@@ -180,7 +183,7 @@ impl FileJournal {
                     warn!(
                         line = index + 1,
                         error = %err,
-                        "повреждённая строка журнала перенесена в карантин"
+                        "damaged journal line moved to quarantine"
                     );
                     broken.push(line.to_string());
                 }
@@ -192,7 +195,7 @@ impl FileJournal {
         Ok(entries)
     }
 
-    /// Дописать битые строки в файл карантина, не трогая сам журнал.
+    /// Append broken lines to the quarantine file, and leave the journal itself untouched
     fn quarantine(&self, lines: &[String]) -> Result<(), JournalError> {
         let path = self.broken_path();
         let mut file = OpenOptions::new()
@@ -207,12 +210,12 @@ impl FileJournal {
         file.sync_all().map_err(|e| io_err(&path, &e))
     }
 
-    /// Поиск по подстроке в текстах реплики, без учёта регистра.
+    /// Search by substring in the phrase texts, ignoring case
     pub fn search(&self, substring: &str) -> Result<Vec<Entry>, JournalError> {
         Ok(search_entries(&self.load_all()?, substring))
     }
 
-    /// Удалить одну запись по идентификатору; `false` — записи с таким id не было.
+    /// Delete one entry by identifier; `false` means no entry had this id
     pub fn delete(&self, id: Uuid) -> Result<bool, JournalError> {
         let entries = self.load_all()?;
         let kept: Vec<Entry> = entries.iter().filter(|e| e.id != id).cloned().collect();
@@ -223,14 +226,14 @@ impl FileJournal {
         Ok(true)
     }
 
-    /// Очистить журнал целиком, оставив только заголовок.
+    /// Clear the whole journal, and leave only the header
     pub fn clear(&self) -> Result<(), JournalError> {
         self.rewrite(&[])
     }
 
-    /// Ротация: оставить не больше `max_entries` последних записей и уложиться в `max_size_mb`.
+    /// Rotation: keep at most `max_entries` latest entries and stay within `max_size_mb`
     ///
-    /// Ноль в любом из пределов отключает его. Возвращает число удалённых записей.
+    /// A zero in either limit turns that limit off. Returns the number of removed entries
     pub fn rotate(&self, max_entries: u32, max_size_mb: u32) -> Result<usize, JournalError> {
         let entries = self.load_all()?;
         let total = entries.len();
@@ -241,7 +244,7 @@ impl FileJournal {
         if max_size_mb > 0 {
             let limit = u64::from(max_size_mb) * 1024 * 1024;
             while !kept.is_empty() && serialized_size(kept)? > limit {
-                // Режем самые старые: свежая история ценнее для пользователя.
+                // Cut the oldest: fresh history is worth more to the user
                 let drop = (kept.len() / 10).max(1);
                 kept = &kept[drop.min(kept.len())..];
             }
@@ -254,7 +257,8 @@ impl FileJournal {
         Ok(total - kept.len())
     }
 
-    /// Экспорт всех записей в JSONL (тот же формат, что и сам журнал, но без заголовка).
+    /// Export of all entries to JSONL (the same format as the journal itself, but without the
+    /// header)
     pub fn export_jsonl(&self, path: &Path) -> Result<usize, JournalError> {
         let entries = self.load_all()?;
         let mut out = String::new();
@@ -268,14 +272,14 @@ impl FileJournal {
         Ok(entries.len())
     }
 
-    /// Экспорт всех записей в CSV.
+    /// Export of all entries to CSV
     pub fn export_csv(&self, path: &Path) -> Result<usize, JournalError> {
         let entries = self.load_all()?;
         std::fs::write(path, entries_to_csv(&entries)).map_err(|e| io_err(path, &e))?;
         Ok(entries.len())
     }
 
-    /// Атомарная перезапись: временный файл рядом + `rename`.
+    /// Atomic rewrite: a temporary file next to it + `rename`
     fn rewrite(&self, entries: &[Entry]) -> Result<(), JournalError> {
         let mut tmp_name = self.path.as_os_str().to_os_string();
         tmp_name.push(".tmp");
@@ -312,7 +316,8 @@ impl Journal for FileJournal {
             owned = entry.clone().without_text();
             &owned
         } else if let Some(cipher) = &self.cipher {
-            // Шифруются только тексты: остальные поля нужны статистике и фильтрам без ключа.
+            // Only the texts are encrypted: statistics and filters need the other fields
+            // without the key
             let mut sealed = entry.clone();
             sealed.text_raw = sealed.text_raw.as_deref().map(|text| cipher.encrypt(text));
             sealed.text_final = sealed
@@ -326,10 +331,7 @@ impl Journal for FileJournal {
         };
         let line =
             serde_json::to_string(entry).map_err(|e| JournalError::Serialize(e.to_string()))?;
-        debug_assert!(
-            !line.contains('\n'),
-            "строка журнала не должна переноситься"
-        );
+        debug_assert!(!line.contains('\n'), "a journal line must not wrap");
         let mut file = OpenOptions::new()
             .create(true)
             .append(true)
@@ -342,7 +344,7 @@ impl Journal for FileJournal {
     }
 }
 
-/// Журнал, который ничего не пишет: режим «не записывать» (`privacy.no_record_mode`).
+/// A journal that writes nothing: the "do not record" mode (`privacy.no_record_mode`)
 #[derive(Debug, Default, Clone, Copy)]
 pub struct NullJournal;
 
@@ -352,12 +354,12 @@ impl Journal for NullJournal {
     }
 }
 
-/// Строка-заголовок: объект с `created` и без `id` — записи всегда несут `id`.
+/// Header line: an object with `created` and without `id`, because entries always carry an `id`
 fn is_header(line: &str) -> bool {
     serde_json::from_str::<Header>(line).is_ok()
 }
 
-/// Права 0600: журнал читает только владелец.
+/// Mode 0600: only the owner reads the journal
 #[cfg(unix)]
 fn restrict_permissions(file: &File, path: &Path) -> Result<(), JournalError> {
     use std::os::unix::fs::PermissionsExt;
@@ -370,7 +372,7 @@ fn restrict_permissions(file: &File, path: &Path) -> Result<(), JournalError> {
 }
 
 #[cfg(not(unix))]
-// Обе версии обязаны иметь одну сигнатуру: на unix эта функция ошибку возвращает.
+// Both versions must have one signature: on unix this function returns an error
 #[allow(clippy::unnecessary_wraps)]
 fn restrict_permissions(_file: &File, _path: &Path) -> Result<(), JournalError> {
     Ok(())
@@ -386,7 +388,7 @@ fn serialized_size(entries: &[Entry]) -> Result<u64, JournalError> {
     Ok(size)
 }
 
-/// Поиск по подстроке в сыром и итоговом тексте, без учёта регистра.
+/// Search by substring in the raw and the final text, ignoring case
 pub fn search_entries(entries: &[Entry], substring: &str) -> Vec<Entry> {
     let needle = substring.to_lowercase();
     if needle.is_empty() {
@@ -406,7 +408,7 @@ pub fn search_entries(entries: &[Entry], substring: &str) -> Vec<Entry> {
         .collect()
 }
 
-/// Фильтр по классу приложения, без учёта регистра.
+/// Filter by application class, ignoring case
 pub fn filter_by_app(entries: &[Entry], app: &str) -> Vec<Entry> {
     entries
         .iter()
@@ -420,7 +422,7 @@ pub fn filter_by_app(entries: &[Entry], app: &str) -> Vec<Entry> {
         .collect()
 }
 
-/// Фильтр по времени: границы включительны, `None` — предел не задан.
+/// Filter by time: the bounds are inclusive, and `None` means the bound is not set
 pub fn filter_by_date(
     entries: &[Entry],
     since: Option<DateTime<Utc>>,
@@ -434,7 +436,7 @@ pub fn filter_by_date(
         .collect()
 }
 
-/// CSV-представление истории: заголовок и по строке на запись.
+/// CSV form of the history: a header and one line per entry
 pub fn entries_to_csv(entries: &[Entry]) -> String {
     let mut out =
         String::from("ts,id,app,style,words,audio_secs,wpm,llm_used,latency_total_ms,text_final\n");
@@ -458,7 +460,7 @@ pub fn entries_to_csv(entries: &[Entry]) -> String {
     out
 }
 
-/// Экранирование поля CSV по RFC 4180: кавычки удваиваются, поле берётся в кавычки при нужде.
+/// Escaping of a CSV field by RFC 4180: quotes are doubled, and the field is quoted when needed
 pub fn csv_field(value: &str) -> String {
     if value.contains([',', '"', '\n', '\r']) {
         format!("\"{}\"", value.replace('"', "\"\""))
@@ -467,13 +469,13 @@ pub fn csv_field(value: &str) -> String {
     }
 }
 
-/// Запись-образец для тестов журнала, статистики и конвейера.
+/// Sample entry for the tests of the journal, the statistics and the pipeline
 #[cfg(test)]
 pub(crate) fn test_entry(ts: &str, words: u32, audio_secs: f32, app: &str) -> Entry {
     use crate::domain::entry::{LatencyMs, Mode, Source};
 
     let ts = DateTime::parse_from_rfc3339(ts)
-        .expect("время образца разбирается")
+        .expect("the sample time parses")
         .with_timezone(&Utc);
     Entry {
         schema: SCHEMA_VERSION,
@@ -531,7 +533,7 @@ mod tests {
             .append(&test_entry("2026-09-05T10:01:00Z", 20, 8.0, "kitty"))
             .unwrap();
         let text = std::fs::read_to_string(journal.path()).unwrap();
-        // Заголовок плюс две записи.
+        // The header plus two entries
         assert_eq!(text.lines().count(), 3);
         assert_eq!(journal.load_all().unwrap().len(), 2);
     }
@@ -571,7 +573,7 @@ mod tests {
             .append(true)
             .open(journal.path())
             .unwrap();
-        writeln!(file, "{{это не json").unwrap();
+        writeln!(file, "{{this is not json").unwrap();
         drop(file);
         journal
             .append(&test_entry("2026-09-05T10:02:00Z", 30, 9.0, "kitty"))
@@ -581,7 +583,7 @@ mod tests {
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[1].words, 30);
         let broken = std::fs::read_to_string(journal.broken_path()).unwrap();
-        assert!(broken.contains("это не json"), "{broken}");
+        assert!(broken.contains("this is not json"), "{broken}");
     }
 
     #[test]
@@ -692,7 +694,7 @@ mod tests {
         assert_eq!(left.len(), 4);
         assert_eq!(left[0].words, 7);
         assert_eq!(left[3].words, 10);
-        // Повторная ротация уже ничего не удаляет.
+        // A repeated rotation removes nothing
         assert_eq!(journal.rotate(4, 0).unwrap(), 0);
     }
 
@@ -709,7 +711,7 @@ mod tests {
                 ))
                 .unwrap();
         }
-        // Одна запись — заметно меньше мегабайта, поэтому предел в 1 МБ ничего не режет.
+        // One entry is far below a megabyte, so the limit of 1 MB cuts nothing
         assert_eq!(journal.rotate(0, 1).unwrap(), 0);
         assert_eq!(journal.load_all().unwrap().len(), 20);
     }
@@ -792,10 +794,10 @@ mod tests {
         let on_disk = std::fs::read_to_string(&path).unwrap();
         assert!(
             !on_disk.contains("секретный"),
-            "текст на диске открыт: {on_disk}"
+            "the text on disk is in plain text: {on_disk}"
         );
         assert!(on_disk.contains("enc1:"), "{on_disk}");
-        // Остальные поля остаются открытыми: статистика и фильтры работают без ключа.
+        // The other fields stay in plain text: statistics and filters work without the key
         assert!(on_disk.contains("\"words\""), "{on_disk}");
 
         let loaded = journal.load_all().unwrap();
@@ -805,7 +807,7 @@ mod tests {
         );
         assert_eq!(loaded[0].text_raw.as_deref(), Some("сырой секретный текст"));
 
-        // Без ключа история показывает пустые поля, а не шифротекст.
+        // Without the key the history shows empty fields, not ciphertext
         let without_key = FileJournal::open(&path).unwrap();
         let blind = without_key.load_all().unwrap();
         assert_eq!(blind[0].text_final, None);

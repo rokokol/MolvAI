@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
-//! Шифрование текстов журнала по настройке `journal.encrypt` (M-17).
+//! Encryption of journal texts by the `journal.encrypt` setting (M-17)
 //!
-//! Шифруются только поля с текстом реплики: строка JSONL остаётся строкой JSONL, статистика,
-//! фильтры по дате и приложению, ротация и удаление работают без ключа. Ключ — 32 случайных
-//! байта в файле с правами только для владельца рядом с журналом; без ключа тексты в файле
-//! нечитаемы, а история показывает пустые поля вместо шифротекста.
+//! Only the fields that hold phrase text are encrypted. A JSONL line stays a JSONL line, and
+//! statistics, filters by date and application, rotation and deletion work without the key.
+//! The key is 32 random bytes in a file next to the journal, readable only by the owner.
+//! Without the key the texts in the file are unreadable, and the history shows empty fields
+//! instead of ciphertext
 //!
-//! Алгоритм — XChaCha20-Poly1305: случайный nonce на каждое поле, поэтому одинаковые реплики
-//! дают разный шифротекст, а подмена байтов в файле не проходит проверку подлинности.
+//! The algorithm is XChaCha20-Poly1305. Each field gets a random nonce, so equal phrases give
+//! different ciphertext, and a change of bytes in the file fails the authenticity check
 
 use std::io::Write as _;
 use std::path::Path;
@@ -17,27 +18,28 @@ use chacha20poly1305::{Key, XChaCha20Poly1305, XNonce};
 
 use super::secrets::{SecretError, SecretStore};
 
-/// Префикс зашифрованного поля: по нему `load_all` отличает шифротекст от открытого текста
-/// старых записей и не пытается расшифровать то, что никогда не шифровалось.
+/// Prefix of an encrypted field: with it `load_all` tells ciphertext from the plain text of
+/// old entries, and does not try to decrypt what was never encrypted
 pub const ENCRYPTED_PREFIX: &str = "enc1:";
 
-/// Длина ключа XChaCha20-Poly1305 в байтах.
+/// Length of the XChaCha20-Poly1305 key in bytes
 pub const KEY_LEN: usize = 32;
 
 const NONCE_LEN: usize = 24;
 
-/// Ошибки ключа: файл или хранилище не прочитаны, ключ не создан или значение — не ключ.
+/// Key errors: the file or the store was not read, the key was not created, or the value is
+/// not a key
 #[derive(Debug, thiserror::Error)]
 pub enum KeyError {
-    #[error("ключ журнала {path}: {reason}")]
+    #[error("journal key {path}: {reason}")]
     Io { path: String, reason: String },
-    #[error("ключ журнала {path} повреждён: ожидалось {expected} hex-символов")]
+    #[error("journal key {path} is damaged: expected {expected} hex characters")]
     Malformed { path: String, expected: usize },
-    #[error("ключ журнала {entry}: {source}")]
+    #[error("journal key {entry}: {source}")]
     Store { entry: String, source: SecretError },
 }
 
-/// Шифр журнала с загруженным ключом.
+/// Journal cipher with a loaded key
 #[derive(Clone)]
 pub struct JournalCipher {
     cipher: XChaCha20Poly1305,
@@ -45,7 +47,7 @@ pub struct JournalCipher {
 
 impl std::fmt::Debug for JournalCipher {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Ключ в отладочный вывод не попадает.
+        // The key does not reach the debug output
         formatter
             .debug_struct("JournalCipher")
             .finish_non_exhaustive()
@@ -53,29 +55,29 @@ impl std::fmt::Debug for JournalCipher {
 }
 
 impl JournalCipher {
-    /// Шифр из готового ключа.
+    /// Cipher from a ready key
     pub fn from_key(key: &[u8; KEY_LEN]) -> Self {
         Self {
             cipher: XChaCha20Poly1305::new(key.into()),
         }
     }
 
-    /// Шифр из файла ключа; отсутствующий файл создаётся со случайным ключом и правами 0600.
+    /// Cipher from a key file; a missing file is created with a random key and mode 0600
     pub fn from_key_file(path: &Path) -> Result<Self, KeyError> {
         let key = load_or_create_key(path)?;
         Ok(Self::from_key(&key))
     }
 
-    /// Шифр из записи хранилища секретов; отсутствующая запись создаётся со случайным ключом.
+    /// Cipher from an entry of the secret store; a missing entry is created with a random key
     pub fn from_store(store: &dyn SecretStore, name: &str) -> Result<Self, KeyError> {
         let key = load_or_create_key_in(store, name)?;
         Ok(Self::from_key(&key))
     }
 
-    /// Зашифровать поле: `enc1:<hex nonce><hex шифротекст>`.
+    /// Encrypt a field: `enc1:<hex nonce><hex ciphertext>`
     pub fn encrypt(&self, plaintext: &str) -> String {
         let nonce = XNonce::generate();
-        // Шифрование в памяти не может не удаться: ключ и nonce правильной длины по типам.
+        // Encryption in memory cannot fail: the key and the nonce have the right length by type
         let ciphertext = self
             .cipher
             .encrypt(&nonce, plaintext.as_bytes())
@@ -83,7 +85,7 @@ impl JournalCipher {
         format!("{ENCRYPTED_PREFIX}{}{}", hex(&nonce), hex(&ciphertext))
     }
 
-    /// Расшифровать поле. `None` — не наш формат, чужой ключ или подменённые байты.
+    /// Decrypt a field. `None` means a foreign format, a foreign key or changed bytes
     pub fn decrypt(&self, field: &str) -> Option<String> {
         let payload = field.strip_prefix(ENCRYPTED_PREFIX)?;
         let bytes = unhex(payload)?;
@@ -97,12 +99,12 @@ impl JournalCipher {
     }
 }
 
-/// Поле уже зашифровано этим модулем.
+/// The field is already encrypted by this module
 pub fn is_encrypted(field: &str) -> bool {
     field.starts_with(ENCRYPTED_PREFIX)
 }
 
-/// Прочитать ключ из файла или создать новый. Файл — 64 hex-символа и перевод строки.
+/// Read the key from a file or create a new one. The file holds 64 hex characters and a newline
 pub fn load_or_create_key(path: &Path) -> Result<[u8; KEY_LEN], KeyError> {
     let io = |error: &std::io::Error| KeyError::Io {
         path: path.display().to_string(),
@@ -131,9 +133,10 @@ pub fn load_or_create_key(path: &Path) -> Result<[u8; KEY_LEN], KeyError> {
     Ok(key)
 }
 
-/// Прочитать ключ из записи `name` хранилища или создать новый и сохранить его там же.
-/// Значение — 64 hex-символа, как и в файле; повреждённое значение — ошибка, а не новый ключ:
-/// иначе старые записи журнала стали бы нечитаемыми молча.
+/// Read the key from the store entry `name`, or create a new key and save it in the same entry
+///
+/// The value is 64 hex characters, as in the file. A damaged value is an error, not a new key,
+/// because a new key would make the old journal entries unreadable without a warning
 pub fn load_or_create_key_in(
     store: &dyn SecretStore,
     name: &str,
@@ -150,7 +153,7 @@ pub fn load_or_create_key_in(
     Ok(key)
 }
 
-/// Ключ из hex-строки; `path` — откуда он взят, для сообщения об ошибке.
+/// Key from a hex string; `path` tells where it came from, for the error message
 fn parse_key(text: &str, path: &str) -> Result<[u8; KEY_LEN], KeyError> {
     let malformed = || KeyError::Malformed {
         path: path.to_string(),
@@ -163,7 +166,7 @@ fn parse_key(text: &str, path: &str) -> Result<[u8; KEY_LEN], KeyError> {
 fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write as _;
     bytes.iter().fold(String::new(), |mut acc, byte| {
-        // Запись в String не может не удаться.
+        // A write to a String cannot fail
         let _ = write!(acc, "{byte:02x}");
         acc
     })
@@ -202,7 +205,7 @@ mod tests {
     fn the_same_text_encrypts_differently_each_time() {
         let first = cipher().encrypt("привет");
         let second = cipher().encrypt("привет");
-        assert_ne!(first, second, "nonce обязан быть случайным");
+        assert_ne!(first, second, "the nonce must be random");
     }
 
     #[test]
@@ -230,7 +233,7 @@ mod tests {
         let path = directory.path().join("journal.key");
         let first = load_or_create_key(&path).unwrap();
         let second = load_or_create_key(&path).unwrap();
-        assert_eq!(first, second, "повторное чтение отдаёт тот же ключ");
+        assert_eq!(first, second, "a repeated read returns the same key");
         assert_eq!(
             std::fs::read_to_string(&path).unwrap().trim().len(),
             KEY_LEN * 2
@@ -239,7 +242,7 @@ mod tests {
         {
             use std::os::unix::fs::PermissionsExt as _;
             let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
-            assert_eq!(mode, 0o600, "ключ читает только владелец");
+            assert_eq!(mode, 0o600, "only the owner reads the key");
         }
     }
 
@@ -249,7 +252,7 @@ mod tests {
         let store = MemoryStore::new();
         let first = load_or_create_key_in(&store, "journal-key").unwrap();
         let second = load_or_create_key_in(&store, "journal-key").unwrap();
-        assert_eq!(first, second, "повторное чтение отдаёт тот же ключ");
+        assert_eq!(first, second, "a repeated read returns the same key");
         let stored = store.get("journal-key").unwrap().unwrap();
         assert_eq!(stored.len(), KEY_LEN * 2);
         assert_eq!(unhex(&stored).unwrap(), first.to_vec());
@@ -259,12 +262,12 @@ mod tests {
     fn a_damaged_store_value_or_a_silent_store_is_an_explicit_error() {
         use super::super::secrets::MemoryStore;
         let store = MemoryStore::new();
-        store.set("journal-key", "не ключ").unwrap();
+        store.set("journal-key", "not a key").unwrap();
         assert!(matches!(
             load_or_create_key_in(&store, "journal-key"),
             Err(KeyError::Malformed { .. })
         ));
-        let failing = MemoryStore::failing("нет Secret Service");
+        let failing = MemoryStore::failing("no Secret Service");
         assert!(matches!(
             load_or_create_key_in(&failing, "journal-key"),
             Err(KeyError::Store { .. })
@@ -275,7 +278,7 @@ mod tests {
     fn a_damaged_key_file_is_an_explicit_error() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("journal.key");
-        std::fs::write(&path, "не ключ").unwrap();
+        std::fs::write(&path, "not a key").unwrap();
         assert!(matches!(
             load_or_create_key(&path),
             Err(KeyError::Malformed { .. })

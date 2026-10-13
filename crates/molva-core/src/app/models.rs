@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
-//! Каталог весов whisper.cpp: где лежат, откуда качать, как проверить.
+//! Catalog of whisper.cpp model weights: where they live, where to download them, how to check
+//! them
 //!
-//! Веса качаются с Hugging Face по HTTPS или с зеркала из `stt.models_mirror`, и только на
-//! известный SHA-256: хеши зафиксированы в каталоге из LFS-указателей репозитория
-//! `ggerganov/whisper.cpp`, поэтому подменённый или недокачанный файл до диска не доезжает,
-//! даже если зеркало отдаёт его по `http://`. Скачивание идёт в `<имя>.bin.part` и
-//! переименовывается только после успешной проверки, а прерванная загрузка продолжается
-//! запросом `Range`.
+//! The weights download from Hugging Face over HTTPS or from the mirror in `stt.models_mirror`,
+//! and only against a known SHA-256. The hashes are fixed in the catalog from the LFS pointers
+//! of the `ggerganov/whisper.cpp` repository. So a replaced or incomplete file never reaches
+//! the disk, even if the mirror serves it over `http://`. The download goes to
+//! `<name>.bin.part` and is renamed only after a successful check. An interrupted download
+//! resumes with a `Range` request
 
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -18,25 +19,25 @@ use thiserror::Error;
 
 use crate::config::Config;
 
-/// База, откуда берутся веса; вынесена отдельно, чтобы её было видно в документации и в тестах.
+/// Base address of the weights; a separate constant, so it is visible in the docs and in tests
 pub const HF_BASE: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
 
-/// Размер куска при чтении сети и при подсчёте хеша.
+/// Size of a chunk when reading the network and when computing the hash
 const CHUNK: usize = 64 * 1024;
 
-/// Описание одного набора весов.
+/// Description of one set of weights
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct ModelInfo {
-    /// Имя для CLI и конфига: `small`, `large-v3-turbo-q5_0`.
+    /// Name for the CLI and the config: `small`, `large-v3-turbo-q5_0`
     pub name: &'static str,
     pub file_name: &'static str,
     pub url: &'static str,
     pub size_bytes: u64,
-    /// Ожидаемый SHA-256 файла, нижний регистр, 64 hex-символа.
+    /// Expected SHA-256 of the file, lower case, 64 hex characters
     pub sha256: &'static str,
 }
 
-/// Каталог моделей. Размеры и хеши взяты из LFS-указателей Hugging Face 05.09.2026.
+/// Catalog of models. The sizes and hashes come from the Hugging Face LFS pointers of 2026-09-05
 pub const CATALOG: &[ModelInfo] = &[
     ModelInfo {
         name: "tiny",
@@ -107,17 +108,17 @@ pub const CATALOG: &[ModelInfo] = &[
 
 #[derive(Debug, Error)]
 pub enum ModelError {
-    #[error("неизвестная модель {name}. Доступны: {known}")]
+    #[error("unknown model {name}. Available: {known}")]
     UnknownModel { name: String, known: String },
-    #[error("модель {model} не установлена. Скачайте: molva models pull {model}")]
+    #[error("model {model} is not installed. Download it with: molva models pull {model}")]
     NotInstalled { model: String, path: PathBuf },
-    #[error("не удалось определить каталог данных пользователя")]
+    #[error("cannot find the user data directory")]
     NoHome,
-    #[error("сеть недоступна или сервер ответил ошибкой ({url}): {reason}")]
+    #[error("network not available or the server answered with an error ({url}): {reason}")]
     Http { url: String, reason: String },
-    #[error("ошибка работы с файлом {path}: {reason}")]
+    #[error("file error {path}: {reason}")]
     Io { path: PathBuf, reason: String },
-    #[error("контрольная сумма {model} не совпала: ожидалось {expected}, получено {actual}; файл удалён")]
+    #[error("checksum of {model} does not match: expected {expected}, got {actual}; file removed")]
     ChecksumMismatch {
         model: String,
         expected: String,
@@ -132,18 +133,18 @@ fn io_err(path: &Path, e: &std::io::Error) -> ModelError {
     }
 }
 
-/// Состояние одной модели на диске — то, что печатает `molva models list`.
+/// State of one model on disk, as `molva models list` prints it
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ModelStatus {
     #[serde(flatten)]
     pub info: ModelInfo,
     pub installed: bool,
-    /// Фактический размер файла; 0, если модели нет.
+    /// Actual size of the file; 0 if the model is not there
     pub size_on_disk: u64,
     pub path: PathBuf,
 }
 
-/// Найти модель по имени.
+/// Find a model by name
 pub fn find(name: &str) -> Result<&'static ModelInfo, ModelError> {
     CATALOG
         .iter()
@@ -154,7 +155,7 @@ pub fn find(name: &str) -> Result<&'static ModelInfo, ModelError> {
         })
 }
 
-/// Список имён каталога через запятую — для подсказок в ошибках.
+/// List of the catalog names, separated by commas, for hints in errors
 pub fn known_names() -> String {
     CATALOG
         .iter()
@@ -163,7 +164,7 @@ pub fn known_names() -> String {
         .join(", ")
 }
 
-/// Каталог, где лежат веса: `stt.model_path`, если задан, иначе каталог данных пользователя.
+/// Directory with the weights: `stt.model_path` if set, otherwise the user data directory
 pub fn models_dir(cfg: &Config) -> Result<PathBuf, ModelError> {
     let configured = cfg.stt.model_path.trim();
     if !configured.is_empty() {
@@ -174,13 +175,13 @@ pub fn models_dir(cfg: &Config) -> Result<PathBuf, ModelError> {
         .ok_or(ModelError::NoHome)
 }
 
-/// Путь к файлу конкретной модели, независимо от того, скачана она или нет.
+/// Path to the file of a given model, whether it is downloaded or not
 pub fn model_path(cfg: &Config, name: &str) -> Result<PathBuf, ModelError> {
     let info = find(name)?;
     Ok(models_dir(cfg)?.join(info.file_name))
 }
 
-/// Путь к уже установленной модели; иначе — ошибка с командой для скачивания (O-03).
+/// Path to an installed model; otherwise an error with the download command (O-03)
 pub fn installed_path(cfg: &Config, name: &str) -> Result<PathBuf, ModelError> {
     let path = model_path(cfg, name)?;
     if path.is_file() {
@@ -192,7 +193,7 @@ pub fn installed_path(cfg: &Config, name: &str) -> Result<PathBuf, ModelError> {
     })
 }
 
-/// Что из каталога есть на диске.
+/// Which models of the catalog are on disk
 pub fn list(directory: &Path) -> Vec<ModelStatus> {
     CATALOG
         .iter()
@@ -209,7 +210,7 @@ pub fn list(directory: &Path) -> Vec<ModelStatus> {
         .collect()
 }
 
-/// Удалить установленную модель; возвращает путь удалённого файла.
+/// Remove an installed model; returns the path of the removed file
 pub fn remove(name: &str, directory: &Path) -> Result<PathBuf, ModelError> {
     let info = find(name)?;
     let path = directory.join(info.file_name);
@@ -223,7 +224,7 @@ pub fn remove(name: &str, directory: &Path) -> Result<PathBuf, ModelError> {
     Ok(path)
 }
 
-/// SHA-256 файла в нижнем регистре.
+/// SHA-256 of the file, in lower case
 pub fn sha256_file(path: &Path) -> Result<String, ModelError> {
     let mut file = std::fs::File::open(path).map_err(|e| io_err(path, &e))?;
     let mut hasher = Sha256::new();
@@ -238,7 +239,7 @@ pub fn sha256_file(path: &Path) -> Result<String, ModelError> {
     Ok(hex(&hasher.finalize()))
 }
 
-/// Совпадает ли файл с ожидаемой суммой. Отсутствующий файл — это `false`, а не ошибка.
+/// Whether the file matches the expected sum. A missing file gives `false`, not an error
 pub fn verify(path: &Path, expected: &str) -> Result<bool, ModelError> {
     if !path.is_file() {
         return Ok(false);
@@ -249,16 +250,17 @@ pub fn verify(path: &Path, expected: &str) -> Result<bool, ModelError> {
 fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write as _;
     bytes.iter().fold(String::new(), |mut acc, b| {
-        // Запись в String не может не удаться, но unwrap здесь всё равно ни к чему.
+        // A write to a String cannot fail, but an unwrap is not needed here anyway
         let _ = write!(acc, "{b:02x}");
         acc
     })
 }
 
-/// Скачать модель из каталога в `directory`.
+/// Download a model from the catalog into `directory`
 ///
-/// Если файл уже на месте и хеш совпадает, сеть не трогается вовсе (A-09): повторный `pull`
-/// стоит одного чтения диска. `progress` вызывается по мере загрузки: (скачано, всего).
+/// If the file is already in place and the hash matches, the network is not touched at all
+/// (A-09): a repeated `pull` costs one disk read. `progress` is called during the download
+/// with (downloaded, total)
 pub fn pull(
     name: &str,
     directory: &Path,
@@ -276,7 +278,7 @@ pub fn pull(
     )
 }
 
-/// Адрес файла модели: зеркало из `stt.models_mirror` или Hugging Face из каталога.
+/// Address of the model file: the mirror from `stt.models_mirror` or Hugging Face from the catalog
 pub fn download_url(info: &ModelInfo, mirror: &str) -> String {
     let mirror = mirror.trim();
     if mirror.is_empty() {
@@ -285,13 +287,13 @@ pub fn download_url(info: &ModelInfo, mirror: &str) -> String {
     format!("{}/{}", mirror.trim_end_matches('/'), info.file_name)
 }
 
-/// Сколько `.part` может не меняться, чтобы загрузку всё ещё считали идущей.
+/// How long a `.part` file may stay unchanged while the download still counts as active
 ///
-/// Обрывок прерванной загрузки лежит до следующего `pull` и без этого окна выглядел бы
-/// вечной загрузкой на одном проценте.
+/// The fragment of an interrupted download stays until the next `pull`. Without this window it
+/// would look like an endless download stuck at one percent
 pub const ACTIVE_DOWNLOAD_WINDOW: Duration = Duration::from_secs(15);
 
-/// Загрузка модели, которую сейчас ведёт этот или другой процесс.
+/// Download of a model that this process or another process runs now
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DownloadProgress {
     pub model: String,
@@ -299,18 +301,20 @@ pub struct DownloadProgress {
     pub total: u64,
 }
 
-/// Файл, куда `download_verified` пишет байты до проверки контрольной суммы.
+/// File where `download_verified` writes the bytes before the checksum check
 pub fn partial_path(directory: &Path, file_name: &str) -> PathBuf {
     directory.join(format!("{file_name}.part"))
 }
 
-/// Идёт ли загрузка модели `name` в каталог из настроек, судя по её `.part`.
+/// Whether a download of the model `name` into the settings directory is active, judging by its
+/// `.part` file
 ///
-/// Процесс загрузки не важен: демон с `stt.auto_pull`, `molva models pull` или GUI.
+/// The downloading process does not matter: the daemon with `stt.auto_pull`, `molva models pull`
+/// or the GUI
 pub fn active_download(cfg: &Config, name: &str, now: SystemTime) -> Option<DownloadProgress> {
     let info = find(name).ok()?;
     let metadata = std::fs::metadata(partial_path(&models_dir(cfg).ok()?, info.file_name)).ok()?;
-    // Часы, ушедшие назад, дают ошибку: такой файл считаем свежим, а не брошенным.
+    // A clock that went backwards gives an error: such a file counts as fresh, not abandoned
     let idle = now
         .duration_since(metadata.modified().ok()?)
         .unwrap_or(Duration::ZERO);
@@ -324,7 +328,7 @@ pub fn active_download(cfg: &Config, name: &str, now: SystemTime) -> Option<Down
     })
 }
 
-/// Загрузка произвольного файла с проверкой SHA-256 — ядро `pull`, вынесенное ради тестов.
+/// Download of any file with a SHA-256 check: the core of `pull`, split out for tests
 pub fn download_verified(
     url: &str,
     directory: &Path,
@@ -340,7 +344,7 @@ pub fn download_verified(
         return Ok(target);
     }
     if target.exists() {
-        // Файл есть, но битый: качаем заново, чтобы не выдавать мусор за модель.
+        // The file exists but is broken: download again, to avoid passing garbage off as a model
         std::fs::remove_file(&target).map_err(|e| io_err(&target, &e))?;
     }
     std::fs::create_dir_all(directory).map_err(|e| io_err(directory, &e))?;
@@ -371,7 +375,8 @@ pub fn download_verified(
         });
     }
 
-    // 206 — сервер продолжил с нужного места; 200 — отдал файл целиком, докачка не удалась.
+    // 206: the server continued from the right place; 200: it sent the whole file, so the
+    // resume failed
     let resuming = already > 0 && status == reqwest::StatusCode::PARTIAL_CONTENT;
     let remaining = response.content_length().unwrap_or(0);
     let total = if resuming {
@@ -415,8 +420,8 @@ pub fn download_verified(
 
     let actual = sha256_file(&target)?;
     if !actual.eq_ignore_ascii_case(sha256.trim()) {
-        // Испорченный файл не должен пережить неудачную загрузку: иначе следующий запуск
-        // попытается скормить его whisper и упадёт непонятной ошибкой.
+        // A corrupted file must not survive a failed download. Otherwise the next start would
+        // feed it to whisper and fail with an unclear error
         let _ = std::fs::remove_file(&target);
         return Err(ModelError::ChecksumMismatch {
             model: label.to_string(),
@@ -441,9 +446,10 @@ mod tests {
         hex(&hasher.finalize())
     }
 
-    /// Локальный HTTP-сервер на эфемерном порту: отдаёт заданные байты, понимает `Range`.
+    /// Local HTTP server on an ephemeral port: serves the given bytes and understands `Range`
     ///
-    /// Возвращает URL и счётчик обслуженных запросов — по нему тест видит, ходили ли в сеть.
+    /// Returns the URL and a counter of served requests, with which a test sees whether the
+    /// network was used
     fn serve(body: Vec<u8>, requests: usize) -> (String, Arc<AtomicUsize>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
@@ -507,23 +513,19 @@ mod tests {
         names.sort_unstable();
         let before = names.len();
         names.dedup();
-        assert_eq!(names.len(), before, "имена моделей повторяются");
+        assert_eq!(names.len(), before, "model names repeat");
         for m in CATALOG {
             assert_eq!(m.sha256.len(), 64, "{}: {}", m.name, m.sha256);
             assert!(
                 m.sha256.chars().all(|c| c.is_ascii_hexdigit()),
-                "{}: не hex",
+                "{}: not hex",
                 m.name
             );
-            assert!(
-                m.size_bytes > 1_000_000,
-                "{}: подозрительный размер",
-                m.name
-            );
-            assert!(m.url.starts_with("https://"), "{}: не HTTPS", m.name);
+            assert!(m.size_bytes > 1_000_000, "{}: suspicious size", m.name);
+            assert!(m.url.starts_with("https://"), "{}: not HTTPS", m.name);
             assert!(
                 m.url.ends_with(m.file_name),
-                "{}: url и файл разошлись",
+                "{}: the url and the file differ",
                 m.name
             );
         }
@@ -596,7 +598,7 @@ mod tests {
     fn an_unknown_model_has_no_download() {
         let directory = tempfile::tempdir().unwrap();
         let cfg = config_in(directory.path());
-        // Каждая модель каталога качается: неизвестное имя не должно взять чужую загрузку.
+        // Every model of the catalog can download: an unknown name must not take another download
         for info in CATALOG {
             std::fs::write(partial_path(directory.path(), info.file_name), b"x").unwrap();
         }
@@ -620,7 +622,11 @@ mod tests {
             &mut |done, total| {
                 if done > 0 && done < total {
                     let on_disk = std::fs::metadata(&part).map_or(0, |m| m.len());
-                    assert!(on_disk > 0, "{} пуст посреди загрузки", part.display());
+                    assert!(
+                        on_disk > 0,
+                        "{} is empty in the middle of the download",
+                        part.display()
+                    );
                     seen_mid_download = true;
                 }
             },
@@ -628,9 +634,13 @@ mod tests {
         .unwrap();
         assert!(
             seen_mid_download,
-            "прогресс не сообщил ни одной середины загрузки"
+            "progress did not report any middle of the download"
         );
-        assert!(!part.exists(), "{} остался после загрузки", part.display());
+        assert!(
+            !part.exists(),
+            "{} remained after the download",
+            part.display()
+        );
     }
 
     #[test]
@@ -656,7 +666,7 @@ mod tests {
 
     #[test]
     fn pull_downloads_from_the_mirror() {
-        // Порт 9 закрыт: запрос падает сразу, а ошибка называет адрес, куда ходили.
+        // Port 9 is closed: the request fails at once, and the error names the address used
         let directory = tempfile::tempdir().unwrap();
         let err = pull(
             "tiny",
@@ -669,7 +679,7 @@ mod tests {
             ModelError::Http { url, .. } => {
                 assert_eq!(url, "http://127.0.0.1:9/weights/ggml-tiny.bin");
             }
-            other => panic!("ожидалась ошибка сети, получено {other}"),
+            other => panic!("expected a network error, got {other}"),
         }
     }
 
@@ -700,11 +710,11 @@ mod tests {
         assert_eq!(seen.last().unwrap().0, body.len() as u64);
         assert!(
             seen.len() > 1,
-            "прогресс должен вызываться по ходу загрузки"
+            "progress must be called during the download"
         );
         assert!(
             !directory.path().join("m.bin.part").exists(),
-            ".part не убран"
+            ".part was not removed"
         );
     }
 
@@ -727,7 +737,7 @@ mod tests {
         assert!(matches!(err, ModelError::ChecksumMismatch { .. }), "{err}");
         assert!(
             !directory.path().join("m.bin").exists(),
-            "битый файл остался на диске"
+            "the broken file remained on disk"
         );
         assert!(!directory.path().join("m.bin.part").exists());
     }
@@ -736,7 +746,7 @@ mod tests {
     fn second_pull_does_not_touch_the_network() {
         let body = vec![3u8; 10_000];
         let sha = sha_of(&body);
-        // Сервер готов обслужить только один запрос: второй `pull` обязан обойтись без сети.
+        // The server serves only one request: the second `pull` must work without the network
         let (url, served) = serve(body, 1);
         let directory = tempfile::tempdir().unwrap();
 
@@ -768,7 +778,7 @@ mod tests {
         let sha = sha_of(&body);
         let (url, _) = serve(body.clone(), 1);
         let directory = tempfile::tempdir().unwrap();
-        // Половина файла уже скачана прошлым, прерванным запуском.
+        // Half of the file is already downloaded by the previous, interrupted run
         let half = body.len() / 2;
         std::fs::write(directory.path().join("m.bin.part"), &body[..half]).unwrap();
 
@@ -782,7 +792,7 @@ mod tests {
         assert_eq!(
             first_report,
             Some((half as u64, body.len() as u64)),
-            "докачка должна стартовать с уже скачанного места"
+            "the resume must start from the place already downloaded"
         );
     }
 
@@ -792,7 +802,7 @@ mod tests {
         let sha = sha_of(&body);
         let (url, _) = serve(body.clone(), 1);
         let directory = tempfile::tempdir().unwrap();
-        std::fs::write(directory.path().join("m.bin"), "мусор").unwrap();
+        std::fs::write(directory.path().join("m.bin"), "garbage").unwrap();
 
         let path = download_verified(
             &url,
@@ -809,7 +819,7 @@ mod tests {
     #[test]
     fn server_error_is_reported_with_url() {
         let directory = tempfile::tempdir().unwrap();
-        // Порт, который никто не слушает: соединение не установится.
+        // A port that nobody listens on: the connection will not open
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         drop(listener);

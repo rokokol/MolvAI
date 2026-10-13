@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
-//! Фабрика распознавателей: по настройкам собирает конкретный `SttEngine`.
+//! Recognizer factory: builds a concrete `SttEngine` from the settings
 //!
-//! Единственное место, где имя движка из конфига превращается в объект. CLI, демон и бенч
-//! ходят сюда, поэтому подсказка «модель не скачана» звучит одинаково во всех входах.
+//! This is the only place where the engine name from the config becomes an object. The CLI,
+//! the daemon and the bench all come here, so the "model not downloaded" hint reads the same
+//! at every entry point
 
 use thiserror::Error;
 
@@ -12,31 +13,31 @@ use crate::domain::fakes::FakeStt;
 use crate::domain::stt::SttEngine;
 use crate::infra::stt::WhisperEngine;
 
-/// Текст, который отдаёт фейковый движок, если не задан свой.
+/// Text that the fake engine returns when no other text is set
 pub const DEFAULT_FAKE_TEXT: &str = "тестовая расшифровка";
 
-/// Имя фейкового движка: `MOLVA_STT=fake`, `--engine fake`, `stt.engine = "fake"`.
+/// Name of the fake engine: `MOLVA_STT=fake`, `--engine fake`, `stt.engine = "fake"`
 pub const FAKE_ENGINE: &str = "fake";
 
 #[derive(Debug, Error)]
 pub enum EngineError {
-    #[error("неизвестный движок распознавания: {0}")]
+    #[error("unknown recognition engine: {0}")]
     Unknown(String),
-    #[error("движок недоступен в этой сборке: {0}")]
+    #[error("engine not available in this build: {0}")]
     NotAvailable(String),
     #[error(transparent)]
     Model(#[from] ModelError),
 }
 
-/// Переопределения из командной строки и окружения; пустые поля означают «как в конфиге».
+/// Overrides from the command line and the environment; empty fields mean "as in the config"
 ///
-/// Переменные окружения читает CLI и кладёт сюда — ядро в окружение не заглядывает,
-/// иначе тесты пришлось бы гонять по одному процессу на случай.
+/// The CLI reads the environment variables and puts them here. The core does not look at the
+/// environment, or the tests would need one process per case
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EngineChoice {
     pub engine: Option<String>,
     pub model: Option<String>,
-    /// Ответ фейкового движка; только для тестов и самопроверки бенча.
+    /// Reply of the fake engine; only for tests and the bench self-check
     pub fake_text: Option<String>,
 }
 
@@ -55,7 +56,7 @@ impl EngineChoice {
     }
 }
 
-/// Собрать движок по конфигу с переопределением модели.
+/// Build the engine from the config, with a model override
 pub fn build_stt(
     cfg: &Config,
     override_model: Option<&str>,
@@ -63,7 +64,7 @@ pub fn build_stt(
     build_stt_with(cfg, &EngineChoice::default().with_model(override_model))
 }
 
-/// Собрать движок с полным набором переопределений.
+/// Build the engine with the full set of overrides
 pub fn build_stt_with(
     cfg: &Config,
     choice: &EngineChoice,
@@ -76,9 +77,9 @@ pub fn build_stt_with(
             choice.fake_text.as_deref().unwrap_or(DEFAULT_FAKE_TEXT),
         ))),
         "whisper-cpp" => {
-            // Файл модели проверяем до попытки загрузки: пользователю нужна команда `pull`,
-            // а не ошибка библиотеки о нечитаемом файле. Сам контекст whisper грузится лениво,
-            // при первой реплике.
+            // The model file is checked before the load attempt: the user needs the `pull`
+            // command, not a library error about an unreadable file. The whisper context
+            // itself loads lazily, at the first phrase
             let path = models::installed_path(cfg, model)?;
             Ok(Box::new(WhisperEngine::new(
                 path,
@@ -87,8 +88,7 @@ pub fn build_stt_with(
             )))
         }
         "remote-openai" => Err(EngineError::NotAvailable(
-            "удалённое распознавание подключается отдельно; используйте stt.engine = \"whisper-cpp\""
-                .into(),
+            "remote recognition is wired up separately; use stt.engine = \"whisper-cpp\"".into(),
         )),
         other => Err(EngineError::Unknown(other.to_string())),
     }
@@ -160,13 +160,13 @@ mod tests {
     #[test]
     fn present_weights_build_a_lazy_whisper_engine() {
         let directory = tempfile::tempdir().unwrap();
-        std::fs::write(directory.path().join("ggml-tiny.bin"), "не настоящие веса").unwrap();
+        std::fs::write(directory.path().join("ggml-tiny.bin"), "not real weights").unwrap();
         let cfg = cfg_with_models_dir(directory.path());
-        // Веса ненастоящие, но контекст грузится лениво: сборка движка обязана пройти,
-        // а ошибка про битый файл придёт только при первой реплике.
+        // The weights are not real, but the context loads lazily: building the engine must
+        // succeed, and the error about the broken file comes only at the first phrase
         let engine = match build_stt(&cfg, Some("tiny")) {
             Ok(engine) => engine,
-            Err(err) => panic!("движок whisper обязан собираться: {err}"),
+            Err(err) => panic!("the whisper engine must build: {err}"),
         };
         assert_eq!(engine.id(), "whisper-cpp");
         assert_eq!(engine.model_name(), "tiny");

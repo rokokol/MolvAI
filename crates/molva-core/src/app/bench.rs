@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
-//! Локальный чекер: прогон набора аудио через движок с подсчётом WER/CER и задержек.
+//! Local checker: runs a set of audio files through the engine and counts WER/CER and latency
 //!
-//! Организаторы своего чекера не дают, поэтому качество измеряется здесь и одной командой:
-//! `molva bench`. Набор — каталог с `manifest.toml`, в котором перечислены пары
-//! «аудиофайл → эталонный текст». Балл (`wer_avg`, `cer_avg`) зависит только от входа и
-//! движка, поэтому два прогона на одних данных дают одно и то же число (U-08); задержки,
-//! разумеется, плавают и в балл не входят.
+//! The organizers give no checker of their own, so quality is measured here with one command:
+//! `molva bench`. A set is a directory with a `manifest.toml` that lists pairs of
+//! "audio file → reference text". The score (`wer_avg`, `cer_avg`) depends only on the input
+//! and the engine, so two runs on the same data give the same number (U-08). Latencies vary,
+//! of course, and are not part of the score
 
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -17,31 +17,31 @@ use crate::app::wer::{cer, wer};
 use crate::domain::stt::{LanguageHint, SttEngine, SttOptions};
 use crate::infra::audio::decode;
 
-/// Имя файла с описанием набора внутри каталога.
+/// Name of the file with the set description inside the directory
 pub const MANIFEST_NAME: &str = "manifest.toml";
 
 #[derive(Debug, Error)]
 pub enum BenchError {
-    #[error("набор для проверки не найден: {0}. Ожидался каталог с manifest.toml")]
+    #[error("check set not found: {0}. Expected a directory with manifest.toml")]
     SetMissing(PathBuf),
-    #[error("ошибка в {path}: {message}")]
+    #[error("error in {path}: {message}")]
     Manifest { path: PathBuf, message: String },
-    #[error("в наборе {0} нет ни одного кейса")]
+    #[error("the set {0} has no cases")]
     Empty(PathBuf),
 }
 
-/// Один кейс набора.
+/// One case of the set
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Case {
-    /// Путь к аудио относительно каталога набора.
+    /// Path to the audio, relative to the set directory
     pub audio: String,
-    /// Эталонный текст; пустая строка означает «ожидаем тишину».
+    /// Reference text; an empty string means "silence expected"
     #[serde(default)]
     pub reference: String,
-    /// Язык кейса; `None` — автоопределение.
+    /// Language of the case; `None` means auto-detection
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
-    /// Человеческое имя кейса; по умолчанию — имя файла.
+    /// Human-readable name of the case; the file name by default
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
 }
@@ -60,7 +60,7 @@ impl Manifest {
         })
     }
 
-    /// Прочитать `manifest.toml` из каталога набора.
+    /// Read `manifest.toml` from the set directory
     pub fn load(set_dir: &Path) -> Result<Self, BenchError> {
         let path = set_dir.join(MANIFEST_NAME);
         let text = std::fs::read_to_string(&path)
@@ -73,12 +73,12 @@ impl Manifest {
     }
 }
 
-/// Параметры прогона.
+/// Parameters of a run
 #[derive(Debug, Clone, PartialEq)]
 pub struct BenchOptions {
-    /// Сколько раз прогнать каждый кейс; больше одного — чтобы увидеть разброс задержек.
+    /// How many times to run each case; more than one shows the spread of latencies
     pub repeat: usize,
-    /// Число потоков движка; 0 — все ядра.
+    /// Number of engine threads; 0 means all cores
     pub threads: usize,
 }
 
@@ -91,7 +91,7 @@ impl Default for BenchOptions {
     }
 }
 
-/// Итог по одному кейсу.
+/// Result of one case
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CaseResult {
     pub id: String,
@@ -103,27 +103,27 @@ pub struct CaseResult {
     pub hypothesis: String,
     pub wer: f32,
     pub cer: f32,
-    /// Задержки всех повторов, мс.
+    /// Latencies of all repeats, in ms
     pub latency_ms: Vec<u32>,
-    /// Отношение времени распознавания к длительности аудио (меньше 1 — быстрее реального времени).
+    /// Ratio of recognition time to audio duration (below 1 means faster than real time)
     pub rtf: f32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
 
-/// Сводка задержек по всем прогонам набора.
+/// Summary of latencies over all runs of the set
 #[derive(Debug, Clone, PartialEq, Default, Serialize)]
 pub struct LatencySummary {
     pub p50_ms: u32,
     pub p95_ms: u32,
     pub p99_ms: u32,
     pub max_ms: u32,
-    /// p99/p50: во сколько раз худший ответ хуже типичного.
+    /// p99/p50: how many times the worst reply is slower than the typical one
     pub jitter: f32,
     pub samples: usize,
 }
 
-/// Полный отчёт прогона.
+/// Full report of a run
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct BenchReport {
     pub set: String,
@@ -131,9 +131,9 @@ pub struct BenchReport {
     pub model: String,
     pub repeat: usize,
     pub cases: Vec<CaseResult>,
-    /// Кейсы, которые не удалось прогнать (нет файла, ошибка движка).
+    /// Cases that could not be run (missing file, engine error)
     pub failed: usize,
-    /// Средний WER по успешным кейсам.
+    /// Average WER over the successful cases
     pub wer_avg: f32,
     pub cer_avg: f32,
     pub audio_secs_total: f32,
@@ -142,13 +142,13 @@ pub struct BenchReport {
 }
 
 impl BenchReport {
-    /// Балл прогона: то, что обязано совпасть между двумя запусками на одних данных.
+    /// Score of a run: what must match between two runs on the same data
     pub fn score(&self) -> (f32, f32, usize) {
         (self.wer_avg, self.cer_avg, self.failed)
     }
 }
 
-/// Перцентиль по методу ближайшего ранга; пустой вход — 0.
+/// Percentile by the nearest-rank method; an empty input gives 0
 fn percentile(sorted: &[u32], p: f32) -> u32 {
     if sorted.is_empty() {
         return 0;
@@ -175,7 +175,7 @@ fn summarize_latency(mut all: Vec<u32>) -> LatencySummary {
     }
 }
 
-/// Прогнать набор через движок.
+/// Run the set through the engine
 pub fn run(
     set_dir: &Path,
     options: &BenchOptions,
@@ -293,7 +293,7 @@ pub fn run(
     })
 }
 
-/// Человекочитаемая сводка прогона (T-15): таблица кейсов и итоги.
+/// Human-readable summary of a run (T-15): a table of cases and the totals
 pub fn format_summary(report: &BenchReport) -> String {
     use std::fmt::Write as _;
     let mut out = String::new();
@@ -308,17 +308,17 @@ pub fn format_summary(report: &BenchReport) -> String {
     let _ = writeln!(
         out,
         "{:<width$}  {:>7}  {:>7}  {:>9}  {:>8}",
-        "кейс",
+        "case",
         "WER",
         "CER",
-        "аудио, с",
-        "p50, мс",
+        "audio, s",
+        "p50, ms",
         width = width
     );
     for case in &report.cases {
         let id: String = case.id.chars().take(width).collect();
         if let Some(err) = &case.error {
-            let _ = writeln!(out, "{id:<width$}  ошибка: {err}");
+            let _ = writeln!(out, "{id:<width$}  error: {err}");
             continue;
         }
         let mut latencies = case.latency_ms.clone();
@@ -337,12 +337,12 @@ pub fn format_summary(report: &BenchReport) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "движок {} / модель {} / повторов {}",
+        "engine {} / model {} / repeats {}",
         report.engine, report.model, report.repeat
     );
     let _ = writeln!(
         out,
-        "кейсов {} (не прошло {}), аудио {:.2} с",
+        "cases {} (failed {}), audio {:.2} s",
         report.cases.len(),
         report.failed,
         report.audio_secs_total
@@ -356,7 +356,7 @@ pub fn format_summary(report: &BenchReport) -> String {
     );
     let _ = writeln!(
         out,
-        "задержка p50 {} мс, p95 {} мс, p99 {} мс, p99/p50 {:.2}",
+        "latency p50 {} ms, p95 {} ms, p99 {} ms, p99/p50 {:.2}",
         report.latency.p50_ms, report.latency.p95_ms, report.latency.p99_ms, report.latency.jitter
     );
     out
@@ -383,7 +383,7 @@ mod tests {
         writer.finalize().unwrap();
     }
 
-    /// Набор из двух кейсов с эталоном «привет мир».
+    /// A set of two cases with the reference "привет мир"
     fn make_set() -> tempfile::TempDir {
         let directory = tempfile::tempdir().unwrap();
         write_wav(&directory.path().join("a.wav"), 1.0);
@@ -474,7 +474,7 @@ mod tests {
         std::fs::write(
             directory.path().join(MANIFEST_NAME),
             "[[case]]\naudio = \"a.wav\"\nreference = \"привет\"\n\
-             \n[[case]]\naudio = \"нет-такого.wav\"\nreference = \"привет\"\n",
+             \n[[case]]\naudio = \"no-such-file.wav\"\nreference = \"привет\"\n",
         )
         .unwrap();
         let report = run(
@@ -486,28 +486,24 @@ mod tests {
         assert_eq!(report.failed, 1);
         assert_eq!(report.cases.len(), 2);
         assert!(report.cases[1].error.is_some());
-        // Балл считается по прошедшим кейсам, провалившийся его не обнуляет.
+        // The score counts the cases that passed, and a failed case does not reset it
         assert!(report.wer_avg.abs() < 1e-6);
     }
 
     #[test]
     fn engine_failure_is_recorded_per_case() {
         let directory = make_set();
-        let mut stt = FakeStt::with_responses(vec![Err(SttError::Inference("сломалось".into()))]);
+        let mut stt = FakeStt::with_responses(vec![Err(SttError::Inference("broke".into()))]);
         let report = run(directory.path(), &BenchOptions::default(), &mut stt).unwrap();
         assert_eq!(report.failed, 2);
-        assert!(report.cases[0]
-            .error
-            .as_deref()
-            .unwrap()
-            .contains("сломалось"));
+        assert!(report.cases[0].error.as_deref().unwrap().contains("broke"));
     }
 
     #[test]
     fn missing_set_is_an_error() {
         let directory = tempfile::tempdir().unwrap();
         let err = run(
-            &directory.path().join("нет"),
+            &directory.path().join("missing"),
             &BenchOptions::default(),
             &mut FakeStt::returning("x"),
         )
@@ -518,7 +514,7 @@ mod tests {
     #[test]
     fn empty_manifest_is_an_error() {
         let directory = tempfile::tempdir().unwrap();
-        std::fs::write(directory.path().join(MANIFEST_NAME), "# пусто\n").unwrap();
+        std::fs::write(directory.path().join(MANIFEST_NAME), "# empty\n").unwrap();
         let err = Manifest::load(directory.path()).unwrap_err();
         assert!(matches!(err, BenchError::Empty(_)), "{err}");
     }
