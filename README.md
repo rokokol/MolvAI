@@ -4,90 +4,90 @@
 [![deny](https://github.com/rokokol/MolvAI/actions/workflows/deny.yml/badge.svg)](https://github.com/rokokol/MolvAI/actions/workflows/deny.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Открытый системный голосовой ввод: зажал клавишу, молвил, отпустил — текст появился в активном поле любого приложения. Обработка на вашем компьютере, одинаково на Linux, Windows и macOS
+Open system-wide voice input: hold a key, speak, release, and the text appears in the active field of any application. Processing runs on your computer, the same on Linux, Windows and macOS
 
 > [!NOTE]
-> Проект создаётся на хакатоне V0ICE (Казань, 5–6 сентября 2026) и находится в разработке. Что уже работает, а что отрезано — в [docs/STATUS.md](docs/STATUS.md); разделы README заполняются по мере появления функций
+> The project is made at the V0ICE hackathon (Kazan, 5–6 September 2026) and is in development. What already works and what is cut is in [docs/STATUS.md](docs/STATUS.md). The README sections are filled in as the features appear
 
-## Как это работает
+## How it works
 
-- **Захват** — микрофон через `cpal`, поток открывается только на время записи, звук приводится к моно 16 кГц
-- **Распознавание** — `whisper.cpp` локально (CPU, CUDA, Vulkan или Metal), движок заменяется настройкой
-- **Постобработка** — словарь терминов и правила без модели; при желании языковая модель через любой OpenAI-совместимый API, Ollama по умолчанию
-- **Вставка** — эмуляция клавиатуры или вставка через буфер обмена с его восстановлением; способ выбирается автоматически и фиксируется в журнале
+- **Capture**: the microphone through `cpal`. The stream opens only for the time of the recording, and the audio is converted to mono 16 kHz
+- **Recognition**: `whisper.cpp` locally (CPU, CUDA, Vulkan or Metal). A setting replaces the engine
+- **Post-processing**: a term dictionary and rules without a model. If you want, a language model through any OpenAI-compatible API, Ollama by default
+- **Paste**: keyboard emulation, or paste through the clipboard with its restoration. The method is chosen automatically and recorded in the journal
 
-Подробнее — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), схема журнала реплик — [docs/journal-schema.md](docs/journal-schema.md)
+More details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The phrase journal schema: [docs/journal-schema.md](docs/journal-schema.md)
 
-## Как это выглядит
+## What it looks like
 
-| Панель в покое | Идёт запись |
+| The panel at rest | Recording is on |
 | --- | --- |
-| ![Панель MolvAI: стиль, последняя реплика и статистика за сегодня](docs/img/panel-idle.png) | ![Панель во время записи: индикатор, уровень сигнала и кнопки остановки](docs/img/panel-recording.png) |
+| ![The MolvAI panel: the style, the last phrase and the statistics for today](docs/img/panel-idle.png) | ![The panel during recording: the indicator, the signal level and the stop buttons](docs/img/panel-recording.png) |
 
-Панель показывает состояние демона, живой уровень сигнала, выбор стиля обработки, последнюю реплику с темпом и статистику за сегодня; вкладки "История" и "Статистика" читают тот же JSONL-журнал, что и `molva history` и `molva stats`
+The panel shows the daemon state, the live signal level, the choice of the processing style, the last phrase with its pace, and the statistics for today. The "History" and "Statistics" tabs read the same JSONL journal as `molva history` and `molva stats`
 
-## Установка
+## Installation
 
-Самый короткий путь — попросить ИИ-агента: откройте Claude Code в каталоге репозитория и молвите "прочитай docs/install.md и установи MolvAI". Агент определит вашу систему, композитор и звуковой сервер, поставит зависимости, скачает модель и настроит клавиши — [docs/install.md](docs/install.md) написан как промпт именно для этого
+The shortest way is to ask an AI agent: open Claude Code in the repository directory and say "read docs/install.md and install MolvAI". The agent finds out your system, compositor and sound server, installs the dependencies, downloads the model and sets up the keys. [docs/install.md](docs/install.md) is written as a prompt for exactly this
 
-### Одной командой
+### With one command
 
 ```sh
-nix run github:rokokol/MolvAI -- --help                          # с Nix: собрать и запустить, не клонируя
-git clone https://github.com/rokokol/MolvAI && cd MolvAI && ./install.sh   # без Nix: бинарник в ~/.local/bin
+nix run github:rokokol/MolvAI -- --help                          # with Nix: build and run without cloning
+git clone https://github.com/rokokol/MolvAI && cd MolvAI && ./install.sh   # without Nix: the binary goes to ~/.local/bin
 ```
 
-Готовые сборки для Linux, Windows и macOS лежат на [странице релизов](https://github.com/rokokol/MolvAI/releases): архив CLI, AppImage, deb, dmg и установщик Windows, каждый с суммой SHA-256 в `sha256sums.txt`. Сборки для Linux и Windows считают whisper на видеокарте через Vulkan, у NVIDIA, AMD и Intel одинаково, а без устройства Vulkan сами переходят на процессор; сборка для macOS считает на процессоре. Отдельный архив `molva-cuda-…-windows.tar.gz` собран с CUDA и несёт рантайм NVIDIA (`cudart`, `cublas`), поэтому лежит отдельно от свободных пакетов: замените им `molva.exe` рядом с `MolvAI.exe`, и реплика на RTX 3060 распознаётся за 0,5–0,9 с вместо 4 с
+Ready builds for Linux, Windows and macOS are on the [releases page](https://github.com/rokokol/MolvAI/releases): the CLI archive, AppImage, deb, dmg and the Windows installer, each with a SHA-256 sum in `sha256sums.txt`. The builds for Linux and Windows compute whisper on the video card through Vulkan, the same for NVIDIA, AMD and Intel, and without a Vulkan device they fall back to the processor by themselves. The build for macOS computes on the processor. The separate archive `molva-cuda-…-windows.tar.gz` is built with CUDA and carries the NVIDIA runtime (`cudart`, `cublas`), so it lies apart from the free packages. Replace `molva.exe` next to `MolvAI.exe` with it, and a phrase on an RTX 3060 is recognized in 0.5–0.9 s instead of 4 s
 
-### С Nix
+### With Nix
 
 ```sh
-nix run github:rokokol/MolvAI -- --help   # собрать и запустить не клонируя
+nix run github:rokokol/MolvAI -- --help   # build and run without cloning
 ```
 
 ```sh
-nix develop                        # тулчейн и системные библиотеки, ничего в систему не ставится
+nix develop                        # the toolchain and system libraries, nothing is installed in the system
 cargo build --release --bin molva
-./install.sh                       # бинарник в ~/.local/bin, права администратора не нужны
+./install.sh                       # the binary goes to ~/.local/bin, no administrator rights needed
 ```
 
-### Без Nix
+### Without Nix
 
 ```sh
-./install.sh --check   # что не хватает и какими командами это ставится в вашем дистрибутиве
+./install.sh --check   # what is missing and with which commands you install it on your distribution
 ```
 
-Скрипт ничего не устанавливает сам: он печатает точные команды для Debian, Fedora, Arch, openSUSE, macOS и Windows, а решение принимает человек. Поставили — запустите `./install.sh` ещё раз
+The script installs nothing itself. It prints the exact commands for Debian, Fedora, Arch, openSUSE, macOS and Windows, and a person makes the decision. When you have installed the dependencies, run `./install.sh` again
 
 ### Windows
 
-Своего `install.ps1` пока нет, и заглушки вместо него тоже нет — честнее сказать прямо, чем положить в репозиторий скрипт, который ничего не делает. Собирайте `cargo build --release --bin molva` и кладите `target\release\molva.exe` куда удобно, либо возьмите готовый архив со страницы релизов; агент из [docs/install.md](docs/install.md) проводит через это по шагам
+There is no `install.ps1` yet, and no stub in its place either. It is more honest to say it directly than to put in the repository a script that does nothing. Build with `cargo build --release --bin molva` and put `target\release\molva.exe` where you like, or take a ready archive from the releases page. The agent from [docs/install.md](docs/install.md) guides you through this step by step
 
 > [!WARNING]
-> Пакеты GUI из релиза `v0.1.0` (`setup.exe`, `deb`, `AppImage`, `dmg`) кладут только окно, без CLI, поэтому при запуске демона окно просит собрать `molva`. Обход: распакуйте архив CLI для своей ОС из того же релиза и положите `molva` (`molva.exe`) рядом с приложением — на Windows обычно `%LOCALAPPDATA%\Programs\MolvAI\` — или в каталог из PATH, затем `molva models pull small`. Следующий релиз несёт CLI внутри пакетов
+> The GUI packages from the release `v0.1.0` (`setup.exe`, `deb`, `AppImage`, `dmg`) install only the window, without the CLI, so when the window starts the daemon it asks you to build `molva`. The workaround: unpack the CLI archive for your OS from the same release and put `molva` (`molva.exe`) next to the application, on Windows usually `%LOCALAPPDATA%\Programs\MolvAI\`, or in a directory from PATH, then run `molva models pull small`. The next release carries the CLI inside the packages
 
-### Удаление
+### Removal
 
-Снимается ровно то, что было установлено, по манифесту:
+It removes exactly what was installed, by the manifest:
 
 ```sh
-./install.sh --uninstall               # спросит про журнал реплик и настройки
-./install.sh --uninstall --purge       # снести вместе с историей
+./install.sh --uninstall               # asks about the phrase journal and the settings
+./install.sh --uninstall --purge       # remove together with the history
 ./install.sh --uninstall --keep-history
 ```
 
-## Быстрый старт
+## Quick start
 
 ```sh
-molva models pull small   # веса с Hugging Face, проверяются по SHA-256; без этого шага демон скачает их сам при первом старте
-molva doctor                 # сессия, инструменты вставки, права, демон, веса whisper и sha256, провайдер модели
-molva devices                # список микрофонов
-molva test-inject            # проверить, что текст попадает в активное поле
-molva daemon                 # демон, слушающий горячие клавиши
-molva history paste --last   # вставить последнюю реплику заново, не диктуя её
+molva models pull small   # weights from Hugging Face, checked against SHA-256; without this step the daemon downloads them itself at the first start
+molva doctor                 # session, paste tools, permissions, daemon, whisper weights and sha256, model provider
+molva devices                # list of microphones
+molva test-inject            # check that the text reaches the active field
+molva daemon                 # the daemon that listens to the hotkeys
+molva history paste --last   # paste the last phrase again, without dictating it
 ```
 
-Горячие клавиши в Hyprland — две строки в `~/.config/hypr/hyprland.conf`, где `bindr` срабатывает на отпускание:
+The hotkeys in Hyprland are lines in `~/.config/hypr/hyprland.conf`, where `bindr` fires on the release:
 
 ```
 bind  = , F9, exec, molva record start
@@ -97,120 +97,120 @@ bind  = CTRL ALT, X, exec, molva record toggle --mode command
 bind  = CTRL ALT, C, exec, molva record cancel
 ```
 
-Удержание и переключатель работают одновременно и на одних настройках: зажали `F9` — пишется, пока держите; коротко нажали её же — запись защёлкивается и идёт без клавиши до следующего нажатия; `Ctrl+Alt+Z` включает и выключает запись нажатием всегда
+The hold and the toggle work at the same time and on the same settings. Hold `F9` and it records while you hold. Press the same key briefly and the recording latches and runs without the key until the next press. `Ctrl+Alt+Z` always starts and stops the recording by a press
 
 > [!NOTE]
-> Сочетания по умолчанию выбраны неэргономичными сознательно: `F9` и `Ctrl+Alt` свободны почти в любой системе и приложении, поэтому на чужом стенде они срабатывают без настройки. Пока приложение в тестировании, это важнее удобства; под свою руку клавиши меняются в секции `[hotkeys]`
+> The default combinations are deliberately not ergonomic: `F9` and `Ctrl+Alt` are free in almost any system and application, so on a foreign stand they work without setup. While the application is in testing, this matters more than comfort. You change the keys for your own hand in the `[hotkeys]` section
 
-В GNOME и KDE те же две команды вешаются на пользовательскую комбинацию в настройках клавиатуры, на X11 без окружения годится `sxhkd`, а на Windows и macOS комбинацию регистрирует само приложение
+In GNOME and KDE, you attach the same commands to a custom combination in the keyboard settings. On X11 without a desktop environment, `sxhkd` fits. On Windows and macOS, the application itself registers the combination
 
-## Приватность микрофона
+## Microphone privacy
 
-Поток микрофона открывается в момент нажатия клавиши и закрывается сразу после отпускания: вне записи MolvAI не слушает ничего, а индикатор записи в системе погашен
+The microphone stream opens at the moment of the key press and closes right after the release. Outside a recording, MolvAI listens to nothing, and the recording indicator in the system is off
 
-Освобождение микрофона не зависит от того, чем закончилась реплика — поток закрывается и при отмене, и при ошибке, и при аварийном завершении демона, потому что `CpalSource::release_microphone` вызывается и из `stop`, и из `Drop`
+The release of the microphone does not depend on how the phrase ended. The stream closes on a cancel, on an error and on an abnormal exit of the daemon, because `CpalSource::release_microphone` is called from both `stop` and `Drop`
 
-Замер "от отпускания клавиши до закрытия потока" демон пишет в лог и в поле `latency_ms.stop_after_release` каждой записи журнала, так что гарантию можно проверить, а не принимать на слово
+The daemon writes the measurement "from the key release to the stream close" to the log and to the field `latency_ms.stop_after_release` of each journal entry. So you can check the guarantee and do not have to take it on trust
 
-## Коды выхода
+## Exit codes
 
-Скриптам и биндам композитора важен код, а не текст: `molva record start` в бинде не покажет пользователю сообщение, но код увидит скрипт
+For scripts and compositor binds the code matters, not the text: `molva record start` in a bind shows no message to the user, but the script sees the code
 
-| Код | Что означает |
+| Code | What it means |
 | --- | --- |
-| `0` | всё получилось |
-| `2` | неверные аргументы или неизвестное имя |
-| `3` | демон не запущен или не отвечает |
-| `4` | демон занят предыдущей репликой |
-| `5` | ошибка движка распознавания |
-| `6` | не удалось прочитать или записать файл |
-| `7` | демон уже запущен: вторая копия завершилась с сообщением |
+| `0` | everything worked |
+| `2` | wrong arguments or an unknown name |
+| `3` | the daemon is not running or does not answer |
+| `4` | the daemon is busy with the previous phrase |
+| `5` | error of the recognition engine |
+| `6` | could not read or write a file |
+| `7` | the daemon is already running: the second copy exited with a message |
 
-## Настройки
+## Settings
 
-Файл `~/.config/molva/config.toml` (на Windows и macOS — соответствующий каталог настроек пользователя) создаётся при первом запуске и читается человеком. Пустой файл — валидный конфиг: любое пропущенное поле берётся из значений по умолчанию, поэтому в файле имеет смысл держать только то, что вы меняли
+The file `~/.config/molva/config.toml` (on Windows and macOS, the matching settings directory of the user) is created at the first start and is readable by a human. An empty file is a valid config: any skipped field comes from the defaults, so it makes sense to keep in the file only what you changed
 
-| Секция | Ключ | По умолчанию | Что делает |
+| Section | Key | Default | What it does |
 | --- | --- | --- | --- |
-| `audio` | `device` | `default` | микрофон из `molva devices` |
-| `audio` | `gain` | `1.0` | усиление входного сигнала |
-| `audio` | `max_duration_secs` | `600` | предел длины одной реплики |
-| `audio` | `trim_silence` | `true` | обрезать тишину по краям записи |
-| `audio` | `silence_threshold_db` | `-45.0` | порог, ниже которого сигнал считается тишиной |
-| `audio` | `vad_min_pause_ms` | `1500` | пауза короче этой не режет реплику |
-| `audio` | `noise_suppression` | `false` | шумоподавление |
-| `audio` | `sounds` | `true` | звуковые метки начала и конца записи; `false` — полная тишина |
-| `audio` | `sound_volume` | `0.4` | громкость этих сигналов, 0…1 |
-| `audio` | `warn_zero_level` | `true` | предупреждать о нулевом уровне сигнала |
-| `stt` | `engine` | `whisper-cpp` | `whisper-cpp` локально или `remote-openai` |
-| `stt` | `model` | `small` | какие веса использовать |
-| `stt` | `model_path` | пусто | каталог с весами; пусто — каталог моделей по умолчанию |
-| `stt` | `models_mirror` | пусто | откуда качать веса вместо Hugging Face: адрес каталога с файлами `ggml-*.bin`, годится и `http://` в локальной сети, скачанное всё равно сверяется по SHA-256 |
-| `stt` | `language` | `ru` | код ISO-639-1 или `auto`; автоопределение на CPU в несколько раз медленнее |
-| `stt` | `allowed_languages` | `["ru", "en"]` | среди каких языков выбирать при `auto` |
-| `stt` | `threads` | `0` | потоков распознавания; `0` — все логические ядра |
-| `stt` | `unload_after_secs` | `600` | через сколько выгрузить модель из памяти |
-| `stt` | `no_speech_threshold` | `0.6` | порог, выше которого фрагмент считается не речью |
-| `stt` | `auto_pull` | `true` | демон сам скачивает веса при старте, если их нет, с прогрессом в stderr и проверкой SHA-256; `false` — ошибка с командой `molva models pull` |
-| `stt` | `chunked` | `true` | распознавать реплику кусками прямо во время записи |
-| `stt` | `chunk_pause_ms` | `700` | пауза, по которой кусок уходит в модель |
-| `stt` | `streaming_preview` | `true` | показывать черновик распознанного во время речи |
-| `dictionary` | `path` | пусто | словарь терминов; пусто — `dictionary.toml` рядом с конфигом |
-| `dictionary` | `fuzzy` | `true` | нечёткое сопоставление терминов |
-| `dictionary` | `in_prompt` | `true` | передавать термины подсказкой в whisper |
-| `rules` | `enabled` | `true` | постобработка правилами вообще |
-| `rules` | `spoken_punctuation` | `true` | "запятая" голосом превращается в запятую |
-| `rules` | `auto_punctuation` | `true` | расставлять пунктуацию самостоятельно |
-| `rules` | `remove_fillers` | `true` | вычищать слова-паразиты |
-| `rules` | `remove_repeats` | `true` | схлопывать повторы |
-| `rules` | `numbers_as_digits` | `true` | числительные цифрами |
-| `rules` | `llm_min_words` | `10` | реплики короче обрабатываются без языковой модели |
-| `llm` | `enabled` | `false` | звать ли языковую модель вообще |
-| `llm` | `provider` | `ollama` | `ollama`, `lmstudio`, `openrouter`, `groq`, `openai` или `custom` |
-| `llm` | `base_url` | `http://localhost:11434/v1` | адрес OpenAI-совместимого API |
-| `llm` | `model` | `qwen3.5:4b` | модель постобработки |
-| `llm` | `api_key_env` | `OPENAI_API_KEY` | имя переменной окружения с ключом |
-| `llm` | `api_key_source` | `keyring` | `keyring` — хранилище ОС (Secret Service на Linux, Credential Manager на Windows, Keychain на macOS), `file` — `secrets/llm-api-key-<provider>` рядом с настройками, `env` — только переменная окружения; в файле настроек ключа нет |
-| `llm` | `timeout_secs` | `20` | сколько ждать ответа модели; дольше — текст уходит без неё |
-| `llm` | `max_retries` | `2` | повторов запроса при сбое |
-| `llm` | `reasoning_effort` | `auto` | `auto` шлёт локальным моделям `none`, облачным ничего; пустая строка — не слать; иначе значение как есть. Рассуждающие модели вроде qwen3.5 без этого тратят весь лимит токенов на размышления и отдают пустой текст |
-| `style` | `default` | `cleanup` | стиль обработки текста по умолчанию |
-| `style` | `by_app` | пусто | класс окна → свой стиль |
-| `output` | `mode` | `auto` | `auto`, `paste`, `type` или `clipboard` |
-| `output` | `auto_type_max_chars` | `200` | длиннее этого `auto` переключается на буфер обмена |
-| `output` | `restore_clipboard` | `true` | вернуть прежнее содержимое буфера после вставки |
-| `output` | `type_delay_ms` | `4` | задержка между символами при эмуляции ввода |
-| `output` | `pre_inject_delay_ms` | `50` | пауза перед вставкой, чтобы фокус успел вернуться в поле ввода; на удалённом рабочем столе и в медленных приложениях ставят до `1500` |
-| `output` | `terminal_shortcut` | `true` | в терминалах вставлять через Ctrl+Shift+V, определяя их по классу окна |
-| `output` | `notify_on_fallback` | `true` | сообщать, когда способ вставки пришлось сменить |
-| `hotkeys` | `backend` | `auto` | `auto`, `external`, `evdev` или `gui` |
-| `hotkeys` | `push_to_talk` | `F9` | клавиша удержания; сочетания по умолчанию нарочно простые, чтобы работать на любом стенде |
-| `hotkeys` | `toggle` | `Ctrl+Alt+Z` | включить и выключить запись нажатием |
-| `hotkeys` | `command` | `Ctrl+Alt+X` | режим команд над выделением |
-| `hotkeys` | `cancel` | `Ctrl+Alt+C` | отменить запись, не создавая реплику |
-| `hotkeys` | `style_next` | `Ctrl+Alt+S` | следующий стиль по кругу |
-| `hotkeys` | `min_hold_ms` | `200` | удержание короче не создаёт реплику |
-| `journal` | `enabled` | `true` | вести журнал реплик |
-| `journal` | `include_text` | `true` | `false` — строка журнала без текста реплики |
-| `journal` | `encrypt` | `false` | `true` — тексты реплик в журнале шифруются XChaCha20-Poly1305; остальные поля открыты, статистика и фильтры работают без ключа |
-| `journal` | `key_source` | `file` | где лежит ключ шифрования: `file` — файл `key_path`, `keyring` — запись `journal-key` в хранилище ОС; создаётся сам при первом открытии журнала |
-| `journal` | `key_path` | пусто | файл ключа шифрования при `key_source = file`; пусто — `journal.key` рядом с журналом, создаётся сам с правами только для владельца |
-| `journal` | `max_entries` | `10000` | сколько реплик хранить |
-| `privacy` | `send_to_llm` | `true` | разрешена ли отправка текста языковой модели |
-| `privacy` | `no_record_mode` | `false` | выключает журнал и историю целиком |
-| `privacy` | `telemetry` | `false` | телеметрии нет; ключ существует, чтобы это заявить явно |
-| `autostart` | `enabled` | `false` | запускать при входе в систему |
-| `gui` | `tray_animation` | `false` | `false` — значок трея меняется только при смене состояния и не мигает на каждое событие |
-| `log` | `level` | `info` | `error`, `warn`, `info`, `debug` или `trace` |
+| `audio` | `device` | `default` | a microphone from `molva devices` |
+| `audio` | `gain` | `1.0` | gain of the input signal |
+| `audio` | `max_duration_secs` | `600` | limit of the length of one phrase |
+| `audio` | `trim_silence` | `true` | trim the silence at the edges of the recording |
+| `audio` | `silence_threshold_db` | `-45.0` | the threshold below which the signal counts as silence |
+| `audio` | `vad_min_pause_ms` | `1500` | a pause shorter than this does not cut the phrase |
+| `audio` | `noise_suppression` | `false` | noise suppression |
+| `audio` | `sounds` | `true` | sound marks of the start and the end of the recording; `false` means full silence |
+| `audio` | `sound_volume` | `0.4` | volume of these signals, 0…1 |
+| `audio` | `warn_zero_level` | `true` | warn about a zero signal level |
+| `stt` | `engine` | `whisper-cpp` | `whisper-cpp` locally or `remote-openai` |
+| `stt` | `model` | `small` | which weights to use |
+| `stt` | `model_path` | empty | directory with the weights; empty means the default models directory |
+| `stt` | `models_mirror` | empty | where to download the weights instead of Hugging Face: the address of a directory with `ggml-*.bin` files, and `http://` in a local network works too; the downloaded file is still checked against SHA-256 |
+| `stt` | `language` | `ru` | an ISO-639-1 code or `auto`; automatic detection on CPU is several times slower |
+| `stt` | `allowed_languages` | `["ru", "en"]` | among which languages to choose with `auto` |
+| `stt` | `threads` | `0` | recognition threads; `0` means all logical cores |
+| `stt` | `unload_after_secs` | `600` | after how long to unload the model from memory |
+| `stt` | `no_speech_threshold` | `0.6` | the threshold above which a fragment counts as not speech |
+| `stt` | `auto_pull` | `true` | the daemon downloads the weights itself at the start if they are missing, with progress in stderr and a SHA-256 check; `false` gives an error with the command `molva models pull` |
+| `stt` | `chunked` | `true` | recognize the phrase in chunks right during the recording |
+| `stt` | `chunk_pause_ms` | `700` | the pause at which a chunk goes to the model |
+| `stt` | `streaming_preview` | `true` | show a draft of the recognized text during the speech |
+| `dictionary` | `path` | empty | the term dictionary; empty means `dictionary.toml` next to the config |
+| `dictionary` | `fuzzy` | `true` | fuzzy matching of terms |
+| `dictionary` | `in_prompt` | `true` | pass the terms to whisper as a hint |
+| `rules` | `enabled` | `true` | post-processing by rules at all |
+| `rules` | `spoken_punctuation` | `true` | "запятая" ("comma") said aloud turns into a comma |
+| `rules` | `auto_punctuation` | `true` | place the punctuation by itself |
+| `rules` | `remove_fillers` | `true` | remove filler words |
+| `rules` | `remove_repeats` | `true` | collapse repeats |
+| `rules` | `numbers_as_digits` | `true` | numerals as digits |
+| `rules` | `llm_min_words` | `10` | shorter phrases go through without a language model |
+| `llm` | `enabled` | `false` | whether to call the language model at all |
+| `llm` | `provider` | `ollama` | `ollama`, `lmstudio`, `openrouter`, `groq`, `openai` or `custom` |
+| `llm` | `base_url` | `http://localhost:11434/v1` | address of the OpenAI-compatible API |
+| `llm` | `model` | `qwen3.5:4b` | the post-processing model |
+| `llm` | `api_key_env` | `OPENAI_API_KEY` | name of the environment variable with the key |
+| `llm` | `api_key_source` | `keyring` | `keyring` is the OS store (Secret Service on Linux, Credential Manager on Windows, Keychain on macOS), `file` is `secrets/llm-api-key-<provider>` next to the settings, `env` is the environment variable only; the key is not in the settings file |
+| `llm` | `timeout_secs` | `20` | how long to wait for the model answer; after that the text goes without it |
+| `llm` | `max_retries` | `2` | retries of the request on a failure |
+| `llm` | `reasoning_effort` | `auto` | `auto` sends `none` to local models and nothing to cloud ones; an empty string means do not send; any other value goes as it is. Reasoning models like qwen3.5 spend the whole token limit on reasoning without it and return an empty text |
+| `style` | `default` | `cleanup` | the default text processing style |
+| `style` | `by_app` | empty | window class → its own style |
+| `output` | `mode` | `auto` | `auto`, `paste`, `type` or `clipboard` |
+| `output` | `auto_type_max_chars` | `200` | above this length `auto` switches to the clipboard |
+| `output` | `restore_clipboard` | `true` | return the previous content of the clipboard after the paste |
+| `output` | `type_delay_ms` | `4` | delay between characters in input emulation |
+| `output` | `pre_inject_delay_ms` | `50` | pause before the paste, so that the focus has time to return to the input field; on a remote desktop and in slow applications people set up to `1500` |
+| `output` | `terminal_shortcut` | `true` | in terminals paste through Ctrl+Shift+V, and detect them by the window class |
+| `output` | `notify_on_fallback` | `true` | tell when the paste method had to change |
+| `hotkeys` | `backend` | `auto` | `auto`, `external`, `evdev` or `gui` |
+| `hotkeys` | `push_to_talk` | `F9` | the hold key; the default combinations are simple on purpose, to work on any stand |
+| `hotkeys` | `toggle` | `Ctrl+Alt+Z` | start and stop the recording by a press |
+| `hotkeys` | `command` | `Ctrl+Alt+X` | command mode on the selection |
+| `hotkeys` | `cancel` | `Ctrl+Alt+C` | cancel the recording without creating a phrase |
+| `hotkeys` | `style_next` | `Ctrl+Alt+S` | the next style in a circle |
+| `hotkeys` | `min_hold_ms` | `200` | a shorter hold does not create a phrase |
+| `journal` | `enabled` | `true` | keep the phrase journal |
+| `journal` | `include_text` | `true` | `false` means a journal line without the phrase text |
+| `journal` | `encrypt` | `false` | `true` means the phrase texts in the journal are encrypted with XChaCha20-Poly1305; the other fields are open, and the statistics and filters work without the key |
+| `journal` | `key_source` | `file` | where the encryption key lives: `file` is the file `key_path`, `keyring` is the entry `journal-key` in the OS store; it is created by itself at the first opening of the journal |
+| `journal` | `key_path` | empty | the encryption key file with `key_source = file`; empty means `journal.key` next to the journal, created by itself with permissions for the owner only |
+| `journal` | `max_entries` | `10000` | how many phrases to keep |
+| `privacy` | `send_to_llm` | `true` | whether sending text to the language model is allowed |
+| `privacy` | `no_record_mode` | `false` | turns off the journal and the history completely |
+| `privacy` | `telemetry` | `false` | there is no telemetry; the key exists to state this explicitly |
+| `autostart` | `enabled` | `false` | start at login |
+| `gui` | `tray_animation` | `false` | `false` means the tray icon changes only when the state changes and does not blink on each event |
+| `log` | `level` | `info` | `error`, `warn`, `info`, `debug` or `trace` |
 
-Правка файла применяется без пересборки, неверное значение даёт ошибку с путём к файлу и именем ключа. Полный список полей — в `crates/molva-core/src/config.rs`
+The file edit applies without a rebuild, and a wrong value gives an error with the path to the file and the name of the key. The full list of fields is in `crates/molva-core/src/config.rs`
 
-## Замена модели распознавания
+## Replacing the recognition model
 
-Модель — это один файл весов, и меняется она одной настройкой:
+A model is one weights file, and one setting changes it:
 
 ```sh
-molva models list             # что доступно и что уже скачано
+molva models list             # what is available and what is already downloaded
 molva models pull large-v3-turbo
 ```
 
@@ -219,15 +219,15 @@ molva models pull large-v3-turbo
 model = "large-v3-turbo"
 ```
 
-`base` быстрее и заметно хуже, `small` — компромисс по умолчанию, `large-v3-turbo` точнее и требует больше памяти. Свои веса подключаются через `stt.model_path`: подойдёт любой файл в формате `ggml`, который понимает whisper.cpp
+`base` is faster and clearly worse, `small` is the default compromise, and `large-v3-turbo` is more accurate and needs more memory. You connect your own weights through `stt.model_path`: any file in the `ggml` format that whisper.cpp understands fits
 
-Веса в репозиторий не входят и лицензией проекта не покрываются — их условия собраны в [docs/model-licenses.md](docs/model-licenses.md), а адреса, откуда они скачиваются, перечислены в [docs/outgoing-endpoints.md](docs/outgoing-endpoints.md) вместе со всеми остальными исходящими соединениями
+The weights are not part of the repository, and the license of the project does not cover them. Their terms are collected in [docs/model-licenses.md](docs/model-licenses.md), and the addresses they are downloaded from are listed in [docs/outgoing-endpoints.md](docs/outgoing-endpoints.md) together with all other outgoing connections
 
-## Язык реплики
+## Phrase language
 
-По умолчанию язык задан жёстко: `stt.language = "ru"`. Это самый быстрый путь — модель не тратит время на выбор языка, и английская речь в этом режиме записывается по-русски
+By default the language is fixed: `stt.language = "ru"`. This is the fastest path: the model does not spend time on the choice of language, and English speech in this mode is written down in Russian
 
-Двуязычная диктовка включается так:
+You turn on bilingual dictation like this:
 
 ```toml
 [stt]
@@ -235,13 +235,13 @@ language = "auto"
 allowed_languages = ["ru", "en"]
 ```
 
-Язык тогда определяется по первым двум секундам реплики и выбирается **только** из `allowed_languages`: whisper на короткой русской фразе иначе легко уходит в украинский или болгарский. На процессоре с моделью `small` это стоит примерно две-три секунды на реплику, то есть плюс половину к времени распознавания — но при `stt.chunked = true` определение приходится на первый кусок и происходит, пока человек ещё говорит
+Then the language is detected from the first two seconds of the phrase and chosen **only** from `allowed_languages`: on a short Russian phrase whisper easily goes to Ukrainian or Bulgarian otherwise. On a processor with the `small` model this costs about two or three seconds per phrase, that is, plus half to the recognition time. But with `stt.chunked = true` the detection falls on the first chunk and happens while the person is still speaking
 
-Язык выбирается один раз на реплику и применяется ко всем её кускам: whisper всё равно читает фрагмент одним языком, поэтому смешанная речь внутри одной реплики останется в одном прочтении — латинские вставки в русской фразе распознаются, а вот целое английское предложение посреди русской реплики — нет
+The language is chosen once per phrase and applies to all its chunks: whisper reads a fragment in one language anyway, so mixed speech inside one phrase stays in one reading. Latin insertions in a Russian phrase are recognized, but a whole English sentence in the middle of a Russian phrase is not
 
-## Языковая модель
+## Language model
 
-По умолчанию текст правят только словарь и правила, модель выключена. Включается она двумя ключами и работает через любой OpenAI-совместимый API; проверено на Ollama с `qwen3.5:4b`:
+By default only the dictionary and the rules edit the text, and the model is off. Two keys turn it on, and it works through any OpenAI-compatible API. It is checked on Ollama with `qwen3.5:4b`:
 
 ```sh
 ollama pull qwen3.5:4b
@@ -249,91 +249,91 @@ molva config set llm.enabled true
 molva config set style.default cleanup
 ```
 
-Модель зовётся только для реплик длиннее `rules.llm_min_words` слов и только для стилей, которым она нужна (`cleanup`, `messenger`, `mail`, `code`, `formal`); стиль `verbatim` её не трогает. Если модель не отвечает, отвечает пусто или дольше `llm.timeout_secs`, в поле уходит текст после правил — реплика не теряется. Та же цепочка работает и для файлов: `molva transcribe file.wav --style cleanup`, а `--no-llm` выключает модель на один запуск
+The model is called only for phrases longer than `rules.llm_min_words` words and only for the styles that need it (`cleanup`, `messenger`, `mail`, `code`, `formal`). The `verbatim` style does not touch it. If the model does not answer, answers empty, or takes longer than `llm.timeout_secs`, the text after the rules goes to the field, and the phrase is not lost. The same chain works for files: `molva transcribe file.wav --style cleanup`, and `--no-llm` turns off the model for one run
 
-Ключ облачного провайдера (Groq, OpenRouter, OpenAI) в файл настроек не попадает: при `llm.api_key_source = keyring` он лежит в хранилище ОС, при `file` — в файле с правами только для владельца, при `env` — в переменной `llm.api_key_env`. Кладётся он через stdin, чтобы не осесть в истории оболочки: `printf '%s' "$KEY" | molva secret set llm`; `molva secret status` показывает, какие записи есть, не печатая значений, а `molva doctor` проверяет, отвечает ли хранилище. Если записи нет или хранилище недоступно, ключ читается из переменной окружения с предупреждением в логе
+The key of a cloud provider (Groq, OpenRouter, OpenAI) does not get into the settings file. With `llm.api_key_source = keyring` it lies in the OS store, with `file` in a file with permissions for the owner only, and with `env` in the variable `llm.api_key_env`. You store it through stdin, so that it does not stay in the shell history: `printf '%s' "$KEY" | molva secret set llm`. `molva secret status` shows which entries exist without printing the values, and `molva doctor` checks whether the store answers. If there is no entry or the store is unavailable, the key is read from the environment variable with a warning in the log
 
-На RTX 3060 ответ `qwen3.5:4b` на реплику из десяти слов занимает около секунды; на CPU считайте от трёх. В журнале у такой реплики `llm_used = true`, провайдер, модель, `latency_ms.llm` и число токенов, так что стоимость модели видна в `molva stats`
+On an RTX 3060 the `qwen3.5:4b` answer for a phrase of ten words takes about a second. On CPU count on three or more. In the journal such a phrase has `llm_used = true`, the provider, the model, `latency_ms.llm` and the token count, so the cost of the model is visible in `molva stats`
 
 > [!NOTE]
-> Рассуждающие модели (qwen3, qwen3.5, deepseek-r1) по умолчанию "думают" вслух и на маленьком `max_tokens` не успевают дойти до ответа. MolvAI шлёт локальным провайдерам `reasoning_effort = none`, и ответ приходит за доли секунды вместо пустой строки; ключ `llm.reasoning_effort` это регулирует
+> Reasoning models (qwen3, qwen3.5, deepseek-r1) "think" aloud by default and with a small `max_tokens` do not reach the answer. MolvAI sends `reasoning_effort = none` to local providers, and the answer comes in a fraction of a second instead of an empty string. The key `llm.reasoning_effort` controls this
 
-## Работа без интернета
+## Works offline
 
-Сеть нужна ровно дважды и оба раза по явной команде: `molva models pull` скачивает веса whisper с Hugging Face, и облачный провайдер языковой модели, если вы сами выбрали его вместо Ollama. Всё остальное работает с выдернутым кабелем: захват, распознавание, словарь, правила, вставка, журнал, статистика и GUI. Тесты тоже не ходят в сеть, а полный список адресов, к которым программа вообще может обратиться, лежит в [docs/outgoing-endpoints.md](docs/outgoing-endpoints.md)
+The network is needed exactly twice, and both times by an explicit command: `molva models pull` downloads the whisper weights from Hugging Face, and a cloud provider of the language model, if you chose it yourself instead of Ollama. Everything else works with the cable pulled out: capture, recognition, the dictionary, the rules, the paste, the journal, the statistics and the GUI. The tests do not go to the network either, and the full list of addresses that the program can call at all is in [docs/outgoing-endpoints.md](docs/outgoing-endpoints.md)
 
-Ограничения без сети: нельзя скачать новую модель, и стили с языковой моделью работают только с локальным провайдером (Ollama, LM Studio). При недоступном провайдере реплика всё равно вставляется текстом после правил
+The limits without a network: you cannot download a new model, and the styles with a language model work only with a local provider (Ollama, LM Studio). When the provider is unavailable, the phrase is still pasted as the text after the rules
 
-## Оригинальная фича
+## The original feature
 
-**Голосовая правка выделенного текста.** Выделите любой текст в любом приложении, нажмите клавишу режима команд, скажите, что с ним сделать, и нажмите ещё раз: "сделай официальнее", "переведи на английский", "в маркированный список", "короче вдвое". Выделение заменяется результатом на месте, без копирования в чат с моделью и обратно
+**Voice editing of the selected text.** Select any text in any application, press the command mode key, say what to do with it, and press again: "сделай официальнее" ("make it more formal"), "переведи на английский" ("translate to English"), "в маркированный список" ("into a bulleted list"), "короче вдвое" ("twice shorter"). The result replaces the selection in place, without copying to a chat with a model and back
 
-Как воспроизвести на Hyprland:
+How to reproduce it on Hyprland:
 
 ```
 bind = SUPER ALT, C, exec, molva record toggle --mode command
 ```
 
-1. `molva config set llm.enabled true` и запущенный Ollama с `qwen3.5:4b` (`molva doctor` покажет обе строки зелёными)
-2. Выделите абзац в редакторе или браузере
-3. Super+Alt+C, скажите "переведи на английский", снова Super+Alt+C
-4. Через одну-две секунды абзац заменён переводом; исходная реплика и результат видны в `molva history --limit 1`
+1. `molva config set llm.enabled true` and a running Ollama with `qwen3.5:4b` (`molva doctor` shows both lines green)
+2. Select a paragraph in an editor or a browser
+3. Super+Alt+C, say "переведи на английский" ("translate to English"), Super+Alt+C again
+4. After one or two seconds the paragraph is replaced by the translation. The source phrase and the result are visible in `molva history --limit 1`
 
-| До: выделенная строка | После: выделение заменено ответом модели |
+| Before: the selected line | After: the selection replaced by the model answer |
 | --- | --- |
-| ![Редактор с выделенной строкой перед голосовой правкой](docs/img/command-mode-before.png) | ![Та же строка, заменённая результатом правки](docs/img/command-mode-after.png) |
+| ![An editor with a selected line before the voice edit](docs/img/command-mode-before.png) | ![The same line, replaced by the result of the edit](docs/img/command-mode-after.png) |
 
-Что происходит внутри: демон копирует выделение сочетанием Ctrl+C через композитор, распознаёт инструкцию, отправляет модели выделение и инструкцию с системным промптом из `command_mode.system_prompt`, чистит ответ от служебных тегов и вставляет его вместо выделения. Выключается ключом `command_mode.enabled = false`; на задержку обычной диктовки режим не влияет, потому что модель зовётся только по этой клавише
+What happens inside: the daemon copies the selection with the Ctrl+C combination through the compositor, recognizes the instruction, sends the model the selection and the instruction with the system prompt from `command_mode.system_prompt`, cleans the answer of service tags, and pastes it in place of the selection. The key `command_mode.enabled = false` turns it off. The mode does not affect the latency of normal dictation, because the model is called only by this key
 
-Польза числом: правка абзаца из 60 слов голосом занимает около 5 секунд вместе с распознаванием и ответом `qwen3.5:4b` на RTX 3060, ручной перенабор того же абзаца при 40 словах в минуту — 90 секунд, копирование в чат с моделью и обратно — 20–30 секунд. Автотесты: `command_mode_rewrites_the_selection`, `command_mode_without_a_selection_is_an_explicit_error`, `command_mode_without_a_model_is_an_explicit_error` в `crates/molva-core/src/app/pipeline.rs`
+The benefit in numbers: a voice edit of a paragraph of 60 words takes about 5 seconds together with recognition and the `qwen3.5:4b` answer on an RTX 3060. Retyping the same paragraph by hand at 40 words per minute takes 90 seconds, and copying to a chat with a model and back takes 20–30 seconds. The automatic tests: `command_mode_rewrites_the_selection`, `command_mode_without_a_selection_is_an_explicit_error`, `command_mode_without_a_model_is_an_explicit_error` in `crates/molva-core/src/app/pipeline.rs`
 
-Работает офлайн с локальным провайдером. Ни один из 606 критериев чеклиста хакатона не описывает правку существующего текста голосом: они про диктовку нового
+It works offline with a local provider. None of the 606 criteria of the hackathon checklist describes an edit of existing text by voice: they are about dictation of new text
 
-## Тесты
+## Tests
 
-Одна команда, обычный Cargo, без Nix и без `just`:
+One command, plain Cargo, without Nix and without `just`:
 
 ```sh
 cargo test --workspace --no-fail-fast
 ```
 
-Тесты не требуют микрофона, модели и сети: железо подменяется фейками, аудио берётся из `tests/fixtures/`. Крейту GUI нужны системные библиотеки Tauri; если их нет, проверяйте ядро и CLI отдельно:
+The tests need no microphone, no model and no network: fakes replace the hardware, and the audio comes from `tests/fixtures/`. The GUI crate needs the Tauri system libraries. If they are missing, check the core and the CLI separately:
 
 ```sh
 cargo test -p molva-core -p molva --no-fail-fast
 ```
 
-Системные зависимости для сборки на Debian и Ubuntu: `cmake libasound2-dev libxkbcommon-dev libwayland-dev` для ядра и CLI, плюс `libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev` для GUI. Полный список для других дистрибутивов печатает `./install.sh --check`. Тулчейн Rust закреплён в `rust-toolchain.toml`, `rustup` подхватит его сам
+The system dependencies for a build on Debian and Ubuntu: `cmake libasound2-dev libxkbcommon-dev libwayland-dev` for the core and the CLI, plus `libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev` for the GUI. `./install.sh --check` prints the full list for other distributions. The Rust toolchain is pinned in `rust-toolchain.toml`, and `rustup` picks it up by itself
 
-Тот же прогон с честным вердиктом (лог читается даже при exit 0) и остальные проверки — через `just`:
-
-```sh
-just test     # cargo test через scripts/t.sh
-just check    # fmt, clippy, зависимости, тесты, SPDX-заголовки, отсутствие заглушек
-just falsify  # сломать каждую гарантию из tests/defects.sh и потребовать, чтобы сьют заметил
-```
-
-## Разработка
+The same run with an honest verdict (the log is read even at exit 0) and the other checks go through `just`:
 
 ```sh
-nix develop   # тулчейн и системные библиотеки
-just check    # fmt, clippy, зависимости, тесты, SPDX-заголовки, отсутствие заглушек
+just test     # cargo test through scripts/t.sh
+just check    # fmt, clippy, dependencies, tests, SPDX headers, no stubs
+just falsify  # break each guarantee from tests/defects.sh and require the suite to notice
 ```
 
-Тесты идут через `scripts/t.sh` — харнесс из [скилла tests](https://github.com/rokokol/tests-skill): статус прогона честный, лог читается даже при exit 0
+## Development
 
 ```sh
-just falsify        # сломать каждую гарантию из tests/defects.sh и потребовать, чтобы сьют заметил
-just flaky 10       # десять прогонов подряд: расходятся ли результаты на одном коде
-just lint-deps      # cargo machete: зависимости, которые никто не использует
-just doc            # документация без предупреждений, битые ссылки — ошибка
-just cov            # покрытие в coverage.lcov
-just deny           # лицензии зависимостей и уязвимости
-just third-party    # пересобрать THIRD-PARTY.md
-just sbom           # ведомость состава в формате CycloneDX
-molva bench         # WER, CER и время на фикстурах из tests/fixtures
+nix develop   # the toolchain and system libraries
+just check    # fmt, clippy, dependencies, tests, SPDX headers, no stubs
 ```
 
-CI вызывает те же рецепты `just`, а не копии их команд, поэтому зелёный прогон в Actions означает ровно то же, что зелёный `just check` на вашей машине
+The tests go through `scripts/t.sh`, a harness from the [tests skill](https://github.com/rokokol/tests-skill): the run status is honest, and the log is read even at exit 0
 
-Чем этот проект отличается от изученных аналогов и какой код в нём заимствован — [docs/uniqueness.md](docs/uniqueness.md)
+```sh
+just falsify        # break each guarantee from tests/defects.sh and require the suite to notice
+just flaky 10       # ten runs in a row: do the results differ on the same code
+just lint-deps      # cargo machete: dependencies that nobody uses
+just doc            # documentation without warnings, a broken link is an error
+just cov            # coverage in coverage.lcov
+just deny           # licenses of the dependencies and vulnerabilities
+just third-party    # rebuild THIRD-PARTY.md
+just sbom           # bill of materials in the CycloneDX format
+molva bench         # WER, CER and time on the fixtures from tests/fixtures
+```
+
+CI calls the same `just` recipes and not copies of their commands, so a green run in Actions means exactly the same as a green `just check` on your machine
+
+How this project differs from the studied analogues and which code in it is borrowed: [docs/uniqueness.md](docs/uniqueness.md)
