@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-//! Вставка через enigo: X11, Windows, macOS и Wayland там, где композитор даёт виртуальную
-//! клавиатуру.
+//! Paste through enigo: X11, Windows, macOS and Wayland where the compositor gives a virtual
+//! keyboard
 //!
-//! Подключение к серверу ввода делается лениво: на голом Wayland без нужного протокола enigo
-//! не поднимется, и это не должно ронять демон при старте.
+//! The connection to the input server is lazy: on bare Wayland without the needed protocol
+//! enigo does not start, and this must not crash the daemon at startup
 
 use std::time::Duration;
 
@@ -33,12 +33,12 @@ impl EnigoInjector {
         }
     }
 
-    /// Можно ли вообще подключиться к серверу ввода.
+    /// Whether a connection to the input server is possible at all
     pub fn is_available() -> bool {
         Enigo::new(&Settings::default()).is_ok()
     }
 
-    /// Сменить сочетание вставки: терминалам нужен Ctrl+Shift+V.
+    /// Change the paste key combination: terminals need Ctrl+Shift+V
     pub fn set_shortcut(&mut self, shortcut: PasteShortcut) {
         self.shortcut = shortcut;
     }
@@ -52,13 +52,14 @@ impl EnigoInjector {
         }
         self.enigo
             .as_mut()
-            .ok_or_else(|| InjectError::Unavailable("enigo не поднялся".into()))
+            .ok_or_else(|| InjectError::Unavailable("enigo did not start".into()))
     }
 
-    /// Клавиша V сочетания вставки.
+    /// The V key of the paste key combination
     ///
-    /// Windows и macOS ищут `Key::Unicode('v')` в текущей раскладке, и в ЙЦУКЕН такой
-    /// клавиши нет: Ctrl+V не доходит до приложения. Физический код от раскладки не зависит.
+    /// Windows and macOS look for `Key::Unicode('v')` in the current layout, and the Russian
+    /// JCUKEN layout has no such key: Ctrl+V does not reach the application. The physical code
+    /// does not depend on the layout
     fn paste_key() -> Key {
         #[cfg(target_os = "windows")]
         {
@@ -74,7 +75,7 @@ impl EnigoInjector {
         }
     }
 
-    /// Клавиша-модификатор вставки: на macOS это Cmd, на остальных — Ctrl.
+    /// The modifier key of the paste: Cmd on macOS, Ctrl elsewhere
     fn paste_modifier() -> Key {
         #[cfg(target_os = "macos")]
         {
@@ -173,7 +174,7 @@ mod tests {
 
     #[test]
     fn paste_key_is_the_physical_v_key_where_the_layout_would_translate_it() {
-        // Символ 'v' Windows и macOS ищут в текущей раскладке, а в ЙЦУКЕН его нет.
+        // Windows and macOS look for the character 'v' in the current layout, and JCUKEN has none
         let expected = if cfg!(target_os = "windows") {
             Key::Other(0x56) // VK_V
         } else if cfg!(target_os = "macos") {

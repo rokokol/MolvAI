@@ -1,22 +1,22 @@
 // SPDX-License-Identifier: MIT
-//! Буфер обмена: снимок прежнего содержимого, подмена на время вставки и возврат.
+//! Clipboard: a snapshot of the old content, a swap for the time of the paste, and the restore
 //!
-//! Пользователь копирует ссылку, диктует реплику — и ждёт, что в буфере останется ссылка.
-//! Поэтому вставка через буфер всегда идёт под `ClipboardGuard`, а не «положил и забыл».
-//! Пустой буфер восстанавливается пустым, а не текстом предыдущей реплики.
+//! The user copies a link, dictates a phrase — and expects the link to stay in the clipboard.
+//! So a paste through the clipboard always runs under `ClipboardGuard`, and is never "put it
+//! there and forget". An empty clipboard is restored empty, not with the text of the previous phrase
 
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use crate::domain::inject::InjectError;
 
-/// Снимок содержимого буфера, достаточный для возврата.
+/// Snapshot of the clipboard content, enough for the restore
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum ClipboardSnapshot {
     #[default]
     Empty,
     Text(String),
-    /// RGBA без сжатия — то, чем оперируют системные буферы.
+    /// Uncompressed RGBA — what the system clipboards work with
     Image {
         width: usize,
         height: usize,
@@ -24,15 +24,15 @@ pub enum ClipboardSnapshot {
     },
 }
 
-/// Доступ к системному буферу обмена. Трейт нужен, чтобы `ClipboardGuard` проверялся тестами
-/// без графической сессии.
+/// Access to the system clipboard. The trait lets tests check `ClipboardGuard`
+/// with no graphical session
 pub trait ClipboardBackend: std::fmt::Debug + Send {
     fn snapshot(&mut self) -> ClipboardSnapshot;
     fn set_text(&mut self, text: &str) -> Result<(), InjectError>;
     fn restore(&mut self, snapshot: &ClipboardSnapshot) -> Result<(), InjectError>;
 }
 
-/// Подменяет буфер на время вставки и возвращает прежнее содержимое.
+/// Swaps the clipboard for the time of the paste and restores the old content
 #[derive(Debug)]
 pub struct ClipboardGuard<B: ClipboardBackend> {
     backend: B,
@@ -51,7 +51,7 @@ impl<B: ClipboardBackend> ClipboardGuard<B> {
         }
     }
 
-    /// Положить текст в буфер, запомнив то, что там было.
+    /// Put the text in the clipboard and remember what was there
     pub fn stage(&mut self, text: &str) -> Result<(), InjectError> {
         if self.restore_enabled && self.saved.is_none() {
             self.saved = Some(self.backend.snapshot());
@@ -59,7 +59,7 @@ impl<B: ClipboardBackend> ClipboardGuard<B> {
         self.backend.set_text(text)
     }
 
-    /// Вернуть прежнее содержимое. Пауза даёт приложению дочитать буфер до подмены.
+    /// Restore the old content. The pause lets the application finish reading the clipboard before the swap
     pub fn restore(&mut self) -> Result<(), InjectError> {
         let Some(saved) = self.saved.take() else {
             return Ok(());
@@ -70,7 +70,7 @@ impl<B: ClipboardBackend> ClipboardGuard<B> {
         self.backend.restore(&saved)
     }
 
-    /// Отказаться от возврата: текст должен остаться в буфере (вставка не удалась).
+    /// Cancel the restore: the text must stay in the clipboard (the paste failed)
     pub fn keep(&mut self) {
         self.saved = None;
     }
@@ -80,22 +80,22 @@ impl<B: ClipboardBackend> ClipboardGuard<B> {
     }
 }
 
-/// Системный буфер: arboard, а если он не поднялся — `wl-copy`/`wl-paste`.
+/// System clipboard: arboard, and if it did not start, `wl-copy`/`wl-paste`
 ///
-/// На Wayland arboard требует протокол `wlr-data-control`; на композиторах без него
-/// (и в сессиях без прав на протокол) остаются внешние утилиты.
+/// On Wayland arboard needs the `wlr-data-control` protocol; on compositors without it
+/// (and in sessions without permission for the protocol) the external utilities remain.
 ///
-/// Есть вторая, менее очевидная причина держать `wl-copy`: на Wayland содержимое буфера живёт
-/// в процессе-владельце. Короткоживущая команда вроде `molva test-inject` кладёт текст через
-/// arboard, выходит — и буфер становится пустым. `wl-copy` остаётся резидентом и продолжает его
-/// обслуживать, поэтому запись всегда идёт через него, когда он есть.
+/// There is a second, less obvious reason to keep `wl-copy`: on Wayland the clipboard content
+/// lives in the owner process. A short-lived command such as `molva test-inject` puts the text
+/// through arboard, exits — and the clipboard becomes empty. `wl-copy` stays resident and goes
+/// on to serve it, so the write always goes through it when it exists
 #[derive(Default)]
 pub struct SystemClipboard {
     inner: Option<arboard::Clipboard>,
     external_write: bool,
 }
 
-// `arboard::Clipboard` — чужой тип без `Debug`, поэтому печатаем не соединение, а его наличие.
+// `arboard::Clipboard` is a foreign type with no `Debug`, so we print not the connection but whether it exists
 impl std::fmt::Debug for SystemClipboard {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SystemClipboard")
@@ -113,7 +113,7 @@ impl SystemClipboard {
         }
     }
 
-    /// Буфер только через arboard: для окружений без `wl-copy` и для тестов.
+    /// Clipboard through arboard only: for environments without `wl-copy` and for tests
     pub fn arboard_only() -> Self {
         Self {
             inner: arboard::Clipboard::new().ok(),
@@ -121,7 +121,7 @@ impl SystemClipboard {
         }
     }
 
-    /// Доступен ли хоть какой-то способ работы с буфером.
+    /// Whether any way to work with the clipboard is available
     pub fn available() -> bool {
         arboard::Clipboard::new().is_ok() || which::which("wl-copy").is_ok()
     }
@@ -143,8 +143,8 @@ impl ClipboardBackend for SystemClipboard {
                 };
             }
         }
-        // arboard мог не увидеть содержимое (нет протокола, чужой владелец) — спросим утилиту,
-        // иначе «пусто» превратит возврат буфера в его очистку.
+        // arboard may not have seen the content (no protocol, a foreign owner) — we ask the
+        // utility, or "empty" would turn the restore of the clipboard into a clear
         match wl_paste() {
             Some(text) if !text.is_empty() => ClipboardSnapshot::Text(text),
             _ => ClipboardSnapshot::Empty,
@@ -180,8 +180,8 @@ impl ClipboardBackend for SystemClipboard {
                 rgba,
             } => {
                 let Some(clipboard) = self.inner.as_mut() else {
-                    // Картинку внешними утилитами не вернуть: честнее очистить буфер,
-                    // чем оставить в нём чужую реплику.
+                    // The external utilities cannot restore an image: it is more honest to clear
+                    // the clipboard than to leave a foreign phrase in it
                     return wl_clear();
                 };
                 clipboard
@@ -196,8 +196,8 @@ impl ClipboardBackend for SystemClipboard {
     }
 }
 
-/// Текст из буфера через `wl-paste`; `None`, если утилиты нет или в буфере не текст.
-/// Нужен и снимку буфера, и режиму команд, который забирает выделение после Ctrl+C.
+/// Text from the clipboard through `wl-paste`; `None` if the utility is missing or the clipboard holds no text
+/// Both the clipboard snapshot and command mode need it: command mode takes the selection after Ctrl+C
 pub(crate) fn wl_paste() -> Option<String> {
     let output = Command::new("wl-paste").arg("--no-newline").output().ok()?;
     if !output.status.success() {
@@ -207,9 +207,9 @@ pub(crate) fn wl_paste() -> Option<String> {
 }
 
 fn wl_copy(text: &str) -> Result<(), InjectError> {
-    // wl-copy сам уходит в фон и остаётся владельцем выделения; управление он возвращает уже
-    // после того, как буфер захвачен, поэтому ждать его выхода не только можно, но и нужно:
-    // иначе Ctrl+V уйдёт раньше, чем в буфере появится текст.
+    // wl-copy goes to the background by itself and stays the owner of the selection; it returns
+    // only after the clipboard is captured, so waiting for its exit is not only possible but
+    // needed: otherwise Ctrl+V goes out before the text appears in the clipboard
     let status = Command::new("wl-copy")
         .arg("--")
         .arg(text)
@@ -217,18 +217,18 @@ fn wl_copy(text: &str) -> Result<(), InjectError> {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
-        .map_err(|e| InjectError::ClipboardDenied(format!("wl-copy не запустился: {e}")))?;
+        .map_err(|e| InjectError::ClipboardDenied(format!("wl-copy did not start: {e}")))?;
     if status.success() {
         Ok(())
     } else {
         Err(InjectError::ClipboardDenied(
-            "wl-copy завершился с ошибкой".into(),
+            "wl-copy exited with an error".into(),
         ))
     }
 }
 
-/// Очистить буфер через `wl-copy --clear`. Режим команд чистит его перед Ctrl+C, чтобы
-/// отличить свежее выделение от того, что лежало в буфере раньше.
+/// Clear the clipboard through `wl-copy --clear`. Command mode clears it before Ctrl+C, to
+/// tell a fresh selection from what was in the clipboard before
 pub(crate) fn wl_clear() -> Result<(), InjectError> {
     let status = Command::new("wl-copy")
         .arg("--clear")
@@ -241,7 +241,7 @@ pub(crate) fn wl_clear() -> Result<(), InjectError> {
         Ok(())
     } else {
         Err(InjectError::ClipboardDenied(
-            "не удалось очистить буфер обмена".into(),
+            "could not clear the clipboard".into(),
         ))
     }
 }
@@ -250,7 +250,7 @@ pub(crate) fn wl_clear() -> Result<(), InjectError> {
 mod tests {
     use super::*;
 
-    /// Буфер в памяти: тест видит каждую подмену и возврат.
+    /// Clipboard in memory: the test sees each swap and restore
     #[derive(Debug, Default)]
     struct FakeClipboard {
         content: ClipboardSnapshot,
@@ -264,7 +264,7 @@ mod tests {
         }
         fn set_text(&mut self, text: &str) -> Result<(), InjectError> {
             if self.fail_set {
-                return Err(InjectError::ClipboardDenied("нет доступа".into()));
+                return Err(InjectError::ClipboardDenied("no access".into()));
             }
             self.writes.push(text.to_string());
             self.content = ClipboardSnapshot::Text(text.to_string());

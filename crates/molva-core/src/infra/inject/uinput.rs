@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
-//! Вставка через собственное виртуальное устройство `/dev/uinput`.
+//! Paste through an own virtual device, `/dev/uinput`
 //!
-//! Это единственный способ, который не зависит ни от композитора, ни от сторонних демонов, но
-//! он требует прав на `/dev/uinput` (обычно правило udev на группу `input`). Раскладку
-//! устройство не знает: ядру уходят коды клавиш, а раскладку применяет уже композитор, поэтому
-//! набирать вслепую можно только ASCII по US-раскладке. Всё остальное идёт через буфер обмена.
+//! This is the only method that depends neither on the compositor nor on third-party daemons, but
+//! it needs permission for `/dev/uinput` (usually a udev rule for the `input` group). The device
+//! does not know the keyboard layout: key codes go to the kernel, and the compositor applies the
+//! layout, so only ASCII on the US layout can be typed blindly. Everything else goes through the clipboard
 
 use std::path::Path;
 use std::time::Duration;
@@ -22,7 +22,7 @@ const KEY_LEFTCTRL: u16 = 29;
 const KEY_LEFTSHIFT: u16 = 42;
 const KEY_V: u16 = 47;
 
-/// Буквы US-раскладки: символ → код клавиши.
+/// Letters of the US layout: character → key code
 const LETTERS: [(char, u16); 26] = [
     ('a', 30),
     ('b', 48),
@@ -52,7 +52,7 @@ const LETTERS: [(char, u16); 26] = [
     ('z', 44),
 ];
 
-/// Знаки US-раскладки: символ → (код, нужен ли Shift).
+/// Punctuation of the US layout: character → (code, whether Shift is needed)
 const PUNCTUATION: [(char, u16, bool); 42] = [
     (' ', 57, false),
     ('\n', 28, false),
@@ -98,11 +98,11 @@ const PUNCTUATION: [(char, u16, bool); 42] = [
     ('.', 52, false),
 ];
 
-/// Остаток знаков, не поместившийся в таблицу выше без дублей.
+/// The rest of the punctuation, which did not fit in the table above without duplicates
 const PUNCTUATION_TAIL: [(char, u16, bool); 3] =
     [('>', 52, true), ('/', 53, false), ('?', 53, true)];
 
-/// Код клавиши и признак Shift для символа US-раскладки.
+/// Key code and the Shift flag for a character of the US layout
 pub fn key_for(ch: char) -> Option<(u16, bool)> {
     if ch.is_ascii_alphabetic() {
         let lower = ch.to_ascii_lowercase();
@@ -116,12 +116,12 @@ pub fn key_for(ch: char) -> Option<(u16, bool)> {
         .map(|(_, code, shift)| (*code, *shift))
 }
 
-/// Можно ли набрать весь текст кодами US-раскладки.
+/// Whether the whole text can be typed with codes of the US layout
 pub fn is_typable(text: &str) -> bool {
     text.chars().all(|ch| key_for(ch).is_some())
 }
 
-/// Все коды, которые устройство обязано объявить при создании.
+/// All codes that the device must declare at creation
 fn declared_keys() -> AttributeSet<KeyCode> {
     let mut keys = AttributeSet::<KeyCode>::new();
     keys.insert(KeyCode(KEY_LEFTCTRL));
@@ -165,9 +165,9 @@ impl UinputInjector {
         }
     }
 
-    /// Доступность = `/dev/uinput` реально открывается на запись.
+    /// Available means `/dev/uinput` really opens for writing
     ///
-    /// Проверять существование файла мало: без правила udev он есть, но принадлежит root.
+    /// A check that the file exists is not enough: without a udev rule it exists but belongs to root
     pub fn is_available() -> bool {
         Path::new(UINPUT_PATH).exists()
             && std::fs::OpenOptions::new()
@@ -176,7 +176,7 @@ impl UinputInjector {
                 .is_ok()
     }
 
-    /// Сменить сочетание вставки: терминалам нужен Ctrl+Shift+V.
+    /// Change the paste key combination: terminals need Ctrl+Shift+V
     pub fn set_shortcut(&mut self, shortcut: PasteShortcut) {
         self.shortcut = shortcut;
     }
@@ -190,7 +190,7 @@ impl UinputInjector {
                 })
                 .and_then(evdev::uinput::VirtualDeviceBuilder::build)
                 .map_err(|e| InjectError::Unavailable(format!("{UINPUT_PATH}: {e}")))?;
-            // Композитору нужно мгновение, чтобы заметить новое устройство ввода.
+            // The compositor needs a moment to notice the new input device
             std::thread::sleep(Duration::from_millis(200));
             self.device = Some(device);
         }
@@ -312,8 +312,8 @@ mod tests {
         assert_eq!(key_for('\n'), Some((28, false)));
     }
 
-    /// Каждая пара US-раскладки делит один код: нижний символ без Shift, верхний — с ним.
-    /// Перепутанный флаг напечатал бы `'` вместо `"` — и ни один другой тест этого не заметит.
+    /// Each pair of the US layout shares one code: the lower character without Shift, the upper one with it
+    /// A swapped flag would type `'` instead of `"` — and no other test would notice
     #[test]
     fn every_shift_pair_shares_a_code_and_differs_only_by_shift() {
         let pairs = [
@@ -344,10 +344,10 @@ mod tests {
             let (upper_code, upper_shift) = key_for(upper).unwrap_or_else(|| panic!("{upper}"));
             assert_eq!(
                 lower_code, upper_code,
-                "{lower} и {upper} делят одну клавишу"
+                "{lower} and {upper} share one key"
             );
-            assert!(!lower_shift, "{lower} набирается без Shift");
-            assert!(upper_shift, "{upper} набирается с Shift");
+            assert!(!lower_shift, "{lower} is typed without Shift");
+            assert!(upper_shift, "{upper} is typed with Shift");
         }
     }
 
@@ -371,7 +371,7 @@ mod tests {
         let keys = declared_keys();
         assert!(
             keys.iter().count() > 40,
-            "устройство должно объявить все клавиши"
+            "the device must declare all keys"
         );
         assert!(keys.contains(KeyCode(KEY_V)));
         assert!(keys.contains(KeyCode(KEY_LEFTCTRL)));
@@ -380,7 +380,7 @@ mod tests {
     #[test]
     fn non_ascii_text_is_refused_before_any_device_is_opened() {
         let mut injector = UinputInjector::new(true, 0, PasteShortcut::CtrlV, 0);
-        // Устройство не создаётся: отказ виден до обращения к /dev/uinput.
+        // The device is not created: the refusal comes before any access to /dev/uinput
         assert_eq!(
             injector.inject("привет", OutputMode::Type),
             Err(InjectError::UnsupportedCharacters)

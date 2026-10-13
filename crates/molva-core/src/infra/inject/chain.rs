@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
-//! Цепочка способов вставки: первый доступный, при отказе — следующий.
+//! Chain of paste methods: the first available one, and on a refusal the next one
 //!
-//! Смысл цепочки в том, что отказ одного способа не должен стоить пользователю реплики. Поэтому
-//! замыкает её `ClipboardOnlyInjector`: он работает всегда, а пользователь дожимает Ctrl+V сам.
-//! Каждая попытка попадает в `InjectReport.attempts`, чтобы `doctor` показывал, что именно не
-//! сработало, а не «не получилось».
+//! The point of the chain is that the failure of one method must not cost the user a phrase. So
+//! `ClipboardOnlyInjector` closes the chain: it always works, and the user finishes with Ctrl+V.
+//! Each attempt goes to `InjectReport.attempts`, so `doctor` shows what exactly did not work,
+//! and not just "it failed"
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -22,18 +22,18 @@ use crate::infra::platform::{Compositor, Platform};
 #[cfg(target_os = "linux")]
 use crate::infra::inject::uinput::UinputInjector;
 
-/// Способ вставки внутри цепочки. Конкретный enum, а не `Box<dyn TextInjector>`, потому что
-/// сочетание вставки приходится менять между репликами: терминалу нужен Ctrl+Shift+V.
+/// Paste method inside the chain. It is a concrete enum, not a `Box<dyn TextInjector>`, because
+/// the paste key combination must change between phrases: a terminal needs Ctrl+Shift+V
 #[derive(Debug)]
 enum Backend {
     Hyprctl(HyprctlInjector),
     Wtype(WtypeInjector),
     Ydotool(YdotoolInjector),
-    /// В коробке: соединение enigo на порядок толще остальных вариантов.
+    /// Boxed: the enigo connection is an order of magnitude larger than the other variants
     Enigo(Box<EnigoInjector>),
     #[cfg(target_os = "linux")]
     Uinput(UinputInjector),
-    /// Произвольная реализация: для тестов и для дорожек, которые добавят свой способ.
+    /// Any implementation: for tests and for tracks that add their own method
     Other(Box<dyn TextInjector>),
 }
 
@@ -63,7 +63,7 @@ impl Backend {
     }
 }
 
-/// Последний способ: положить текст в буфер и сказать пользователю нажать Ctrl+V.
+/// The last method: put the text in the clipboard and tell the user to press Ctrl+V
 #[derive(Debug)]
 pub struct ClipboardOnlyInjector {
     backend: Box<dyn ClipboardBackend>,
@@ -107,7 +107,7 @@ impl TextInjector for ClipboardOnlyInjector {
         };
         self.notifier.notify(
             "MolvAI",
-            &format!("текст в буфере обмена, нажмите {shortcut}"),
+            &format!("the text is in the clipboard, press {shortcut}"),
         );
         Ok(InjectReport {
             method: "clipboard-only".into(),
@@ -116,12 +116,12 @@ impl TextInjector for ClipboardOnlyInjector {
     }
 }
 
-/// Перебор способов вставки в порядке, который зависит от платформы.
+/// Try the paste methods in an order that depends on the platform
 #[derive(Debug)]
 pub struct ChainInjector {
     backends: Vec<Backend>,
     fallback: ClipboardOnlyInjector,
-    /// Смотреть на класс активного окна и переключаться на Ctrl+Shift+V в терминалах.
+    /// Look at the class of the active window and switch to Ctrl+Shift+V in terminals
     terminal_shortcut: bool,
 }
 
@@ -138,7 +138,7 @@ impl ChainInjector {
         }
     }
 
-    /// Цепочка для текущей платформы, в порядке из плана: сначала то, что не требует прав.
+    /// Chain for the current platform, in the order from the plan: first what needs no permissions
     pub fn for_platform(
         output: &OutputConfig,
         platform: &Platform,
@@ -158,9 +158,10 @@ impl ChainInjector {
 
         match platform {
             Platform::Wayland(Compositor::Hyprland) => {
-                // wtype первым: он единственный из троих умеет и набор, и вставку, и проверен
-                // на Hyprland 0.56. hyprctl не требует ни прав, ни протоколов, но его
-                // sendshortcut доходит до клиента не всегда — поэтому он запасной, а не первый.
+                // wtype goes first: of the three it is the only one that can both type and paste,
+                // and it is tested on Hyprland 0.56. hyprctl needs no permissions and no
+                // protocols, but its sendshortcut does not always reach the client — so it is the
+                // fallback, not the first
                 backends.push(wtype());
                 backends.push(Backend::Hyprctl(HyprctlInjector::new(
                     restore, delay, shortcut,
@@ -176,7 +177,7 @@ impl ChainInjector {
                 backends.push(ydotool());
             }
             Platform::Wayland(Compositor::Kde | Compositor::Gnome) => {
-                // В KDE и GNOME протокола virtual-keyboard нет, wtype бесполезен.
+                // KDE and GNOME have no virtual-keyboard protocol, so wtype is useless
                 #[cfg(target_os = "linux")]
                 backends.push(uinput());
                 backends.push(ydotool());
@@ -197,7 +198,7 @@ impl ChainInjector {
         }
     }
 
-    /// Подстроить сочетание вставки под активное окно.
+    /// Adjust the paste key combination to the active window
     pub fn apply_window(&mut self, class: Option<&str>) {
         if !self.terminal_shortcut {
             return;
@@ -214,8 +215,8 @@ impl ChainInjector {
         self.fallback.set_terminal(terminal);
     }
 
-    /// Один проход по цепочке. `unsupported_chars` поднимается, если способ отказался из-за
-    /// символов, которых нет в раскладке.
+    /// One pass through the chain. `unsupported_chars` is set if a method refused because of
+    /// characters that are not in the keyboard layout
     fn try_chain(
         &mut self,
         text: &str,
@@ -227,14 +228,14 @@ impl ChainInjector {
             let injector = backend.as_injector();
             let id = injector.id();
             if !injector.available() {
-                attempts.push(format!("{id}: недоступен"));
+                attempts.push(format!("{id}: unavailable"));
                 continue;
             }
             match injector.inject(text, mode) {
                 Ok(report) => return Some(report),
                 Err(InjectError::UnsupportedCharacters) => {
                     *unsupported_chars = true;
-                    attempts.push(format!("{id}: раскладка не покрывает текст"));
+                    attempts.push(format!("{id}: the layout does not cover the text"));
                 }
                 Err(err) => attempts.push(format!("{id}: {err}")),
             }
@@ -256,8 +257,8 @@ impl TextInjector for ChainInjector {
         self.apply_window(class);
     }
 
-    /// Выделение забирает первый доступный способ, который это умеет; остальные ошибки
-    /// собираются в одно сообщение, чтобы пользователь видел, почему не вышло.
+    /// The first available method that can do it takes the selection; the other errors are
+    /// collected in one message, so the user sees why it failed
     fn copy_selection(&mut self) -> Result<String, InjectError> {
         let mut reasons = Vec::new();
         for backend in &mut self.backends {
@@ -280,7 +281,7 @@ impl TextInjector for ChainInjector {
     }
 
     fn inject(&mut self, text: &str, mode: OutputMode) -> Result<InjectReport, InjectError> {
-        // `Auto` сюда доходить не должен, но если дошёл — разрешаем по общему правилу.
+        // `Auto` must not reach this point, but if it does, resolve it by the general rule
         let mode = mode.resolve(text, usize::MAX);
         if mode == OutputMode::Clipboard {
             return self.fallback.inject(text, mode);
@@ -295,7 +296,7 @@ impl TextInjector for ChainInjector {
         }
 
         if mode == OutputMode::Type && unsupported_chars {
-            // Кириллицу вслепую не набрать — для этой реплики переходим на вставку.
+            // Cyrillic cannot be typed blindly — for this phrase we switch to paste
             let mut ignored = false;
             if let Some(mut report) =
                 self.try_chain(text, OutputMode::Paste, &mut attempts, &mut ignored)
@@ -312,7 +313,7 @@ impl TextInjector for ChainInjector {
     }
 }
 
-/// Буфер обмена под охраной: удобный конструктор для дорожек, которым нужен только он.
+/// Clipboard under guard: a convenient constructor for tracks that need only the clipboard
 pub fn system_clipboard_guard(output: &OutputConfig) -> ClipboardGuard<SystemClipboard> {
     ClipboardGuard::new(
         SystemClipboard::new(),
@@ -332,7 +333,7 @@ mod tests {
         text: Mutex<Option<String>>,
     }
 
-    /// Тесту нужно видеть, что попало в буфер, поэтому содержимое живёт за `Arc`.
+    /// The test needs to see what went into the clipboard, so the content lives behind an `Arc`
     #[derive(Debug, Clone, Default)]
     struct SharedClipboard(Arc<FakeClipboard>);
 
@@ -357,14 +358,14 @@ mod tests {
         id: &'static str,
         available: bool,
         error: Option<InjectError>,
-        /// Способ умеет вставлять, но не умеет набирать: так ведут себя hyprctl и uinput
-        /// на кириллице.
+        /// The method can paste but cannot type: this is how hyprctl and uinput behave
+        /// on Cyrillic
         refuse_type: bool,
         seen: Arc<Mutex<Vec<(String, OutputMode)>>>,
     }
 
     impl FakeInjector {
-        /// Общая заготовка: остальные конструкторы отличаются ровно одним полем.
+        /// Common base: the other constructors differ in exactly one field
         fn new(id: &'static str, seen: Arc<Mutex<Vec<(String, OutputMode)>>>) -> Self {
             Self {
                 id,
@@ -396,7 +397,7 @@ mod tests {
             })
         }
 
-        /// Способ, который вставляет, но не набирает.
+        /// A method that pastes but does not type
         fn paste_only(
             id: &'static str,
             seen: Arc<Mutex<Vec<(String, OutputMode)>>>,
@@ -467,7 +468,7 @@ mod tests {
         ]);
         let report = chain.inject("текст", OutputMode::Paste).unwrap();
         assert_eq!(report.method, "uinput");
-        assert_eq!(report.attempts, vec!["wtype: недоступен".to_string()]);
+        assert_eq!(report.attempts, vec!["wtype: unavailable".to_string()]);
         assert_eq!(seen.lock().unwrap().len(), 1);
     }
 
@@ -475,14 +476,14 @@ mod tests {
     fn a_failing_backend_hands_over_to_the_next_one() {
         let seen = Arc::new(Mutex::new(Vec::new()));
         let (mut chain, _clip, _n) = chain(vec![
-            FakeInjector::failing("hyprctl", InjectError::Failed("нет окна".into())),
+            FakeInjector::failing("hyprctl", InjectError::Failed("no window".into())),
             FakeInjector::working("wtype", seen.clone()),
         ]);
         let report = chain.inject("текст", OutputMode::Paste).unwrap();
         assert_eq!(report.method, "wtype");
         assert_eq!(report.attempts.len(), 1);
         assert!(
-            report.attempts[0].contains("нет окна"),
+            report.attempts[0].contains("no window"),
             "{:?}",
             report.attempts
         );
@@ -491,7 +492,7 @@ mod tests {
     #[test]
     fn when_everything_fails_the_text_lands_in_the_clipboard_with_a_notification() {
         let (mut chain, clipboard, notifier) = chain(vec![
-            FakeInjector::failing("hyprctl", InjectError::Failed("нет окна".into())),
+            FakeInjector::failing("hyprctl", InjectError::Failed("no window".into())),
             FakeInjector::missing("wtype"),
         ]);
         let report = chain.inject("реплика", OutputMode::Paste).unwrap();
@@ -508,7 +509,7 @@ mod tests {
         let (mut chain, clipboard, _n) = chain(vec![FakeInjector::working("wtype", seen.clone())]);
         let report = chain.inject("реплика", OutputMode::Clipboard).unwrap();
         assert_eq!(report.method, "clipboard-only");
-        assert!(seen.lock().unwrap().is_empty(), "вставка не нужна");
+        assert!(seen.lock().unwrap().is_empty(), "no paste is needed");
         assert_eq!(*clipboard.0.text.lock().unwrap(), Some("реплика".into()));
     }
 
@@ -519,13 +520,13 @@ mod tests {
             FakeInjector::paste_only("uinput", seen.clone()),
             FakeInjector::paste_only("ydotool", seen.clone()),
         ]);
-        // Ни один способ не набирает кириллицу вслепую — реплика уходит вставкой.
+        // No method types Cyrillic blindly — the phrase goes out by paste
         let report = chain.inject("привет", OutputMode::Type).unwrap();
         assert_eq!(report.method, "uinput+fallback-paste");
         assert_eq!(
             *seen.lock().unwrap(),
             vec![("привет".to_string(), OutputMode::Paste)],
-            "набора не было, была вставка"
+            "there was no typing, there was a paste"
         );
         assert_eq!(report.attempts.len(), 2, "{:?}", report.attempts);
     }
@@ -557,15 +558,15 @@ mod tests {
 
     #[test]
     fn the_terminal_shortcut_is_on_by_default() {
-        // Критерий AM-08: вставка в терминал работает из коробки, без правки настроек.
+        // Criterion AM-08: paste into a terminal works out of the box, with no settings change
         let notifier = Arc::new(RecordingNotifier::default());
         let mut chain =
             ChainInjector::for_platform(&OutputConfig::default(), &Platform::X11, notifier);
-        assert!(chain.terminal_shortcut, "по умолчанию включено");
+        assert!(chain.terminal_shortcut, "on by default");
         chain.apply_window(Some("kitty"));
-        assert!(chain.fallback.terminal, "в терминале нужен Ctrl+Shift+V");
+        assert!(chain.fallback.terminal, "a terminal needs Ctrl+Shift+V");
         chain.apply_window(Some("code"));
-        assert!(!chain.fallback.terminal, "в редакторе — обычный Ctrl+V");
+        assert!(!chain.fallback.terminal, "an editor needs plain Ctrl+V");
     }
 
     #[test]
@@ -575,14 +576,14 @@ mod tests {
         assert!(!chain.fallback.terminal);
         chain.terminal_shortcut = true;
         chain.apply_window(Some("kitty"));
-        assert!(chain.fallback.terminal, "в терминале нужен Ctrl+Shift+V");
+        assert!(chain.fallback.terminal, "a terminal needs Ctrl+Shift+V");
         chain.apply_window(Some("firefox"));
         assert!(!chain.fallback.terminal);
     }
 
     #[test]
     fn the_window_from_the_trait_reaches_the_chain() {
-        // Конвейер зовёт `set_window` через контракт, а не через конкретный тип.
+        // The pipeline calls `set_window` through the contract, not through a concrete type
         let (mut chain, _clip, _n) = chain(vec![]);
         chain.terminal_shortcut = true;
         let injector: &mut dyn TextInjector = &mut chain;
@@ -620,7 +621,7 @@ mod tests {
         let ids: Vec<&str> = backends.iter_mut().map(|b| b.as_injector().id()).collect();
         assert!(
             !ids.contains(&"wtype"),
-            "в KDE нет virtual-keyboard: {ids:?}"
+            "KDE has no virtual-keyboard: {ids:?}"
         );
     }
 }

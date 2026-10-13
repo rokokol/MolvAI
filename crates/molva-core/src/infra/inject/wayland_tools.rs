@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
-//! Вставка через внешние утилиты Wayland: `hyprctl`, `wtype`, `ydotool`.
+//! Paste through external Wayland utilities: `hyprctl`, `wtype`, `ydotool`
 //!
-//! Ни один из них не универсален: `hyprctl` есть только в Hyprland и умеет лишь горячие клавиши,
-//! `wtype` требует протокол `virtual-keyboard` (его нет в KDE и GNOME), `ydotool` — демона и прав
-//! на `/dev/uinput`. Поэтому они выстраиваются в цепочку, а не выбираются раз и навсегда.
+//! None of them is universal: `hyprctl` exists only in Hyprland and can only send key
+//! combinations, `wtype` needs the `virtual-keyboard` protocol (KDE and GNOME do not have it),
+//! `ydotool` needs a daemon and permission for `/dev/uinput`. So they are placed in a chain, and
+//! not chosen once and for all
 
 use std::process::{Command, Stdio};
 use std::time::Duration;
@@ -11,22 +12,22 @@ use std::time::Duration;
 use crate::domain::inject::{InjectError, InjectReport, OutputMode, TextInjector};
 use crate::infra::inject::clipboard::{ClipboardGuard, SystemClipboard};
 
-/// Какое сочетание вставки нужно окну.
+/// Which paste key combination the window needs
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PasteShortcut {
-    /// Ctrl+V — везде, кроме терминалов.
+    /// Ctrl+V — everywhere except terminals
     CtrlV,
-    /// Ctrl+Shift+V — терминалы.
+    /// Ctrl+Shift+V — terminals
     CtrlShiftV,
 }
 
-/// Запустить утилиту и потребовать нулевой код возврата.
+/// Run a utility and require a zero exit code
 fn run(program: &str, args: &[&str]) -> Result<(), InjectError> {
     let output = Command::new(program)
         .args(args)
         .stdin(Stdio::null())
         .output()
-        .map_err(|e| InjectError::Unavailable(format!("{program} не запустился: {e}")))?;
+        .map_err(|e| InjectError::Unavailable(format!("{program} did not start: {e}")))?;
     if output.status.success() {
         return Ok(());
     }
@@ -35,14 +36,14 @@ fn run(program: &str, args: &[&str]) -> Result<(), InjectError> {
         "{program} {}: {}",
         args.join(" "),
         if stderr.is_empty() {
-            "ненулевой код возврата".to_string()
+            "non-zero exit code".to_string()
         } else {
             stderr
         }
     )))
 }
 
-/// Общая последовательность для всех «paste»-способов: буфер → сочетание клавиш → буфер назад.
+/// Common sequence for all "paste" methods: clipboard → key combination → clipboard back
 fn paste_via_clipboard(
     clipboard: &mut ClipboardGuard<SystemClipboard>,
     text: &str,
@@ -55,7 +56,7 @@ fn paste_via_clipboard(
             Ok(())
         }
         Err(error) => {
-            // Сочетание не дошло — текст обязан остаться в буфере, иначе он потерян.
+            // The key combination did not arrive — the text must stay in the clipboard, or it is lost
             clipboard.keep();
             Err(error)
         }
@@ -70,7 +71,7 @@ fn guard(restore: bool, delay_ms: u32) -> ClipboardGuard<SystemClipboard> {
     )
 }
 
-/// Вставка средствами самого Hyprland: композитор синтезирует сочетание активному окну.
+/// Paste by means of Hyprland itself: the compositor synthesizes the key combination for the active window
 #[derive(Debug)]
 pub struct HyprctlInjector {
     clipboard: ClipboardGuard<SystemClipboard>,
@@ -89,14 +90,14 @@ impl HyprctlInjector {
         std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_some() && which::which("hyprctl").is_ok()
     }
 
-    /// Сменить сочетание вставки: терминалам нужен Ctrl+Shift+V.
+    /// Change the paste key combination: terminals need Ctrl+Shift+V
     pub fn set_shortcut(&mut self, shortcut: PasteShortcut) {
         self.shortcut = shortcut;
     }
 
-    /// Аргумент `sendshortcut`: `МОДИФИКАТОРЫ, КЛАВИША, окно`. Клавиша задаётся кодом, а не
-    /// keysym: при активной русской раскладке keysym `V` не находится на клавиатуре, и Hyprland
-    /// молча ничего не шлёт. Код `55` — физическая клавиша V в любой раскладке.
+    /// Argument of `sendshortcut`: `MODIFIERS, KEY, window`. The key is set by code, not by
+    /// keysym: with the Russian layout active, the keysym `V` is not found on the keyboard, and
+    /// Hyprland silently sends nothing. The code `55` is the physical V key in any layout
     fn shortcut_arg(&self) -> &'static str {
         match self.shortcut {
             PasteShortcut::CtrlV => "CTRL, code:55, activewindow",
@@ -116,16 +117,16 @@ impl TextInjector for HyprctlInjector {
 
     fn inject(&mut self, text: &str, mode: OutputMode) -> Result<InjectReport, InjectError> {
         if mode != OutputMode::Paste {
-            // hyprctl умеет только нажимать клавиши: набор текста и «просто в буфер» — не сюда.
+            // hyprctl can only press keys: typing text and "only to the clipboard" do not belong here
             return Err(InjectError::Unsupported);
         }
         let arg = self.shortcut_arg();
         paste_via_clipboard(&mut self.clipboard, text, || {
             run("hyprctl", &["dispatch", "sendshortcut", arg])?;
-            // Hyprland оставляет модификатор нажатым после sendshortcut (issue #6407), и клиент
-            // отрабатывает сочетание только когда модификатор отпущен. Поэтому «отпускание» —
-            // это не уборка за собой, а обязательный шаг вставки. Паузу между ними проверяли
-            // на 0.56.2: без неё композитор успевает склеить события и вставка не происходит.
+            // Hyprland leaves the modifier pressed after sendshortcut (issue #6407), and the client
+            // handles the combination only when the modifier is released. So the "release" is
+            // not a cleanup after the fact but a required step of the paste. The pause between
+            // them was tested on 0.56.2: without it the compositor merges the events and the paste does not happen
             std::thread::sleep(MODIFIER_RELEASE_DELAY);
             release_modifiers();
             Ok(())
@@ -136,24 +137,24 @@ impl TextInjector for HyprctlInjector {
         })
     }
 
-    /// Режим команд: скопировать выделение сочетанием Ctrl+C через композитор и забрать его
-    /// из буфера. Буфер намеренно не восстанавливается — так же ведёт себя обычный Ctrl+C.
+    /// Command mode: copy the selection with Ctrl+C through the compositor and take it
+    /// from the clipboard. The clipboard is not restored on purpose — a plain Ctrl+C behaves the same way
     fn copy_selection(&mut self) -> Result<String, InjectError> {
         use crate::infra::inject::clipboard::{wl_clear, wl_paste};
-        // Буфер чистится до Ctrl+C: иначе, если приложение не успело выложить выделение,
-        // в модель уйдёт прошлое содержимое буфера — например, результат предыдущей правки,
-        // и каждая следующая команда наслаивается на старый текст. Если очистка недоступна,
-        // свежим считается только содержимое, отличное от прежнего.
+        // The clipboard is cleared before Ctrl+C: otherwise, if the application was too slow to
+        // put out the selection, the old clipboard content goes to the model — for example the
+        // result of the previous edit — and each next command builds on the old text. If the
+        // clear is not available, only content that differs from the old one counts as fresh
         let before = wl_paste();
         let cleared = wl_clear().is_ok();
-        // Код 54 — физическая клавиша C: keysym `C` при русской раскладке не находится.
+        // The code 54 is the physical C key: the keysym `C` is not found with the Russian layout
         run(
             "hyprctl",
             &["dispatch", "sendshortcut", "CTRL, code:54, activewindow"],
         )?;
         std::thread::sleep(MODIFIER_RELEASE_DELAY);
         release_modifiers();
-        // Приложение отдаёт выделение не мгновенно: ждём, пока в буфере появится новое.
+        // The application does not return the selection at once: we wait for a new one to appear in the clipboard
         let deadline = std::time::Instant::now() + SELECTION_SETTLE_TIMEOUT;
         while std::time::Instant::now() < deadline {
             std::thread::sleep(SELECTION_POLL_INTERVAL);
@@ -168,20 +169,20 @@ impl TextInjector for HyprctlInjector {
             }
         }
         Err(InjectError::Failed(
-            "выделения нет: буфер после Ctrl+C не изменился".into(),
+            "no selection: the clipboard did not change after Ctrl+C".into(),
         ))
     }
 }
 
-/// Сколько ждать, пока приложение выложит выделение в буфер после Ctrl+C.
+/// How long to wait for the application to put the selection in the clipboard after Ctrl+C
 const SELECTION_SETTLE_TIMEOUT: Duration = Duration::from_millis(600);
-/// Шаг опроса буфера в это время.
+/// Polling step of the clipboard during that time
 const SELECTION_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
-/// Пауза между сочетанием и отпусканием модификаторов.
+/// Pause between the key combination and the release of the modifiers
 const MODIFIER_RELEASE_DELAY: Duration = Duration::from_millis(80);
 
-/// Отпустить модификаторы, которые мог оставить нажатыми `sendshortcut`.
+/// Release the modifiers that `sendshortcut` may have left pressed
 fn release_modifiers() {
     for mods in ["CTRL", "SHIFT"] {
         let _ = run(
@@ -195,12 +196,12 @@ fn release_modifiers() {
     }
 }
 
-/// Синтез ввода через протокол `virtual-keyboard`: единственный способ *набрать* текст на wlroots.
+/// Input synthesis through the `virtual-keyboard` protocol: the only way to *type* text on wlroots
 #[derive(Debug)]
 pub struct WtypeInjector {
     clipboard: ClipboardGuard<SystemClipboard>,
     shortcut: PasteShortcut,
-    /// Пауза между символами при наборе, мс.
+    /// Pause between characters when typing, ms
     type_delay_ms: u32,
 }
 
@@ -222,7 +223,7 @@ impl WtypeInjector {
         which::which("wtype").is_ok()
     }
 
-    /// Сменить сочетание вставки: терминалам нужен Ctrl+Shift+V.
+    /// Change the paste key combination: terminals need Ctrl+Shift+V
     pub fn set_shortcut(&mut self, shortcut: PasteShortcut) {
         self.shortcut = shortcut;
     }
@@ -249,8 +250,8 @@ impl TextInjector for WtypeInjector {
             }
             OutputMode::Paste => {
                 let shortcut = self.shortcut;
-                // `-k v` — именно нажатие клавиши; голое `v` wtype набрал бы как текст, и
-                // модификатор к такому «набору» не применяется.
+                // `-k v` is a real key press; a bare `v` would be typed by wtype as text, and
+                // the modifier does not apply to such "typing"
                 paste_via_clipboard(&mut self.clipboard, text, || match shortcut {
                     PasteShortcut::CtrlV => run("wtype", &["-M", "ctrl", "-k", "v", "-m", "ctrl"]),
                     PasteShortcut::CtrlShiftV => run(
@@ -270,7 +271,7 @@ impl TextInjector for WtypeInjector {
     }
 }
 
-/// Синтез ввода через `/dev/uinput` сторонним демоном.
+/// Input synthesis through `/dev/uinput` by a third-party daemon
 #[derive(Debug)]
 pub struct YdotoolInjector {
     clipboard: ClipboardGuard<SystemClipboard>,
@@ -289,7 +290,7 @@ impl YdotoolInjector {
         which::which("ydotool").is_ok()
     }
 
-    /// Сменить сочетание вставки: терминалам нужен Ctrl+Shift+V.
+    /// Change the paste key combination: terminals need Ctrl+Shift+V
     pub fn set_shortcut(&mut self, shortcut: PasteShortcut) {
         self.shortcut = shortcut;
     }
@@ -314,7 +315,7 @@ impl TextInjector for YdotoolInjector {
                 })
             }
             OutputMode::Paste => {
-                // Коды из linux/input-event-codes.h: 29 ctrl, 42 shift, 47 v; `:1` — нажатие.
+                // Codes from linux/input-event-codes.h: 29 ctrl, 42 shift, 47 v; `:1` is a press
                 let shortcut = self.shortcut;
                 paste_via_clipboard(&mut self.clipboard, text, || match shortcut {
                     PasteShortcut::CtrlV => {
@@ -356,7 +357,7 @@ mod tests {
     fn terminals_get_the_shift_variant_of_the_shortcut() {
         let plain = HyprctlInjector::new(true, 0, PasteShortcut::CtrlV);
         let terminal = HyprctlInjector::new(true, 0, PasteShortcut::CtrlShiftV);
-        // Клавиша кодом, а не keysym: иначе при русской раскладке сочетание не доходит.
+        // The key by code, not by keysym: otherwise the combination does not arrive with the Russian layout
         assert_eq!(plain.shortcut_arg(), "CTRL, code:55, activewindow");
         assert_eq!(terminal.shortcut_arg(), "CTRL SHIFT, code:55, activewindow");
     }
