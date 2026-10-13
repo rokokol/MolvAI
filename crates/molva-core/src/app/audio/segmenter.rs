@@ -1,67 +1,70 @@
 // SPDX-License-Identifier: MIT
-//! Нарезка ещё идущей записи на куски для распознавания.
+//! Cutting of a recording that is still running into chunks for recognition
 //!
-//! Реплику незачем распознавать целиком после отпускания клавиши: пока человек говорит, процессор
-//! простаивает. Сегментатор накапливает поток и отдаёт готовый кусок, как только набралось
-//! достаточно звука и человек сделал паузу — такой кусок уходит в whisper прямо во время речи, а
-//! после отпускания остаётся распознать только хвост.
+//! There is no reason to recognize a whole phrase after the key release: while the person
+//! speaks, the processor is idle. The segmenter collects the stream and returns a ready chunk
+//! as soon as enough sound has come in and the person has made a pause. Such a chunk goes to
+//! whisper during the speech, and after the release only the tail remains to recognize
 //!
-//! Резать посреди слога нельзя: whisper по обрывку слова уверенно печатает не то слово. Отсюда два
-//! правила. Граница ищется по середине паузы, а не по таймеру; когда пауз нет вовсе и кусок дорос
-//! до предела, граница ставится по самому тихому окну последних двух секунд. Соседние куски
-//! перекрываются на [`SegmenterConfig::overlap_ms`], чтобы звук на самой границе попал в оба.
+//! A cut in the middle of a syllable is not allowed: from a fragment of a word, whisper
+//! confidently prints a wrong word. This gives two rules. The boundary is searched at the middle
+//! of a pause, not by a timer. When there are no pauses at all and the chunk has reached the
+//! limit, the boundary goes to the quietest window of the last two seconds. Neighbouring chunks
+//! overlap by [`SegmenterConfig::overlap_ms`], so the sound exactly at the boundary falls into
+//! both
 //!
-//! Структура чистая: ни времени, ни потоков, ни ввода-вывода — только отсчёты на входе и куски на
-//! выходе, поэтому проверяется синтетическими сигналами без микрофона и без модели.
+//! The structure is pure: no time, no threads, no I/O. It takes only samples as input and
+//! returns chunks as output, so synthetic signals test it without a microphone and without a
+//! model
 
 use crate::domain::audio::PcmAudio;
 
-/// Куска короче этого не бывает: на паузу до него сегментатор не реагирует.
+/// A chunk is never shorter than this: the segmenter ignores a pause before this length
 ///
-/// Три секунды — это замер, а не вкус. На модели `small` и процессоре распознавание идёт примерно
-/// со скоростью речи, поэтому длина куска решает всё: с пятью секундами очередь не успевает
-/// разгрестись до отпускания клавиши (12,6 → 12,2 с ожидания, то есть выигрыша нет), с тремя
-/// ожидание падает вдвое (12,6 → 6,8 с), а с двумя снова растёт (9,6 с) — каждый лишний кусок
-/// платит за свой запас окна энкодера.
+/// Three seconds is a measurement, not a taste. On the `small` model and a CPU, recognition
+/// runs at about the speed of speech, so the chunk length decides everything. With five seconds
+/// the queue does not clear before the key release (12.6 → 12.2 s of waiting, so there is no
+/// gain). With three seconds the wait falls by half (12.6 → 6.8 s). With two seconds it grows
+/// again (9.6 s), because each extra chunk pays for its own encoder window padding
 pub const DEFAULT_TARGET_CHUNK_SECS: f32 = 3.0;
 
-/// Предел, после которого кусок режется даже без паузы.
+/// Limit after which a chunk is cut even without a pause
 pub const DEFAULT_MAX_CHUNK_SECS: f32 = 10.0;
 
-/// Перекрытие соседних кусков: звук на границе попадает в оба куска.
+/// Overlap of neighbouring chunks: the sound at the boundary falls into both chunks
 pub const DEFAULT_OVERLAP_MS: u32 = 150;
 
-/// Пауза, по которой режется кусок, если про неё не сказано в настройках.
+/// Pause at which a chunk is cut, when the settings do not say otherwise
 pub const DEFAULT_CHUNK_PAUSE_MS: u32 = 700;
 
-/// Окно анализа уровня: как в [`crate::app::audio::trim`], 20 мс.
+/// Window for the level analysis: as in [`crate::app::audio::trim`], 20 ms
 const WINDOW_MS: u32 = 20;
 
-/// Хвост, в котором ищется самое тихое окно, когда кусок дорос до предела.
+/// Tail in which the quietest window is searched, when the chunk has reached the limit
 const QUIETEST_LOOKBACK_MS: u32 = 2_000;
 
-/// Уровень, который считаем абсолютной тишиной: логарифм нуля не определён.
+/// Level that counts as absolute silence: the logarithm of zero is not defined
 const SILENCE_FLOOR_DB: f32 = -120.0;
 
-/// Настройки нарезки.
+/// Cutting settings
 #[derive(Debug, Clone, PartialEq)]
 pub struct SegmenterConfig {
-    /// Частота дискретизации потока; куски отдаются на ней же.
+    /// Sample rate of the stream; chunks are returned at the same rate
     pub sample_rate: u32,
-    /// Раньше этого кусок не отдаётся, даже если пауза уже была.
+    /// A chunk is not returned before this length, even if a pause has already occurred
     pub target_chunk_secs: f32,
-    /// Позже этого кусок режется по самому тихому окну, даже если паузы не было.
+    /// After this length a chunk is cut at the quietest window, even if there was no pause
     pub max_chunk_secs: f32,
-    /// Пауза короче этой границей не считается.
+    /// A pause shorter than this does not count as a boundary
     pub min_pause_ms: u32,
-    /// Порог тишины в дБFS, как `audio.silence_threshold_db`.
+    /// Silence threshold in dBFS, as `audio.silence_threshold_db`
     pub silence_threshold_db: f32,
-    /// Перекрытие соседних кусков.
+    /// Overlap of neighbouring chunks
     pub overlap_ms: u32,
 }
 
 impl SegmenterConfig {
-    /// Настройки по умолчанию для частоты потока: пауза и порог приходят из конфига аудио.
+    /// Default settings for a stream rate: the pause and the threshold come from the audio config
     pub fn new(sample_rate: u32, min_pause_ms: u32, silence_threshold_db: f32) -> Self {
         Self {
             sample_rate,
@@ -74,13 +77,13 @@ impl SegmenterConfig {
     }
 }
 
-/// Готовый кусок записи.
+/// A ready chunk of the recording
 #[derive(Debug, Clone, PartialEq)]
 pub struct Chunk {
     pub audio: PcmAudio,
-    /// Порядковый номер куска в реплике, начиная с нуля.
+    /// Sequence number of the chunk in the phrase, starting from zero
     pub index: usize,
-    /// Смещение начала куска от начала записи.
+    /// Offset of the chunk start from the start of the recording
     pub start_ms: u32,
 }
 
@@ -90,17 +93,18 @@ impl Chunk {
     }
 }
 
-/// Нарезчик потока на куски.
+/// Cutter of a stream into chunks
 #[derive(Debug)]
 pub struct Segmenter {
     config: SegmenterConfig,
-    /// Ещё не отданные отсчёты; начинается с перекрытия предыдущего куска.
+    /// Samples not yet returned; it starts with the overlap of the previous chunk
     buffer: Vec<f32>,
-    /// Уровень каждого целого окна буфера в дБFS.
+    /// Level of each whole window of the buffer in dBFS
     windows: Vec<f32>,
-    /// Абсолютный индекс `buffer[0]` от начала записи: из него считается `start_ms`.
+    /// Absolute index of `buffer[0]` from the start of the recording; `start_ms` is computed
+    /// from it
     offset: usize,
-    /// Сколько кусков уже отдано.
+    /// How many chunks are already returned
     emitted: usize,
 }
 
@@ -119,20 +123,21 @@ impl Segmenter {
         &self.config
     }
 
-    /// Сколько кусков отдано с начала записи.
+    /// How many chunks are returned since the start of the recording
     pub fn emitted(&self) -> usize {
         self.emitted
     }
 
-    /// Добавить свежие отсчёты и забрать всё, что дозрело до куска.
+    /// Add fresh samples and take everything that has matured into a chunk
     ///
-    /// Один вызов может отдать несколько кусков: если поток пришёл большой порцией, границ в нём
-    /// может оказаться сразу несколько.
+    /// One call can return several chunks: if the stream came as a big portion, it may hold
+    /// several boundaries at once
     pub fn push(&mut self, samples: &[f32]) -> Vec<Chunk> {
         self.buffer.extend_from_slice(samples);
         let mut out = Vec::new();
         if self.config.sample_rate == 0 {
-            // Без частоты длительности нет: резать не по чему, всё уйдёт хвостом.
+            // Without a sample rate there is no duration: nothing to cut by, and all goes to
+            // the tail
             return out;
         }
         loop {
@@ -140,7 +145,7 @@ impl Segmenter {
             if self.buffer.len() < self.target_samples() {
                 break;
             }
-            // Пауза важнее предела: если она есть, резать по ней всегда лучше.
+            // A pause beats the limit: if a pause exists, cutting at it is always better
             let cut = self
                 .pause_cut()
                 .or_else(|| (self.buffer.len() >= self.max_samples()).then(|| self.quietest_cut()));
@@ -152,9 +157,10 @@ impl Segmenter {
         out
     }
 
-    /// Хвост записи: всё, что осталось в буфере и не было отдано.
+    /// Tail of the recording: everything that remains in the buffer and was not returned
     ///
-    /// `None`, если в остатке нет ни одного окна громче порога: распознавать тишину незачем.
+    /// `None` if the remainder has no window louder than the threshold: there is no reason to
+    /// recognize silence
     pub fn finish(&mut self) -> Option<Chunk> {
         self.analyse();
         let cut = self.buffer.len();
@@ -164,7 +170,7 @@ impl Segmenter {
         self.take(cut)
     }
 
-    /// Длина окна анализа в отсчётах; для нулевой частоты — один отсчёт.
+    /// Length of the analysis window in samples; for a zero rate it is one sample
     fn window_len(&self) -> usize {
         ((u64::from(self.config.sample_rate) * u64::from(WINDOW_MS) / 1000) as usize).max(1)
     }
@@ -186,7 +192,7 @@ impl Segmenter {
             .max(self.target_samples())
     }
 
-    /// Посчитать уровень для целых окон, которые появились после прошлого вызова.
+    /// Compute the level for the whole windows that appeared after the previous call
     fn analyse(&mut self) {
         let window = self.window_len();
         while (self.windows.len() + 1) * window <= self.buffer.len() {
@@ -200,10 +206,10 @@ impl Segmenter {
         self.windows[index] < self.config.silence_threshold_db
     }
 
-    /// Граница по середине первой достаточно длинной паузы после `target`.
+    /// Boundary at the middle of the first pause that is long enough after `target`
     ///
-    /// Пауза в конце буфера считается наравне с законченной: ждать, пока человек снова заговорит,
-    /// значит потерять то самое время, ради которого всё и затевалось.
+    /// A pause at the end of the buffer counts the same as a finished pause. To wait until the
+    /// person speaks again would waste the very time that the design exists to save
     fn pause_cut(&self) -> Option<usize> {
         let window = self.window_len();
         let min_run = (self.config.min_pause_ms as usize / WINDOW_MS as usize).max(1);
@@ -230,7 +236,8 @@ impl Segmenter {
         None
     }
 
-    /// Граница по самому тихому окну последних секунд: паузы не было, а резать пора.
+    /// Boundary at the quietest window of the last seconds: there was no pause, but it is
+    /// time to cut
     fn quietest_cut(&self) -> usize {
         let window = self.window_len();
         let fallback = self.max_samples().clamp(1, self.buffer.len());
@@ -245,16 +252,16 @@ impl Segmenter {
                 .partial_cmp(&self.windows[*b])
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
-        // Середина самого тихого окна: слог не рвётся ни в одну, ни в другую сторону.
+        // The middle of the quietest window: the syllable is not torn to either side
         quietest.map_or(fallback, |index| {
             (index * window + window / 2).min(self.buffer.len())
         })
     }
 
-    /// Отрезать кусок по границе `cut` и оставить перекрытие для следующего.
+    /// Cut off a chunk at the boundary `cut` and keep the overlap for the next one
     ///
-    /// `None` означает, что в куске не было ни одного окна громче порога: такой кусок в whisper не
-    /// уходит, иначе модель напечатает на тишине хвост субтитров.
+    /// `None` means that the chunk had no window louder than the threshold. Such a chunk does
+    /// not go to whisper, or the model would print a subtitle tail on the silence
     fn take(&mut self, cut: usize) -> Option<Chunk> {
         let window = self.window_len();
         let cut = cut.clamp(1, self.buffer.len());
@@ -267,14 +274,14 @@ impl Segmenter {
         let samples = self.buffer[..cut].to_vec();
         let start_ms = self.ms_of(self.offset);
 
-        // Перекрытие оставляем следующему куску; `max(1)` гарантирует движение вперёд.
+        // The overlap stays for the next chunk; `max(1)` guarantees forward progress
         let keep_from = cut
             .saturating_sub(self.samples_for_ms(self.config.overlap_ms))
             .max(1)
             .min(cut);
         self.buffer.drain(..keep_from);
         self.offset += keep_from;
-        // Окна считались от прежнего начала буфера: выравнивание сбилось, считаем заново.
+        // The windows were counted from the old buffer start: the alignment broke, so count again
         self.windows.clear();
         self.analyse();
 
@@ -320,7 +327,7 @@ mod tests {
 
     const RATE: u32 = 16_000;
 
-    /// Короткие пороги: тест не должен генерировать по двенадцать секунд сигнала на проверку.
+    /// Short thresholds: a test must not generate twelve seconds of signal per check
     fn config() -> SegmenterConfig {
         SegmenterConfig {
             sample_rate: RATE,
@@ -358,12 +365,16 @@ mod tests {
 
         let chunks = segmenter.push(&signal);
 
-        assert_eq!(chunks.len(), 1, "пауза не стала границей: {chunks:?}");
-        // Граница — середина паузы: 600 мс тона плюс половина от 400 мс тишины.
+        assert_eq!(
+            chunks.len(),
+            1,
+            "the pause did not become a boundary: {chunks:?}"
+        );
+        // The boundary is the middle of the pause: 600 ms of tone plus half of 400 ms of silence
         let cut = ms_of(&chunks[0]);
         assert!(
             (750..=850).contains(&cut),
-            "резать надо по середине паузы, а вышло на {cut} мс"
+            "the cut must be at the middle of the pause, but it came at {cut} ms"
         );
         assert_eq!(chunks[0].index, 0);
         assert_eq!(chunks[0].start_ms, 0);
@@ -375,19 +386,23 @@ mod tests {
 
         let chunks = segmenter.push(&tone(1_700));
 
-        assert_eq!(chunks.len(), 1, "непрерывный тон не разрезан по пределу");
+        assert_eq!(
+            chunks.len(),
+            1,
+            "the continuous tone was not cut at the limit"
+        );
         let cut = ms_of(&chunks[0]);
         assert!(
             cut <= 1_500,
-            "кусок должен уложиться в предел 1500 мс, а вышел на {cut} мс"
+            "the chunk must fit the limit of 1500 ms, but it came at {cut} ms"
         );
-        assert!(cut > 0, "кусок пустой");
+        assert!(cut > 0, "the chunk is empty");
     }
 
     #[test]
     fn without_a_pause_the_boundary_lands_on_the_quietest_window() {
         let mut segmenter = Segmenter::new(config());
-        // Речь без пауз, но с провалом громкости на 1000 мс: резать надо там.
+        // Speech without pauses, but with a drop in loudness at 1000 ms: the cut belongs there
         let mut signal = tone(1_000);
         signal.extend(tone_at(100, 0.02));
         signal.extend(tone(600));
@@ -398,7 +413,7 @@ mod tests {
         let cut = ms_of(&chunks[0]);
         assert!(
             (980..=1_120).contains(&cut),
-            "граница должна попасть в провал на 1000 мс, а вышла на {cut} мс"
+            "the boundary must fall into the drop at 1000 ms, but it came at {cut} ms"
         );
     }
 
@@ -408,9 +423,9 @@ mod tests {
 
         assert!(
             segmenter.push(&tone(300)).is_empty(),
-            "кусок короче target отдавать рано"
+            "it is too early to return a chunk shorter than target"
         );
-        let tail = segmenter.finish().expect("хвост есть");
+        let tail = segmenter.finish().expect("there is a tail");
 
         assert_eq!(tail.index, 0);
         assert_eq!(ms_of(&tail), 300);
@@ -428,10 +443,10 @@ mod tests {
     #[test]
     fn silence_alone_never_reaches_the_model() {
         let mut segmenter = Segmenter::new(config());
-        // Две секунды тишины перевалили и за target, и за предел.
+        // Two seconds of silence passed both target and the limit
         assert!(
             segmenter.push(&silence(2_000)).is_empty(),
-            "тишина ушла бы в whisper и вернулась «Продолжением следует»"
+            "the silence would go to whisper and return as \"Продолжение следует\""
         );
         assert!(segmenter.finish().is_none());
     }
@@ -442,29 +457,29 @@ mod tests {
         config.overlap_ms = 100;
         let mut segmenter = Segmenter::new(config);
 
-        // Три тона через паузы: две границы, значит два куска и хвост.
+        // Three tones with pauses between them: two boundaries, so two chunks and a tail
         let mut signal = tone(600);
         signal.extend(silence(400));
         signal.extend(tone(600));
         signal.extend(silence(400));
         signal.extend(tone(600));
         let chunks = segmenter.push(&signal);
-        let tail = segmenter.finish().expect("хвост есть");
+        let tail = segmenter.finish().expect("there is a tail");
 
-        assert_eq!(chunks.len(), 2, "ожидались две границы: {chunks:?}");
+        assert_eq!(chunks.len(), 2, "two boundaries expected: {chunks:?}");
         let first_end = chunks[0].start_ms + ms_of(&chunks[0]);
         assert!(
             chunks[1].start_ms + 100 >= first_end && chunks[1].start_ms < first_end,
-            "куски не перекрылись: первый кончается на {first_end}, второй начинается на {}",
+            "the chunks do not overlap: the first ends at {first_end}, the second starts at {}",
             chunks[1].start_ms
         );
-        assert_eq!(tail.index, 2, "нумерация кусков сквозная");
+        assert_eq!(tail.index, 2, "chunk numbering runs through");
     }
 
     #[test]
     fn a_pause_before_the_target_is_not_a_boundary() {
         let mut segmenter = Segmenter::new(config());
-        // Пауза на 200 мс — раньше target в 500 мс: кусок был бы слишком коротким.
+        // A pause at 200 ms is before target at 500 ms: the chunk would be too short
         let mut signal = tone(150);
         signal.extend(silence(300));
         signal.extend(tone(200));
@@ -483,21 +498,25 @@ mod tests {
 
         let at_once = whole.push(&signal);
         let mut streamed = Vec::new();
-        // Порции по 100 мс — так демон снимает звук с микрофона во время записи.
+        // Portions of 100 ms: this is how the daemon takes sound from the microphone during
+        // recording
         for portion in signal.chunks(RATE as usize / 10) {
             streamed.extend(piecemeal.push(portion));
         }
 
         assert_eq!(at_once.len(), 1);
-        assert_eq!(streamed.len(), 1, "поток порциями не дал куска");
-        // Обе границы попали в паузу 600…1000 мс. Потоком режется раньше: как только пауза
-        // дотянула до min_pause, ждать её конца незачем.
+        assert_eq!(streamed.len(), 1, "the stream in portions gave no chunk");
+        // Both boundaries fell into the pause 600…1000 ms. The stream cuts earlier: once the
+        // pause reaches min_pause, there is no reason to wait for its end
         for cut in [ms_of(&at_once[0]), ms_of(&streamed[0])] {
-            assert!((600..=1_000).contains(&cut), "граница вне паузы: {cut} мс");
+            assert!(
+                (600..=1_000).contains(&cut),
+                "the boundary is outside the pause: {cut} ms"
+            );
         }
         assert!(
             ms_of(&streamed[0]) <= ms_of(&at_once[0]),
-            "потоковая нарезка не должна ждать дольше пакетной"
+            "streaming cut must not wait longer than batch cut"
         );
     }
 
@@ -515,7 +534,7 @@ mod tests {
         assert_eq!(chunks[0].start_ms, 0);
         assert!(
             chunks[1].start_ms >= 700,
-            "второй кусок начинается после первого: {}",
+            "the second chunk starts after the first: {}",
             chunks[1].start_ms
         );
     }
@@ -533,7 +552,7 @@ mod tests {
     fn a_zero_sample_rate_does_not_divide_by_zero() {
         let mut segmenter = Segmenter::new(SegmenterConfig::new(0, 700, -45.0));
         assert!(segmenter.push(&[0.5; 100]).is_empty());
-        let tail = segmenter.finish().expect("хвост отдан как есть");
+        let tail = segmenter.finish().expect("the tail is returned as it is");
         assert_eq!(tail.start_ms, 0);
     }
 }

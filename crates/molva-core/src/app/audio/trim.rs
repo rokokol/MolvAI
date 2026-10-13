@@ -1,34 +1,34 @@
 // SPDX-License-Identifier: MIT
-//! Обрезка тишины по краям записи.
+//! Trimming of silence at the edges of a recording
 //!
-//! Пользователь нажимает хоткей раньше, чем начинает говорить, и отпускает позже, чем замолчал:
-//! на краях остаются доли секунды тишины. Whisper на такой тишине склонен галлюцинировать
-//! («Продолжение следует…», «Субтитры сделал DimaTorzok»), а WPM считается по длительности
-//! аудио — поэтому края режутся, а внутренние паузы сохраняются как есть: пауза внутри реплики
-//! это часть речи, и вырезать её значит склеить слова и завысить темп.
+//! The user presses the hotkey before speech starts and releases it after speech stops, so
+//! fractions of a second of silence remain at the edges. Whisper tends to hallucinate on such
+//! silence ("Продолжение следует…", "Субтитры сделал DimaTorzok"), and WPM is computed from
+//! the audio duration. So the edges are cut and the inner pauses stay as they are: a pause
+//! inside a phrase is part of speech, and cutting it would join words and inflate the pace
 
 use crate::config::AudioConfig;
 use crate::domain::audio::PcmAudio;
 
-/// Запас, который остаётся до первого и после последнего звука.
+/// Margin that remains before the first sound and after the last sound
 ///
-/// Ноль обрезал бы атаку первого согласного, а полсекунды вернули бы тишину, ради которой всё и
-/// затевалось.
+/// Zero would cut the attack of the first consonant, and half a second would bring back the
+/// silence that the trimming was meant to remove
 ///
-/// Отсюда же гарантия «первый символ реплики не теряется» (AM-04): двести миллисекунд в начале
-/// записи не выбрасываются никогда, поэтому взрывной согласный в начале слова («паспорт»,
-/// «ключ») доезжает до whisper целиком, а не половиной.
+/// This margin also gives the guarantee "the first character of a phrase is not lost" (AM-04):
+/// the first two hundred milliseconds of a recording are never discarded. So a plosive
+/// consonant at the start of a word ("паспорт", "ключ") reaches whisper whole, not by half
 pub const DEFAULT_KEEP_MS: u32 = 200;
 
-/// Окно анализа: 20 мс — компромисс между реакцией на короткие звуки и устойчивостью к шуму.
+/// Analysis window: 20 ms balances response to short sounds against resistance to noise
 const WINDOW_MS: u32 = 20;
 
-/// Уровень, который считаем «абсолютным нулём»: логарифм от нуля не определён.
+/// Level that counts as "absolute zero": the logarithm of zero is not defined
 pub const SILENCE_FLOOR_DB: f32 = -120.0;
 
-/// Пиковый уровень сигнала в дБFS (0 дБ — максимальная амплитуда 1.0).
+/// Peak level of the signal in dBFS (0 dB is the maximum amplitude 1.0)
 ///
-/// Пустой буфер и абсолютная тишина дают [`SILENCE_FLOOR_DB`].
+/// An empty buffer and absolute silence give [`SILENCE_FLOOR_DB`]
 pub fn peak_db(audio: &PcmAudio) -> f32 {
     let peak = audio
         .samples
@@ -37,17 +37,18 @@ pub fn peak_db(audio: &PcmAudio) -> f32 {
     amplitude_to_db(peak)
 }
 
-/// Есть ли в записи хоть одно окно громче порога.
+/// Whether the recording has at least one window louder than the threshold
 ///
-/// Порог задаётся в дБFS (в конфиге `audio.silence_threshold_db`, по умолчанию −45).
+/// The threshold is set in dBFS (in the config as `audio.silence_threshold_db`, default −45)
 pub fn is_silent(audio: &PcmAudio, threshold_db: f32) -> bool {
     loudest_window_db(audio) < threshold_db
 }
 
-/// Обрезать тишину по краям, оставив `keep_ms` запаса до первого и после последнего звука.
+/// Trim silence at the edges, and keep `keep_ms` of margin before the first sound and after the
+/// last sound
 ///
-/// Возвращает пустой буфер той же частоты, если громче порога не оказалось ни одного окна.
-/// Внутренние паузы не трогаются.
+/// Returns an empty buffer with the same sample rate if no window is louder than the threshold.
+/// Inner pauses are not touched
 pub fn trim_silence(audio: &PcmAudio, threshold_db: f32, keep_ms: u32) -> PcmAudio {
     let window = window_len(audio.sample_rate);
     if audio.samples.is_empty() || window == 0 {
@@ -73,11 +74,11 @@ pub fn trim_silence(audio: &PcmAudio, threshold_db: f32, keep_ms: u32) -> PcmAud
     PcmAudio::new(audio.samples[start..end].to_vec(), audio.sample_rate)
 }
 
-/// Обрезка по настройкам пользователя.
+/// Trimming by the user settings
 ///
-/// При `audio.trim_silence = false` запись возвращается как есть. Внутренние паузы не режутся
-/// никогда, поэтому `audio.vad_min_pause_ms` соблюдается по построению: пауза любой длины внутри
-/// реплики остаётся на месте (E-01/02).
+/// With `audio.trim_silence = false` the recording is returned as it is. Inner pauses are never
+/// cut, so `audio.vad_min_pause_ms` holds by construction: a pause of any length inside a
+/// phrase stays in place (E-01/02)
 pub fn trim_for_config(audio: &PcmAudio, cfg: &AudioConfig) -> PcmAudio {
     if !cfg.trim_silence {
         return audio.clone();
@@ -85,7 +86,7 @@ pub fn trim_for_config(audio: &PcmAudio, cfg: &AudioConfig) -> PcmAudio {
     trim_silence(audio, cfg.silence_threshold_db, DEFAULT_KEEP_MS)
 }
 
-/// Уровень самого громкого окна; для пустого буфера — [`SILENCE_FLOOR_DB`].
+/// Level of the loudest window; for an empty buffer it is [`SILENCE_FLOOR_DB`]
 fn loudest_window_db(audio: &PcmAudio) -> f32 {
     let window = window_len(audio.sample_rate);
     if audio.samples.is_empty() || window == 0 {
@@ -98,7 +99,8 @@ fn loudest_window_db(audio: &PcmAudio) -> f32 {
         .fold(SILENCE_FLOOR_DB, f32::max)
 }
 
-/// Длина окна анализа в отсчётах; нулевая частота даёт 0 и трактуется вызывающим как «нет данных».
+/// Length of the analysis window in samples; a zero sample rate gives 0, which the caller reads
+/// as "no data"
 fn window_len(sample_rate: u32) -> usize {
     (u64::from(sample_rate) * u64::from(WINDOW_MS) / 1000) as usize
 }
@@ -111,7 +113,7 @@ fn rms(samples: &[f32]) -> f32 {
     (sum / samples.len() as f32).sqrt()
 }
 
-/// Амплитуда 0.0..=1.0 → дБFS, с полом на [`SILENCE_FLOOR_DB`].
+/// Amplitude 0.0..=1.0 → dBFS, with a floor at [`SILENCE_FLOOR_DB`]
 fn amplitude_to_db(amplitude: f32) -> f32 {
     if amplitude <= 0.0 {
         return SILENCE_FLOOR_DB;
@@ -125,7 +127,7 @@ mod tests {
 
     const RATE: u32 = 16_000;
 
-    /// Отрезок синуса заданной амплитуды: ровный сигнал, у которого RMS предсказуем.
+    /// Segment of a sine of the given amplitude: a steady signal with a predictable RMS
     fn tone(ms: u32, amplitude: f32) -> Vec<f32> {
         let n = (u64::from(RATE) * u64::from(ms) / 1000) as usize;
         (0..n).map(|i| amplitude * (i as f32 * 0.3).sin()).collect()
@@ -159,15 +161,18 @@ mod tests {
         samples.extend(silence(500));
         let out = trim_silence(&audio(samples), -45.0, 0);
 
-        // Осталась речь ± одно окно анализа (20 мс).
+        // The speech remains, ± one analysis window (20 ms)
         let expected = (RATE as f32 * 0.3) as usize;
         let slack = window_len(RATE) * 2;
         assert!(
             out.samples.len() <= expected + slack,
-            "не обрезано: {} отсчётов при ожидаемых ~{expected}",
+            "not trimmed: {} samples where ~{expected} expected",
             out.samples.len()
         );
-        assert!(out.samples.len() + slack >= expected, "срезана сама речь");
+        assert!(
+            out.samples.len() + slack >= expected,
+            "the speech itself was cut"
+        );
     }
 
     #[test]
@@ -182,7 +187,7 @@ mod tests {
         let slack = window_len(RATE) * 2;
         assert!(
             out.samples.len() + slack >= expected,
-            "запас keep_ms не оставлен: {} отсчётов",
+            "the keep_ms margin was not kept: {} samples",
             out.samples.len()
         );
     }
@@ -195,10 +200,10 @@ mod tests {
         let total = samples.len();
         let out = trim_silence(&audio(samples), -45.0, 0);
 
-        // Пауза внутри реплики остаётся: длина почти не изменилась.
+        // The pause inside the phrase stays: the length barely changed
         assert!(
             out.samples.len() * 100 >= total * 95,
-            "внутренняя пауза вырезана: {} из {total}",
+            "the inner pause was cut: {} of {total}",
             out.samples.len()
         );
     }
@@ -210,22 +215,26 @@ mod tests {
         let first_loud = speech
             .iter()
             .position(|s| s.abs() > 0.4)
-            .expect("в тоне есть громкий отсчёт");
+            .expect("the tone has a loud sample");
         samples.extend(speech.clone());
         let out = trim_silence(&audio(samples), -45.0, 20);
 
-        // Начало речи не съедено: громкий отсчёт остался в первых 100 мс результата.
+        // The start of the speech is not eaten: a loud sample stays in the first 100 ms of the
+        // result
         let head = &out.samples[..out.samples.len().min(RATE as usize / 10)];
         assert!(
             head.iter().any(|s| s.abs() > 0.4),
-            "начало речи потеряно (первый громкий отсчёт был на {first_loud})"
+            "the start of the speech is lost (the first loud sample was at {first_loud})"
         );
     }
 
     #[test]
     fn quiet_noise_below_threshold_is_treated_as_silence() {
         let out = trim_silence(&audio(tone(1000, 0.001)), -45.0, 0);
-        assert!(out.samples.is_empty(), "шум −60 дБ принят за речь");
+        assert!(
+            out.samples.is_empty(),
+            "noise at −60 dB was taken for speech"
+        );
     }
 
     #[test]
@@ -252,11 +261,11 @@ mod tests {
         samples.extend(tone(300, 0.5));
         let input = audio(samples);
 
-        // Порог −45 дБ: речь громче, её оставляем.
+        // Threshold −45 dB: the speech is louder, so we keep it
         let normal = AudioConfig::default();
         assert!(!trim_for_config(&input, &normal).samples.is_empty());
 
-        // Порог 0 дБ: громче нет ничего, значит тишина целиком.
+        // Threshold 0 dB: nothing is louder, so the whole recording counts as silence
         let deaf = AudioConfig {
             silence_threshold_db: 0.0,
             ..AudioConfig::default()

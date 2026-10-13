@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
-//! Прикладной слой: сценарии поверх контрактов `domain` и реализаций `infra`.
+//! Application layer: scenarios on top of the `domain` contracts and the `infra` implementations
 //!
-//! Здесь живут реализации, которые проверяются фейками и временными каталогами: демон и его
-//! машина состояний, конвейер реплики, журнал, статистика, правила, словарь, стили, обрезка
-//! тишины, модели, bench. Объявления по одному на строку: файл общий для нескольких дорожек.
+//! This layer holds the implementations that tests check with fakes and temporary directories:
+//! the daemon and its state machine, the phrase pipeline, the journal, statistics, rules,
+//! the dictionary, styles, silence trimming, models, bench. Declarations stay one per line,
+//! because several work tracks share this file
 
 pub mod audio;
 pub mod bench;

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! Обработка записанного сигнала до распознавания.
+//! Processing of the recorded signal before recognition
 
 pub mod segmenter;
 pub mod trim;

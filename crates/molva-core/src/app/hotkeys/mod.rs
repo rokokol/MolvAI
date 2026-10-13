@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! Горячие клавиши: разбор комбинаций и привязка их к действиям.
+//! Hotkeys: parsing of key combinations and their binding to actions
 
 pub mod spec;
 
@@ -10,10 +10,10 @@ use crate::domain::hotkeys::{HotkeyAction, HotkeyError};
 
 pub use spec::{HotkeySpec, Modifier};
 
-/// Привязка действий к комбинациям из конфига.
+/// Binding of actions to the combinations from the config
 ///
-/// Пустая строка в конфиге означает «действие не назначено», а не ошибку: пользователь вправе
-/// отключить, например, отмену.
+/// An empty string in the config means "action not assigned", not an error: the user may
+/// disable cancel, for example
 pub fn specs_from_config(
     config: &HotkeysConfig,
 ) -> Result<HashMap<HotkeyAction, HotkeySpec>, HotkeyError> {
@@ -42,7 +42,7 @@ mod tests {
     fn default_config_binds_every_action() {
         let specs = specs_from_config(&HotkeysConfig::default()).unwrap();
         assert_eq!(specs.len(), 5);
-        // Умолчания: F9 (код evdev 67) и Ctrl+Alt+C (код 46) — нарочно простые клавиши.
+        // Defaults: F9 (evdev code 67) and Ctrl+Alt+C (code 46) are simple keys on purpose
         assert_eq!(specs[&HotkeyAction::PushToTalk].key, 67);
         assert_eq!(specs[&HotkeyAction::Cancel].key, 46);
     }

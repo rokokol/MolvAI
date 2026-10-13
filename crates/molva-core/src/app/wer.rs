@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: MIT
-//! WER и CER: доля ошибок распознавания относительно эталона.
+//! WER and CER: the share of recognition errors relative to the reference
 //!
-//! Метрика считается по нормализованному тексту — регистр, пунктуация и «ё» не должны
-//! превращаться в ошибки, иначе жюри увидит разницу там, где человек её не слышит.
-//! Формула классическая: расстояние Левенштейна (замены + вставки + удаления), делённое
-//! на длину эталона. Значение больше 1.0 возможно — гипотеза может быть длиннее эталона.
+//! The metric is computed on normalized text. Case, punctuation and "ё" must not turn into
+//! errors, or the judges would see a difference where a person hears none. The formula is the
+//! classic one: the Levenshtein distance (substitutions + insertions + deletions) divided by
+//! the length of the reference. A value above 1.0 is possible, because the hypothesis can be
+//! longer than the reference
 
-/// Настройки нормализации перед сравнением.
+/// Normalization settings before the comparison
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Normalization {
     pub lowercase: bool,
     pub strip_punctuation: bool,
-    /// «ё» → «е»: в русских расшифровках это одна и та же буква на слух.
+    /// "ё" → "е": in Russian transcripts these are the same letter to the ear
     pub fold_yo: bool,
 }
 
@@ -25,7 +26,7 @@ impl Default for Normalization {
     }
 }
 
-/// Привести текст к сравнимому виду: регистр, пунктуация, пробелы.
+/// Bring the text to a comparable form: case, punctuation, spaces
 pub fn normalize(text: &str, options: Normalization) -> String {
     let mut out = String::with_capacity(text.len());
     for ch in text.chars() {
@@ -41,7 +42,7 @@ pub fn normalize(text: &str, options: Normalization) -> String {
         if ch.is_whitespace() {
             out.push(' ');
         } else if options.strip_punctuation && !ch.is_alphanumeric() {
-            // Апостроф внутри слова (don't) не должен разрывать слово на два.
+            // An apostrophe inside a word (don't) must not split the word in two
             if ch == '\'' || ch == '\u{2019}' {
                 out.push('\'');
             } else {
@@ -56,7 +57,7 @@ pub fn normalize(text: &str, options: Normalization) -> String {
     out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// Слова нормализованного текста.
+/// Words of the normalized text
 pub fn words(text: &str, options: Normalization) -> Vec<String> {
     normalize(text, options)
         .split_whitespace()
@@ -64,7 +65,7 @@ pub fn words(text: &str, options: Normalization) -> Vec<String> {
         .collect()
 }
 
-/// Расстояние Левенштейна между последовательностями.
+/// Levenshtein distance between sequences
 pub fn levenshtein<T: PartialEq>(a: &[T], b: &[T]) -> usize {
     if a.is_empty() {
         return b.len();
@@ -87,13 +88,13 @@ pub fn levenshtein<T: PartialEq>(a: &[T], b: &[T]) -> usize {
 
 fn ratio(distance: usize, reference_len: usize, hypothesis_len: usize) -> f32 {
     if reference_len == 0 {
-        // Пустой эталон: пустая гипотеза — идеал, любая непустая — полная ошибка.
+        // Empty reference: an empty hypothesis is ideal, and any non-empty one is a full error
         return if hypothesis_len == 0 { 0.0 } else { 1.0 };
     }
     distance as f32 / reference_len as f32
 }
 
-/// Доля ошибок по словам.
+/// Share of errors by words
 pub fn wer(reference: &str, hypothesis: &str) -> f32 {
     wer_with(reference, hypothesis, Normalization::default())
 }
@@ -104,7 +105,7 @@ pub fn wer_with(reference: &str, hypothesis: &str, options: Normalization) -> f3
     ratio(levenshtein(&r, &h), r.len(), h.len())
 }
 
-/// Доля ошибок по символам; пробелы после нормализации сохраняются как разделители.
+/// Share of errors by characters; after normalization the spaces stay as separators
 pub fn cer(reference: &str, hypothesis: &str) -> f32 {
     cer_with(reference, hypothesis, Normalization::default())
 }
@@ -181,9 +182,9 @@ mod tests {
 
     #[test]
     fn cer_counts_single_letter_slip_as_small_error() {
-        // «кот» → «кит»: одна буква из трёх.
+        // "кот" → "кит": one letter out of three
         assert!(close(cer("кот", "кит"), 1.0 / 3.0));
-        // По словам это ошибка целиком.
+        // By words it is a full error
         assert!(close(wer("кот", "кит"), 1.0));
     }
 

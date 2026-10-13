@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
-//! Разбор комбинаций вида `Ctrl+Shift+Space`, `F9`, `RightCtrl`, `Pause`.
+//! Parsing of combinations such as `Ctrl+Shift+Space`, `F9`, `RightCtrl`, `Pause`
 //!
-//! Комбинация превращается в физические коды клавиш ядра, а не в символы: `evdev` видит именно
-//! коды, и они не зависят ни от раскладки, ни от языка ввода. Поэтому `Ctrl+Shift+Space`
-//! работает и в русской раскладке.
+//! A combination becomes physical kernel key codes, not characters: `evdev` sees the codes,
+//! and they depend on neither the layout nor the input language. So `Ctrl+Shift+Space` also
+//! works in the Russian layout
 
 use std::collections::BTreeSet;
 
 use crate::domain::hotkeys::HotkeyError;
 
-/// Модификатор без различения левого и правого.
+/// Modifier, with no difference between left and right
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Modifier {
     Ctrl,
@@ -19,7 +19,7 @@ pub enum Modifier {
 }
 
 impl Modifier {
-    /// Коды клавиш ядра, дающие этот модификатор.
+    /// Kernel key codes that give this modifier
     pub fn codes(self) -> [u16; 2] {
         match self {
             Modifier::Ctrl => [29, 97],
@@ -29,7 +29,7 @@ impl Modifier {
         }
     }
 
-    /// Модификатор, который даёт эта клавиша, если она модификатор.
+    /// Modifier that this key gives, if the key is a modifier
     pub fn from_code(code: u16) -> Option<Modifier> {
         [
             Modifier::Ctrl,
@@ -52,7 +52,7 @@ impl Modifier {
     }
 }
 
-/// Именованные клавиши, которые не выводятся из буквы или цифры.
+/// Named keys that do not derive from a letter or a digit
 const NAMED_KEYS: [(&str, u16); 40] = [
     ("escape", 1),
     ("esc", 1),
@@ -96,7 +96,7 @@ const NAMED_KEYS: [(&str, u16); 40] = [
     ("backslash", 43),
 ];
 
-/// Клавиши-модификаторы, которые можно назначить хоткеем сами по себе.
+/// Modifier keys that can be a hotkey on their own
 const SIDED_MODIFIERS: [(&str, u16); 8] = [
     ("leftctrl", 29),
     ("rightctrl", 97),
@@ -108,7 +108,7 @@ const SIDED_MODIFIERS: [(&str, u16); 8] = [
     ("rightsuper", 126),
 ];
 
-/// Буквы US-раскладки: коды тех же клавиш, что и в `infra::inject::uinput`.
+/// Letters of the US layout: the codes of the same keys as in `infra::inject::uinput`
 const LETTER_CODES: [(char, u16); 26] = [
     ('a', 30),
     ('b', 48),
@@ -150,7 +150,7 @@ fn key_code(name: &str) -> Option<u16> {
         return None;
     };
     if ch.is_ascii_digit() {
-        // 1..9 — коды 2..10, 0 — код 11.
+        // 1..9 are codes 2..10, 0 is code 11
         let digit = ch.to_digit(10)? as u16;
         return Some(if digit == 0 { 11 } else { digit + 1 });
     }
@@ -160,44 +160,44 @@ fn key_code(name: &str) -> Option<u16> {
         .map(|(_, code)| *code)
 }
 
-/// Разобранная комбинация.
+/// Parsed combination
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HotkeySpec {
     pub modifiers: BTreeSet<Modifier>,
-    /// Код основной клавиши.
+    /// Code of the main key
     pub key: u16,
-    /// Исходная строка — для сообщений об ошибках и для `doctor`.
+    /// Source string, for error messages and for `doctor`
     pub source: String,
 }
 
 impl HotkeySpec {
-    /// Разобрать `Ctrl+Shift+Space`. Регистр и пробелы не важны, разделитель — `+` или `-`.
+    /// Parse `Ctrl+Shift+Space`. Case and spaces do not matter, and the separator is `+` or `-`
     pub fn parse(spec: &str) -> Result<HotkeySpec, HotkeyError> {
         let trimmed = spec.trim();
         if trimmed.is_empty() {
-            return Err(HotkeyError::BadSpec("пустая комбинация".into()));
+            return Err(HotkeyError::BadSpec("empty combination".into()));
         }
         let parts: Vec<String> = trimmed
             .split(['+', '-'])
             .map(|p| p.trim().to_ascii_lowercase())
             .filter(|p| !p.is_empty())
             .collect();
-        // Пустой список и разбор последней части — одна и та же проверка: `split_last` уже
-        // отвечает на вопрос «есть ли что разбирать».
+        // An empty list and the parsing of the last part are the same check: `split_last`
+        // already answers the question "is there anything to parse"
         let Some((last, head)) = parts.split_last() else {
             return Err(HotkeyError::BadSpec(spec.to_string()));
         };
         let mut modifiers = BTreeSet::new();
         for part in head {
             let modifier = Modifier::parse(part)
-                .ok_or_else(|| HotkeyError::BadSpec(format!("{spec}: неизвестный «{part}»")))?;
+                .ok_or_else(|| HotkeyError::BadSpec(format!("{spec}: unknown \"{part}\"")))?;
             modifiers.insert(modifier);
         }
-        // Последняя часть может быть и обычной клавишей, и модификатором целиком:
-        // `RightCtrl` как push-to-talk — это ровно такой случай.
+        // The last part can be an ordinary key or a whole modifier:
+        // `RightCtrl` as push-to-talk is exactly this case
         let key = key_code(last)
             .or_else(|| Modifier::parse(last).map(|m| m.codes()[0]))
-            .ok_or_else(|| HotkeyError::BadSpec(format!("{spec}: неизвестная клавиша «{last}»")))?;
+            .ok_or_else(|| HotkeyError::BadSpec(format!("{spec}: unknown key \"{last}\"")))?;
         Ok(HotkeySpec {
             modifiers,
             key,
@@ -205,13 +205,13 @@ impl HotkeySpec {
         })
     }
 
-    /// Сработала ли комбинация: нажата её клавиша и ровно её модификаторы.
+    /// Whether the combination fired: its key is pressed and exactly its modifiers are held
     pub fn matches(&self, code: u16, active: &BTreeSet<Modifier>) -> bool {
         if code != self.key {
             return false;
         }
-        // Модификатор, который сам является клавишей комбинации, не обязан быть в наборе:
-        // `RightCtrl` нажимается — и он же попадает в активные модификаторы.
+        // A modifier that is itself the key of the combination need not be in the set:
+        // `RightCtrl` is pressed, and it also enters the active modifiers
         if let Some(own) = Modifier::from_code(self.key) {
             return active.is_superset(&self.modifiers) && active.contains(&own);
         }
@@ -262,7 +262,7 @@ mod tests {
         assert!(spec.matches(97, &mods(&[Modifier::Ctrl])));
         assert!(
             !spec.matches(29, &mods(&[Modifier::Ctrl])),
-            "левый Ctrl — не правый"
+            "left Ctrl is not right Ctrl"
         );
     }
 
