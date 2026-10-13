@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
-//! Конфигурация: TOML в домашнем каталоге пользователя.
+//! Configuration: TOML in the home directory of the user
 //!
-//! Все поля имеют значения по умолчанию, поэтому пустой файл — валидный конфиг, а частичный
-//! файл дополняется. Ключи API в файле не хранятся: только имя переменной окружения или keystore.
+//! All fields have default values, so an empty file is a valid config, and a partial file is
+//! filled in. API keys are not stored in the file: only the name of an environment variable or a keystore
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -10,30 +10,30 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// Версия схемы конфига, для будущих миграций.
+/// Config schema version, for future migrations
 pub const CONFIG_VERSION: u32 = 1;
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
-    #[error("не удалось прочитать {path}: {source}")]
+    #[error("could not read {path}: {source}")]
     Read {
         path: PathBuf,
         #[source]
         source: std::io::Error,
     },
-    #[error("не удалось записать {path}: {source}")]
+    #[error("could not write {path}: {source}")]
     Write {
         path: PathBuf,
         #[source]
         source: std::io::Error,
     },
-    #[error("ошибка в файле настроек {path}: {message}")]
+    #[error("error in the settings file {path}: {message}")]
     Parse { path: PathBuf, message: String },
-    #[error("не удалось сериализовать настройки: {0}")]
+    #[error("could not serialize the settings: {0}")]
     Serialize(String),
-    #[error("не удалось определить каталог настроек пользователя")]
+    #[error("could not find the settings directory of the user")]
     NoHome,
-    #[error("нет такой настройки: {0}")]
+    #[error("no such setting: {0}")]
     UnknownKey(String),
     #[error("{key} = {value:?}: {message}")]
     BadValue {
@@ -41,7 +41,7 @@ pub enum ConfigError {
         value: String,
         message: String,
     },
-    #[error("настройки не прошли проверку:\n{}", .0.iter().map(|i| format!("  - {i}")).collect::<Vec<String>>().join("\n"))]
+    #[error("the settings failed validation:\n{}", .0.iter().map(|i| format!("  - {i}")).collect::<Vec<String>>().join("\n"))]
     Invalid(Vec<ConfigIssue>),
 }
 
@@ -49,8 +49,8 @@ pub enum ConfigError {
 #[serde(default)]
 pub struct Config {
     pub version: u32,
-    /// Язык интерфейса GUI: `auto` | `ru` | `en`. `auto` берёт язык системы, а незнакомый
-    /// язык системы даёт английский.
+    /// GUI language: `auto` | `ru` | `en`. `auto` takes the system language, and an unknown
+    /// system language gives English
     pub ui_language: String,
     pub audio: AudioConfig,
     pub stt: SttConfig,
@@ -96,13 +96,13 @@ impl Default for Config {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AudioConfig {
-    /// Имя устройства из `molva devices` или `default`.
+    /// Device name from `molva devices`, or `default`
     pub device: String,
     pub gain: f32,
     pub max_duration_secs: u32,
     pub trim_silence: bool,
     pub silence_threshold_db: f32,
-    /// Пауза короче этого не режет реплику.
+    /// A pause shorter than this does not cut a phrase
     pub vad_min_pause_ms: u32,
     pub noise_suppression: bool,
     pub sounds: bool,
@@ -130,27 +130,27 @@ impl Default for AudioConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SttConfig {
-    /// `whisper-cpp` | `remote-openai`.
+    /// `whisper-cpp` | `remote-openai`
     pub engine: String,
     pub model: String,
-    /// Пусто — каталог моделей по умолчанию.
+    /// Empty means the default model directory
     pub model_path: String,
-    /// Откуда качать веса вместо Hugging Face: адрес каталога, к нему добавляется имя файла.
-    /// Пусто — Hugging Face. Подмену файла ловит проверка SHA-256, поэтому годится и `http://`.
+    /// Where to download the model weights instead of Hugging Face: a directory URL, the file name is appended to it
+    /// Empty means Hugging Face. The SHA-256 check catches a swapped file, so `http://` is fine too
     pub models_mirror: String,
-    /// `auto` или код ISO-639-1; фиксированный язык отключает автоопределение.
+    /// `auto` or an ISO-639-1 code; a fixed language turns off auto-detection
     pub language: String,
     pub allowed_languages: Vec<String>,
-    /// 0 — все логические ядра.
+    /// 0 means all logical cores
     pub threads: u32,
     pub unload_after_secs: u32,
     pub no_speech_threshold: f32,
-    /// Докачивать веса при старте демона, если их нет: одна команда на чистой машине.
-    /// `false` — прежнее поведение, ошибка с командой `molva models pull`.
+    /// Download the weights at daemon start if they are missing: one command on a clean machine
+    /// `false` is the old behaviour, an error with the `molva models pull` command
     pub auto_pull: bool,
-    /// Распознавать реплику кусками прямо во время записи.
+    /// Recognize a phrase in chunks right during the recording
     pub chunked: bool,
-    /// Пауза, по которой режется кусок при потоковой обработке.
+    /// The pause that cuts a chunk in streaming processing
     pub chunk_pause_ms: u32,
     pub streaming_preview: bool,
     pub remote: RemoteSttConfig,
@@ -163,8 +163,8 @@ impl Default for SttConfig {
             model: "small".into(),
             model_path: String::new(),
             models_mirror: String::new(),
-            // Фиксированный язык: автоопределение в whisper.cpp на CPU в пять раз медленнее
-            // (23 с против 4 с на реплику в 4 с с моделью small). `auto` остаётся опцией.
+            // Fixed language: auto-detection in whisper.cpp on the CPU is five times slower
+            // (23 s against 4 s for a 4 s phrase with the small model). `auto` stays an option
             language: "ru".into(),
             allowed_languages: vec!["ru".into(), "en".into()],
             threads: 0,
@@ -172,8 +172,8 @@ impl Default for SttConfig {
             no_speech_threshold: 0.6,
             auto_pull: true,
             chunked: true,
-            // Пауза сегментации короче, чем `audio.vad_min_pause_ms`: там пауза решает, кончилась
-            // ли реплика, а здесь — можно ли уже отправить кусок в модель.
+            // The segmentation pause is shorter than `audio.vad_min_pause_ms`: there the pause
+            // decides whether the phrase has ended, and here it decides whether a chunk can already go to the model
             chunk_pause_ms: crate::app::audio::segmenter::DEFAULT_CHUNK_PAUSE_MS,
             streaming_preview: true,
             remote: RemoteSttConfig::default(),
@@ -185,7 +185,7 @@ impl Default for SttConfig {
 #[serde(default)]
 pub struct RemoteSttConfig {
     pub base_url: String,
-    /// `keyring` | `env`.
+    /// `keyring` | `env`
     pub api_key_source: String,
     pub api_key_env: String,
     pub model: String,
@@ -205,10 +205,10 @@ impl Default for RemoteSttConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DictionaryConfig {
-    /// Пусто — `dictionary.toml` рядом с конфигом.
+    /// Empty means `dictionary.toml` next to the config
     pub path: String,
     pub fuzzy: bool,
-    /// Передавать термины в подсказку whisper.
+    /// Pass the terms to the whisper prompt
     pub in_prompt: bool,
 }
 
@@ -232,7 +232,7 @@ pub struct RulesConfig {
     pub remove_repeats: bool,
     pub numbers_as_digits: bool,
     pub paragraph_pause_ms: u32,
-    /// Реплики не длиннее этого обрабатываются только правилами, без модели.
+    /// Phrases no longer than this are processed by the rules only, with no model
     pub llm_min_words: u32,
 }
 
@@ -255,22 +255,22 @@ impl Default for RulesConfig {
 #[serde(default)]
 pub struct LlmConfig {
     pub enabled: bool,
-    /// `ollama` | `lmstudio` | `openrouter` | `groq` | `openai` | `custom`.
+    /// `ollama` | `lmstudio` | `openrouter` | `groq` | `openai` | `custom`
     pub provider: String,
     pub base_url: String,
     pub model: String,
-    /// `keyring` — хранилище ОС, `file` — `<каталог настроек>/secrets/llm-api-key-<provider>`,
-    /// `env` — только переменная окружения, `none` — ключа нет.
+    /// `keyring` is the OS store, `file` is `<settings directory>/secrets/llm-api-key-<provider>`,
+    /// `env` is the environment variable only, `none` means no key
     pub api_key_source: String,
     pub api_key_env: String,
     pub temperature: f32,
     pub max_tokens: u32,
     pub timeout_secs: u64,
     pub max_retries: u32,
-    /// Сколько модели «думать» перед ответом: `auto` — для локальных провайдеров (Ollama,
-    /// LM Studio) шлётся `none`, для облачных поле не шлётся; пустая строка — не слать никогда;
-    /// любое другое значение (`none`, `low`, `medium`, `high`) уходит как есть. Рассуждающие
-    /// модели вроде qwen3.5 иначе тратят весь `max_tokens` на размышления и отдают пустой текст.
+    /// How much the model "thinks" before it answers: `auto` sends `none` for local providers
+    /// (Ollama, LM Studio) and does not send the field for cloud ones; an empty string means
+    /// never send; any other value (`none`, `low`, `medium`, `high`) goes as it is. Otherwise
+    /// reasoning models such as qwen3.5 spend the whole `max_tokens` on reasoning and return empty text
     pub reasoning_effort: String,
 }
 
@@ -296,7 +296,7 @@ impl Default for LlmConfig {
 #[serde(default)]
 pub struct StyleConfig {
     pub default: String,
-    /// Класс окна → идентификатор стиля.
+    /// Window class → style identifier
     pub by_app: BTreeMap<String, String>,
     pub custom: Vec<CustomStyle>,
 }
@@ -323,7 +323,7 @@ pub struct CustomStyle {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct OutputConfig {
-    /// `auto` | `paste` | `type` | `clipboard`.
+    /// `auto` | `paste` | `type` | `clipboard`
     pub mode: String,
     pub auto_type_max_chars: u32,
     pub restore_clipboard: bool,
@@ -331,13 +331,13 @@ pub struct OutputConfig {
     pub paste_backend: String,
     pub type_backend: String,
     pub type_delay_ms: u32,
-    /// Пауза перед вставкой, миллисекунды.
+    /// Pause before the paste, in milliseconds
     ///
-    /// Между отпусканием клавиши и вставкой окно должно успеть вернуть фокус в поле ввода.
-    /// Локально хватает 50 мс; удалённому рабочему столу (RDP, VNC, xrdp) и тяжёлым Electron-окнам
-    /// нужно заметно больше — до 1500 мс.
+    /// Between the key release and the paste the window must have time to return the focus to the input field.
+    /// Locally 50 ms is enough; a remote desktop (RDP, VNC, xrdp) and heavy Electron windows
+    /// need clearly more — up to 1500 ms
     pub pre_inject_delay_ms: u32,
-    /// Вставлять в терминалы через Ctrl+Shift+V, глядя на класс активного окна.
+    /// Paste into terminals with Ctrl+Shift+V, by looking at the class of the active window
     pub terminal_shortcut: bool,
     pub notify_on_fallback: bool,
 }
@@ -353,8 +353,8 @@ impl Default for OutputConfig {
             type_backend: "auto".into(),
             type_delay_ms: 4,
             pre_inject_delay_ms: 50,
-            // Терминалы — обычное место диктовки, а Ctrl+V в них не вставляет ничего:
-            // по умолчанию смотрим на класс окна и переключаемся на Ctrl+Shift+V.
+            // Terminals are a usual place for dictation, and Ctrl+V pastes nothing in them:
+            // by default we look at the window class and switch to Ctrl+Shift+V
             terminal_shortcut: true,
             notify_on_fallback: true,
         }
@@ -364,7 +364,7 @@ impl Default for OutputConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct HotkeysConfig {
-    /// `auto` | `external` | `evdev` | `gui`.
+    /// `auto` | `external` | `evdev` | `gui`
     pub backend: String,
     pub push_to_talk: String,
     pub toggle: String,
@@ -373,7 +373,7 @@ pub struct HotkeysConfig {
     pub style_next: String,
     pub tap_toggles: bool,
     pub short_press_ms: u32,
-    /// Удержание короче этого не создаёт реплику.
+    /// A key hold shorter than this does not create a phrase
     pub min_hold_ms: u32,
     pub double_tap_ms: u32,
 }
@@ -382,10 +382,10 @@ impl Default for HotkeysConfig {
     fn default() -> Self {
         Self {
             backend: "auto".into(),
-            // Сочетания по умолчанию намеренно неэргономичны: F9 и Ctrl+Alt свободны почти
-            // в любой системе и приложении, поэтому на чужом стенде они сработают без
-            // настройки. Пока приложение в тестировании, это важнее удобства; под свою руку
-            // клавиши меняются в этой же секции.
+            // The default key combinations are unergonomic on purpose: F9 and Ctrl+Alt are free in
+            // almost any system and application, so on a foreign test machine they work with no
+            // setup. While the application is in testing, this matters more than comfort; the
+            // keys change to fit the hand in this same section
             push_to_talk: "F9".into(),
             toggle: "Ctrl+Alt+Z".into(),
             command: "Ctrl+Alt+X".into(),
@@ -425,19 +425,19 @@ impl Default for CommandModeConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct JournalConfig {
-    /// Пусто — `$XDG_DATA_HOME/molva/journal.jsonl`.
+    /// Empty means `$XDG_DATA_HOME/molva/journal.jsonl`
     pub path: String,
     pub enabled: bool,
-    /// `false` — режим приватности: строка без текста реплики.
+    /// `false` is privacy mode: a line with no text of the phrase
     pub include_text: bool,
-    /// `true` — тексты реплик в журнале шифруются (XChaCha20-Poly1305), ключ по `key_source`.
-    /// Остальные поля строки остаются открытыми: статистика и фильтры работают без ключа.
+    /// `true` means the texts of the phrases in the journal are encrypted (XChaCha20-Poly1305), the key comes from `key_source`
+    /// The other fields of the line stay open: statistics and filters work without the key
     pub encrypt: bool,
-    /// Где лежит ключ: `file` — файл `key_path`, `keyring` — запись `journal-key`
-    /// в хранилище ОС. В обоих случаях ключ создаётся сам при первом открытии.
+    /// Where the key lives: `file` is the `key_path` file, `keyring` is the `journal-key` entry
+    /// in the OS store. In both cases the key is created by itself at the first open
     pub key_source: String,
-    /// Файл ключа шифрования; пусто — `journal.key` рядом с журналом. Создаётся сам,
-    /// права только для владельца.
+    /// Encryption key file; empty means `journal.key` next to the journal. It is created by
+    /// itself, with permissions for the owner only
     pub key_path: String,
     pub keep_audio: bool,
     pub max_entries: u32,
@@ -463,7 +463,7 @@ impl Default for JournalConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct StatsConfig {
-    /// База для «сэкономленного времени» против набора с клавиатуры.
+    /// Baseline for the "saved time" against typing on a keyboard
     pub typing_baseline_wpm: u32,
 }
 
@@ -479,9 +479,9 @@ impl Default for StatsConfig {
 #[serde(default)]
 pub struct PrivacyConfig {
     pub send_to_llm: bool,
-    /// Отключает журнал текста и историю целиком.
+    /// Turns off the text journal and the whole history
     pub no_record_mode: bool,
-    /// Телеметрии нет; ключ существует, чтобы это заявить явно.
+    /// There is no telemetry; the key exists to say this explicitly
     pub telemetry: bool,
 }
 
@@ -504,18 +504,18 @@ pub struct AutostartConfig {
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GuiConfig {
-    /// Анимировать значок в трее во время записи; по умолчанию `false`.
+    /// Animate the tray icon during the recording; `false` by default
     ///
-    /// Выключено намеренно: значок меняется только при смене состояния (покой, запись,
-    /// обработка), поэтому за реплику он обновляется считанные разы, а не на каждое событие
-    /// уровня сигнала. Кому мигающий индикатор нужнее спокойного трея — ставит `true`.
+    /// It is off on purpose: the icon changes only when the state changes (idle, recording,
+    /// processing), so it updates only a few times per phrase, and not on every signal level
+    /// event. Whoever needs a blinking indicator more than a calm tray sets `true`
     pub tray_animation: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LogConfig {
-    /// `error` | `warn` | `info` | `debug` | `trace`.
+    /// `error` | `warn` | `info` | `debug` | `trace`
     pub level: String,
     pub max_size_mb: u32,
 }
@@ -533,14 +533,14 @@ fn default_true() -> bool {
     true
 }
 
-/// Значение из закрытого списка; регистр не важен.
+/// A value from a closed list; case does not matter
 fn one_of(issues: &mut Vec<ConfigIssue>, key: &str, value: &str, allowed: &[&str]) {
     if !allowed.iter().any(|a| a.eq_ignore_ascii_case(value)) {
         issues.push(ConfigIssue::allowed(key, value, allowed));
     }
 }
 
-/// Число в закрытом диапазоне, границы включительно.
+/// A number in a closed range, the bounds are included
 fn in_range(issues: &mut Vec<ConfigIssue>, key: &str, value: f64, lo: f64, hi: f64) {
     if value < lo || value > hi {
         issues.push(ConfigIssue::range(key, &format!("{value}"), lo, hi));
@@ -548,14 +548,14 @@ fn in_range(issues: &mut Vec<ConfigIssue>, key: &str, value: f64, lo: f64, hi: f
 }
 
 impl Config {
-    /// Каталог настроек пользователя: `~/.config/molva` на Linux и аналоги на других ОС.
+    /// Settings directory of the user: `~/.config/molva` on Linux and the equivalents on other OSes
     pub fn default_dir() -> Result<PathBuf, ConfigError> {
         directories::ProjectDirs::from("", "", "molva")
             .map(|dirs| dirs.config_dir().to_path_buf())
             .ok_or(ConfigError::NoHome)
     }
 
-    /// Путь к файлу настроек; `MOLVA_CONFIG` переопределяет.
+    /// Path to the settings file; `MOLVA_CONFIG` overrides it
     pub fn default_path() -> Result<PathBuf, ConfigError> {
         if let Some(path) = std::env::var_os("MOLVA_CONFIG") {
             return Ok(PathBuf::from(path));
@@ -574,7 +574,7 @@ impl Config {
         toml::to_string_pretty(self).map_err(|e| ConfigError::Serialize(e.to_string()))
     }
 
-    /// Прочитать файл; отсутствующий файл — это настройки по умолчанию.
+    /// Read the file; a missing file means the default settings
     pub fn load(path: &Path) -> Result<Self, ConfigError> {
         match std::fs::read_to_string(path) {
             Ok(text) => Self::from_toml_str(path, &text),
@@ -586,7 +586,7 @@ impl Config {
         }
     }
 
-    /// Прочитать файл, а если его нет — создать со значениями по умолчанию.
+    /// Read the file, and if it does not exist, create it with the default values
     pub fn load_or_create(path: &Path) -> Result<Self, ConfigError> {
         if !path.exists() {
             let config = Self::default();
@@ -609,9 +609,9 @@ impl Config {
         })
     }
 
-    /// Каталог данных пользователя: журнал, модели, сохранённое аудио.
+    /// Data directory of the user: the journal, the models, the saved audio
     ///
-    /// `MOLVA_DATA_DIR` переопределяет — так удобно гонять несколько профилей и тесты руками.
+    /// `MOLVA_DATA_DIR` overrides it — this makes it easy to run several profiles and tests by hand
     pub fn data_dir() -> Result<PathBuf, ConfigError> {
         if let Some(directory) = std::env::var_os("MOLVA_DATA_DIR") {
             return Ok(PathBuf::from(directory));
@@ -621,7 +621,7 @@ impl Config {
             .ok_or(ConfigError::NoHome)
     }
 
-    /// Путь к журналу: из настроек или `<data_dir>/journal.jsonl`.
+    /// Path to the journal: from the settings, or `<data_dir>/journal.jsonl`
     pub fn journal_path(&self) -> Result<PathBuf, ConfigError> {
         if !self.journal.path.trim().is_empty() {
             return Ok(PathBuf::from(&self.journal.path));
@@ -629,7 +629,7 @@ impl Config {
         Ok(Self::data_dir()?.join("journal.jsonl"))
     }
 
-    /// Файл ключа шифрования журнала: из настроек или `journal.key` рядом с журналом.
+    /// Journal encryption key file: from the settings, or `journal.key` next to the journal
     pub fn journal_key_path(&self) -> Result<PathBuf, ConfigError> {
         if !self.journal.key_path.trim().is_empty() {
             return Ok(PathBuf::from(&self.journal.key_path));
@@ -641,17 +641,17 @@ impl Config {
         ))
     }
 
-    /// Каталог файлового хранилища секретов: `<каталог настроек>/secrets`, по файлу на запись.
+    /// Directory of the file secret store: `<settings directory>/secrets`, one file per entry
     pub fn secrets_directory() -> Result<PathBuf, ConfigError> {
         Ok(Self::default_dir()?.join("secrets"))
     }
 
-    /// Путь к словарю: из настроек или `dictionary.toml` рядом с файлом настроек.
+    /// Path to the dictionary: from the settings, or `dictionary.toml` next to the settings file
     pub fn dictionary_path(&self) -> Result<PathBuf, ConfigError> {
         self.dictionary_path_near(&Self::default_path()?)
     }
 
-    /// То же, но рядом с конкретным файлом настроек: `--config` должен уводить и словарь.
+    /// The same, but next to a given settings file: `--config` must move the dictionary too
     pub fn dictionary_path_near(&self, config_path: &Path) -> Result<PathBuf, ConfigError> {
         if !self.dictionary.path.trim().is_empty() {
             return Ok(PathBuf::from(&self.dictionary.path));
@@ -663,10 +663,10 @@ impl Config {
         Ok(directory.join("dictionary.toml"))
     }
 
-    /// Прочитать файл, а повреждённый — отложить в `<path>.broken` и начать с умолчаний.
+    /// Read the file, and move a damaged one to `<path>.broken` and start with the defaults
     ///
-    /// Возвращает настройки и предупреждение, если файл пришлось заменить: молча терять чужие
-    /// настройки нельзя, но и падать на старте из-за одной лишней скобки — тоже.
+    /// Returns the settings and a warning if the file had to be replaced: it is wrong to lose
+    /// someone's settings silently, but it is also wrong to crash at startup because of one extra bracket
     pub fn load_lenient(path: &Path) -> Result<(Self, Option<String>), ConfigError> {
         match Self::load(path) {
             Ok(mut config) => {
@@ -687,8 +687,8 @@ impl Config {
                 let config = Self::default();
                 config.save(path)?;
                 let warning = format!(
-                    "файл настроек повреждён ({message}); он сохранён как {} и заменён \
-                     значениями по умолчанию",
+                    "the settings file is damaged ({message}); it is saved as {} and replaced \
+                     with the default values",
                     broken.display()
                 );
                 tracing::warn!("{warning}");
@@ -698,7 +698,7 @@ impl Config {
         }
     }
 
-    /// Привести настройки к текущей версии схемы. `true` — что-то изменилось.
+    /// Bring the settings to the current schema version. `true` means something changed
     pub fn migrate(&mut self) -> bool {
         if self.version == CONFIG_VERSION {
             return false;
@@ -707,20 +707,20 @@ impl Config {
             tracing::warn!(
                 version = self.version,
                 supported = CONFIG_VERSION,
-                "файл настроек из более новой версии MolvAI, читаю как есть"
+                "the settings file is from a newer version of MolvAI, reading it as it is"
             );
             return false;
         }
-        // Версия 0 — файл, созданный до появления поля: полей не хватало, значения умолчаний
-        // уже подставлены serde, остаётся отметить схему.
+        // Version 0 is a file created before the field existed: some fields were missing, serde
+        // has already filled in the default values, and only the schema mark remains
         self.version = CONFIG_VERSION;
         true
     }
 
-    /// Проверить настройки целиком. Ошибки собираются все сразу, а не по одной за запуск.
+    /// Validate the whole settings. All errors are collected at once, not one per run
     ///
-    /// Порядок замечаний повторяет порядок секций в файле настроек: так их проще
-    /// сопоставить с тем, что пользователь видит в редакторе.
+    /// The order of the issues follows the order of the sections in the settings file: this makes
+    /// them easier to match with what the user sees in the editor
     pub fn validate(&self) -> Result<(), Vec<ConfigIssue>> {
         let mut issues = Vec::new();
         self.validate_general(&mut issues);
@@ -738,7 +738,7 @@ impl Config {
         }
     }
 
-    /// Общие настройки приложения и журнал.
+    /// General application settings and the journal
     fn validate_general(&self, issues: &mut Vec<ConfigIssue>) {
         one_of(
             issues,
@@ -754,7 +754,7 @@ impl Config {
         );
     }
 
-    /// Захват звука: усиление, длительность, громкость сигналов.
+    /// Audio capture: gain, duration, cue volume
     fn validate_audio(&self, issues: &mut Vec<ConfigIssue>) {
         in_range(issues, "audio.gain", f64::from(self.audio.gain), 0.1, 10.0);
         in_range(
@@ -773,7 +773,7 @@ impl Config {
         );
     }
 
-    /// Распознавание: движок, язык, пороги, ключ удалённого API.
+    /// Recognition: engine, language, thresholds, key of the remote API
     fn validate_stt(&self, issues: &mut Vec<ConfigIssue>) {
         one_of(
             issues,
@@ -785,7 +785,7 @@ impl Config {
             issues.push(ConfigIssue::new(
                 "stt.language",
                 &self.stt.language,
-                "ожидается `auto` или двухбуквенный код языка, например `ru`",
+                "expected `auto` or a two-letter language code, for example `ru`",
             ));
         }
         in_range(
@@ -813,12 +813,12 @@ impl Config {
             issues.push(ConfigIssue::new(
                 "stt.models_mirror",
                 mirror,
-                "ожидается пусто (Hugging Face) или адрес, начинающийся с https:// или http://",
+                "expected empty (Hugging Face) or a URL that starts with https:// or http://",
             ));
         }
     }
 
-    /// Доставка текста в активное окно.
+    /// Delivery of text to the active window
     fn validate_output(&self, issues: &mut Vec<ConfigIssue>) {
         one_of(
             issues,
@@ -837,12 +837,12 @@ impl Config {
             issues.push(ConfigIssue::new(
                 "output.auto_type_max_chars",
                 "0",
-                "ожидается положительное число символов",
+                "expected a positive number of characters",
             ));
         }
     }
 
-    /// Постобработка моделью: провайдер, ключ, лимиты, таймауты.
+    /// Post-processing by a model: provider, key, limits, timeouts
     fn validate_llm(&self, issues: &mut Vec<ConfigIssue>) {
         one_of(
             issues,
@@ -896,12 +896,12 @@ impl Config {
             issues.push(ConfigIssue::new(
                 "llm.base_url",
                 "",
-                "постобработка включена, но адрес модели не задан",
+                "post-processing is on, but the model URL is not set",
             ));
         }
     }
 
-    /// Стили постобработки: и умолчание, и привязки к приложениям.
+    /// Post-processing styles: both the default and the bindings to applications
     fn validate_styles(&self, issues: &mut Vec<ConfigIssue>) {
         let styles = crate::app::styles::Styles::from_config(&self.style);
         if styles.get(&self.style.default).is_none() {
@@ -917,13 +917,13 @@ impl Config {
                 issues.push(ConfigIssue::new(
                     &format!("style.by_app.{app}"),
                     style,
-                    "такого стиля нет: посмотрите `molva styles list`",
+                    "no such style: see `molva styles list`",
                 ));
             }
         }
     }
 
-    /// Оставшиеся числовые пороги, уровень логов и горячие клавиши.
+    /// The remaining numeric thresholds, the log level and the hotkeys
     fn validate_limits(&self, issues: &mut Vec<ConfigIssue>) {
         in_range(
             issues,
@@ -949,12 +949,12 @@ impl Config {
             issues.push(ConfigIssue::new(
                 "hotkeys.push_to_talk",
                 "",
-                "клавиша удержания не задана: диктовать будет нечем",
+                "the key hold key is not set: there will be nothing to dictate with",
             ));
         }
     }
 
-    /// Все ключи настроек в виде путей через точку — для `molva config get` и подсказок.
+    /// All setting keys as dotted paths — for `molva config get` and for hints
     pub fn keys(&self) -> Vec<String> {
         let mut keys = Vec::new();
         if let Ok(value) = toml::Value::try_from(self) {
@@ -964,7 +964,7 @@ impl Config {
         keys
     }
 
-    /// Значение по пути `stt.model`, как оно выглядело бы в TOML (строки — без кавычек).
+    /// Value at a path such as `stt.model`, as it would look in TOML (strings without quotes)
     pub fn get_by_path(&self, path: &str) -> Result<String, ConfigError> {
         let root =
             toml::Value::try_from(self).map_err(|e| ConfigError::Serialize(e.to_string()))?;
@@ -972,7 +972,7 @@ impl Config {
         Ok(render(value))
     }
 
-    /// Установить значение по пути; тип берётся из текущего значения, результат проверяется.
+    /// Set the value at a path; the type comes from the current value, and the result is validated
     pub fn set_by_path(&mut self, path: &str, raw: &str) -> Result<(), ConfigError> {
         let mut root =
             toml::Value::try_from(&*self).map_err(|e| ConfigError::Serialize(e.to_string()))?;
@@ -993,12 +993,12 @@ impl Config {
         Ok(())
     }
 
-    /// Выгрузить настройки в файл — тот же формат, что и рабочий конфиг.
+    /// Write the settings to a file — the same format as the working config
     pub fn export(&self, path: &Path) -> Result<(), ConfigError> {
         self.save(path)
     }
 
-    /// Загрузить настройки из файла профиля; повреждённый или неверный файл не применяется.
+    /// Load the settings from a profile file; a damaged or invalid file is not applied
     pub fn import(path: &Path) -> Result<Self, ConfigError> {
         let text = std::fs::read_to_string(path).map_err(|source| ConfigError::Read {
             path: path.to_path_buf(),
@@ -1011,7 +1011,7 @@ impl Config {
     }
 }
 
-/// Одна претензия к настройкам: где, что стоит и что ожидалось.
+/// One complaint about the settings: where, what is set and what was expected
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfigIssue {
     pub key: String,
@@ -1032,12 +1032,12 @@ impl ConfigIssue {
         Self::new(
             key,
             value,
-            &format!("допустимые значения: {}", allowed.join(", ")),
+            &format!("allowed values: {}", allowed.join(", ")),
         )
     }
 
     fn range(key: &str, value: &str, lo: f64, hi: f64) -> Self {
-        Self::new(key, value, &format!("ожидается число от {lo} до {hi}"))
+        Self::new(key, value, &format!("expected a number from {lo} to {hi}"))
     }
 }
 
@@ -1092,7 +1092,7 @@ fn set_value_at(root: &mut toml::Value, path: &str, new: toml::Value) -> Result<
     Ok(())
 }
 
-/// Как значение выглядит в выводе `config get`: строка без кавычек, остальное — как в TOML.
+/// How a value looks in the `config get` output: a string without quotes, everything else as in TOML
 fn render(value: &toml::Value) -> String {
     match value {
         toml::Value::String(text) => text.clone(),
@@ -1101,7 +1101,7 @@ fn render(value: &toml::Value) -> String {
     }
 }
 
-/// Разобрать строку из командной строки в тип текущего значения.
+/// Parse a command-line string into the type of the current value
 fn parse_like(existing: &toml::Value, raw: &str, key: &str) -> Result<toml::Value, ConfigError> {
     let bad = |message: &str| ConfigError::BadValue {
         key: key.to_string(),
@@ -1114,16 +1114,16 @@ fn parse_like(existing: &toml::Value, raw: &str, key: &str) -> Result<toml::Valu
             .trim()
             .parse::<i64>()
             .map(toml::Value::Integer)
-            .map_err(|_| bad("ожидается целое число")),
+            .map_err(|_| bad("expected an integer")),
         toml::Value::Float(_) => raw
             .trim()
             .parse::<f64>()
             .map(toml::Value::Float)
-            .map_err(|_| bad("ожидается число, например 0.4")),
+            .map_err(|_| bad("expected a number, for example 0.4")),
         toml::Value::Boolean(_) => match raw.trim().to_lowercase().as_str() {
             "true" | "1" | "yes" | "да" | "on" => Ok(toml::Value::Boolean(true)),
             "false" | "0" | "no" | "нет" | "off" => Ok(toml::Value::Boolean(false)),
-            _ => Err(bad("ожидается true или false")),
+            _ => Err(bad("expected true or false")),
         },
         toml::Value::Array(_) => Ok(toml::Value::Array(
             raw.split(',')
@@ -1131,9 +1131,9 @@ fn parse_like(existing: &toml::Value, raw: &str, key: &str) -> Result<toml::Valu
                 .filter(|item| item.as_str().is_some_and(|s| !s.is_empty()))
                 .collect(),
         )),
-        toml::Value::Table(_) => Err(bad("это секция настроек, а не значение")),
+        toml::Value::Table(_) => Err(bad("this is a settings section, not a value")),
         toml::Value::Datetime(_) => Err(bad(
-            "значение такого типа менять из командной строки нельзя",
+            "a value of this type cannot be changed from the command line",
         )),
     }
 }
@@ -1199,7 +1199,7 @@ mod tests {
         let text = Config::default().to_toml_string().unwrap();
         assert!(
             !text.contains("api_key ="),
-            "ключ не должен храниться в файле"
+            "the key must not be stored in the file"
         );
         assert!(text.contains("api_key_env"));
     }
@@ -1211,11 +1211,11 @@ mod tests {
 
     #[test]
     fn streaming_is_on_out_of_the_box() {
-        // Обещание продукта: черновик виден во время речи, а после отпускания остаётся хвост.
-        // Выключить можно только явно в файле настроек.
+        // Promise of the product: the draft is visible during speech, and after the release only a tail remains.
+        // It can be turned off only explicitly in the settings file
         let stt = Config::default().stt;
-        assert!(stt.chunked, "потоковая обработка выключена по умолчанию");
-        assert!(stt.streaming_preview, "черновик выключен по умолчанию");
+        assert!(stt.chunked, "streaming processing is off by default");
+        assert!(stt.streaming_preview, "the draft is off by default");
         assert_eq!(stt.chunk_pause_ms, 700);
     }
 
@@ -1256,12 +1256,12 @@ mod tests {
     #[test]
     fn a_wrong_value_names_the_key_the_value_and_what_was_expected() {
         let mut config = Config::default();
-        config.output.mode = "пасте".into();
+        config.output.mode = "pasta".into();
         let issues = config.validate().unwrap_err();
         assert_eq!(issues.len(), 1, "{issues:?}");
         let text = issues[0].to_string();
         assert!(text.contains("output.mode"), "{text}");
-        assert!(text.contains("пасте"), "{text}");
+        assert!(text.contains("pasta"), "{text}");
         assert!(text.contains("auto, paste, type, clipboard"), "{text}");
     }
 
@@ -1278,7 +1278,7 @@ mod tests {
             ui_language: "kz".into(),
             ..Config::default()
         };
-        config.log.level = "громко".into();
+        config.log.level = "loud".into();
         config.stats.typing_baseline_wpm = 0;
         config.llm.temperature = 9.0;
         let issues = config.validate().unwrap_err();
@@ -1292,11 +1292,11 @@ mod tests {
     #[test]
     fn an_unknown_style_in_the_settings_is_reported() {
         let mut config = Config::default();
-        config.style.default = "поэма".into();
+        config.style.default = "poem".into();
         config
             .style
             .by_app
-            .insert("kitty".into(), "тоже нет".into());
+            .insert("kitty".into(), "no such either".into());
         let issues = config.validate().unwrap_err();
         let keys: Vec<&str> = issues.iter().map(|i| i.key.as_str()).collect();
         assert!(keys.contains(&"style.default"), "{keys:?}");
@@ -1307,12 +1307,12 @@ mod tests {
     fn a_custom_style_counts_as_a_known_one() {
         let mut config = Config::default();
         config.style.custom.push(CustomStyle {
-            id: "поэма".into(),
-            name: "Поэма".into(),
+            id: "poem".into(),
+            name: "Poem".into(),
             uses_llm: true,
             system_prompt: "Пиши стихами.".into(),
         });
-        config.style.default = "поэма".into();
+        config.style.default = "poem".into();
         assert_eq!(config.validate(), Ok(()));
     }
 
@@ -1330,7 +1330,7 @@ mod tests {
             "ru, en"
         );
         assert!(matches!(
-            config.get_by_path("stt.нет_такого").unwrap_err(),
+            config.get_by_path("stt.no_such_key").unwrap_err(),
             ConfigError::UnknownKey(_)
         ));
     }
@@ -1359,9 +1359,9 @@ mod tests {
         let mut config = Config::default();
         let before = config.clone();
         let err = config
-            .set_by_path("output.auto_type_max_chars", "много")
+            .set_by_path("output.auto_type_max_chars", "many")
             .unwrap_err();
-        assert!(err.to_string().contains("целое число"), "{err}");
+        assert!(err.to_string().contains("integer"), "{err}");
         assert_eq!(config, before);
     }
 
@@ -1369,7 +1369,7 @@ mod tests {
     fn a_value_that_fails_validation_is_refused_and_nothing_changes() {
         let mut config = Config::default();
         let before = config.clone();
-        let err = config.set_by_path("log.level", "громко").unwrap_err();
+        let err = config.set_by_path("log.level", "loud").unwrap_err();
         assert!(err.to_string().contains("log.level"), "{err}");
         assert_eq!(config, before);
     }
@@ -1377,8 +1377,8 @@ mod tests {
     #[test]
     fn a_section_cannot_be_assigned_a_value() {
         let mut config = Config::default();
-        let err = config.set_by_path("llm", "что-нибудь").unwrap_err();
-        assert!(err.to_string().contains("секция"), "{err}");
+        let err = config.set_by_path("llm", "anything").unwrap_err();
+        assert!(err.to_string().contains("section"), "{err}");
     }
 
     #[test]
@@ -1388,7 +1388,7 @@ mod tests {
         assert!(keys.contains(&"llm.timeout_secs".to_string()));
         assert!(keys.contains(&"privacy.no_record_mode".to_string()));
         assert!(!keys.contains(&"llm".to_string()));
-        // Список отсортирован, чтобы вывод `config get` был стабилен.
+        // The list is sorted, so the `config get` output is stable
         let mut sorted = keys.clone();
         sorted.sort();
         assert_eq!(keys, sorted);
@@ -1402,15 +1402,15 @@ mod tests {
 
         let (config, warning) = Config::load_lenient(&path).unwrap();
         assert_eq!(config, Config::default());
-        let warning = warning.expect("пользователь должен узнать о подмене");
-        assert!(warning.contains("повреждён"), "{warning}");
+        let warning = warning.expect("the user must learn about the replacement");
+        assert!(warning.contains("damaged"), "{warning}");
 
         let broken = directory.path().join("config.toml.broken");
-        assert!(broken.exists(), "испорченный файл должен сохраниться");
+        assert!(broken.exists(), "the damaged file must be kept");
         assert!(std::fs::read_to_string(&broken)
             .unwrap()
             .contains("= = true"));
-        // На месте настроек теперь рабочий файл.
+        // A working file now stands in place of the settings
         assert_eq!(Config::load(&path).unwrap(), Config::default());
     }
 
@@ -1430,7 +1430,7 @@ mod tests {
         let mut config = Config::from_toml_str(Path::new("x.toml"), "version = 0\n").unwrap();
         assert!(config.migrate());
         assert_eq!(config.version, CONFIG_VERSION);
-        // Повторная миграция уже ничего не делает.
+        // A repeated migration does nothing
         assert!(!config.migrate());
     }
 
@@ -1461,7 +1461,7 @@ mod tests {
     fn an_invalid_profile_is_not_imported() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("profile.toml");
-        std::fs::write(&path, "[output]\nmode = \"телепатия\"\n").unwrap();
+        std::fs::write(&path, "[output]\nmode = \"telepathy\"\n").unwrap();
         let err = Config::import(&path).unwrap_err();
         assert!(err.to_string().contains("output.mode"), "{err}");
     }
