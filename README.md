@@ -24,7 +24,7 @@ More details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The phrase journal s
 | --- | --- |
 | ![The MolvAI panel: the style, the last phrase and the statistics for today](docs/img/panel-idle.png) | ![The panel during recording: the indicator, the signal level and the stop buttons](docs/img/panel-recording.png) |
 
-The panel shows the daemon state, the live signal level, the choice of the processing style, the last phrase with its pace, and the statistics for today. The "History" and "Statistics" tabs read the same JSONL journal as `molva history` and `molva stats`
+The panel shows the daemon state, the live signal level, the choice of the processing style, the last phrase with its pace, and the statistics for today. The "History" and "Stats" tabs read the same JSONL journal as `molva history` and `molva stats`
 
 ## Installation
 

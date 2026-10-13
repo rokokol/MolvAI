@@ -90,7 +90,7 @@ The next step depends on the session that you found in step 1:
   bind  = CTRL ALT, X, exec, molva record toggle --mode command
   ```
 
-- **GNOME, KDE**: show how to create a custom shortcut in the keyboard settings for the commands `molva start` and `molva stop`
+- **GNOME, KDE**: show how to create a custom shortcut in the keyboard settings for the commands `molva record start` and `molva record stop`
 - **X11 without a desktop environment**: offer `sxhkd` or the built-in keyboard capture (`hotkeys.backend = "evdev"`, which needs membership in the `input` group)
 - **Windows, macOS**: the application itself registers the global combination, so the system needs no separate setup. On macOS warn that the user must grant the "Accessibility" and "Input Monitoring" rights in the security settings
 
