@@ -431,7 +431,12 @@ pub fn parse_status(value: &serde_json::Value) -> (Option<DaemonState>, Option<S
 async fn ask_daemon(cmd: Command) -> Result<serde_json::Value, CommandError> {
     tauri::async_runtime::spawn_blocking(move || ipc::request(cmd))
         .await
-        .map_err(|e| CommandError::new("internal", format!("the daemon request was interrupted: {e}")))?
+        .map_err(|e| {
+            CommandError::new(
+                "internal",
+                format!("the daemon request was interrupted: {e}"),
+            )
+        })?
         .map_err(CommandError::from)
 }
 
@@ -528,8 +533,12 @@ fn parse_devices(value: &serde_json::Value) -> Result<Vec<DeviceInfo>, CommandEr
         .get("devices")
         .cloned()
         .unwrap_or(serde_json::Value::Array(Vec::new()));
-    serde_json::from_value(devices)
-        .map_err(|e| CommandError::new("daemon", format!("the device list could not be parsed: {e}")))
+    serde_json::from_value(devices).map_err(|e| {
+        CommandError::new(
+            "daemon",
+            format!("the device list could not be parsed: {e}"),
+        )
+    })
 }
 
 /// Ask the daemon for the devices from a normal thread: the event subscription does this
@@ -803,7 +812,12 @@ pub async fn transcribe_file<R: Runtime>(
         .map_err(CommandError::from)
     })
     .await
-    .map_err(|e| CommandError::new("sidecar", format!("the transcription task was interrupted: {e}")))?
+    .map_err(|e| {
+        CommandError::new(
+            "sidecar",
+            format!("the transcription task was interrupted: {e}"),
+        )
+    })?
 }
 
 #[tauri::command]
