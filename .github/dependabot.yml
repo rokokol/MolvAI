@@ -2,6 +2,11 @@
 # the crates in Cargo.lock and the interface packages, among them the Tauri CLI that
 # builds the release packages. A bump reaches main only through the green gate of
 # build.yml, because a pull request is checked by the same workflow as everything else
+#
+# Minor and patch bumps of one ecosystem come as one weekly pull request: one each was too many
+# to read. A major bump stays alone, because it is the kind that breaks the build, and a red
+# major inside the group would hold back every other bump. Note that Dependabot calls a 0.x
+# step such as 0.5 -> 0.6 "minor", although Cargo treats it as breaking
 version: 2
 
 updates:
@@ -15,6 +20,9 @@ updates:
     commit-message:
       prefix: "ci"
     labels: ["dependencies"]
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: cargo
     directory: /
@@ -26,10 +34,9 @@ updates:
     commit-message:
       prefix: "build"
     labels: ["dependencies"]
-    # Crate patches arrive in batches, and it is impossible to read one pull request for each
     groups:
-      patch-updates:
-        update-types: ["patch"]
+      minor-and-patch:
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: npm
     directory: /crates/molva-gui/ui
@@ -42,5 +49,5 @@ updates:
       prefix: "build"
     labels: ["dependencies"]
     groups:
-      patch-updates:
-        update-types: ["patch"]
+      minor-and-patch:
+        update-types: ["minor", "patch"]
