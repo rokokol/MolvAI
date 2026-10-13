@@ -53,7 +53,10 @@ pub fn decode_file(path: &Path) -> Result<PcmAudio, AudioError> {
     let meta = std::fs::metadata(path)
         .map_err(|e| decode_error(&label, format!("could not open the file: {e}")))?;
     if meta.is_dir() {
-        return Err(decode_error(&label, "this is a directory, not an audio file"));
+        return Err(decode_error(
+            &label,
+            "this is a directory, not an audio file",
+        ));
     }
     if meta.len() == 0 {
         return Err(decode_error(&label, "the file is empty (0 bytes)"));
@@ -157,7 +160,8 @@ fn decode_source(
                 frames.copy_to_vec_interleaved(&mut interleaved);
                 mono.extend_from_slice(&downmix_to_mono(&interleaved, channels));
             }
-            // A bad packet in the middle of the file is skipped: the rest of the recording is still useful
+            // A bad packet in the middle of the file is skipped: the rest of the recording is still
+            // useful
             Err(SymphoniaError::DecodeError(_)) => {}
             Err(SymphoniaError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                 break
@@ -185,7 +189,8 @@ mod tests {
             .join(name)
     }
 
-    /// Stereo WAV: the left channel is positive, the right channel is negative, so the mono result is zero
+    /// Stereo WAV: the left channel is positive, the right channel is negative, so the mono result
+    /// is zero
     fn write_stereo_wav(path: &Path, rate: u32, secs: f32) {
         let spec = hound::WavSpec {
             channels: 2,
@@ -284,7 +289,8 @@ mod tests {
             (secs - 1.0).abs() <= 0.05,
             "{name}: duration {secs} s instead of 1.0 ±5 %"
         );
-        // The tone is recorded at about −18 dBFS; the threshold separates the signal from a zero buffer
+        // The tone is recorded at about −18 dBFS; the threshold separates the signal from a zero
+        // buffer
         assert!(
             audio.rms() > 0.01,
             "{name}: the tone decoded as silence (rms {})",
@@ -314,7 +320,8 @@ mod tests {
 
     #[test]
     fn stereo_fixture_is_downmixed_to_single_channel() {
-        // The mp3 fixture is recorded in two channels; the output is one stream of samples at the file sample rate
+        // The mp3 fixture is recorded in two channels; the output is one stream of samples at the
+        // file sample rate
         let audio = decode_file(&fixture("tone.mp3")).unwrap();
         assert_eq!(audio.sample_rate, 44_100);
         assert!(audio.samples.len() as f32 / 44_100.0 > 0.9);
@@ -346,7 +353,8 @@ mod tests {
 
     #[test]
     fn reader_reports_label_in_error() {
-        let error = decode_reader(Box::new(Cursor::new(vec![0u8; 64])), None, "stream").unwrap_err();
+        let error =
+            decode_reader(Box::new(Cursor::new(vec![0u8; 64])), None, "stream").unwrap_err();
         assert!(error.to_string().contains("stream"), "{error}");
     }
 

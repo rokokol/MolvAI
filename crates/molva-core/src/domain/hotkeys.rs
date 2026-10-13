@@ -52,7 +52,8 @@ pub enum HotkeyError {
 
 /// Source of key events: evdev on Linux, a Tauri plugin on Windows/macOS
 ///
-/// Compositor binds on Wayland do not implement this trait: they call the CLI, and the CLI sends IPC
+/// Compositor binds on Wayland do not implement this trait: they call the CLI, and the CLI sends
+/// IPC
 pub trait HotkeySource: std::fmt::Debug + Send {
     /// Blocking loop. It sends events to `tx` until the channel closes or an error occurs
     fn run(self: Box<Self>, tx: Sender<HotkeyEvent>) -> Result<(), HotkeyError>;

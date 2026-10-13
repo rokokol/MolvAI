@@ -35,7 +35,8 @@ pub struct FakeAudioSource {
     portion: Option<usize>,
     /// Read position of the streaming processing
     drained: usize,
-    /// Level channel of the current recording: the test sends measurements through it, as the cpal callback does
+    /// Level channel of the current recording: the test sends measurements through it, as the cpal
+    /// callback does
     level_tx: Option<Sender<f32>>,
 }
 

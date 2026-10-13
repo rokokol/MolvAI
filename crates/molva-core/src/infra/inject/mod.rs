@@ -109,7 +109,8 @@ mod tests {
 
     #[test]
     fn the_terminals_people_actually_use_are_in_the_list() {
-        // The classes come from real windows: hyprctl activewindow, xprop WM_CLASS, swaymsg get_tree
+        // The classes come from real windows: hyprctl activewindow, xprop WM_CLASS, swaymsg
+        // get_tree
         for class in [
             "com.mitchellh.ghostty",
             "ghostty",

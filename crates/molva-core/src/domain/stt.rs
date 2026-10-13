@@ -111,7 +111,8 @@ pub trait SttEngine: std::fmt::Debug + Send {
     /// Free the model memory; the next `transcribe` call loads it again
     fn unload(&mut self);
 
-    /// Detect the language from the first seconds of the recording, choosing only among `opts.allowed_languages`
+    /// Detect the language from the first seconds of the recording, choosing only among
+    /// `opts.allowed_languages`
     ///
     /// This is a separate cheap step, not the `auto` mode of the recognition itself: `auto` makes
     /// whisper.cpp compute the full thirty-second window on each phrase. `None` means the

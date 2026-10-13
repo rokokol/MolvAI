@@ -3,7 +3,8 @@
 //!
 //! The request is synchronous (`reqwest::blocking`): the core has no async runtime, and the
 //! phrase waits for the model answer anyway. Retries live in the pipeline, and here is one
-//! attempt — so the timeout means exactly what is configured, not "the timeout times the number of attempts"
+//! attempt — so the timeout means exactly what is configured, not "the timeout times the number
+//! of attempts"
 //!
 //! The key is stored in [`ApiKey`], so the `Debug` of the client prints a mask, not the secret
 
@@ -84,14 +85,16 @@ pub struct OpenAiCompatClient {
     provider_id: String,
     is_local: bool,
     timeout: Duration,
-    /// The `reasoning_effort` field of the request; `None` means do not send (see `LlmConfig::reasoning_effort`)
+    /// The `reasoning_effort` field of the request; `None` means do not send (see
+    /// `LlmConfig::reasoning_effort`)
     reasoning_effort: Option<String>,
     http: reqwest::blocking::Client,
 }
 
 /// What to send in `reasoning_effort` by the setting and the provider type. `auto` turns off
 /// reasoning in local models (`none`) and does not send the field to cloud ones — it is
-/// not valid for all of their models. An empty string means do not send, and anything else goes as it is
+/// not valid for all of their models. An empty string means do not send, and anything else goes
+/// as it is
 pub fn effective_reasoning_effort(setting: &str, is_local: bool) -> Option<String> {
     match setting.trim() {
         "" => None,
@@ -207,7 +210,8 @@ impl OpenAiCompatClient {
     }
 
     /// Names of the models that the server returns on `GET /models`. Diagnostics need it: does
-    /// the provider answer at all, and is the configured model downloaded. The errors are the same as in `complete`
+    /// the provider answer at all, and is the configured model downloaded. The errors are the same
+    /// as in `complete`
     pub fn list_models(&self) -> Result<Vec<String>, LlmError> {
         let url = format!("{}/models", self.base_url);
         let response = self.send(self.http.get(&url), &url)?;

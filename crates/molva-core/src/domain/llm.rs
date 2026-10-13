@@ -34,7 +34,8 @@ pub enum LlmError {
     BadResponse(String),
 }
 
-/// Client of a language model. A client error never loses a phrase: the pipeline returns the raw text
+/// Client of a language model. A client error never loses a phrase: the pipeline returns the raw
+/// text
 pub trait LlmClient: std::fmt::Debug + Send + Sync {
     /// Provider identifier for the journal, for example `ollama`
     fn id(&self) -> &str;

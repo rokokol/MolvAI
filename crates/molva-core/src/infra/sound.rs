@@ -140,7 +140,8 @@ fn play_tone(kind: CueKind, volume: f32) -> Result<(), String> {
     Ok(())
 }
 
-/// Tone generator: it remembers how many samples it has returned, and stays silent after the end of the cue
+/// Tone generator: it remembers how many samples it has returned, and stays silent after the end
+/// of the cue
 #[derive(Debug, Clone, Copy)]
 struct Tone {
     index: usize,

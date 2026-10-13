@@ -26,7 +26,8 @@ pub const DEFAULT_DEVICE: &str = "default";
 /// Sample rates that we show to the user if the device reports a range
 const COMMON_RATES: [u32; 5] = [16_000, 22_050, 32_000, 44_100, 48_000];
 
-/// At most 10 times per second: the level indicator in the GUI needs no more, and the channel does not clog
+/// At most 10 times per second: the level indicator in the GUI needs no more, and the channel
+/// does not clog
 const LEVEL_INTERVAL: Duration = Duration::from_millis(100);
 
 /// List of input devices: the name, the "default" flag, the supported sample rates
@@ -200,7 +201,9 @@ impl AudioSource for CpalSource {
                     stop_rx,
                 );
             })
-            .map_err(|e| AudioError::Backend(format!("could not start the recording thread: {e}")))?;
+            .map_err(|e| {
+                AudioError::Backend(format!("could not start the recording thread: {e}"))
+            })?;
 
         match ready_rx.recv() {
             Ok(Ok((sample_rate, shared))) => {
@@ -271,7 +274,8 @@ impl CpalSource {
         let Some(active) = self.active.take() else {
             return false;
         };
-        // A send error means the thread already ended by itself (for example, after losing the device)
+        // A send error means the thread already ended by itself (for example, after losing the
+        // device)
         let _ = active.stop_tx.send(());
         let joined = active.thread.join().is_ok();
         info!(device = %self.device, "microphone released");
@@ -329,7 +333,8 @@ impl Drop for CpalSource {
     }
 }
 
-/// Body of the owner thread of the stream: it builds the stream, answers on `ready` and waits for the stop command
+/// Body of the owner thread of the stream: it builds the stream, answers on `ready` and waits for
+/// the stop command
 ///
 /// The channel ends and the device name arrive by value on purpose: the thread must own them,
 /// or they do not close with it and the owner does not learn that the recording ended
@@ -616,7 +621,10 @@ mod tests {
         let AudioError::DeviceNotFound(message) = err else {
             panic!("expected DeviceNotFound, got {err:?}");
         };
-        assert!(message.contains("Blue Snowball"), "no name of the requested device");
+        assert!(
+            message.contains("Blue Snowball"),
+            "no name of the requested device"
+        );
         assert!(
             message.contains("Yeti Stereo Microphone"),
             "the list of available devices is not suggested: {message}"
@@ -653,11 +661,7 @@ mod tests {
 
         let mut samples = vec![0.1, -0.2];
         apply_gain(&mut samples, -1.0);
-        assert_eq!(
-            samples,
-            vec![0.0, 0.0],
-            "a negative gain counts as 0"
-        );
+        assert_eq!(samples, vec![0.0, 0.0], "a negative gain counts as 0");
     }
 
     #[test]

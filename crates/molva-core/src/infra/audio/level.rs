@@ -7,7 +7,8 @@
 
 use std::time::{Duration, Instant};
 
-/// Below this RMS there is effectively no signal: −80 dBFS is the silence of a digital zero, not quiet speech
+/// Below this RMS there is effectively no signal: −80 dBFS is the silence of a digital zero, not
+/// quiet speech
 pub const ZERO_LEVEL_RMS: f32 = 1e-4;
 
 /// How long to wait before a zero level counts as a problem and not as a pause before a word
@@ -34,7 +35,8 @@ pub struct ZeroLevelWatch {
     silent_since: Option<Instant>,
     /// The warning for this stretch is already given
     warned: bool,
-    /// Time of the previous measurement: a break longer than `RECORDING_GAP` is the border between recordings
+    /// Time of the previous measurement: a break longer than `RECORDING_GAP` is the border between
+    /// recordings
     last_seen: Option<Instant>,
 }
 

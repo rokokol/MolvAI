@@ -10,7 +10,8 @@ use uuid::Uuid;
 /// Current schema version of a journal line
 pub const SCHEMA_VERSION: u32 = 1;
 
-/// A phrase shorter than this gets no WPM: division by a fraction of a second gives nonsense numbers
+/// A phrase shorter than this gets no WPM: division by a fraction of a second gives nonsense
+/// numbers
 pub const MIN_AUDIO_SECS_FOR_WPM: f32 = 1.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

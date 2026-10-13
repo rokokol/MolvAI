@@ -113,7 +113,8 @@ fn pump(
                 _ => continue,
             };
             // The snapshot of the modifiers is taken before the update: when the modifier key
-            // itself is pressed, the combination `RightCtrl` must see it already pressed, and `Ctrl+Space` must not
+            // itself is pressed, the combination `RightCtrl` must see it already pressed, and
+            // `Ctrl+Space` must not
             let mut active = {
                 let mut guard = modifiers
                     .lock()

@@ -67,7 +67,8 @@ pub trait TextInjector: std::fmt::Debug + Send {
     /// Class of the window that gets the next paste
     ///
     /// It is needed where the paste method depends on the application: Ctrl+V pastes nothing in a
-    /// terminal, which needs Ctrl+Shift+V. Implementations that do not care about the window do nothing
+    /// terminal, which needs Ctrl+Shift+V. Implementations that do not care about the window do
+    /// nothing
     fn set_window(&mut self, _class: Option<&str>) {}
 }
 

@@ -2,7 +2,8 @@
 //! Configuration: TOML in the home directory of the user
 //!
 //! All fields have default values, so an empty file is a valid config, and a partial file is
-//! filled in. API keys are not stored in the file: only the name of an environment variable or a keystore
+//! filled in. API keys are not stored in the file: only the name of an environment variable or a
+//! keystore
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -135,8 +136,9 @@ pub struct SttConfig {
     pub model: String,
     /// Empty means the default model directory
     pub model_path: String,
-    /// Where to download the model weights instead of Hugging Face: a directory URL, the file name is appended to it
-    /// Empty means Hugging Face. The SHA-256 check catches a swapped file, so `http://` is fine too
+    /// Where to download the model weights instead of Hugging Face: a directory URL, and the file
+    /// name is appended to it. Empty means Hugging Face. The SHA-256 check catches a swapped file,
+    /// so `http://` is fine too
     pub models_mirror: String,
     /// `auto` or an ISO-639-1 code; a fixed language turns off auto-detection
     pub language: String,
@@ -173,7 +175,8 @@ impl Default for SttConfig {
             auto_pull: true,
             chunked: true,
             // The segmentation pause is shorter than `audio.vad_min_pause_ms`: there the pause
-            // decides whether the phrase has ended, and here it decides whether a chunk can already go to the model
+            // decides whether the phrase has ended, and here it decides whether a chunk can
+            // already go to the model
             chunk_pause_ms: crate::app::audio::segmenter::DEFAULT_CHUNK_PAUSE_MS,
             streaming_preview: true,
             remote: RemoteSttConfig::default(),
@@ -270,7 +273,8 @@ pub struct LlmConfig {
     /// How much the model "thinks" before it answers: `auto` sends `none` for local providers
     /// (Ollama, LM Studio) and does not send the field for cloud ones; an empty string means
     /// never send; any other value (`none`, `low`, `medium`, `high`) goes as it is. Otherwise
-    /// reasoning models such as qwen3.5 spend the whole `max_tokens` on reasoning and return empty text
+    /// reasoning models such as qwen3.5 spend the whole `max_tokens` on reasoning and return
+    /// empty text
     pub reasoning_effort: String,
 }
 
@@ -333,9 +337,9 @@ pub struct OutputConfig {
     pub type_delay_ms: u32,
     /// Pause before the paste, in milliseconds
     ///
-    /// Between the key release and the paste the window must have time to return the focus to the input field.
-    /// Locally 50 ms is enough; a remote desktop (RDP, VNC, xrdp) and heavy Electron windows
-    /// need clearly more — up to 1500 ms
+    /// Between the key release and the paste the window must have time to return the focus to the
+    /// input field. Locally 50 ms is enough; a remote desktop (RDP, VNC, xrdp) and heavy Electron
+    /// windows need clearly more — up to 1500 ms
     pub pre_inject_delay_ms: u32,
     /// Paste into terminals with Ctrl+Shift+V, by looking at the class of the active window
     pub terminal_shortcut: bool,
@@ -430,8 +434,9 @@ pub struct JournalConfig {
     pub enabled: bool,
     /// `false` is privacy mode: a line with no text of the phrase
     pub include_text: bool,
-    /// `true` means the texts of the phrases in the journal are encrypted (XChaCha20-Poly1305), the key comes from `key_source`
-    /// The other fields of the line stay open: statistics and filters work without the key
+    /// `true` means the texts of the phrases in the journal are encrypted (XChaCha20-Poly1305), and
+    /// the key comes from `key_source`. The other fields of the line stay open: statistics and
+    /// filters work without the key
     pub encrypt: bool,
     /// Where the key lives: `file` is the `key_path` file, `keyring` is the `journal-key` entry
     /// in the OS store. In both cases the key is created by itself at the first open
@@ -666,7 +671,8 @@ impl Config {
     /// Read the file, and move a damaged one to `<path>.broken` and start with the defaults
     ///
     /// Returns the settings and a warning if the file had to be replaced: it is wrong to lose
-    /// someone's settings silently, but it is also wrong to crash at startup because of one extra bracket
+    /// someone's settings silently, but it is also wrong to crash at startup because of one extra
+    /// bracket
     pub fn load_lenient(path: &Path) -> Result<(Self, Option<String>), ConfigError> {
         match Self::load(path) {
             Ok(mut config) => {
@@ -1092,7 +1098,8 @@ fn set_value_at(root: &mut toml::Value, path: &str, new: toml::Value) -> Result<
     Ok(())
 }
 
-/// How a value looks in the `config get` output: a string without quotes, everything else as in TOML
+/// How a value looks in the `config get` output: a string without quotes, everything else as in
+/// TOML
 fn render(value: &toml::Value) -> String {
     match value {
         toml::Value::String(text) => text.clone(),
@@ -1211,8 +1218,8 @@ mod tests {
 
     #[test]
     fn streaming_is_on_out_of_the_box() {
-        // Promise of the product: the draft is visible during speech, and after the release only a tail remains.
-        // It can be turned off only explicitly in the settings file
+        // Promise of the product: the draft is visible during speech, and after the release only a
+        // tail remains. It can be turned off only explicitly in the settings file
         let stt = Config::default().stt;
         assert!(stt.chunked, "streaming processing is off by default");
         assert!(stt.streaming_preview, "the draft is off by default");

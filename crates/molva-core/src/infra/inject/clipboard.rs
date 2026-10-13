@@ -3,7 +3,8 @@
 //!
 //! The user copies a link, dictates a phrase — and expects the link to stay in the clipboard.
 //! So a paste through the clipboard always runs under `ClipboardGuard`, and is never "put it
-//! there and forget". An empty clipboard is restored empty, not with the text of the previous phrase
+//! there and forget". An empty clipboard is restored empty, not with the text of the previous
+//! phrase
 
 use std::process::{Command, Stdio};
 use std::time::Duration;
@@ -59,7 +60,8 @@ impl<B: ClipboardBackend> ClipboardGuard<B> {
         self.backend.set_text(text)
     }
 
-    /// Restore the old content. The pause lets the application finish reading the clipboard before the swap
+    /// Restore the old content. The pause lets the application finish reading the clipboard
+    /// before the swap
     pub fn restore(&mut self) -> Result<(), InjectError> {
         let Some(saved) = self.saved.take() else {
             return Ok(());
@@ -95,7 +97,8 @@ pub struct SystemClipboard {
     external_write: bool,
 }
 
-// `arboard::Clipboard` is a foreign type with no `Debug`, so we print not the connection but whether it exists
+// `arboard::Clipboard` is a foreign type with no `Debug`, so we print not the connection but
+// whether it exists
 impl std::fmt::Debug for SystemClipboard {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SystemClipboard")
@@ -196,8 +199,9 @@ impl ClipboardBackend for SystemClipboard {
     }
 }
 
-/// Text from the clipboard through `wl-paste`; `None` if the utility is missing or the clipboard holds no text
-/// Both the clipboard snapshot and command mode need it: command mode takes the selection after Ctrl+C
+/// Text from the clipboard through `wl-paste`; `None` if the utility is missing or the clipboard
+/// holds no text. Both the clipboard snapshot and command mode need it: command mode takes the
+/// selection after Ctrl+C
 pub(crate) fn wl_paste() -> Option<String> {
     let output = Command::new("wl-paste").arg("--no-newline").output().ok()?;
     if !output.status.success() {

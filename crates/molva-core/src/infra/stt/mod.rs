@@ -26,12 +26,14 @@ use crate::domain::stt::{LanguageHint, SttEngine, SttError, SttOptions, Transcri
 pub enum LanguagePolicy {
     /// The settings fix the language: auto-detection is off
     Fixed(String),
-    /// The language is chosen among the allowed ones. An empty list means "leave the choice to the model"
+    /// The language is chosen among the allowed ones. An empty list means "leave the choice to
+    /// the model"
     DetectAmong(Vec<String>),
 }
 
 impl LanguagePolicy {
-    /// Policy from the settings: `language = "auto"` with a list of allowed languages gives `DetectAmong`
+    /// Policy from the settings: `language = "auto"` with a list of allowed languages gives
+    /// `DetectAmong`
     pub fn from_config(cfg: &SttConfig) -> Self {
         match LanguageHint::parse(&cfg.language) {
             LanguageHint::Fixed(code) => LanguagePolicy::Fixed(code),
@@ -70,7 +72,8 @@ pub fn stt_options_from_config(cfg: &SttConfig, timestamps: bool) -> SttOptions 
     }
 }
 
-/// Path to the weights file: the explicit `model_path` from the settings, or the model name in the models directory
+/// Path to the weights file: the explicit `model_path` from the settings, or the model name in
+/// the models directory
 ///
 /// The directory is a parameter because the model catalogue (`molva models`) owns it, not the
 /// engine: so the path is computed the same way in the daemon and in the CLI
@@ -120,7 +123,8 @@ pub fn is_silence_hallucination(transcript: &Transcript, no_speech_threshold: f3
         .any(|phrase| normalised == *phrase)
 }
 
-/// Normalisation for the comparison with the patterns: lower case, only letters and digits, one space
+/// Normalisation for the comparison with the patterns: lower case, only letters and digits, one
+/// space
 fn normalise_for_match(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for ch in text.chars() {
@@ -361,9 +365,13 @@ mod tests {
         ]);
         let options = opts_auto(&["ru", "en"]);
 
-        let out = transcribe_with_language_policy(&mut engine, &audio(), &options).expect("success");
+        let out =
+            transcribe_with_language_policy(&mut engine, &audio(), &options).expect("success");
 
-        assert_eq!(out.text, "началось", "the result of the retry is taken, not the first one");
+        assert_eq!(
+            out.text, "началось",
+            "the result of the retry is taken, not the first one"
+        );
         assert_eq!(engine.calls.len(), 2, "there must be exactly one retry");
         assert_eq!(engine.calls[0].language, LanguageHint::Auto);
         assert_eq!(
@@ -398,7 +406,8 @@ mod tests {
             ..opts_auto(&["ru"])
         };
 
-        let out = transcribe_with_language_policy(&mut engine, &audio(), &options).expect("success");
+        let out =
+            transcribe_with_language_policy(&mut engine, &audio(), &options).expect("success");
 
         assert_eq!(out.text, "почалося");
         assert_eq!(engine.calls.len(), 1);
@@ -408,8 +417,8 @@ mod tests {
     fn empty_allowed_list_lets_any_language_through() {
         let mut engine = FakeStt::with_responses(vec![Ok(detected("de", "guten tag"))]);
 
-        let out =
-            transcribe_with_language_policy(&mut engine, &audio(), &opts_auto(&[])).expect("success");
+        let out = transcribe_with_language_policy(&mut engine, &audio(), &opts_auto(&[]))
+            .expect("success");
 
         assert_eq!(out.text, "guten tag");
         assert_eq!(engine.calls.len(), 1);
@@ -543,8 +552,7 @@ mod tests {
 
     #[test]
     fn failure_of_the_first_pass_is_returned_as_is() {
-        let mut engine =
-            FakeStt::with_responses(vec![Err(SttError::Inference("broke".into()))]);
+        let mut engine = FakeStt::with_responses(vec![Err(SttError::Inference("broke".into()))]);
 
         let error = transcribe_with_language_policy(&mut engine, &audio(), &opts_auto(&["ru"]))
             .expect_err("the engine error must reach the caller");

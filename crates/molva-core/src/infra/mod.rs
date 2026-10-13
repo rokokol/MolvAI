@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
-//! Infrastructure: real implementations of the `domain` contracts on top of the OS, the network and external libraries
+//! Infrastructure: real implementations of the `domain` contracts on top of the OS, the network
+//! and external libraries
 //!
 //! One declaration per line: several tracks share this file, so there are fewer conflicts
 

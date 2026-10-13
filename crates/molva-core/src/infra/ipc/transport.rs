@@ -2,7 +2,8 @@
 //! IPC transport: a local socket, one JSON line per message
 //!
 //! The format is primitive on purpose: one line is one `Request` or one `Response`/`Event`.
-//! So the daemon can be reached from `socat` and from a script in any language, not only from the CLI
+//! So the daemon can be reached from `socat` and from a script in any language, not only from the
+//! CLI
 //!
 //! The socket path always comes as a parameter: the daemon, the CLI and the tests must agree
 //! explicitly, or a socket test in a temporary directory starts to depend on environment variables
@@ -55,7 +56,8 @@ impl IpcClientError {
 ///
 /// On Linux this is `$XDG_RUNTIME_DIR/molva.sock`: the directory is cleaned at the end of the
 /// session, so no dead sockets stay there. If the directory does not exist, it is
-/// `/tmp/molva-<uid>.sock`, separate for each user, or two users on a shared machine fight for one file
+/// `/tmp/molva-<uid>.sock`, separate for each user, or two users on a shared machine fight for
+/// one file
 pub fn socket_path() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
@@ -129,7 +131,8 @@ pub struct Server {
 }
 
 impl Server {
-    /// Take the socket. A dead socket file is removed: otherwise the daemon does not start after a crash
+    /// Take the socket. A dead socket file is removed: otherwise the daemon does not start after
+    /// a crash
     pub fn bind(path: &Path) -> Result<Self, IpcServerError> {
         if path_is_stale(path) {
             let _ = std::fs::remove_file(path);
@@ -227,7 +230,8 @@ fn serve_connection(
         let request: Request = match serde_json::from_str(&line) {
             Ok(request) => request,
             Err(err) => {
-                // The id is unknown — we answer with zero, so the client sees the reason, not silence
+                // The id is unknown — we answer with zero, so the client sees the reason, not
+                // silence
                 write_line(
                     &mut send,
                     &Response::err(0, ErrorCode::BadRequest, err.to_string(), None),
@@ -240,7 +244,12 @@ fn serve_connection(
             let Some(events) = handler.subscribe(levels) else {
                 write_line(
                     &mut send,
-                    &Response::err(id, ErrorCode::BadRequest, "subscription is unavailable", None),
+                    &Response::err(
+                        id,
+                        ErrorCode::BadRequest,
+                        "subscription is unavailable",
+                        None,
+                    ),
                 )?;
                 continue;
             };
@@ -392,14 +401,16 @@ impl Iterator for Events {
             }
             match serde_json::from_str(&line) {
                 Ok(event) => return Some(event),
-                // An unknown event is no reason to break the subscription: the protocol grows additively
+                // An unknown event is no reason to break the subscription: the protocol grows
+                // additively
                 Err(err) => tracing::debug!(%err, "unknown event skipped"),
             }
         }
     }
 }
 
-/// Whether the daemon is alive on this socket. Returns the pid from the `ping` answer, if it gave one
+/// Whether the daemon is alive on this socket. Returns the pid from the `ping` answer, if it gave
+/// one
 pub fn ping(path: &Path) -> Option<u32> {
     let mut client = Client::connect(path).ok()?;
     let response = client.call(Command::Ping).ok()?;
@@ -552,7 +563,11 @@ mod tests {
         assert_eq!(events.next(), Some(Event::Level { rms: 0.25 }));
         assert_eq!(events.next(), Some(Event::ConfigReloaded));
         drop(tx);
-        assert_eq!(events.next(), None, "a closed channel ends the subscription");
+        assert_eq!(
+            events.next(),
+            None,
+            "a closed channel ends the subscription"
+        );
         stopper.stop();
     }
 

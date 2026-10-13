@@ -15,7 +15,8 @@ pub struct Style {
 /// Rule that changes text with no model: punctuation by words, "new line", repeats
 pub trait TextRule: std::fmt::Debug + Send + Sync {
     fn id(&self) -> &'static str;
-    /// `lang` is the language code of the phrase (`ru`, `en`), so the rule picks its own command table
+    /// `lang` is the language code of the phrase (`ru`, `en`), so the rule picks its own command
+    /// table
     fn apply(&self, text: &str, lang: &str) -> String;
 }
 

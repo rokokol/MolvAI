@@ -4,7 +4,8 @@
 //! This is the only method that depends neither on the compositor nor on third-party daemons, but
 //! it needs permission for `/dev/uinput` (usually a udev rule for the `input` group). The device
 //! does not know the keyboard layout: key codes go to the kernel, and the compositor applies the
-//! layout, so only ASCII on the US layout can be typed blindly. Everything else goes through the clipboard
+//! layout, so only ASCII on the US layout can be typed blindly. Everything else goes through the
+//! clipboard
 
 use std::path::Path;
 use std::time::Duration;
@@ -167,7 +168,8 @@ impl UinputInjector {
 
     /// Available means `/dev/uinput` really opens for writing
     ///
-    /// A check that the file exists is not enough: without a udev rule it exists but belongs to root
+    /// A check that the file exists is not enough: without a udev rule it exists but belongs to
+    /// root
     pub fn is_available() -> bool {
         Path::new(UINPUT_PATH).exists()
             && std::fs::OpenOptions::new()
@@ -312,8 +314,8 @@ mod tests {
         assert_eq!(key_for('\n'), Some((28, false)));
     }
 
-    /// Each pair of the US layout shares one code: the lower character without Shift, the upper one with it
-    /// A swapped flag would type `'` instead of `"` — and no other test would notice
+    /// Each pair of the US layout shares one code: the lower character without Shift, the upper
+    /// one with it. A swapped flag would type `'` instead of `"` — and no other test would notice
     #[test]
     fn every_shift_pair_shares_a_code_and_differs_only_by_shift() {
         let pairs = [
@@ -342,10 +344,7 @@ mod tests {
         for (lower, upper) in pairs {
             let (lower_code, lower_shift) = key_for(lower).unwrap_or_else(|| panic!("{lower}"));
             let (upper_code, upper_shift) = key_for(upper).unwrap_or_else(|| panic!("{upper}"));
-            assert_eq!(
-                lower_code, upper_code,
-                "{lower} and {upper} share one key"
-            );
+            assert_eq!(lower_code, upper_code, "{lower} and {upper} share one key");
             assert!(!lower_shift, "{lower} is typed without Shift");
             assert!(upper_shift, "{upper} is typed with Shift");
         }
@@ -369,10 +368,7 @@ mod tests {
     #[test]
     fn every_declared_key_has_a_code_and_the_set_is_not_empty() {
         let keys = declared_keys();
-        assert!(
-            keys.iter().count() > 40,
-            "the device must declare all keys"
-        );
+        assert!(keys.iter().count() > 40, "the device must declare all keys");
         assert!(keys.contains(KeyCode(KEY_V)));
         assert!(keys.contains(KeyCode(KEY_LEFTCTRL)));
     }

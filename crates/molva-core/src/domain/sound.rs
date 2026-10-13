@@ -55,7 +55,8 @@ impl CueKind {
 /// An implementation must return at once: the daemon calls `play` from the control thread,
 /// and a wait for the sound would delay the opening of the microphone
 pub trait SoundCue: std::fmt::Debug + Send + Sync {
-    /// Name of the implementation: it shows whether anything sounds at all (`null` — turned off by a setting)
+    /// Name of the implementation: it shows whether anything sounds at all (`null` — turned off by
+    /// a setting)
     fn id(&self) -> &'static str;
     fn play(&self, kind: CueKind);
 }

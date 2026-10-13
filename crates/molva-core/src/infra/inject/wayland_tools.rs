@@ -56,7 +56,8 @@ fn paste_via_clipboard(
             Ok(())
         }
         Err(error) => {
-            // The key combination did not arrive — the text must stay in the clipboard, or it is lost
+            // The key combination did not arrive — the text must stay in the clipboard, or it is
+            // lost
             clipboard.keep();
             Err(error)
         }
@@ -71,7 +72,8 @@ fn guard(restore: bool, delay_ms: u32) -> ClipboardGuard<SystemClipboard> {
     )
 }
 
-/// Paste by means of Hyprland itself: the compositor synthesizes the key combination for the active window
+/// Paste by means of Hyprland itself: the compositor synthesizes the key combination for the
+/// active window
 #[derive(Debug)]
 pub struct HyprctlInjector {
     clipboard: ClipboardGuard<SystemClipboard>,
@@ -117,7 +119,8 @@ impl TextInjector for HyprctlInjector {
 
     fn inject(&mut self, text: &str, mode: OutputMode) -> Result<InjectReport, InjectError> {
         if mode != OutputMode::Paste {
-            // hyprctl can only press keys: typing text and "only to the clipboard" do not belong here
+            // hyprctl can only press keys: typing text and "only to the clipboard" do not belong
+            // here
             return Err(InjectError::Unsupported);
         }
         let arg = self.shortcut_arg();
@@ -126,7 +129,8 @@ impl TextInjector for HyprctlInjector {
             // Hyprland leaves the modifier pressed after sendshortcut (issue #6407), and the client
             // handles the combination only when the modifier is released. So the "release" is
             // not a cleanup after the fact but a required step of the paste. The pause between
-            // them was tested on 0.56.2: without it the compositor merges the events and the paste does not happen
+            // them was tested on 0.56.2: without it the compositor merges the events and the paste
+            // does not happen
             std::thread::sleep(MODIFIER_RELEASE_DELAY);
             release_modifiers();
             Ok(())
@@ -138,7 +142,8 @@ impl TextInjector for HyprctlInjector {
     }
 
     /// Command mode: copy the selection with Ctrl+C through the compositor and take it
-    /// from the clipboard. The clipboard is not restored on purpose — a plain Ctrl+C behaves the same way
+    /// from the clipboard. The clipboard is not restored on purpose — a plain Ctrl+C behaves the
+    /// same way
     fn copy_selection(&mut self) -> Result<String, InjectError> {
         use crate::infra::inject::clipboard::{wl_clear, wl_paste};
         // The clipboard is cleared before Ctrl+C: otherwise, if the application was too slow to
@@ -154,7 +159,8 @@ impl TextInjector for HyprctlInjector {
         )?;
         std::thread::sleep(MODIFIER_RELEASE_DELAY);
         release_modifiers();
-        // The application does not return the selection at once: we wait for a new one to appear in the clipboard
+        // The application does not return the selection at once: we wait for a new one to appear
+        // in the clipboard
         let deadline = std::time::Instant::now() + SELECTION_SETTLE_TIMEOUT;
         while std::time::Instant::now() < deadline {
             std::thread::sleep(SELECTION_POLL_INTERVAL);
@@ -357,7 +363,8 @@ mod tests {
     fn terminals_get_the_shift_variant_of_the_shortcut() {
         let plain = HyprctlInjector::new(true, 0, PasteShortcut::CtrlV);
         let terminal = HyprctlInjector::new(true, 0, PasteShortcut::CtrlShiftV);
-        // The key by code, not by keysym: otherwise the combination does not arrive with the Russian layout
+        // The key by code, not by keysym: otherwise the combination does not arrive with the
+        // Russian layout
         assert_eq!(plain.shortcut_arg(), "CTRL, code:55, activewindow");
         assert_eq!(terminal.shortcut_arg(), "CTRL SHIFT, code:55, activewindow");
     }

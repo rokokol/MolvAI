@@ -208,7 +208,8 @@ impl SttEngine for WhisperEngine {
         let mut state = self.context().ok()?.create_state().ok()?;
 
         // The first run is needed for its side effect, not for the text: `whisper_full` writes
-        // `audio_ctx` into the state, and the next encoder run computes the short window instead of the full one
+        // `audio_ctx` into the state, and the next encoder run computes the short window instead
+        // of the full one
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
         params.set_n_threads(threads as i32);
         params.set_translate(false);
@@ -519,7 +520,8 @@ mod tests {
     fn the_best_language_is_chosen_only_among_the_allowed_ones() {
         let allowed = allowed_language_ids(&["ru".into(), "en".into()]);
         assert_eq!(allowed.len(), 2);
-        // The probabilities are invented: what matters is that the maximum is taken over the allowed ones, not over all
+        // The probabilities are invented: what matters is that the maximum is taken over the
+        // allowed ones, not over all
         let mut probs = vec![0.0; 100];
         for (id, code) in &allowed {
             probs[*id] = if code == "en" { 0.7 } else { 0.2 };
