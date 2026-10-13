@@ -2,7 +2,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// Порт фиксирован: его же ждёт `devUrl` в tauri.conf.json.
+// The port is fixed: `devUrl` in tauri.conf.json expects the same port
 export default defineConfig({
   plugins: [react()],
   clearScreen: false,
@@ -12,7 +12,7 @@ export default defineConfig({
   },
   build: {
     target: "es2022",
-    // Сборка попадает внутрь приложения, карты кода наружу не нужны.
+    // The build goes inside the application, so it needs no source maps outside
     sourcemap: false,
   },
 });

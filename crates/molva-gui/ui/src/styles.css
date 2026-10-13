@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: MIT */
-/* Оформление MolvAI. Тема задаётся переменными: светлая — значения по умолчанию,
-   тёмная — либо по системной настройке, либо явным выбором `data-theme`.
-   Все пары «текст на фоне» проверены на контраст не ниже 4.5:1,
-   размеры заданы в rem, поэтому интерфейс читается и при масштабе 200 %. */
+/* MolvAI styling. Variables set the theme: the light theme holds the default values.
+   The dark theme comes from the system setting or from an explicit `data-theme` choice.
+   Every "text on background" pair has a contrast of at least 4.5:1.
+   Sizes use rem, so the interface stays readable at 200 % zoom */
 
 :root {
   --bg: #f4f5f8;
@@ -91,7 +91,7 @@ body {
   line-height: 1.5;
 }
 
-/* Видимый фокус обязателен: интерфейс полностью управляется с клавиатуры. */
+/* A visible focus is required: the keyboard controls the whole interface */
 :focus-visible {
   outline: 3px solid var(--accent);
   outline-offset: 2px;
@@ -180,7 +180,7 @@ body {
   padding: calc(var(--gap) * 1.25);
 }
 
-/* При масштабе 200 % и в узком окне навигация ложится сверху горизонтально. */
+/* At 200 % zoom and in a narrow window, the navigation moves to the top as a row */
 @media (max-width: 46rem) {
   .layout {
     flex-direction: column;

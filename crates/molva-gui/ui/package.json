@@ -1,6 +1,6 @@
 {
   "name": "molva-ui",
-  "description": "Интерфейс MolvAI: панель, история, статистика, файлы, настройки",
+  "description": "MolvAI interface: dashboard, history, statistics, files, settings",
   "private": true,
   "version": "0.1.0",
   "type": "module",

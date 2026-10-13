@@ -7,7 +7,7 @@ import "./styles.css";
 
 const root = document.getElementById("root");
 if (!root) {
-  throw new Error("в разметке нет узла #root");
+  throw new Error("the markup has no #root node");
 }
 
 ReactDOM.createRoot(root).render(

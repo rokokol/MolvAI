@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
-// Обёртки над командами Rust. Вся арифметика и валидация живут в ядре,
-// здесь только вызовы и приведение ошибки к общему виду.
+// Wrappers over the Rust commands. All arithmetic and validation live in the core.
+// Here we only have calls and the conversion of an error to a common form
 
 import { invoke } from "@tauri-apps/api/core";
 
@@ -14,7 +14,7 @@ import type {
   StyleOption,
 } from "./types";
 
-/** Ошибка команды всегда приходит объектом; строка — признак сбоя самого моста. */
+/** A command error always arrives as an object; a string means the bridge itself failed */
 export function asCommandError(error: unknown): CommandError {
   if (error && typeof error === "object" && "message" in error) {
     return error as CommandError;
@@ -87,8 +87,8 @@ export const api = {
 };
 
 /**
- * Копирование в буфер обмена без плагина: сначала системный API, затем запасной
- * приём со скрытым полем — в webview без защищённого контекста первый недоступен.
+ * Copy to the clipboard without a plugin: first the system API, then a fallback
+ * method with a hidden field. A webview without a secure context has no system API
  */
 export async function copyToClipboard(text: string): Promise<boolean> {
   try {
@@ -97,7 +97,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
       return true;
     }
   } catch {
-    // Переходим к запасному приёму.
+    // Go on to the fallback method
   }
   const area = document.createElement("textarea");
   area.value = text;

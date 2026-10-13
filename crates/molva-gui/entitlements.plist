@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- SPDX-License-Identifier: MIT -->
-<!-- Бандлер подписывает приложение и sidecar с hardened runtime (по умолчанию в Tauri),
-     а под ним доступ к микрофону есть только с этим entitlement -->
+<!-- The bundler signs the application and the sidecar with the hardened runtime (the Tauri
+     default). Under it, microphone access exists only with this entitlement -->
 <plist version="1.0">
 <dict>
 	<key>com.apple.security.device.audio-input</key>

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
-// График слов по дням и среднего темпа. Рисуется руками в SVG: сторонние
-// библиотеки графиков сюда не тянем — лишние лицензии и вес ради двух фигур.
+// Chart of words per day and of the average pace. We draw it by hand in SVG: we do not
+// pull in third-party chart libraries, because they add licenses and weight for two shapes
 
 import { axisTicks, chartGeometry, formatDayTick } from "../format";
 import { useI18n } from "../i18n";
@@ -19,7 +19,7 @@ export default function WordsChart({ series }: { series: DayPoint[] }) {
   const plotWidth = WIDTH - PADDING.left - PADDING.right;
   const plotHeight = HEIGHT - PADDING.top - PADDING.bottom;
   const geometry = chartGeometry(series, plotWidth, plotHeight);
-  // Подписей по оси дней не больше десяти: иначе они наезжают друг на друга.
+  // At most ten labels on the day axis: more labels overlap each other
   const tickEvery = Math.max(1, Math.ceil(series.length / 10));
   const wordTicks = axisTicks(geometry.maxWords);
   const wpmTicks = axisTicks(geometry.maxWpm);

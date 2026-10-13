@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Каркас окна: левая навигация, общее состояние демона и подписка на его события.
+// Window shell: left navigation, shared daemon state and a subscription to its events
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
@@ -26,9 +26,9 @@ export type Theme = "system" | "light" | "dark";
 const TABS: Tab[] = ["dashboard", "history", "stats", "files", "settings"];
 const THEME_KEY = "molva.theme";
 
-/** Тишина дольше этого во время записи — повод предупредить о мёртвом микрофоне. */
+/** Silence longer than this during recording is a reason to warn about a dead microphone */
 const SILENCE_WARN_MS = 2000;
-/** Ниже этого уровня сигнал считаем отсутствующим. */
+/** Below this level we treat the signal as absent */
 const SILENCE_RMS = 0.005;
 
 function storedTheme(): Theme {
@@ -38,7 +38,7 @@ function storedTheme(): Theme {
       return value;
     }
   } catch {
-    // Приватный режим браузера может запрещать хранилище — это не повод падать.
+    // A private browser mode can forbid storage, and that is no reason to crash
   }
   return "system";
 }
@@ -98,7 +98,7 @@ export default function App() {
     try {
       localStorage.setItem(THEME_KEY, next);
     } catch {
-      // Тема не сохранится между запусками — интерфейс всё равно работает.
+      // The theme does not persist between launches, but the interface still works
     }
   }, []);
 
@@ -115,7 +115,7 @@ export default function App() {
     document.documentElement.lang = lang;
   }, [lang]);
 
-  // Первый запуск открывает настройки: без конфига пользователю нечего смотреть.
+  // The first launch opens the settings: without a config the user has nothing to look at
   useEffect(() => {
     void (async () => {
       await reloadConfig();
@@ -125,7 +125,7 @@ export default function App() {
           setTab("settings");
         }
       } catch {
-        // Отсутствие ответа не должно мешать открыть окно.
+        // A missing reply must not block the window from opening
       }
       await emit("molva://ready");
     })();
@@ -150,8 +150,8 @@ export default function App() {
           setZeroLevel(false);
           setHypothesis("");
         } else {
-          // Вне записи уровня нет: полоска обязана опуститься, а не замереть
-          // на последнем значении, изображая живой микрофон.
+          // Outside recording there is no level: the bar must drop, not freeze
+          // at the last value and pretend to be a live microphone
           setLevel(0);
         }
       }),
@@ -189,7 +189,7 @@ export default function App() {
     };
   }, [refreshStatus, reloadConfig]);
 
-  // Тишину замечаем по таймеру: события уровня во время молчания могут и не приходить.
+  // We notice silence by a timer: level events may not arrive during silence
   useEffect(() => {
     if (!recording || !config?.audio.warn_zero_level) {
       setZeroLevel(false);
@@ -201,7 +201,7 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, [recording, config?.audio.warn_zero_level]);
 
-  // Состояние демона может измениться и без событий: он мог быть запущен снаружи.
+  // The daemon state can change without events: something outside may have started it
   useEffect(() => {
     const timer = window.setInterval(() => void refreshStatus(), 5000);
     return () => window.clearInterval(timer);
@@ -277,7 +277,7 @@ export default function App() {
   );
 }
 
-/** Общие свойства всех вкладок. */
+/** Properties shared by all tabs */
 export interface ViewProps {
   config: Config | null;
   status: Status | null;

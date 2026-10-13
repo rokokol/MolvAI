@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
-//! Кодогенерация Tauri: разрешения, ресурсы, метаданные пакета.
+//! Tauri code generation: permissions, resources, package metadata
 //!
-//! Плюс одна поправка для Linux. Трей грузит `libayatana-appindicator3` через `dlopen`
-//! в момент создания значка, а в devShell от Nix эта библиотека лежит в store и не видна
-//! ни в `ld.so.cache`, ни в `LD_LIBRARY_PATH`. Спрашиваем её каталог у pkg-config на этапе
-//! сборки и прописываем в RUNPATH исполняемого файла: `dlopen` из самого бинаря его читает.
+//! It also applies one fix for Linux. The tray loads `libayatana-appindicator3` with `dlopen`
+//! when it creates the icon. In the Nix devShell this library sits in the store. Neither
+//! `ld.so.cache` nor `LD_LIBRARY_PATH` shows it. At build time we ask pkg-config for its
+//! directory and write it to the RUNPATH of the executable: `dlopen` called from the binary
+//! itself reads that RUNPATH
 
 fn main() {
     #[cfg(target_os = "linux")]
@@ -15,7 +16,7 @@ fn main() {
 #[cfg(target_os = "linux")]
 fn add_appindicator_runpath() {
     println!("cargo:rerun-if-env-changed=PKG_CONFIG_PATH");
-    // Разные дистрибутивы называют пакет по-разному; берём первый найденный.
+    // Distributions name the package in different ways; take the first one found
     for package in ["ayatana-appindicator3-0.1", "appindicator3-0.1"] {
         let output = std::process::Command::new("pkg-config")
             .args(["--variable=libdir", package])
@@ -31,6 +32,6 @@ fn add_appindicator_runpath() {
         println!("cargo:rustc-link-arg=-Wl,-rpath,{dir}");
         return;
     }
-    // Библиотеки нет — значок в трее просто не появится, приложение это переживёт.
-    println!("cargo:warning=libayatana-appindicator не найден: значок в трее будет недоступен");
+    // Without the library the tray icon does not appear, and the application survives that
+    println!("cargo:warning=libayatana-appindicator not found: the tray icon will be unavailable");
 }

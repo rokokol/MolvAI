@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Разбор аудиофайлов: перетаскивание в окно или путь руками, прогресс и отмена.
+// Audio file transcription: drag into the window or type a path, with progress and cancel
 
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
@@ -15,12 +15,12 @@ interface Job {
   id: string;
   path: string;
   status: JobStatus;
-  /** Последняя строка прогресса из stderr CLI. */
+  /** The last progress line from the CLI stderr */
   progress: string;
   result?: string;
 }
 
-/** Идентификатор задачи: часы плюс счётчик, чтобы не зависеть от crypto в webview. */
+/** Job identifier: the clock plus a counter, so it does not depend on crypto in the webview */
 function nextId(counter: number): string {
   return `job-${Date.now()}-${counter}`;
 }
@@ -66,7 +66,7 @@ export default function Files({ onError }: ViewProps) {
     const progress = listen<TranscribeProgress>("molva://transcribe", (event) => {
       update(event.payload.id, { progress: event.payload.line });
     });
-    // Перетаскивание файлов обрабатывает сам webview: пути приходят готовыми.
+    // The webview itself handles file drops: the paths arrive ready
     const dropped = listen<{ paths: string[] }>("tauri://drag-drop", (event) => {
       setOver(false);
       event.payload.paths.forEach(start);
@@ -78,8 +78,8 @@ export default function Files({ onError }: ViewProps) {
         fns.forEach((fn) => fn()),
       );
     };
-    // Обработчики ставятся один раз на всё время жизни вкладки: они опираются
-    // только на setJobs и ref со счётчиком, а те между рендерами не меняются.
+    // The handlers are set once for the whole life of the tab: they depend
+    // only on setJobs and a ref with the counter, and these do not change between renders
   }, []);
 
   const statusLabel = (status: JobStatus) =>

@@ -50,7 +50,7 @@
       "entitlements": "entitlements.plist",
       "infoPlist": "Info.plist"
     },
-    "shortDescription": "Системный голосовой ввод",
-    "longDescription": "MolvAI — открытый системный голосовой ввод: зажал хоткей, сказал, отпустил — текст в активном поле."
+    "shortDescription": "System-wide voice input",
+    "longDescription": "MolvAI is open source system-wide voice input: hold the hotkey, speak, release, and the text appears in the active field."
   }
 }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Панель: состояние демона, живой уровень сигнала, кнопки записи и последняя реплика.
+// Dashboard: daemon state, live signal level, recording buttons and the last phrase
 
 import { useCallback, useEffect, useState } from "react";
 
@@ -60,7 +60,7 @@ export default function Dashboard({
     api.availableStyles().then(setStyles).catch(() => setStyles([]));
   }, [lang]);
 
-  // Новая реплика меняет счётчики «сегодня»: перечитываем их сразу после события.
+  // A new phrase changes the "today" counters: we read them again right after the event
   useEffect(() => {
     if (lastEntry) {
       void loadToday();
@@ -83,7 +83,7 @@ export default function Dashboard({
   };
 
   const currentStyle = status?.style ?? config?.style.default ?? "";
-  // Уровень редко доходит до единицы: корень растягивает тихую часть шкалы.
+  // The level rarely reaches one: the square root stretches the quiet part of the scale
   const levelPercent = Math.min(100, Math.round(Math.sqrt(Math.max(0, level)) * 140));
 
   return (
@@ -114,8 +114,8 @@ export default function Dashboard({
                 </button>
               </>
             ) : (
-              // Пока идёт загрузка, сокета ещё нет, и проверка единственного экземпляра
-              // пропустила бы второй демон писать в тот же .part
+              // During a download the socket does not exist yet, and the single-instance check
+              // would let a second daemon write to the same .part file
               !download && (
                 <button
                   type="button"

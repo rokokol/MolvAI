@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
-// Бейдж состояния: цвет и текст совпадают с иконкой в трее.
+// State badge: the color and the text match the tray icon
 
 import { useI18n } from "../i18n";
 import type { DaemonState } from "../types";
 
-/** Класс бейджа по состоянию: запись, работа, готовность, отсутствие связи. */
+/** Badge class by state: recording, processing, ready, no connection */
 export function badgeClass(state: DaemonState | null, running: boolean): string {
   if (!running) {
     return "badge";

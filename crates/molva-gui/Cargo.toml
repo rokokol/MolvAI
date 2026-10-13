@@ -1,17 +1,17 @@
 [package]
 name = "molva-gui"
-description = "GUI MolvAI на Tauri 2: трей, настройки, история и статистика"
+description = "MolvAI GUI on Tauri 2: tray, settings, history and statistics"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 authors.workspace = true
-# Приложение распространяется бандлами Tauri, не через crates.io: path-зависимость на ядро без версии
+# Tauri bundles ship the application, not crates.io: a path dependency on the core has no version
 publish = false
 
 [lib]
-# Имя библиотеки без дефиса: его импортирует main.rs и мобильные обвязки Tauri.
+# The library name has no hyphen: main.rs and the Tauri mobile glue import it
 name = "molva_gui"
 crate-type = ["lib", "cdylib", "staticlib"]
 
@@ -40,11 +40,11 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 sys-locale = "0.3.2"
 
-# Вторая копия приложения показывает окно первой; на мобильных плагина нет.
+# A second copy of the application shows the window of the first; mobile has no such plugin
 [target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
 tauri-plugin-single-instance = "2"
 
-# На Wayland глобальные хоткеи процессу не выдаются: там бинды ставит композитор.
+# On Wayland a process gets no global hotkeys: there the compositor sets the binds
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 tauri-plugin-global-shortcut = "2.3"
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// История реплик: поиск, фильтры, копирование, повторная вставка и удаление.
+// Phrase history: search, filters, copy, paste again and delete
 
 import { useCallback, useEffect, useState } from "react";
 
@@ -9,7 +9,7 @@ import { useI18n } from "../i18n";
 import type { ViewProps } from "../App";
 import type { Entry } from "../types";
 
-/** Полночь указанной даты в ISO: фильтр «с даты» включает весь день. */
+/** Midnight of the given date in ISO: the "from date" filter includes the whole day */
 function dayStart(value: string): string | null {
   if (!value) {
     return null;

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Настройки: форма поверх Config, валидация на стороне Rust, экспорт и импорт TOML.
+// Settings: a form over Config, validation on the Rust side, TOML export and import
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
@@ -13,7 +13,7 @@ interface Props extends ViewProps {
   onThemeChange: (theme: Theme) => void;
 }
 
-/** Пресеты провайдеров: выбор подставляет адрес, модель и имя переменной с ключом. */
+/** Provider presets: a choice fills in the address, the model and the key variable name */
 const PROVIDERS: Record<string, { base_url: string; model: string; api_key_env: string }> = {
   ollama: { base_url: "http://localhost:11434/v1", model: "qwen3.5:4b", api_key_env: "" },
   lmstudio: { base_url: "http://localhost:1234/v1", model: "local-model", api_key_env: "" },
@@ -117,8 +117,8 @@ export default function Settings({
       if (!prev) {
         return prev;
       }
-      // Копия на один уровень глубже мутируемой ветки достаточна: change правит
-      // вложенные объекты, поэтому клонируем целиком через structuredClone.
+      // A copy one level deeper than the mutated branch is enough: change edits
+      // nested objects, so we clone the whole value with structuredClone
       const next = structuredClone(prev);
       change(next);
       return next;

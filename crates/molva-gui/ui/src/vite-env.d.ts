@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Типы для импортов, которые обрабатывает Vite: `import "./styles.css"` и ассеты.
-// TypeScript 7 проверяет side-effect-импорты по умолчанию (noUncheckedSideEffectImports),
-// и без этих объявлений такой импорт — ошибка TS2882
+// Types for the imports that Vite handles: `import "./styles.css"` and assets.
+// TypeScript 7 checks side-effect imports by default (noUncheckedSideEffectImports).
+// Without these declarations, such an import is error TS2882
 /// <reference types="vite/client" />

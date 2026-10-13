@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Статистика: плитки, график слов и темпа, таблица по приложениям, экспорт CSV.
+// Statistics: tiles, chart of words and pace, table by application, CSV export
 
 import { useCallback, useEffect, useState } from "react";
 

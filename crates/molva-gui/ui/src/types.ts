@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
-// Формы данных, приходящих из Rust. Имена полей повторяют serde-представление
-// molva_core и команд GUI: расхождение здесь — это сразу ошибка типов при сборке.
+// Shapes of the data that comes from Rust. The field names repeat the serde form
+// of molva_core and of the GUI commands: a mismatch here is a type error at build time
 
 export type DaemonState =
   | "idle"
@@ -26,7 +26,7 @@ export interface Tokens {
   completion: number;
 }
 
-/** Строка журнала: одна реплика. */
+/** A journal line: one phrase */
 export interface Entry {
   schema: number;
   id: string;
@@ -70,20 +70,20 @@ export interface Status {
   hotkeys_paused: boolean;
   message?: string;
   hint?: string;
-  /** Демон ещё не поднял сокет, потому что качает веса. */
+  /** The daemon has not opened the socket yet, because it downloads model weights */
   download?: DownloadProgress;
-  /** Запущенный окном демон упал: код выхода и его последняя строка stderr. */
+  /** The daemon that the window started has crashed: exit code and its last stderr line */
   exit_reason?: string;
 }
 
-/** Загрузка весов модели: байты по файлу `.part` и размер из каталога. */
+/** Model weights download: bytes of the `.part` file and the size from the catalog */
 export interface DownloadProgress {
   model: string;
   downloaded: number;
   total: number;
 }
 
-/** Ошибка команды: вид, сообщение, следующий шаг и поле формы. */
+/** A command error: kind, message, next step and form field */
 export interface CommandError {
   kind: string;
   message: string;
@@ -96,7 +96,7 @@ export interface StyleOption {
   name: string;
 }
 
-// --- Статистика: форма зафиксирована контрактом с дорожкой D ---
+// --- Statistics: the contract with track D fixes the shape ---
 
 export interface StatsLatency {
   stt: number;
@@ -138,7 +138,7 @@ export interface StatsSummary {
   by_app: AppRow[];
 }
 
-// --- Настройки: зеркало molva_core::Config ---
+// --- Settings: a mirror of molva_core::Config ---
 
 export interface RemoteSttConfig {
   base_url: string;
@@ -241,7 +241,7 @@ export interface Config {
   log: { level: string; max_size_mb: number };
 }
 
-/** Присутствие демона: событие `molva://daemon`. */
+/** Daemon presence: the event `molva://daemon` */
 export interface DaemonPresence {
   connected: boolean;
   message?: string;
