@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
-//! Команды, доступные фронтенду, и общее состояние приложения.
+//! Commands available to the frontend, and the shared state of the application
 //!
-//! Всё, что можно посчитать в Rust, считается здесь: фронтенд получает готовые структуры,
-//! а не повторяет логику ядра на TypeScript.
+//! Everything that Rust can compute is computed here: the frontend receives ready structures
+//! and does not repeat the logic of the core in TypeScript
 
-// Сигнатуру команды задаёт Tauri: `State` и разобранные из JSON аргументы приходят по
-// значению, ссылку `invoke_handler` принять не умеет.
+// Tauri sets the signature of a command: `State` and the arguments parsed from JSON arrive
+// by value, and `invoke_handler` cannot accept a reference
 #![allow(clippy::needless_pass_by_value)]
 
 use std::path::PathBuf;
@@ -30,7 +30,7 @@ use crate::lock;
 use crate::sidecar::{self, Daemon, DaemonFailure, SidecarError, Transcriptions};
 use crate::stats::{self, StatsSummary};
 
-/// Ошибка команды в том виде, в котором её показывает интерфейс: причина, подсказка, поле.
+/// A command error in the form that the interface shows: reason, hint, field
 #[derive(Debug, Clone, Serialize)]
 pub struct CommandError {
     /// `daemon_unavailable` | `daemon` | `config` | `validation` | `history` | `sidecar`.
@@ -38,7 +38,7 @@ pub struct CommandError {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
-    /// Поле формы настроек, к которому относится ошибка валидации.
+    /// The settings form field that the validation error belongs to
     #[serde(skip_serializing_if = "Option::is_none")]
     pub field: Option<String>,
 }
@@ -102,7 +102,7 @@ impl From<SidecarError> for CommandError {
     }
 }
 
-/// Ошибка валидации настроек: поле, причина, допустимые значения.
+/// Settings validation error: field, reason, allowed values
 #[derive(Debug, Clone, PartialEq)]
 pub struct ValidationError {
     pub field: String,
@@ -148,7 +148,7 @@ fn in_range(field: &str, value: f32, min: f32, max: f32) -> Result<(), Validatio
     })
 }
 
-/// Проверка настроек перед записью на диск: пользователь видит поле и допустимые значения.
+/// Check the settings before the write to disk: the user sees the field and the allowed values
 pub fn validate_config(config: &Config) -> Result<(), ValidationError> {
     one_of(
         "output.mode",
@@ -204,7 +204,7 @@ pub fn validate_config(config: &Config) -> Result<(), ValidationError> {
             allowed: vec!["http://localhost:11434/v1".into()],
         });
     }
-    // Остальные правила — в ядре: демон проверяет тот же файл той же функцией.
+    // The other rules live in the core: the daemon checks the same file with the same function
     if let Err(issues) = config.validate() {
         if let Some(issue) = issues.into_iter().next() {
             return Err(ValidationError {
@@ -217,7 +217,7 @@ pub fn validate_config(config: &Config) -> Result<(), ValidationError> {
     Ok(())
 }
 
-/// Облачный ли провайдер: для него интерфейс требует явного подтверждения.
+/// Whether the provider is a cloud one: the interface requires an explicit confirmation for it
 pub fn is_cloud_provider(provider: &str) -> bool {
     !matches!(provider, "ollama" | "lmstudio" | "custom")
 }
@@ -243,7 +243,7 @@ pub fn builtin_style_options(config: &Config) -> Vec<(String, String)> {
     options
 }
 
-/// Стиль в виде, удобном для выпадающих списков интерфейса.
+/// A style in a form that suits the drop-down lists of the interface
 #[derive(Debug, Clone, Serialize)]
 pub struct StyleOption {
     pub id: String,
@@ -258,23 +258,23 @@ pub fn available_styles(state: State<'_, AppState>) -> Vec<StyleOption> {
         .collect()
 }
 
-/// Общее состояние: настройки, запущенный нами демон, разборы файлов, пауза хоткеев.
+/// Shared state: settings, the daemon that we started, file transcriptions, hotkey pause
 #[derive(Debug)]
 pub struct AppState {
     config: Mutex<Config>,
     config_path: PathBuf,
-    /// Файла настроек не было — интерфейс открывается сразу на вкладке Settings.
+    /// There was no settings file: the interface opens on the Settings tab at once
     first_run: bool,
     daemon: Mutex<Daemon>,
     transcriptions: Transcriptions,
     hotkeys_paused: AtomicBool,
     last_state: Mutex<Option<DaemonState>>,
-    /// Список устройств кэшируется: меню трея пересобирается часто, а опрос демона — нет.
+    /// The device list is cached: the tray menu is rebuilt often, and a daemon query is not cheap
     devices: Mutex<Vec<DeviceInfo>>,
 }
 
 impl AppState {
-    /// Прочитать настройки, а при первом запуске создать их со значениями по умолчанию.
+    /// Read the settings, and on the first start create them with the default values
     pub fn load() -> Result<Self, ConfigError> {
         let config_path = Config::default_path()?;
         let first_run = !config_path.exists();
@@ -340,19 +340,19 @@ impl AppState {
     pub fn stop_owned_daemon(&self) {
         let mut daemon = lock(&self.daemon);
         if daemon.is_ours() {
-            // Сначала вежливо: демон закрывает микрофон и дописывает журнал.
+            // Ask politely first: the daemon closes the microphone and finishes the journal
             let _ = ipc::request(Command::Shutdown);
             daemon.stop();
         }
     }
 }
 
-// --- Состояние демона ---
+// --- Daemon state ---
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Status {
     pub daemon_running: bool,
-    /// Демон запущен этим GUI: только его останавливает Quit.
+    /// This GUI started the daemon: only Quit stops such a daemon
     pub daemon_ours: bool,
     pub state: Option<DaemonState>,
     pub style: Option<String>,
@@ -361,15 +361,15 @@ pub struct Status {
     pub message: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
-    /// Демон ещё не поднял сокет, потому что качает веса (`stt.auto_pull`).
+    /// The daemon has not opened the socket yet, because it downloads model weights (`stt.auto_pull`)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub download: Option<DownloadProgress>,
-    /// Запущенный этим GUI демон упал: код выхода и его последняя строка stderr.
+    /// The daemon that this GUI started has crashed: exit code and its last stderr line
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exit_reason: Option<String>,
 }
 
-/// Статус, когда демон не ответил.
+/// Status for the case when the daemon did not answer
 fn unreachable_status(
     config: &Config,
     daemon_ours: bool,
@@ -409,7 +409,7 @@ fn unreachable_status(
     }
 }
 
-/// Разбор ответа `status`: демон может ещё не отдавать все поля, отсутствие — не ошибка.
+/// Parse the `status` response: the daemon may not give all fields yet, and a missing field is no error
 pub fn parse_status(value: &serde_json::Value) -> (Option<DaemonState>, Option<String>) {
     let state = value
         .get("state")
@@ -421,10 +421,11 @@ pub fn parse_status(value: &serde_json::Value) -> (Option<DaemonState>, Option<S
     (state, style)
 }
 
-/// Запрос к демону вне основного потока.
+/// Query the daemon outside the main thread
 ///
-/// Синхронная команда Tauri выполняется в главном потоке, а чтение из сокета блокирующее:
-/// занятый моделью демон отвечает не сразу, и окно замирало бы вместе с ним.
+/// A synchronous Tauri command runs on the main thread, and reading from the socket blocks.
+/// A daemon that the model keeps busy does not answer at once, and the window would freeze
+/// with it
 async fn ask_daemon(cmd: Command) -> Result<serde_json::Value, CommandError> {
     tauri::async_runtime::spawn_blocking(move || ipc::request(cmd))
         .await
@@ -432,7 +433,7 @@ async fn ask_daemon(cmd: Command) -> Result<serde_json::Value, CommandError> {
         .map_err(CommandError::from)
 }
 
-/// Команда демону, ответ которой интересен только фактом успеха.
+/// A command to the daemon where only the success of the response matters
 async fn tell_daemon(cmd: Command) -> Result<(), CommandError> {
     ask_daemon(cmd).await?;
     Ok(())
@@ -440,7 +441,7 @@ async fn tell_daemon(cmd: Command) -> Result<(), CommandError> {
 
 #[tauri::command]
 pub async fn get_status(state: State<'_, AppState>) -> Result<Status, CommandError> {
-    // Замок берётся и отпускается до ожидания: держать его через `await` нельзя.
+    // The lock is taken and released before the wait: we must not hold it across `await`
     let daemon_ours = lock(&state.daemon).is_ours();
     match ask_daemon(Command::Status).await {
         Ok(value) => {
@@ -510,15 +511,16 @@ pub async fn record_cancel() -> Result<(), CommandError> {
     tell_daemon(Command::RecordCancel).await
 }
 
-/// Стиль с панели идёт тем же путём, что и из трея: в файл настроек, демону и в трей,
-/// иначе подсветка на панели не меняется, а после перезапуска выбор пропадает.
+/// A style from the dashboard takes the same path as one from the tray: to the settings file,
+/// to the daemon and to the tray. Otherwise the highlight on the dashboard does not change,
+/// and the choice is lost after a restart
 #[tauri::command]
 pub fn set_style(app: AppHandle, style: String) -> Result<(), CommandError> {
     crate::tray::set_style(&app, &style);
     Ok(())
 }
 
-/// Разбор ответа `devices.list`: отсутствующий список — пустой, а не ошибка.
+/// Parse the `devices.list` response: a missing list is an empty list, not an error
 fn parse_devices(value: &serde_json::Value) -> Result<Vec<DeviceInfo>, CommandError> {
     let devices = value
         .get("devices")
@@ -528,7 +530,7 @@ fn parse_devices(value: &serde_json::Value) -> Result<Vec<DeviceInfo>, CommandEr
         .map_err(|e| CommandError::new("daemon", format!("список устройств не разобран: {e}")))
 }
 
-/// Спросить у демона устройства из обычного потока: так делает подписка на события.
+/// Ask the daemon for the devices from a normal thread: the event subscription does this
 pub fn fetch_devices(state: &AppState) -> Result<Vec<DeviceInfo>, CommandError> {
     let devices = parse_devices(&ipc::request(Command::DevicesList)?)?;
     state.set_devices(devices.clone());
@@ -564,21 +566,21 @@ pub fn stop_daemon(state: State<'_, AppState>) -> Result<(), CommandError> {
     Ok(())
 }
 
-// --- Настройки ---
+// --- Settings ---
 
 #[tauri::command]
 pub fn get_config(state: State<'_, AppState>) -> Config {
     state.config()
 }
 
-/// Сообщить демону о новых настройках, не дожидаясь ответа.
+/// Tell the daemon about the new settings without waiting for the response
 ///
-/// Файл уже записан, так что для пользователя сохранение состоялось; незапущенный или
-/// занятый демон не должен ни задерживать окно, ни превращать успех в ошибку.
+/// The file is already written, so for the user the save has happened. A daemon that is not
+/// running, or is busy, must neither delay the window nor turn the success into an error
 fn notify_config_reload() {
     std::thread::spawn(|| {
         if let Err(err) = ipc::request(Command::ConfigReload) {
-            tracing::info!(%err, "настройки сохранены, но демон о них ещё не знает");
+            tracing::info!(%err, "settings saved, but the daemon does not know about them yet");
         }
     });
 }
@@ -610,7 +612,7 @@ pub fn save_config(
     Ok(())
 }
 
-/// TOML настроек для экспорта: фронтенд показывает его и предлагает сохранить.
+/// Settings TOML for export: the frontend shows it and offers to save it
 #[tauri::command]
 pub fn export_config(state: State<'_, AppState>) -> Result<String, CommandError> {
     let dir = history::data_dir()?;
@@ -621,7 +623,7 @@ pub fn export_config(state: State<'_, AppState>) -> Result<String, CommandError>
     Ok(path.display().to_string())
 }
 
-/// Импорт настроек из файла TOML: файл проверяется до перезаписи текущих настроек.
+/// Import settings from a TOML file: the file is checked before it replaces the current settings
 #[tauri::command]
 pub fn import_config(state: State<'_, AppState>, path: String) -> Result<Config, CommandError> {
     let path = PathBuf::from(path);
@@ -682,7 +684,7 @@ pub fn toggle_hotkeys_paused(state: State<'_, AppState>) -> bool {
     paused
 }
 
-// --- История ---
+// --- History ---
 
 #[tauri::command]
 pub fn history_list(
@@ -728,7 +730,7 @@ pub fn open_path<R: Runtime>(app: AppHandle<R>, path: String) -> Result<(), Comm
         .map_err(|e| CommandError::new("opener", e.to_string()))
 }
 
-// --- Статистика ---
+// --- Statistics ---
 
 #[tauri::command]
 pub fn stats_summary(
@@ -759,9 +761,9 @@ pub fn stats_export_csv(
     Ok(path.display().to_string())
 }
 
-// --- Разбор файлов ---
+// --- File transcription ---
 
-/// Прогресс разбора: одна строка stderr CLI.
+/// Transcription progress: one stderr line of the CLI
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TranscribeProgress {
     pub id: String,
@@ -776,7 +778,7 @@ pub async fn transcribe_file<R: Runtime>(
 ) -> Result<serde_json::Value, CommandError> {
     let handle = app.clone();
     let task_id = id.clone();
-    // Разбор долгий: уводим его с потока команд, чтобы интерфейс не подвисал.
+    // Transcription is slow: we move it off the command thread so the interface does not hang
     tauri::async_runtime::spawn_blocking(move || {
         let state = handle.state::<AppState>();
         let emitter = handle.clone();
@@ -819,7 +821,7 @@ mod tests {
     #[test]
     fn unknown_output_mode_names_the_field_and_the_allowed_values() {
         let mut config = Config::default();
-        config.output.mode = "телепатия".into();
+        config.output.mode = "telepathy".into();
         let err = validate_config(&config).unwrap_err();
         assert_eq!(err.field, "output.mode");
         assert!(err.allowed.contains(&"clipboard".to_string()));
@@ -902,7 +904,7 @@ mod tests {
     fn unavailable_daemon_becomes_a_distinct_error_kind_with_a_next_step() {
         let err: CommandError = IpcClientError::NotRunning {
             path: "/run/user/1000/molva.sock".into(),
-            reason: "нет файла".into(),
+            reason: "no file".into(),
         }
         .into();
         assert_eq!(err.kind, "daemon_unavailable");
@@ -921,7 +923,7 @@ mod tests {
         )
         .unwrap();
 
-        let status = unreachable_status(&config, false, None, false, CommandError::new("x", "нет"));
+        let status = unreachable_status(&config, false, None, false, CommandError::new("x", "no"));
         let json = serde_json::to_value(&status).unwrap();
         assert_eq!(json["daemon_running"], false);
         assert_eq!(json["download"]["model"], info.name);
@@ -934,17 +936,17 @@ mod tests {
         let config = Config::default();
         let failure = DaemonFailure {
             code: Some(5),
-            last_line: "ошибка: сеть недоступна".into(),
+            last_line: "error: network unreachable".into(),
         };
         let status = unreachable_status(
             &config,
             true,
             Some(&failure),
             false,
-            CommandError::new("daemon_unavailable", "демон не отвечает"),
+            CommandError::new("daemon_unavailable", "daemon does not answer"),
         );
         let reason = status.exit_reason.unwrap();
-        assert!(reason.contains("сеть недоступна"), "{reason}");
+        assert!(reason.contains("network unreachable"), "{reason}");
         assert!(reason.contains('5'), "{reason}");
     }
 
@@ -953,7 +955,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let mut config = Config::default();
         config.stt.model_path = directory.path().display().to_string();
-        let status = unreachable_status(&config, false, None, false, CommandError::new("x", "нет"));
+        let status = unreachable_status(&config, false, None, false, CommandError::new("x", "no"));
         let json = serde_json::to_value(&status).unwrap();
         assert!(json.get("download").is_none(), "{json}");
         assert!(json.get("exit_reason").is_none(), "{json}");
@@ -963,6 +965,6 @@ mod tests {
     fn mode_defaults_to_dictation() {
         assert_eq!(mode_from(None), Mode::Dictation);
         assert_eq!(mode_from(Some("command")), Mode::Command);
-        assert_eq!(mode_from(Some("чепуха")), Mode::Dictation);
+        assert_eq!(mode_from(Some("nonsense")), Mode::Dictation);
     }
 }
