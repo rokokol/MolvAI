@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- SPDX-License-Identifier: MIT -->
+<!-- Сливается с Info.plist, который собирает бандлер Tauri. Без строки о микрофоне macOS
+     отказывает в записи без диалога, а запрос демона-sidecar засчитывается приложению -->
+<plist version="1.0">
+<dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>MolvAI records your voice while you dictate and turns it into text on this computer.</string>
+</dict>
+</plist>
