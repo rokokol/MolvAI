@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
-//! Клиент IPC против настоящего сокета.
+//! IPC client against a real socket
 //!
-//! Демона на другой стороне ещё нет, поэтому здесь стоит поддельный сервер, который
-//! говорит ровно тем протоколом, что заморожен в `molva_core::ipc`. Проверяется то,
-//! что нельзя проверить модульным тестом: соединение, порядок строк, обрыв связи.
+//! There is no daemon on the other side yet, so a fake server stands here. It speaks exactly
+//! the protocol that `molva_core::ipc` freezes. The tests check what a unit test cannot
+//! check: the connection, the order of lines, a broken link
 
-// Весь крейт — тест: паника здесь сообщает о провале, а не о необработанной ошибке.
+// The whole crate is a test: a panic here reports a failure, not an unhandled error
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use std::io::{BufRead, BufReader, Write};
@@ -19,27 +19,27 @@ use molva_core::domain::entry::Mode;
 use molva_core::ipc::{Command, DaemonState, ErrorCode, Event, Request, Response};
 use molva_gui::ipc::{Connection, IpcClientError, Message};
 
-/// Поддельный демон: принимает одно соединение и отвечает на строки по сценарию.
+/// Fake daemon: accepts one connection and answers the lines by a script
 struct FakeDaemon {
     path: PathBuf,
     handle: Option<JoinHandle<Vec<Request>>>,
-    // Каталог живёт, пока жив сервер: сокет лежит внутри него.
+    // The directory lives as long as the server lives: the socket sits inside it
     _dir: tempfile::TempDir,
 }
 
 impl FakeDaemon {
-    /// `reply` получает разобранный запрос и возвращает строки, которые надо отправить,
-    /// либо `None` — тогда демон обрывает соединение, ничего не ответив.
+    /// `reply` receives the parsed request and returns the lines to send,
+    /// or `None`, and then the daemon drops the connection without an answer
     fn start(reply: impl Fn(&Request) -> Option<Vec<String>> + Send + 'static) -> Self {
-        let dir = tempfile::tempdir().expect("временный каталог");
+        let dir = tempfile::tempdir().expect("temporary directory");
         let path = dir.path().join("molva.sock");
-        // Имя строит ядро, как и у клиента: на Windows путь из tempdir — не имя канала.
-        let name = molva_core::infra::ipc::transport::socket_name(&path).expect("имя сокета");
+        // The core builds the name, as it does for the client: on Windows a tempdir path is not a pipe name
+        let name = molva_core::infra::ipc::transport::socket_name(&path).expect("socket name");
         let listener = ListenerOptions::new()
             .name(name)
             .create_sync()
-            .expect("сокет создан");
-        // Сигнал готовности не нужен: сокет уже слушает до возврата из start.
+            .expect("socket created");
+        // No ready signal is needed: the socket already listens before `start` returns
         let handle = std::thread::spawn(move || {
             let mut seen = Vec::new();
             let Some(Ok(stream)) = listener.incoming().next() else {
@@ -85,18 +85,18 @@ impl FakeDaemon {
         &self.path
     }
 
-    /// Дождаться конца обслуживания и вернуть все полученные запросы.
+    /// Wait for the end of service and return all received requests
     fn requests(mut self) -> Vec<Request> {
         self.handle
             .take()
-            .expect("сервер запущен")
+            .expect("server started")
             .join()
-            .expect("поток сервера не паниковал")
+            .expect("server thread did not panic")
     }
 }
 
 fn ok_line(id: u64, result: serde_json::Value) -> String {
-    serde_json::to_string(&Response::ok(id, result)).expect("ответ сериализуется")
+    serde_json::to_string(&Response::ok(id, result)).expect("response serializes")
 }
 
 #[test]
@@ -107,8 +107,8 @@ fn request_gets_the_answer_to_its_own_id() {
             serde_json::json!({"state": "idle"}),
         )])
     });
-    let mut connection = Connection::connect_at(daemon.path()).expect("соединение");
-    let result = connection.request(Command::Status).expect("ответ");
+    let mut connection = Connection::connect_at(daemon.path()).expect("connection");
+    let result = connection.request(Command::Status).expect("response");
     assert_eq!(result["state"], "idle");
 
     drop(connection);
@@ -120,7 +120,7 @@ fn request_gets_the_answer_to_its_own_id() {
 
 #[test]
 fn events_arriving_before_the_answer_do_not_confuse_the_client() {
-    // Демон вправе прислать события в любой момент, в том числе между запросом и ответом.
+    // The daemon may send events at any moment, also between a request and its response
     let daemon = FakeDaemon::start(|request| {
         Some(vec![
             serde_json::to_string(&Event::Level { rms: 0.3 }).unwrap(),
@@ -132,29 +132,29 @@ fn events_arriving_before_the_answer_do_not_confuse_the_client() {
             ok_line(request.id, serde_json::json!({"ok": true})),
         ])
     });
-    let mut connection = Connection::connect_at(daemon.path()).expect("соединение");
+    let mut connection = Connection::connect_at(daemon.path()).expect("connection");
     let result = connection
         .request(Command::RecordStart {
             mode: Mode::Dictation,
             style: None,
         })
-        .expect("ответ");
+        .expect("response");
     assert_eq!(result["ok"], true);
 }
 
 #[test]
 fn answer_to_a_foreign_id_is_skipped() {
-    // Ответ с чужим идентификатором клиент обязан пропустить, а не принять за свой.
+    // The client must skip a response with a foreign identifier, not take it as its own
     let daemon = FakeDaemon::start(|request| {
         Some(vec![
-            ok_line(request.id + 1000, serde_json::json!({"чужой": true})),
-            ok_line(request.id, serde_json::json!({"свой": true})),
+            ok_line(request.id + 1000, serde_json::json!({"foreign": true})),
+            ok_line(request.id, serde_json::json!({"own": true})),
         ])
     });
-    let mut connection = Connection::connect_at(daemon.path()).expect("соединение");
-    let result = connection.request(Command::Ping).expect("ответ");
-    assert_eq!(result["свой"], true);
-    assert!(result.get("чужой").is_none());
+    let mut connection = Connection::connect_at(daemon.path()).expect("connection");
+    let result = connection.request(Command::Ping).expect("response");
+    assert_eq!(result["own"], true);
+    assert!(result.get("foreign").is_none());
 }
 
 #[test]
@@ -163,19 +163,19 @@ fn daemon_error_carries_code_and_next_step() {
         Some(vec![serde_json::to_string(&Response::err(
             request.id,
             ErrorCode::NoDevice,
-            "микрофон не найден",
-            Some("выберите устройство в настройках".into()),
+            "microphone not found",
+            Some("select a device in the settings".into()),
         ))
         .unwrap()])
     });
-    let mut connection = Connection::connect_at(daemon.path()).expect("соединение");
+    let mut connection = Connection::connect_at(daemon.path()).expect("connection");
     let err = connection.request(Command::RecordStop).unwrap_err();
-    assert!(err.to_string().contains("микрофон"), "{err}");
+    assert!(err.to_string().contains("microphone"), "{err}");
     assert_eq!(
         err.hint().as_deref(),
-        Some("выберите устройство в настройках")
+        Some("select a device in the settings")
     );
-    // Ошибка демона — это не «демона нет»: интерфейс показывает их по-разному.
+    // A daemon error is not "no daemon": the interface shows them in different ways
     assert!(!err.is_unavailable());
 }
 
@@ -183,7 +183,7 @@ fn daemon_error_carries_code_and_next_step() {
 fn subscription_streams_events_until_the_daemon_closes() {
     let daemon = FakeDaemon::start(|request| match request.cmd {
         Command::Subscribe { levels } => {
-            assert!(levels, "GUI подписывается с уровнями");
+            assert!(levels, "the GUI subscribes with levels");
             Some(vec![
                 ok_line(request.id, serde_json::Value::Null),
                 serde_json::to_string(&Event::State {
@@ -198,14 +198,14 @@ fn subscription_streams_events_until_the_daemon_closes() {
         _ => Some(vec![ok_line(request.id, serde_json::Value::Null)]),
     });
 
-    let mut connection = Connection::connect_at(daemon.path()).expect("соединение");
+    let mut connection = Connection::connect_at(daemon.path()).expect("connection");
     connection
         .send(Command::Subscribe { levels: true })
-        .expect("подписка отправлена");
+        .expect("subscription sent");
 
     let mut events = Vec::new();
     while events.len() < 3 {
-        match connection.recv().expect("чтение") {
+        match connection.recv().expect("read") {
             Some(Message::Event(event)) => events.push(event),
             Some(Message::Response(_)) => {}
             None => break,
@@ -224,10 +224,10 @@ fn subscription_streams_events_until_the_daemon_closes() {
 
 #[test]
 fn closed_connection_is_reported_not_hung() {
-    // Демон принял запрос и умер, не ответив: клиент обязан вернуть ошибку обрыва.
+    // The daemon accepted a request and died without an answer: the client must return a broken-link error
     let daemon = FakeDaemon::start(|_| None);
-    let mut connection = Connection::connect_at(daemon.path()).expect("соединение");
-    // Первый запрос остаётся без ответа, а следом сервер закрывает соединение.
+    let mut connection = Connection::connect_at(daemon.path()).expect("connection");
+    // The first request stays without an answer, and then the server closes the connection
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         let outcome = connection.request(Command::Ping);
@@ -236,33 +236,33 @@ fn closed_connection_is_reported_not_hung() {
     drop(daemon.requests());
     assert!(
         rx.recv_timeout(std::time::Duration::from_secs(5))
-            .expect("клиент не завис на закрытом сокете"),
-        "обрыв связи должен стать ошибкой"
+            .expect("the client did not hang on a closed socket"),
+        "a broken link must become an error"
     );
 }
 
 #[test]
 fn missing_socket_is_a_recoverable_absence_of_the_daemon() {
     let dir = tempfile::tempdir().unwrap();
-    let Err(err) = Connection::connect_at(&dir.path().join("нет-такого.sock")) else {
-        panic!("соединение с несуществующим сокетом не должно удаваться");
+    let Err(err) = Connection::connect_at(&dir.path().join("no-such.sock")) else {
+        panic!("a connection to a socket that does not exist must not succeed");
     };
     assert!(err.is_unavailable(), "{err}");
-    assert!(err.hint().is_some(), "нужен следующий шаг для пользователя");
+    assert!(err.hint().is_some(), "the user needs a next step");
     assert!(matches!(err, IpcClientError::NotRunning { .. }));
 }
 
 #[test]
 fn garbage_from_the_daemon_does_not_crash_the_client() {
-    let daemon = FakeDaemon::start(|_| Some(vec!["не json вовсе".to_string()]));
-    let mut connection = Connection::connect_at(daemon.path()).expect("соединение");
+    let daemon = FakeDaemon::start(|_| Some(vec!["not json at all".to_string()]));
+    let mut connection = Connection::connect_at(daemon.path()).expect("connection");
     let err = connection.request(Command::Ping).unwrap_err();
     assert!(matches!(err, IpcClientError::Protocol(_)), "{err}");
 }
 
 #[test]
 fn stream_type_is_the_one_the_client_uses() {
-    // Тест держит связь с реализацией: если транспорт сменится, это перестанет компилироваться.
+    // The test keeps a link to the implementation: if the transport changes, this stops compiling
     fn assert_stream_is_used(
         _: fn(interprocess::local_socket::Name<'_>) -> std::io::Result<Stream>,
     ) {
