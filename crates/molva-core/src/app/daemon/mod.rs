@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
-//! Демон: единственное место, где сходятся хоткеи, IPC, микрофон и конвейер.
+//! Daemon: the only place where hotkeys, IPC, microphone and pipeline meet
 //!
-//! Устройство простое и намеренно однопоточное по решениям: команды со всех источников попадают
-//! в один канал, их разбирает управляющий поток с машиной состояний, а долгая обработка уходит
-//! в отдельный рабочий поток и возвращается тем же каналом. Поэтому «занят» — это не гонка, а
-//! состояние машины, и запись не может стартовать дважды.
+//! The design is simple and single-threaded in its decisions on purpose. Commands from all
+//! sources go into one channel, and the control thread with the state machine takes them. Long
+//! processing goes to a separate worker thread and returns through the same channel. So "busy"
+//! is not a race but a state of the machine, and a recording cannot start twice
 
 pub mod chunked;
 pub mod processor;
@@ -31,87 +31,88 @@ use crate::infra::ipc::RequestHandler;
 use crate::infra::platform;
 use crate::ipc::protocol::{Command, DaemonState, ErrorCode, Event, IpcError};
 
-/// Что делать, когда микрофон даёт цифровой ноль. На macOS частая причина — запрет доступа:
-/// система отдаёт тишину, а не ошибку.
+/// What to do when the microphone gives a digital zero. On macOS a common cause is denied
+/// access: the system returns silence, not an error
 #[cfg(target_os = "macos")]
 const SILENT_MICROPHONE_HINT: &str =
-    "проверьте доступ: Системные настройки → Конфиденциальность и безопасность → Микрофон";
+    "check access: System Settings → Privacy & Security → Microphone";
 #[cfg(not(target_os = "macos"))]
-const SILENT_MICROPHONE_HINT: &str = "проверьте устройство: molva devices";
+const SILENT_MICROPHONE_HINT: &str = "check the device: molva devices";
 
 pub use chunked::{ChunkAccumulator, ChunkContext, ChunkFeeder, ChunkPrefix, ChunkText};
 pub use processor::{ProcessError, Processor, ProcessorConfig, SimpleProcessor};
 pub use state::{Action, DiscardReason, Input, Machine, Outcome};
 
-/// Команда управляющему потоку и, при необходимости, канал для ответа.
+/// Command for the control thread and, if needed, a channel for the reply
 struct Message {
     input: Input,
     reply: Option<Sender<Outcome>>,
 }
 
-/// Всё, что приходит управляющему потоку.
+/// Everything that reaches the control thread
 ///
-/// Тик потоковой обработки не проходит через машину состояний: он ничего не решает, а только снимает
-/// свежий звук с микрофона, которым владеет этот же поток.
+/// The tick of streaming processing does not pass through the state machine: it decides
+/// nothing and only takes fresh sound from the microphone, which this same thread owns
 enum Ctl {
     Message(Message),
     ChunkTick {
         generation: u64,
     },
-    /// Перечитанные настройки: хоткеи для машины состояний, остальное — рабочему потоку.
+    /// Reloaded settings: hotkeys for the state machine, the rest for the worker thread
     Reload(Box<Config>),
 }
 
-/// Задание рабочему потоку.
+/// Job for the worker thread
 enum Job {
-    /// Перечитанные настройки для конвейера: стиль по умолчанию, правила, пороги.
+    /// Reloaded settings for the pipeline: the default style, the rules, the thresholds
     Reload(Box<Config>),
-    /// Кусок ещё идущей записи: распознаётся, пока человек говорит.
+    /// A chunk of a recording that is still running: it is recognized while the person speaks
     Chunk {
         audio: PcmAudio,
-        /// Начало записи: от него считается задержка до первой гипотезы.
+        /// Start of the recording: the delay to the first hypothesis counts from it
         started: Instant,
     },
-    /// Реплика кончилась.
+    /// The phrase has ended
     Finish {
-        /// Вся реплика: идёт в дело, когда кусков не было или они не сложились.
+        /// The whole phrase: used when there were no chunks or they did not add up
         audio: PcmAudio,
-        /// Хвост после последнего куска.
+        /// Tail after the last chunk
         tail: Option<PcmAudio>,
         mode: Mode,
         style: Option<String>,
         app: Option<String>,
-        /// От отпускания клавиши до фактического закрытия потока микрофона, миллисекунды.
+        /// From the key release to the actual close of the microphone stream, in milliseconds
         stop_after_release_ms: u32,
     },
-    /// Запись отменили: накопленные куски забыть.
+    /// The recording was cancelled: forget the collected chunks
     Discard,
 }
 
-/// Миллисекунды между двумя точками монотонного времени, без переполнения.
+/// Milliseconds between two points of monotonic time, with no overflow
 fn millis_between(from: Instant, to: Instant) -> u32 {
     u32::try_from(to.saturating_duration_since(from).as_millis()).unwrap_or(u32::MAX)
 }
 
-/// Всё, что демону нужно снаружи. Железо приходит трейтами, поэтому демон целиком проверяется
-/// фейками.
+/// Everything the daemon needs from outside. The hardware comes as traits, so fakes can test
+/// the whole daemon
 #[derive(Debug)]
 pub struct DaemonParts {
     pub audio: Box<dyn AudioSource>,
     pub processor: Box<dyn Processor>,
     pub notifier: Arc<dyn Notifier>,
-    /// Звуковые метки начала и конца записи; тишину делает `NullSoundCue`, а не отсутствие вызова.
+    /// Sound cues for the start and the end of recording; `NullSoundCue` makes the silence,
+    /// not a missing call
     pub sound: Arc<dyn SoundCue>,
-    /// Способ вставки для готового текста (`inject.text`): повтор реплики из истории.
+    /// Paste method for ready text (`inject.text`): the repeat of a phrase from the history
     ///
-    /// Отдельный от конвейера экземпляр: конвейер занят своей репликой, а повтор из истории
-    /// приходит по IPC в любой момент и не должен ждать распознавания.
+    /// An instance separate from the pipeline: the pipeline is busy with its own phrase, and a
+    /// repeat from the history arrives over IPC at any moment and must not wait for recognition
     pub injector: Option<Box<dyn TextInjector>>,
     pub clock: Arc<dyn Clock>,
     pub config: Config,
 }
 
-/// Общее состояние демона, видимое всем ручкам.
+/// Shared state of the daemon, visible to all handles
 #[derive(Debug)]
 struct Shared {
     tx: Mutex<Sender<Ctl>>,
@@ -119,18 +120,18 @@ struct Shared {
     subscribers: Mutex<Vec<Sender<Event>>>,
     session_id: Uuid,
     started_at: DateTime<Utc>,
-    /// Номер текущей записи: сторожевой таймер длительности не должен обрывать следующую.
+    /// Number of the current recording: the duration watchdog must not cut the next one
     generation: AtomicU64,
-    /// Вставка готового текста по `inject.text`.
+    /// Paste of ready text by `inject.text`
     injector: Mutex<Option<Box<dyn TextInjector>>>,
-    /// Порог `output.auto_type_max_chars` для разрешения режима `auto`.
+    /// Threshold `output.auto_type_max_chars` for resolving the `auto` mode
     auto_type_max_chars: u32,
-    /// Файл настроек для `config.reload`; `None` — путь по умолчанию.
+    /// Settings file for `config.reload`; `None` means the default path
     config_path: Mutex<Option<PathBuf>>,
 }
 
 impl Shared {
-    /// Разослать событие подписчикам; отвалившиеся отписываются сами.
+    /// Send an event to the subscribers; those that dropped off unsubscribe by themselves
     fn publish(&self, event: &Event) {
         let Ok(mut subscribers) = self.subscribers.lock() else {
             return;
@@ -152,24 +153,24 @@ impl Shared {
     }
 }
 
-/// Работающий демон. Пока значение живо, живы и его потоки.
+/// A running daemon. While this value lives, its threads live too
 #[derive(Debug)]
 pub struct Daemon {
     shared: Arc<Shared>,
     threads: Vec<std::thread::JoinHandle<()>>,
 }
 
-/// Ручка демона: её раздают серверу IPC и источникам горячих клавиш.
+/// Handle of the daemon: it is given to the IPC server and to the hotkey sources
 #[derive(Debug, Clone)]
 pub struct DaemonHandle {
     shared: Arc<Shared>,
 }
 
 impl Daemon {
-    /// Запустить демон: управляющий поток, рабочий поток и поток уровней сигнала.
-    // Три потока и их замыкания читаются как одно целое: каналы, которые они делят, видны
-    // только здесь. Разносить их по функциям стоит вместе с дорожкой потоковой обработки,
-    // которая эти же замыкания сейчас и меняет.
+    /// Start the daemon: the control thread, the worker thread and the signal level thread
+    // The three threads and their closures read as one whole: the channels they share are
+    // visible only here. Splitting them into functions belongs together with the track of
+    // streaming processing, which changes these same closures now
     #[allow(clippy::too_many_lines)]
     pub fn spawn(parts: DaemonParts) -> Daemon {
         let DaemonParts {
@@ -205,7 +206,7 @@ impl Daemon {
 
         let mut threads = Vec::new();
 
-        // Управляющий поток: единственный, кто трогает машину состояний и микрофон.
+        // Control thread: the only one that touches the state machine and the microphone
         {
             let shared = shared.clone();
             let notifier = notifier.clone();
@@ -218,8 +219,8 @@ impl Daemon {
                 let mut pending: Option<(Mode, Option<String>, Option<String>)> = None;
                 while let Ok(ctl) = rx.recv() {
                     let message = match ctl {
-                        // Тик потоковой обработки: снять свежий звук и отправить дозревшие куски в
-                        // распознавание, не дожидаясь отпускания клавиши.
+                        // Streaming tick: take fresh sound and send the matured chunks to
+                        // recognition, without waiting for the key release
                         Ctl::ChunkTick { generation } => {
                             if shared.generation.load(Ordering::SeqCst) == generation {
                                 let started = feeder.started();
@@ -243,8 +244,9 @@ impl Daemon {
                         }
                         Ctl::Message(message) => message,
                     };
-                    // Отсчёт гарантии «микрофон освобождён после реплики»: от команды остановки
-                    // (то есть от отпускания клавиши) до закрытия потока (AG-03).
+                    // Start of the count for the guarantee "microphone freed after the phrase":
+                    // from the stop command (that is, from the key release) to the stream
+                    // close (AG-03)
                     let released_from = control_clock.instant();
                     let input_label = format!("{:?}", message.input);
                     let outcome = machine.on(message.input);
@@ -253,7 +255,7 @@ impl Daemon {
                         actions = ?outcome.actions,
                         state = ?machine.state(),
                         in_flight = machine.in_flight(),
-                        "машина состояний"
+                        "state machine"
                     );
                     for action in &outcome.actions {
                         match action {
@@ -261,12 +263,13 @@ impl Daemon {
                                 let app = platform::active_window_class();
                                 match audio.start(Some(level_tx.clone())) {
                                     Ok(()) => {
-                                        // Удержание считается от открытого микрофона: сам старт
-                                        // потока занимает до 300 мс, и короткий тап иначе выглядел
-                                        // бы длинным удержанием.
+                                        // The hold counts from the open microphone: the stream
+                                        // start itself takes up to 300 ms, and a short tap would
+                                        // otherwise look like a long hold
                                         machine.capture_started(control_clock.instant());
                                         pending = Some((*mode, style.clone(), app));
-                                        // Первый из двух сигналов реплики: микрофон открыт.
+                                        // The first of the two cues of a phrase: the microphone
+                                        // is open
                                         sound.play(CueKind::RecordStart);
                                         shared.set_state(DaemonState::Recording, Some(*mode));
                                         let generation =
@@ -287,14 +290,15 @@ impl Daemon {
                                         }
                                     }
                                     Err(err) => {
-                                        // Микрофон не открылся — машину нельзя оставить в записи.
+                                        // The microphone did not open: the machine must not stay
+                                        // in recording
                                         sound.play(CueKind::Error);
                                         machine.on(Input::RecordCancel);
                                         shared.set_state(DaemonState::Idle, None);
                                         shared.publish(&Event::Error {
                                             code: ErrorCode::NoDevice,
                                             message: err.to_string(),
-                                            hint: Some("проверьте устройство: molva doctor".into()),
+                                            hint: Some("check the device: molva doctor".into()),
                                         });
                                         notifier.notify("MolvAI", &err.to_string());
                                     }
@@ -305,17 +309,18 @@ impl Daemon {
                                 let app = pending.take().and_then(|(_, _, app)| app);
                                 match audio.stop() {
                                     Ok(pcm) => {
-                                        // Второй и последний сигнал реплики: микрофон закрыт.
+                                        // The second and last cue of a phrase: the microphone is
+                                        // closed
                                         sound.play(CueKind::RecordStop);
                                         let stop_after_release_ms =
                                             millis_between(released_from, control_clock.instant());
                                         tracing::info!(
                                             ms = stop_after_release_ms,
-                                            "микрофон освобождён"
+                                            "microphone released"
                                         );
                                         shared.set_state(DaemonState::Transcribing, Some(*mode));
-                                        // Куски, отданные во время записи; если их не было,
-                                        // реплика идёт целиком, как раньше.
+                                        // Chunks returned during recording; if there were none,
+                                        // the phrase goes whole, as before
                                         let streamed = feeder.emitted();
                                         let started = feeder.started();
                                         let mut rest = feeder.finish(&pcm);
@@ -362,15 +367,17 @@ impl Daemon {
                                 shared.generation.fetch_add(1, Ordering::SeqCst);
                                 pending = None;
                                 feeder.cancel();
-                                // Куски отменённой записи не должны прирасти к следующей реплике.
+                                // The chunks of a cancelled recording must not attach to the next
+                                // phrase
                                 let _ = work_tx.send(Job::Discard);
-                                // Микрофон мог и не открыться: отказ здесь ничего не меняет.
+                                // The microphone may not have opened: a failure here changes
+                                // nothing
                                 let _ = audio.stop();
-                                // Реплики не будет, поэтому и сигнала конца записи нет: слышно,
-                                // что нажатие пропало впустую.
+                                // There will be no phrase, so there is no end cue either: the user
+                                // hears that the press went to waste
                                 sound.play(CueKind::Error);
                                 shared.set_state(DaemonState::Idle, None);
-                                tracing::info!(reason = reason.message(), "запись отброшена");
+                                tracing::info!(reason = reason.message(), "recording discarded");
                             }
                         }
                     }
@@ -384,14 +391,15 @@ impl Daemon {
             }));
         }
 
-        // Рабочий поток: пока он занят распознаванием, управляющий продолжает отвечать «занят».
+        // Worker thread: while it is busy with recognition, the control thread keeps answering
+        // "busy"
         {
             let shared = shared.clone();
             let notifier = notifier.clone();
             let tx = tx.clone();
             threads.push(std::thread::spawn(move || {
-                // Куски приходят одной очередью в один поток, поэтому порядок текстов — это
-                // порядок кусков; перемешаться они не могут.
+                // Chunks come in one queue to one thread, so the order of the texts is the order of
+                // the chunks, and they cannot get mixed up
                 let mut chunks = ChunkAccumulator::default();
                 while let Ok(job) = work_rx.recv() {
                     let (audio, tail, mode, style, app, stop_after_release_ms) = match job {
@@ -401,7 +409,7 @@ impl Daemon {
                         }
                         Job::Reload(config) => {
                             processor.apply_config(&config);
-                            tracing::info!(style = %config.style.default, "конвейер перечитал настройки");
+                            tracing::info!(style = %config.style.default, "pipeline reloaded the settings");
                             continue;
                         }
                         Job::Chunk { audio, started } => {
@@ -424,10 +432,10 @@ impl Daemon {
                             stop_after_release_ms,
                         } => (audio, tail, mode, style, app, stop_after_release_ms),
                     };
-                    // Гарантия «микрофон освобождён после реплики» должна быть видна в журнале,
-                    // а не только в логе демона.
+                    // The guarantee "microphone freed after the phrase" must be visible in the
+                    // journal, and not only in the daemon log
                     processor.set_stop_after_release(stop_after_release_ms);
-                    // Кусков не было или ни в одном не нашлось речи: реплика идёт целиком.
+                    // There were no chunks, or none held speech: the phrase goes whole
                     let (audio, prefix) = if chunks.is_empty() {
                         chunks.reset();
                         (audio, ChunkPrefix::default())
@@ -450,12 +458,12 @@ impl Daemon {
                             Input::ProcessingDone
                         }
                         Err(err) => {
-                            tracing::error!(%err, "обработка не удалась");
+                            tracing::error!(%err, "processing failed");
                             notifier.notify("MolvAI", &err.to_string());
                             shared.publish(&Event::Error {
                                 code: error_code_for(&err),
                                 message: err.to_string(),
-                                hint: Some("подробности: molva doctor".into()),
+                                hint: Some("details: molva doctor".into()),
                             });
                             Input::ProcessingFailed
                         }
@@ -465,9 +473,9 @@ impl Daemon {
             }));
         }
 
-        // Поток уровней: индикатор в GUI и предупреждение о немом микрофоне. Наблюдатель
-        // живёт здесь, а не в колбэке cpal: из колбэка реального времени не показать
-        // уведомление, а отсюда оно уходит тем же путём, что и ошибка записи.
+        // Level thread: the indicator in the GUI and the warning about a silent microphone. The
+        // watcher lives here and not in the cpal callback: a real-time callback cannot show a
+        // notification, and from here it goes by the same path as a recording error
         {
             let shared = shared.clone();
             let notifier = notifier.clone();
@@ -498,7 +506,7 @@ impl Daemon {
         }
     }
 
-    /// Дождаться завершения потоков. Возвращает управление, когда каналы закрыты.
+    /// Wait for the threads to finish. Returns when the channels are closed
     pub fn join(self) {
         for thread in self.threads {
             let _ = thread.join();
@@ -506,14 +514,15 @@ impl Daemon {
     }
 }
 
-/// Сторож длительности: обрывает запись, если про неё забыли.
+/// Duration watchdog: cuts a recording if it was forgotten
 fn spawn_max_duration_guard(tx: Sender<Ctl>, shared: Arc<Shared>, generation: u64, max: Duration) {
     if max.is_zero() {
         return;
     }
     std::thread::spawn(move || {
         std::thread::sleep(max);
-        // Номер поколения защищает следующую запись: сторож старой её не тронет.
+        // The generation number protects the next recording: the watchdog of the old one does
+        // not touch it
         if shared.generation.load(Ordering::SeqCst) != generation {
             return;
         }
@@ -524,10 +533,11 @@ fn spawn_max_duration_guard(tx: Sender<Ctl>, shared: Arc<Shared>, generation: u6
     });
 }
 
-/// Будильник потоковой обработки: четыре раза в секунду просит управляющий поток снять свежий звук.
+/// Alarm of streaming processing: four times a second it asks the control thread to take
+/// fresh sound
 ///
-/// Сам звук снимает управляющий поток — он один владеет микрофоном. Будильник умолкает, как только
-/// запись сменилась на следующую.
+/// The control thread itself takes the sound, because it alone owns the microphone. The alarm
+/// goes quiet as soon as the recording changes to the next one
 fn spawn_chunk_ticker(tx: Sender<Ctl>, shared: Arc<Shared>, generation: u64) {
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_millis(chunked::TICK_MS));
@@ -540,10 +550,10 @@ fn spawn_chunk_ticker(tx: Sender<Ctl>, shared: Arc<Shared>, generation: u64) {
     });
 }
 
-/// Распознать очередной кусок и показать подписчикам черновик.
+/// Recognize the next chunk and show the draft to the subscribers
 ///
-/// Кусок, который не распознался, реплику не роняет: его текста просто не будет, а остальные куски
-/// и хвост дойдут как обычно.
+/// A chunk that failed to recognize does not fail the phrase: its text is simply missing, and
+/// the other chunks and the tail arrive as usual
 fn process_chunk(
     processor: &mut dyn Processor,
     chunks: &mut ChunkAccumulator,
@@ -554,7 +564,7 @@ fn process_chunk(
 ) {
     let context = chunks.context();
     let Some(result) = processor.transcribe_chunk(audio, &context) else {
-        // Обработчик потоковую обработку не умеет: реплику он получит целиком.
+        // The processor cannot do streaming processing: it will get the phrase whole
         return;
     };
     match result {
@@ -567,7 +577,9 @@ fn process_chunk(
                 });
             }
         }
-        Err(err) => tracing::warn!(%err, "кусок реплики не распознан, остальные не пострадают"),
+        Err(err) => {
+            tracing::warn!(%err, "phrase chunk not recognized, the others are not affected");
+        }
     }
 }
 
@@ -581,7 +593,7 @@ fn error_code_for(err: &ProcessError) -> ErrorCode {
 }
 
 impl DaemonHandle {
-    /// Отправить вход и дождаться решения машины состояний.
+    /// Send an input and wait for the decision of the state machine
     pub fn send(&self, input: Input) -> Result<Outcome, IpcError> {
         let (reply_tx, reply_rx) = channel();
         let message = Ctl::Message(Message {
@@ -589,13 +601,13 @@ impl DaemonHandle {
             reply: Some(reply_tx),
         });
         {
-            let tx = self.shared.tx.lock().map_err(|_| internal("демон занят"))?;
-            tx.send(message).map_err(|_| internal("демон остановлен"))?;
+            let tx = self.shared.tx.lock().map_err(|_| internal("daemon busy"))?;
+            tx.send(message).map_err(|_| internal("daemon stopped"))?;
         }
-        reply_rx.recv().map_err(|_| internal("демон остановлен"))
+        reply_rx.recv().map_err(|_| internal("daemon stopped"))
     }
 
-    /// Отправить вход, не дожидаясь ответа: для источников хоткеев.
+    /// Send an input without waiting for a reply: for hotkey sources
     pub fn send_async(&self, input: Input) {
         if let Ok(tx) = self.shared.tx.lock() {
             let _ = tx.send(Ctl::Message(Message { input, reply: None }));
@@ -614,7 +626,7 @@ impl DaemonHandle {
         self.shared.started_at
     }
 
-    /// Подписаться на события демона.
+    /// Subscribe to the events of the daemon
     pub fn subscribe(&self) -> Receiver<Event> {
         let (tx, rx) = channel();
         if let Ok(mut subscribers) = self.shared.subscribers.lock() {
@@ -623,10 +635,11 @@ impl DaemonHandle {
         rx
     }
 
-    /// Вставить готовый текст: повтор реплики из истории (`molva history paste`).
+    /// Paste a ready text: the repeat of a phrase from the history (`molva history paste`)
     ///
-    /// Микрофон и распознавание здесь не участвуют вовсе: текст уже есть, нужен только тот же
-    /// способ вставки, что и у обычной реплики, вместе с поправкой на класс активного окна.
+    /// The microphone and recognition take no part here: the text already exists, and only the
+    /// same paste method as for an ordinary phrase is needed, with the correction for the class
+    /// of the active window
     pub fn inject_text(
         &self,
         text: &str,
@@ -635,7 +648,7 @@ impl DaemonHandle {
         if text.trim().is_empty() {
             return Err(IpcError {
                 code: ErrorCode::BadRequest,
-                message: "пустой текст вставлять нечего".into(),
+                message: "empty text, nothing to paste".into(),
                 hint: None,
             });
         }
@@ -643,12 +656,12 @@ impl DaemonHandle {
             .shared
             .injector
             .lock()
-            .map_err(|_| internal("способ вставки занят"))?;
+            .map_err(|_| internal("paste method busy"))?;
         let Some(injector) = guard.as_mut() else {
             return Err(IpcError {
                 code: ErrorCode::InjectFailed,
-                message: "демон запущен без способа вставки".into(),
-                hint: Some("текст можно скопировать: molva history show <id>".into()),
+                message: "the daemon runs without a paste method".into(),
+                hint: Some("you can copy the text: molva history show <id>".into()),
             });
         };
         let app = platform::active_window_class();
@@ -661,21 +674,22 @@ impl DaemonHandle {
             Err(err) => Err(IpcError {
                 code: ErrorCode::InjectFailed,
                 message: err.to_string(),
-                hint: Some("текст остался в буфере обмена, нажмите Ctrl+V".into()),
+                hint: Some("the text stayed in the clipboard, press Ctrl+V".into()),
             }),
         }
     }
 
-    /// Сводка для `molva status`.
-    /// Откуда демон перечитывает настройки по `config.reload`; без пути — файл по умолчанию.
+    /// Summary for `molva status`
+    /// Where the daemon rereads the settings on `config.reload`; without a path it is the
+    /// default file
     pub fn set_config_path(&self, path: PathBuf) {
         if let Ok(mut slot) = self.shared.config_path.lock() {
             *slot = Some(path);
         }
     }
 
-    /// Перечитать файл настроек и разослать его машине состояний и конвейеру.
-    /// `style` подменяет стиль по умолчанию: так работает `style.set` из трея и CLI.
+    /// Reread the settings file and send it to the state machine and to the pipeline
+    /// `style` replaces the default style: this is how `style.set` works from the tray and the CLI
     pub fn reload_config(&self, style: Option<String>) -> Result<Config, IpcError> {
         let path = match self
             .shared
@@ -689,15 +703,15 @@ impl DaemonHandle {
         };
         let mut config = Config::load(&path).map_err(|e| IpcError {
             code: ErrorCode::BadRequest,
-            message: format!("настройки не перечитаны: {e}"),
-            hint: Some("проверьте файл: molva config validate".into()),
+            message: format!("settings not reloaded: {e}"),
+            hint: Some("check the file: molva config validate".into()),
         })?;
         if let Some(style) = style {
             config.style.default = style;
         }
-        let tx = self.shared.tx.lock().map_err(|_| internal("демон занят"))?;
+        let tx = self.shared.tx.lock().map_err(|_| internal("daemon busy"))?;
         tx.send(Ctl::Reload(Box::new(config.clone())))
-            .map_err(|_| internal("демон остановлен"))?;
+            .map_err(|_| internal("daemon stopped"))?;
         Ok(config)
     }
 
@@ -755,7 +769,7 @@ impl RequestHandler for DaemonHandle {
                 Ok(serde_json::json!({ "style": config.style.default }))
             }
             Command::Shutdown => {
-                // Ответ должен уйти раньше, чем процесс исчезнет.
+                // The reply must leave before the process disappears
                 std::thread::spawn(|| {
                     std::thread::sleep(Duration::from_millis(100));
                     std::process::exit(0);
@@ -765,10 +779,12 @@ impl RequestHandler for DaemonHandle {
             other => Err(IpcError {
                 code: ErrorCode::BadRequest,
                 message: format!(
-                    "команда {} пока не поддержана демоном",
+                    "the daemon does not support the command {} yet",
                     command_name(&other)
                 ),
-                hint: Some("сборка дорожки F: доступны ping, status, record.*, subscribe".into()),
+                hint: Some(
+                    "build of track F: ping, status, record.*, subscribe are available".into(),
+                ),
             }),
         }
     }
@@ -778,12 +794,12 @@ impl RequestHandler for DaemonHandle {
     }
 }
 
-/// Имя команды из протокола — для сообщений об ошибках.
+/// Name of a command from the protocol, for error messages
 fn command_name(cmd: &Command) -> String {
     serde_json::to_value(cmd)
         .ok()
         .and_then(|v| v.get("cmd").and_then(|c| c.as_str()).map(str::to_string))
-        .unwrap_or_else(|| "неизвестная".into())
+        .unwrap_or_else(|| "unknown".into())
 }
 
 #[cfg(test)]
@@ -796,12 +812,13 @@ mod tests {
     use crate::infra::audio::level::ZERO_LEVEL_MESSAGE;
     use std::time::Duration;
 
-    /// Инжектор, чей результат виден тесту после того, как он уехал в демон.
+    /// An injector whose result stays visible to the test after it goes into the daemon
     #[derive(Debug, Clone, Default)]
     struct SharedInjector {
         injected: Arc<Mutex<Vec<String>>>,
         fail: bool,
-        /// Задержка вставки: так тест держит демон в обработке, пока шлёт новые нажатия.
+        /// Paste delay: this is how the test keeps the daemon in processing while it sends new
+        /// presses
         delay: Duration,
     }
 
@@ -817,7 +834,7 @@ mod tests {
                 std::thread::sleep(self.delay);
             }
             if self.fail {
-                return Err(InjectError::Failed("нет активного окна".into()));
+                return Err(InjectError::Failed("no active window".into()));
             }
             self.injected.lock().unwrap().push(text.to_string());
             Ok(InjectReport {
@@ -827,7 +844,7 @@ mod tests {
         }
     }
 
-    /// Микрофон, за которым тест продолжает следить после того, как отдал его демону.
+    /// A microphone that the test keeps watching after it hands it to the daemon
     #[derive(Debug, Clone)]
     struct SharedAudio(Arc<Mutex<FakeAudioSource>>);
 
@@ -844,8 +861,8 @@ mod tests {
         fn is_recording(&self) -> bool {
             self.0.lock().unwrap().is_recording()
         }
-        /// Потоковая обработка снимает свежий звук через этот метод: обёртка обязана его передать,
-        /// иначе куски во время записи просто не появятся.
+        /// Streaming processing takes fresh sound through this method: the wrapper must forward
+        /// it, or no chunks appear during recording
         fn drain_new_samples(&mut self) -> Option<PcmAudio> {
             self.0.lock().unwrap().drain_new_samples()
         }
@@ -897,7 +914,8 @@ mod tests {
             processor: Box::new(processor),
             notifier: notifier.clone(),
             sound: sound.clone(),
-            // Повтор из истории вставляется тем же фейком: тест видит и реплики, и повторы.
+            // A repeat from the history is pasted by the same fake: the test sees both phrases
+            // and repeats
             injector: Some(Box::new(SharedInjector {
                 injected: injected.clone(),
                 fail: fail_inject,
@@ -923,11 +941,13 @@ mod tests {
         while Instant::now() < deadline {
             match events.recv_timeout(Duration::from_millis(200)) {
                 Ok(Event::Entry { entry }) => return *entry,
-                Ok(Event::Error { message, .. }) => panic!("демон сообщил об ошибке: {message}"),
+                Ok(Event::Error { message, .. }) => {
+                    panic!("the daemon reported an error: {message}")
+                }
                 Ok(_) | Err(_) => {}
             }
         }
-        panic!("реплика так и не появилась");
+        panic!("the phrase never appeared");
     }
 
     #[test]
@@ -949,13 +969,13 @@ mod tests {
         assert_eq!(
             *h.injected.lock().unwrap(),
             vec!["тестовая реплика".to_string()],
-            "текст должен дойти до инжектора"
+            "the text must reach the injector"
         );
         assert_eq!(entry.words, 2);
         drop(h.daemon);
     }
 
-    /// Дождаться очередного замера уровня; всё, что пришло до него, остаётся в `seen`.
+    /// Wait for the next level measurement; everything that came before it stays in `seen`
     fn wait_for_level(events: &Receiver<Event>, seen: &mut Vec<Event>) {
         let deadline = Instant::now() + Duration::from_secs(5);
         while Instant::now() < deadline {
@@ -967,7 +987,7 @@ mod tests {
                 }
             }
         }
-        panic!("замер уровня так и не пришёл");
+        panic!("the level measurement never came");
     }
 
     #[test]
@@ -980,9 +1000,9 @@ mod tests {
                 style: None,
             })
             .unwrap();
-        // Поток уровней читает часы, когда берёт замер, поэтому часы двигаются только
-        // после того, как предыдущий замер уже учтён. Замеры на 0, 0.6, 1.2 и 1.8 с:
-        // предупреждение на третьем, четвёртый его не повторяет.
+        // The level thread reads the clock when it takes a measurement, so the clock moves only
+        // after the previous measurement is counted. Measurements at 0, 0.6, 1.2 and 1.8 s: the
+        // warning comes on the third, and the fourth does not repeat it
         let mut seen = Vec::new();
         wait_for_level(&events, &mut seen);
         for _ in 0..3 {
@@ -1013,16 +1033,16 @@ mod tests {
         assert_eq!(
             notified,
             vec![ZERO_LEVEL_MESSAGE.to_string()],
-            "одно уведомление на один отрезок тишины"
+            "one notification per segment of silence"
         );
         drop(h.daemon);
     }
 
     #[test]
     fn a_short_tap_through_ipc_latches_the_recording_instead_of_finishing_it() {
-        // Бинд композитора шлёт `record start` на нажатие и `record stop` на отпускание:
-        // короткий тап приходит как два запроса подряд и обязан включить hands-free,
-        // а не отдать пустую реплику.
+        // The compositor bind sends `record start` on press and `record stop` on release: a
+        // short tap arrives as two requests in a row and must turn on hands-free, and not
+        // return an empty phrase
         let h = harness("тестовая реплика");
         let events = h.handle.subscribe();
         h.handle
@@ -1037,7 +1057,7 @@ mod tests {
         assert_eq!(
             h.handle.state(),
             DaemonState::Recording,
-            "после короткого тапа запись продолжается без клавиши"
+            "after a short tap the recording continues without the key"
         );
 
         h.clock.advance(Duration::from_secs(2));
@@ -1049,7 +1069,8 @@ mod tests {
 
     #[test]
     fn a_press_during_processing_starts_the_next_recording_and_both_replies_arrive_in_order() {
-        // Вставка держит демон в обработке 400 мс; следующая реплика пишется, не дожидаясь её.
+        // The paste keeps the daemon in processing for 400 ms; the next phrase records without
+        // waiting for it
         let h = harness_with(
             "тестовая реплика",
             false,
@@ -1077,7 +1098,7 @@ mod tests {
         assert_eq!(
             h.handle.state(),
             DaemonState::Recording,
-            "запись следующей реплики идёт, пока первая обрабатывается"
+            "the recording of the next phrase runs while the first one is in processing"
         );
         h.clock.advance(Duration::from_secs(2));
         h.handle.send(Input::RecordStop).unwrap();
@@ -1086,11 +1107,11 @@ mod tests {
         let second = wait_for_entry(&events);
         assert_eq!(first.text_final.as_deref(), Some("тестовая реплика"));
         assert_eq!(second.text_final.as_deref(), Some("тестовая реплика"));
-        assert!(first.ts <= second.ts, "реплики обрабатываются по порядку");
+        assert!(first.ts <= second.ts, "phrases are processed in order");
         assert_eq!(
             h.injected.lock().unwrap().len(),
             2,
-            "обе реплики дошли до вставки"
+            "both phrases reached the paste step"
         );
         let deadline = Instant::now() + Duration::from_secs(2);
         while h.handle.state() != DaemonState::Idle && Instant::now() < deadline {
@@ -1122,9 +1143,9 @@ mod tests {
         let saw_reload = std::iter::from_fn(|| events.recv_timeout(Duration::from_secs(2)).ok())
             .take(6)
             .any(|event| matches!(event, Event::ConfigReloaded));
-        assert!(saw_reload, "подписчики узнают о перечитанных настройках");
+        assert!(saw_reload, "subscribers learn about the reloaded settings");
 
-        // Битый файл — ошибка с подсказкой, а не молчаливое «перечитано».
+        // A broken file gives an error with a hint, and not a silent "reloaded"
         std::fs::write(&config_path, "[style\n").unwrap();
         let err = h.handle.handle(Command::ConfigReload).unwrap_err();
         assert_eq!(err.code, ErrorCode::BadRequest);
@@ -1134,10 +1155,14 @@ mod tests {
 
     #[test]
     fn the_microphone_is_free_outside_a_recording_and_the_delay_lands_in_the_entry() {
-        // Критерий AG-01/AG-03: вне записи микрофон не занят, а время его освобождения после
-        // отпускания клавиши видно в журнале, а не только на слово разработчика.
+        // Criterion AG-01/AG-03: outside a recording the microphone is not busy, and the time of
+        // its release after the key release is visible in the journal, not only on the
+        // developer's word
         let h = harness("реплика");
-        assert!(!h.audio.is_recording(), "до записи микрофон свободен");
+        assert!(
+            !h.audio.is_recording(),
+            "before recording the microphone is free"
+        );
         let events = h.handle.subscribe();
         h.handle
             .send(Input::RecordStart {
@@ -1145,21 +1170,24 @@ mod tests {
                 style: None,
             })
             .unwrap();
-        assert!(h.audio.is_recording(), "во время записи микрофон занят");
+        assert!(
+            h.audio.is_recording(),
+            "during recording the microphone is busy"
+        );
         h.clock.advance(Duration::from_secs(2));
         h.handle.send(Input::RecordStop).unwrap();
         let entry = wait_for_entry(&events);
         assert!(
             !h.audio.is_recording(),
-            "после реплики микрофон обязан быть свободен"
+            "after the phrase the microphone must be free"
         );
         let released = entry
             .latency_ms
             .stop_after_release
-            .expect("замер освобождения микрофона должен попасть в запись");
+            .expect("the microphone release measurement must reach the entry");
         assert!(
             released < 500,
-            "микрофон освобождается сразу: {released} мс"
+            "the microphone is released at once: {released} ms"
         );
         drop(h.daemon);
     }
@@ -1181,7 +1209,8 @@ mod tests {
 
     #[test]
     fn a_reply_is_framed_by_exactly_two_sound_cues() {
-        // Критерий AG-05: сигнал начала записи и сигнал конца записи — ровно два на реплику.
+        // Criterion AG-05: the cue for the start of recording and the cue for the end are
+        // exactly two per phrase
         let h = harness("реплика");
         let events = h.handle.subscribe();
         h.handle
@@ -1196,7 +1225,7 @@ mod tests {
         assert_eq!(
             h.sound.played(),
             vec![CueKind::RecordStart, CueKind::RecordStop],
-            "на реплику должно приходиться ровно два сигнала"
+            "each phrase must get exactly two cues"
         );
         drop(h.daemon);
     }
@@ -1215,7 +1244,7 @@ mod tests {
         assert_eq!(
             h.sound.played(),
             vec![CueKind::RecordStart, CueKind::Error],
-            "отменённая запись не должна звучать как законченная реплика"
+            "a cancelled recording must not sound like a finished phrase"
         );
         drop(h.daemon);
     }
@@ -1233,7 +1262,7 @@ mod tests {
         h.clock.advance(Duration::from_secs(2));
         h.handle.send(Input::RecordStop).unwrap();
         wait_for_entry(&events);
-        // Возврат в Idle делает управляющий поток уже после события: дождёмся его.
+        // The control thread returns to Idle after the event: wait for it
         let deadline = Instant::now() + Duration::from_secs(5);
         while h.handle.state() != DaemonState::Idle && Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(20));
@@ -1297,7 +1326,10 @@ mod tests {
         h.clock.advance(Duration::from_secs(2));
         h.handle.send(Input::RecordStop).unwrap();
         let entry = wait_for_entry(&events);
-        assert!(entry.error.is_some(), "отказ вставки должен быть в записи");
+        assert!(
+            entry.error.is_some(),
+            "a paste failure must be in the entry"
+        );
         assert!(!h.notifier.messages.lock().unwrap().is_empty());
         drop(h.daemon);
     }
@@ -1356,7 +1388,7 @@ mod tests {
 
     #[test]
     fn inject_text_repeats_a_ready_text_through_the_injector() {
-        // Критерий AM-17: реплику из истории можно вставить заново, не диктуя её снова.
+        // Criterion AM-17: a phrase from the history can be pasted again, with no new dictation
         let h = harness("реплика");
         let handler: &dyn RequestHandler = &h.handle;
         let result = handler
@@ -1399,7 +1431,10 @@ mod tests {
             })
             .unwrap_err();
         assert_eq!(err.code, ErrorCode::InjectFailed);
-        assert!(err.hint.unwrap().contains("буфер"), "нужен следующий шаг");
+        assert!(
+            err.hint.unwrap().contains("clipboard"),
+            "a next step is needed"
+        );
         drop(h.daemon);
     }
 
@@ -1413,8 +1448,8 @@ mod tests {
         drop(h.daemon);
     }
 
-    /// Демон с полным конвейером и микрофоном, отдающим звук порциями: только так работает
-    /// потоковая обработка.
+    /// A daemon with the full pipeline and a microphone that returns sound in portions: this is
+    /// the only way streaming processing works
     fn streaming_harness(responses: &[&str], config: Config) -> Harness {
         use crate::app::pipeline::{Pipeline, PipelineConfig};
         use crate::domain::stt::Transcript;
@@ -1445,7 +1480,7 @@ mod tests {
             PipelineConfig::from_config(&config),
         );
         let sound = Arc::new(RecordingSoundCue::default());
-        // Порции по восемь секунд: два тика микрофона дают куски без ожидания в тесте.
+        // Portions of eight seconds: two microphone ticks give chunks with no waiting in the test
         let audio = SharedAudio(Arc::new(Mutex::new(FakeAudioSource::paced(
             speech(20.0),
             8_000,
@@ -1471,7 +1506,7 @@ mod tests {
         }
     }
 
-    /// Речь с паузами: полторы секунды тона через секунду тишины.
+    /// Speech with pauses: a tone of one and a half seconds, then a second of silence
     fn speech(secs: f32) -> PcmAudio {
         let rate = 16_000usize;
         let mut samples = Vec::new();
@@ -1482,7 +1517,7 @@ mod tests {
         PcmAudio::new(samples, rate as u32)
     }
 
-    /// Дождаться реплики, собрав по дороге все черновики.
+    /// Wait for the phrase, and collect all drafts on the way
     fn drain_until_entry(events: &Receiver<Event>) -> (Vec<String>, crate::domain::entry::Entry) {
         drain_until_entry_within(events, Duration::from_secs(10))
     }
@@ -1497,17 +1532,19 @@ mod tests {
             match events.recv_timeout(Duration::from_millis(200)) {
                 Ok(Event::Hypothesis { text }) => drafts.push(text),
                 Ok(Event::Entry { entry }) => return (drafts, *entry),
-                Ok(Event::Error { message, .. }) => panic!("демон сообщил об ошибке: {message}"),
+                Ok(Event::Error { message, .. }) => {
+                    panic!("the daemon reported an error: {message}")
+                }
                 Ok(_) | Err(_) => {}
             }
         }
         panic!(
-            "реплика так и не появилась, черновиков было {}",
+            "the phrase never appeared, there were {} drafts",
             drafts.len()
         );
     }
 
-    /// Записать реплику и вернуть черновики вместе с итоговой записью.
+    /// Record a phrase and return the drafts together with the final entry
     fn record(harness: &Harness) -> (Vec<String>, crate::domain::entry::Entry) {
         let events = harness.handle.subscribe();
         harness
@@ -1517,7 +1554,7 @@ mod tests {
                 style: None,
             })
             .unwrap();
-        // Тик потоковой обработки идёт четыре раза в секунду: дадим микрофону отдать порции.
+        // The streaming tick runs four times a second: let the microphone return its portions
         std::thread::sleep(Duration::from_millis(700));
         harness.clock.advance(Duration::from_secs(20));
         harness.handle.send(Input::RecordStop).unwrap();
@@ -1533,39 +1570,42 @@ mod tests {
 
         assert!(
             drafts.len() >= 2,
-            "во время записи не пришло и двух черновиков: обработка снова ждёт отпускания"
+            "fewer than two drafts came during recording: processing waits for the release again"
         );
         for pair in drafts.windows(2) {
             assert!(
                 pair[1].starts_with(&pair[0]),
-                "черновик потерял порядок кусков: {:?} → {:?}",
+                "the draft lost the order of the chunks: {:?} → {:?}",
                 pair[0],
                 pair[1]
             );
         }
         let raw = entry.text_raw.clone().unwrap_or_default();
         let words: Vec<&str> = raw.split_whitespace().collect();
-        assert!(words.len() >= 2, "итог собран не из кусков: {raw:?}");
+        assert!(
+            words.len() >= 2,
+            "the result is not built from chunks: {raw:?}"
+        );
         assert_eq!(
             words,
             responses[..words.len()].to_vec(),
-            "куски склеились не в том порядке: {raw:?}"
+            "the chunks were joined in the wrong order: {raw:?}"
         );
         assert_eq!(
             drafts.last().map(String::as_str),
             Some(words[..words.len() - 1].join(" ").as_str()),
-            "последний черновик — это всё, кроме хвоста"
+            "the last draft is everything except the tail"
         );
         assert!(
             entry.latency_ms.first_hypothesis.is_some(),
-            "время до первой гипотезы не измерено"
+            "the time to the first hypothesis is not measured"
         );
         assert!(
             entry.audio_secs > 15.0,
-            "длительность реплики посчитана по хвосту, а не по всей записи: {}",
+            "the phrase duration is computed from the tail, not from the whole recording: {}",
             entry.audio_secs
         );
-        assert_eq!(h.injected.lock().unwrap().len(), 1, "вставка ровно одна");
+        assert_eq!(h.injected.lock().unwrap().len(), 1, "exactly one paste");
         drop(h.daemon);
     }
 
@@ -1577,10 +1617,7 @@ mod tests {
 
         let (drafts, entry) = record(&h);
 
-        assert!(
-            drafts.is_empty(),
-            "черновики при выключенной нарезке: {drafts:?}"
-        );
+        assert!(drafts.is_empty(), "drafts with cutting off: {drafts:?}");
         assert_eq!(entry.text_raw.as_deref(), Some("целая реплика"));
         assert_eq!(entry.latency_ms.first_hypothesis, None);
         drop(h.daemon);
@@ -1599,7 +1636,8 @@ mod tests {
         std::thread::sleep(Duration::from_millis(700));
         h.clock.advance(Duration::from_secs(20));
         h.handle.send(Input::RecordCancel).unwrap();
-        // Отмена доходит до рабочего потока тем же каналом, что и куски: дадим ей дойти.
+        // The cancel reaches the worker thread through the same channel as the chunks: let it
+        // arrive
         std::thread::sleep(Duration::from_millis(300));
         while events.try_recv().is_ok() {}
 
@@ -1617,29 +1655,29 @@ mod tests {
         let raw = entry.text_raw.clone().unwrap_or_default();
         assert!(
             !raw.contains("отменённое"),
-            "текст отменённой записи прирос к следующей реплике: {raw:?}"
+            "the text of the cancelled recording attached to the next phrase: {raw:?}"
         );
         drop(h.daemon);
     }
 
-    /// Замер на настоящей модели: сколько человек ждёт после отпускания клавиши.
+    /// Measurement on a real model: how long the person waits after the key release
     ///
-    /// Микрофон играет речь в реальном времени (порция за тик), поэтому измеряется ровно то, что
-    /// видит пользователь: от `RecordStop` до готовой записи. Прогон занимает минуты, поэтому он
-    /// ручной: `MOLVA_TEST_MODEL=<путь> cargo test --release -- --ignored real_model_streaming`.
+    /// The microphone plays the speech in real time (one portion per tick), so exactly what the
+    /// user sees is measured: from `RecordStop` to the ready entry. A run takes minutes, so it is
+    /// manual: `MOLVA_TEST_MODEL=<path> cargo test --release -- --ignored real_model_streaming`
     #[test]
-    #[ignore = "нужна скачанная модель whisper: MOLVA_TEST_MODEL=<путь> --ignored"]
+    #[ignore = "needs a downloaded whisper model: MOLVA_TEST_MODEL=<path> --ignored"]
     fn real_model_streaming_shortens_the_wait_after_the_release() {
         let Ok(model) = std::env::var("MOLVA_TEST_MODEL") else {
-            panic!("задайте MOLVA_TEST_MODEL=<путь к ggml-*.bin>");
+            panic!("set MOLVA_TEST_MODEL=<path to ggml-*.bin>");
         };
         for chunked in [false, true] {
             let mut config = Config::default();
             config.stt.chunked = chunked;
             let (elapsed, entry) = run_real_reply(&model, config);
             println!(
-                "chunked = {chunked}: после отпускания {} мс | stt {} мс | до первой гипотезы \
-                 {:?} | реплика {:.1} с\n  {}",
+                "chunked = {chunked}: after the release {} ms | stt {} ms | to the first hypothesis \
+                 {:?} | phrase {:.1} s\n  {}",
                 elapsed.as_millis(),
                 entry.latency_ms.stt,
                 entry.latency_ms.first_hypothesis,
@@ -1649,7 +1687,8 @@ mod tests {
         }
     }
 
-    /// Одна реплика через демон с настоящей моделью: время от отпускания до готовой записи.
+    /// One phrase through the daemon with a real model: the time from the release to the ready
+    /// entry
     #[cfg(test)]
     fn run_real_reply(model: &str, config: Config) -> (Duration, crate::domain::entry::Entry) {
         use crate::app::pipeline::{Pipeline, PipelineConfig};
@@ -1672,11 +1711,11 @@ mod tests {
             PipelineConfig::from_config(&config),
         );
         let daemon = Daemon::spawn(DaemonParts {
-            // Порция за тик — это воспроизведение в реальном времени, как с живого микрофона.
+            // One portion per tick is playback in real time, as from a live microphone
             audio: Box::new(FakeAudioSource::paced(audio, chunked::TICK_MS as u32)),
             processor: Box::new(pipeline),
             notifier: Arc::new(RecordingNotifier::default()),
-            // Замер идёт с настоящей моделью: звук и вставка тут ни при чём.
+            // The measurement uses a real model: the cue sound and the paste do not matter here
             sound: Arc::new(RecordingSoundCue::default()),
             injector: None,
             clock,
@@ -1695,24 +1734,24 @@ mod tests {
         handle.send(Input::RecordStop).unwrap();
         let (drafts, entry) = drain_until_entry_within(&events, Duration::from_secs(300));
         let elapsed = released.elapsed();
-        println!("  черновиков во время записи: {}", drafts.len());
+        println!("  drafts during recording: {}", drafts.len());
         drop(daemon);
         (elapsed, entry)
     }
 
-    /// Три речевые фикстуры подряд: реплика на двенадцать секунд с паузами между фразами.
+    /// Three speech fixtures in a row: a phrase of twelve seconds with pauses between sentences
     #[cfg(test)]
     fn concatenated_fixtures() -> PcmAudio {
         let mut samples = Vec::new();
         for name in ["privet_ru.wav", "hello_en.wav", "secret_ru_en.wav"] {
             let path = format!("{}/../../tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"));
-            let mut reader = hound::WavReader::open(&path).expect("фикстура на месте");
+            let mut reader = hound::WavReader::open(&path).expect("the fixture is in place");
             samples.extend(
                 reader
                     .samples::<i16>()
-                    .map(|s| f32::from(s.expect("отсчёт")) / f32::from(i16::MAX)),
+                    .map(|s| f32::from(s.expect("sample")) / f32::from(i16::MAX)),
             );
-            // Пауза между фразами: сегментатору нужна граница.
+            // A pause between sentences: the segmenter needs a boundary
             samples.resize(samples.len() + 16_000, 0.0);
         }
         PcmAudio::new(samples, 16_000)

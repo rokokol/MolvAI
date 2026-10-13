@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
-//! Обработка записанного аудио: распознать → вставить → записать в журнал.
+//! Processing of recorded audio: recognize → paste → write to the journal
 //!
-//! `Processor` — шов между демоном и конвейером: демон знает только этот трейт, поэтому полный
-//! конвейер (правила, словарь, модель) подключается позже без правок демона.
+//! `Processor` is the seam between the daemon and the pipeline. The daemon knows only this
+//! trait, so the full pipeline (rules, dictionary, model) plugs in later without changes to the
+//! daemon
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -25,11 +26,11 @@ use super::chunked::{ChunkContext, ChunkPrefix, ChunkText};
 
 #[derive(Debug, Error)]
 pub enum ProcessError {
-    #[error("распознавание не удалось: {0}")]
+    #[error("recognition failed: {0}")]
     Stt(#[from] SttError),
-    #[error("вставка не удалась: {0}")]
+    #[error("paste failed: {0}")]
     Inject(#[from] InjectError),
-    #[error("не удалось записать в журнал: {0}")]
+    #[error("cannot write to the journal: {0}")]
     Journal(#[from] JournalError),
     #[error("{0}")]
     Pipeline(String),
@@ -46,7 +47,7 @@ impl From<crate::app::pipeline::PipelineError> for ProcessError {
     }
 }
 
-/// Полный конвейер (словарь, правила, модель) на месте обработчика демона.
+/// The full pipeline (dictionary, rules, model) in the place of the daemon processor
 impl Processor for crate::app::pipeline::Pipeline {
     fn apply_config(&mut self, config: &Config) {
         self.set_config(crate::app::pipeline::PipelineConfig::from_config(config));
@@ -90,10 +91,11 @@ impl Processor for crate::app::pipeline::Pipeline {
     }
 }
 
-/// Конвейер обработки одной реплики.
+/// Pipeline that processes one phrase
 ///
-/// Реализация обязана вернуть `Entry` даже когда вставка не удалась: неудача вставки — это поле
-/// `error` в записи, а не отказ всей обработки, иначе пользователь теряет распознанный текст.
+/// The implementation must return an `Entry` even when the paste failed. A paste failure is the
+/// `error` field in the entry, not a failure of the whole processing, or the user loses the
+/// recognized text
 pub trait Processor: std::fmt::Debug + Send {
     fn process(
         &mut self,
@@ -103,20 +105,21 @@ pub trait Processor: std::fmt::Debug + Send {
         app_hint: Option<&str>,
     ) -> Result<Entry, ProcessError>;
 
-    /// Сколько прошло от отпускания клавиши до закрытия потока микрофона, миллисекунды.
+    /// Time from the key release to the close of the microphone stream, in milliseconds
     ///
-    /// Меряет демон — только он знает обе точки. Значение уходит в `Entry.latency_ms
-    /// .stop_after_release`, поэтому гарантию приватности микрофона видно в журнале.
+    /// The daemon measures it, because only the daemon knows both points. The value goes into
+    /// `Entry.latency_ms.stop_after_release`, so the journal shows the microphone privacy
+    /// guarantee
     fn set_stop_after_release(&mut self, _ms: u32) {}
 
-    /// Применить перечитанные настройки: стиль по умолчанию, правила, пороги. Обработчик,
-    /// которому настройки безразличны, ничего не делает.
+    /// Apply the reloaded settings: the default style, the rules, the thresholds. A processor
+    /// that does not care about the settings does nothing
     fn apply_config(&mut self, _config: &Config) {}
 
-    /// Распознать кусок ещё идущей записи.
+    /// Recognize a chunk of a recording that is still running
     ///
-    /// `None` означает, что обработчик потоковую обработку не умеет: демон тогда дождётся конца
-    /// реплики и отдаст её целиком, как раньше.
+    /// `None` means that the processor cannot do streaming processing: the daemon then waits
+    /// for the end of the phrase and gives it whole, as before
     fn transcribe_chunk(
         &mut self,
         _audio: &PcmAudio,
@@ -125,10 +128,10 @@ pub trait Processor: std::fmt::Debug + Send {
         None
     }
 
-    /// Обработать реплику, начало которой уже распознано кусками.
+    /// Process a phrase whose start is already recognized in chunks
     ///
-    /// Реализация по умолчанию не умеет в куски, поэтому и префикса у неё не бывает: демон отдаёт
-    /// ей запись целиком.
+    /// The default implementation cannot handle chunks, so it never gets a prefix: the daemon
+    /// gives it the whole recording
     fn process_with_prefix(
         &mut self,
         _prefix: ChunkPrefix,
@@ -141,15 +144,15 @@ pub trait Processor: std::fmt::Debug + Send {
     }
 }
 
-/// Настройки, которые обработчику нужны от конфига.
+/// Settings that the processor needs from the config
 #[derive(Debug, Clone)]
 pub struct ProcessorConfig {
     pub output: OutputConfig,
     pub stt: SttOptions,
     pub default_style: String,
-    /// Класс окна → идентификатор стиля.
+    /// Window class → style identifier
     pub style_by_app: std::collections::BTreeMap<String, String>,
-    /// `false` — режим приватности: в журнал уходит строка без текста.
+    /// `false` means privacy mode: the journal gets a line without text
     pub include_text: bool,
     pub session_id: Uuid,
 }
@@ -172,7 +175,7 @@ impl ProcessorConfig {
         }
     }
 
-    /// Стиль для реплики: явный аргумент важнее привязки к приложению.
+    /// Style for a phrase: an explicit argument beats the binding to the application
     fn style_for(&self, style: Option<&str>, app_hint: Option<&str>) -> String {
         if let Some(style) = style.filter(|s| !s.is_empty()) {
             return style.to_string();
@@ -186,10 +189,10 @@ impl ProcessorConfig {
     }
 }
 
-/// Обработчик без правил и модели: распознал — вставил — записал.
+/// Processor without rules and model: recognize, paste, record
 ///
-/// Этого достаточно для сквозного демо и для тестов демона; конвейер с правилами и LLM встаёт
-/// на то же место, реализуя `Processor`.
+/// This is enough for an end-to-end demo and for the daemon tests. The pipeline with rules and
+/// an LLM takes the same place by implementing `Processor`
 #[derive(Debug)]
 pub struct SimpleProcessor<I: TextInjector, J: Journal> {
     stt: Box<dyn SttEngine>,
@@ -198,7 +201,7 @@ pub struct SimpleProcessor<I: TextInjector, J: Journal> {
     clock: Arc<dyn Clock>,
     notifier: Arc<dyn Notifier>,
     config: ProcessorConfig,
-    /// Замер демона: от отпускания клавиши до закрытия потока микрофона.
+    /// Daemon measurement: from the key release to the close of the microphone stream
     stop_after_release_ms: Option<u32>,
 }
 
@@ -223,7 +226,7 @@ impl<I: TextInjector, J: Journal> SimpleProcessor<I, J> {
     }
 }
 
-/// Миллисекунды между двумя точками монотонного времени, без переполнения.
+/// Milliseconds between two points of monotonic time, with no overflow
 fn ms_between(from: Instant, to: Instant) -> u32 {
     u32::try_from(to.saturating_duration_since(from).as_millis()).unwrap_or(u32::MAX)
 }
@@ -253,20 +256,20 @@ impl<I: TextInjector, J: Journal> Processor for SimpleProcessor<I, J> {
         let mut error = None;
 
         if text.is_empty() {
-            // Тишина или отказ модели: реплики нет, но запись в журнале остаётся.
-            error = Some("речь не распознана".to_string());
+            // Silence or a model failure: there is no phrase, but the entry stays in the journal
+            error = Some("speech not recognized".to_string());
             self.notifier
-                .notify("MolvAI", "речь не распознана — попробуйте ещё раз");
+                .notify("MolvAI", "speech not recognized, try again");
         } else {
             let resolved = parse_output_mode(&self.config.output.mode)
                 .resolve(&text, self.config.output.auto_type_max_chars as usize);
             let before_inject = self.clock.instant();
-            // Способ вставки зависит от приложения: терминалу нужен Ctrl+Shift+V.
+            // The paste method depends on the application: a terminal needs Ctrl+Shift+V
             self.injector.set_window(app_hint);
             match self.injector.inject(&text, resolved) {
                 Ok(report) => inject_method = Some(report.method),
                 Err(err) => {
-                    tracing::warn!(%err, "вставка не удалась");
+                    tracing::warn!(%err, "paste failed");
                     error = Some(err.to_string());
                     self.notifier
                         .notify("MolvAI", &inject_failure_hint(&err, &text));
@@ -327,14 +330,14 @@ impl<I: TextInjector, J: Journal> Processor for SimpleProcessor<I, J> {
     }
 }
 
-/// Что сказать пользователю, когда вставка не удалась.
+/// What to tell the user when the paste failed
 fn inject_failure_hint(err: &InjectError, text: &str) -> String {
     match err {
         InjectError::UnsupportedCharacters => {
-            "текст нельзя набрать этим способом — он в буфере обмена, нажмите Ctrl+V".into()
+            "the text cannot be typed this way; it is in the clipboard, press Ctrl+V".into()
         }
         _ => format!(
-            "не удалось вставить текст ({} симв.) — он в буфере обмена, нажмите Ctrl+V",
+            "cannot paste the text ({} chars); it is in the clipboard, press Ctrl+V",
             text.chars().count()
         ),
     }
@@ -351,7 +354,8 @@ mod tests {
     use chrono::{DateTime, Utc};
     use std::time::Duration;
 
-    /// Распознаватель, который «тратит» время фейковых часов: так тайминги в записи не нули.
+    /// A recognizer that "spends" the time of the fake clock, so the timings in the entry are
+    /// not zero
     #[derive(Debug)]
     struct SlowStt {
         inner: FakeStt,
@@ -419,14 +423,14 @@ mod tests {
         assert_eq!(
             processor.injector.injected,
             vec![("привет мир".to_string(), OutputMode::Type)],
-            "инжектор должен получить именно текст транскрипта"
+            "the injector must get exactly the transcript text"
         );
         assert_eq!(processor.journal.entries.len(), 1);
         let stored = &processor.journal.entries[0];
         assert_eq!(stored.text_final.as_deref(), Some("привет мир"));
         assert_eq!(stored.words, 2);
         assert_eq!(stored.app.as_deref(), Some("kitty"));
-        assert!(stored.latency_ms.total > 0, "тайминги не заполнены");
+        assert!(stored.latency_ms.total > 0, "timings are not filled");
         assert!(stored.latency_ms.stt >= 40);
         assert_eq!(stored.error, None);
         assert_eq!(entry.id, stored.id);
@@ -448,7 +452,7 @@ mod tests {
             Arc::new(RecordingNotifier::default()),
             config(),
         );
-        // Две секунды аудио на четыре слова — 120 слов в минуту.
+        // Two seconds of audio for four words is 120 words per minute
         let entry = processor
             .process(audio(), Mode::Dictation, None, None)
             .unwrap();
@@ -488,7 +492,7 @@ mod tests {
             takes: Duration::from_millis(5),
         };
         let injector = RecordingInjector {
-            fail_with: Some(InjectError::Failed("нет активного окна".into())),
+            fail_with: Some(InjectError::Failed("no active window".into())),
             ..RecordingInjector::default()
         };
         let notifier = Arc::new(RecordingNotifier::default());
@@ -506,7 +510,7 @@ mod tests {
             .unwrap();
         assert!(
             entry.error.is_some(),
-            "отказ вставки должен попасть в запись"
+            "a paste failure must reach the entry"
         );
         assert_eq!(entry.text_final.as_deref(), Some("текст"));
         assert_eq!(processor.journal.entries.len(), 1);
@@ -519,7 +523,9 @@ mod tests {
     fn stt_failure_is_reported_as_an_error_and_writes_nothing() {
         let clock = clock();
         let stt = SlowStt {
-            inner: FakeStt::with_responses(vec![Err(SttError::Inference("модель упала".into()))]),
+            inner: FakeStt::with_responses(vec![Err(SttError::Inference(
+                "the model crashed".into(),
+            ))]),
             clock: clock.clone(),
             takes: Duration::from_millis(5),
         };
@@ -591,7 +597,7 @@ mod tests {
         assert_eq!(processor.journal.entries[0].words, 1);
     }
 
-    /// Инжектор, который запоминает, какое окно ему назвали перед вставкой.
+    /// An injector that remembers which window was named to it before the paste
     #[derive(Debug, Default)]
     struct WindowAwareInjector {
         window: Option<String>,
@@ -639,7 +645,7 @@ mod tests {
         assert_eq!(processor.injector.window.as_deref(), Some("kitty"));
         assert!(
             processor.injector.window_set_before_inject,
-            "окно должно быть известно до вставки, а не после"
+            "the window must be known before the paste, not after"
         );
     }
 

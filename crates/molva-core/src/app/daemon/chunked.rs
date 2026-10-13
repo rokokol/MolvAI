@@ -1,19 +1,20 @@
 // SPDX-License-Identifier: MIT
-//! Потоковая обработка реплики: куски уходят в модель, пока человек ещё говорит.
+//! Streaming processing of a phrase: chunks go to the model while the person is still speaking
 //!
-//! Раньше вся работа начиналась по отпусканию клавиши: реплика в четыре секунды заставляла ждать
-//! ещё четыре. Здесь запись режется [`Segmenter`]-ом прямо во время речи, каждый готовый кусок
-//! сразу уходит в распознавание, а после отпускания остаётся только хвост — обычно меньше секунды.
-//! Ожидание, которое видит человек, сокращается до последнего куска плюс постобработка.
+//! Before, all the work started at the key release: a phrase of four seconds made the person
+//! wait four more. Here the [`Segmenter`] cuts the recording during the speech, each ready chunk
+//! goes to recognition at once, and after the release only the tail remains, usually less than a
+//! second. The wait that the person sees shrinks to the last chunk plus post-processing
 //!
-//! Куски идут одной очередью в один рабочий поток, поэтому порядок текстов — это порядок кусков, и
-//! перемешаться они не могут по построению. Контекст между кусками передаётся подсказкой:
-//! `initial_prompt` следующего куска — хвост уже распознанного текста вместе с подсказкой словаря,
-//! так whisper держит стиль, термины и склонения.
+//! The chunks go in one queue to one worker thread, so the order of the texts is the order of
+//! the chunks, and they cannot get mixed up by construction. The context between chunks passes
+//! as a hint: the `initial_prompt` of the next chunk is the tail of the text already recognized
+//! together with the dictionary hint, so whisper keeps the style, the terms and the word forms
 //!
-//! Язык выбирается по первому куску реплики и применяется ко всем остальным. Смешанную речь внутри
-//! одной реплики whisper всё равно не разделяет: он выбирает один язык на весь фрагмент, поэтому
-//! менять язык от куска к куску значило бы получить два разных прочтения одной фразы.
+//! The language is chosen by the first chunk of the phrase and applies to all the others.
+//! Whisper does not split mixed speech inside one phrase anyway: it chooses one language for the
+//! whole fragment, so a language change from chunk to chunk would give two different readings
+//! of one phrase
 
 use std::time::Instant;
 
@@ -24,60 +25,60 @@ use crate::infra::stt::{is_silence_hallucination, transcribe_with_language_polic
 
 use crate::app::audio::segmenter::{Chunk, Segmenter, SegmenterConfig};
 
-/// Сколько символов уже распознанного текста уходит подсказкой в следующий кусок.
+/// How many characters of the already recognized text go as a hint into the next chunk
 ///
-/// Двести символов — это примерно последнее предложение: модели хватает, чтобы подхватить стиль и
-/// термины, и не настолько много, чтобы подсказка начала подменять собой сам звук.
+/// Two hundred characters is about the last sentence: it is enough for the model to pick up the
+/// style and the terms, and not so much that the hint starts to replace the sound itself
 pub const PROMPT_CONTEXT_CHARS: usize = 200;
 
-/// Как часто демон снимает свежий звук с микрофона во время записи.
+/// How often the daemon takes fresh sound from the microphone during recording
 pub const TICK_MS: u64 = 250;
 
-/// Распознанный кусок реплики.
+/// A recognized chunk of a phrase
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ChunkText {
-    /// Пустая строка означает, что в куске не нашлось речи.
+    /// An empty string means that the chunk held no speech
     pub text: String,
-    /// Язык, на котором кусок прочитан.
+    /// Language in which the chunk was read
     pub language: Option<String>,
     pub stt_ms: u32,
 }
 
-/// Что известно о предыдущих кусках, когда конвейер берётся за следующий.
+/// What is known about the previous chunks when the pipeline takes the next one
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ChunkContext {
-    /// Хвост уже распознанного текста — уходит в `initial_prompt`.
+    /// Tail of the already recognized text; it goes into `initial_prompt`
     pub previous_text: String,
-    /// Язык, выбранный по первому куску реплики.
+    /// Language chosen by the first chunk of the phrase
     pub language: Option<String>,
-    /// Номер куска, начиная с нуля.
+    /// Number of the chunk, starting from zero
     pub index: usize,
 }
 
-/// Всё, что накопили куски, — начало реплики для конвейера.
+/// Everything the chunks have collected: the start of the phrase for the pipeline
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ChunkPrefix {
     pub text: String,
     pub language: Option<String>,
-    /// Суммарное время распознавания кусков.
+    /// Total recognition time of the chunks
     pub stt_ms: u32,
-    /// От начала записи до первого распознанного куска.
+    /// From the start of recording to the first recognized chunk
     pub first_hypothesis_ms: Option<u32>,
-    /// Длительность всей реплики: хвост о ней уже не знает.
+    /// Duration of the whole phrase: the tail no longer knows it
     pub audio_secs: Option<f32>,
 }
 
 impl ChunkPrefix {
-    /// Пустой префикс означает «кусков не было»: реплика распознаётся целиком, как раньше.
+    /// An empty prefix means "there were no chunks": the phrase is recognized whole, as before
     pub fn is_empty(&self) -> bool {
         self.text.trim().is_empty()
     }
 }
 
-/// Копилка распознанных кусков одной реплики.
+/// Collector of the recognized chunks of one phrase
 ///
-/// Живёт в рабочем потоке демона: он один разбирает очередь кусков, поэтому порядок сохраняется без
-/// каких-либо номеров и сортировок.
+/// It lives in the worker thread of the daemon. That thread alone takes the chunk queue, so the
+/// order holds without any numbers or sorting
 #[derive(Debug, Default)]
 pub struct ChunkAccumulator {
     texts: Vec<String>,
@@ -87,12 +88,12 @@ pub struct ChunkAccumulator {
 }
 
 impl ChunkAccumulator {
-    /// Не распозналось ещё ни одного куска с текстом.
+    /// No chunk with text has been recognized yet
     pub fn is_empty(&self) -> bool {
         self.texts.iter().all(|text| text.trim().is_empty())
     }
 
-    /// Контекст для следующего куска.
+    /// Context for the next chunk
     pub fn context(&self) -> ChunkContext {
         ChunkContext {
             previous_text: tail_context(&self.draft()),
@@ -101,11 +102,11 @@ impl ChunkAccumulator {
         }
     }
 
-    /// Принять распознанный кусок; `since_start_ms` — сколько прошло от начала записи.
+    /// Accept a recognized chunk; `since_start_ms` is the time since the start of recording
     pub fn push(&mut self, chunk: ChunkText, since_start_ms: u32) {
         self.stt_ms = self.stt_ms.saturating_add(chunk.stt_ms);
         if self.language.is_none() {
-            // Язык реплики выбирается по первому куску, в котором нашлась речь.
+            // The language of the phrase is chosen by the first chunk that held speech
             if !chunk.text.trim().is_empty() {
                 self.language.clone_from(&chunk.language);
             }
@@ -116,12 +117,12 @@ impl ChunkAccumulator {
         self.texts.push(chunk.text);
     }
 
-    /// Черновик реплики целиком — то, что видит человек во время речи.
+    /// Draft of the whole phrase: what the person sees during speech
     pub fn draft(&self) -> String {
         join_texts(&self.texts)
     }
 
-    /// Забрать накопленное и очиститься под следующую реплику.
+    /// Take what was collected and clear for the next phrase
     pub fn take_prefix(&mut self, audio_secs: f32) -> ChunkPrefix {
         let prefix = ChunkPrefix {
             text: self.draft(),
@@ -134,20 +135,20 @@ impl ChunkAccumulator {
         prefix
     }
 
-    /// Забыть накопленное: запись отменили.
+    /// Forget what was collected: the recording was cancelled
     pub fn reset(&mut self) {
         *self = Self::default();
     }
 }
 
-/// Нарезчик на стороне управляющего потока: снимает свежий звук и отдаёт готовые куски.
+/// Cutter on the side of the control thread: takes fresh sound and returns ready chunks
 #[derive(Debug)]
 pub struct ChunkFeeder {
     enabled: bool,
     pause_ms: u32,
     silence_threshold_db: f32,
     segmenter: Option<Segmenter>,
-    /// Сколько отсчётов уже ушло в сегментатор.
+    /// How many samples already went into the segmenter
     fed: usize,
     started: Instant,
 }
@@ -168,7 +169,7 @@ impl ChunkFeeder {
         self.enabled
     }
 
-    /// Начало новой записи: копилка обнуляется.
+    /// Start of a new recording: the collector resets
     pub fn start(&mut self, at: Instant) {
         self.segmenter = None;
         self.fed = 0;
@@ -179,18 +180,18 @@ impl ChunkFeeder {
         self.started
     }
 
-    /// Сколько кусков отдано с начала записи.
+    /// How many chunks were returned since the start of the recording
     pub fn emitted(&self) -> usize {
         self.segmenter.as_ref().map_or(0, Segmenter::emitted)
     }
 
-    /// Снять свежий звук и забрать то, что дозрело до куска.
+    /// Take fresh sound and collect what has matured into a chunk
     pub fn tick(&mut self, source: &mut dyn AudioSource) -> Vec<Chunk> {
         if !self.enabled {
             return Vec::new();
         }
         let Some(fresh) = source.drain_new_samples() else {
-            // Источник не умеет отдавать звук во время записи: реплика пойдёт целиком.
+            // The source cannot return sound during recording: the phrase will go whole
             return Vec::new();
         };
         self.fed += fresh.samples.len();
@@ -202,10 +203,10 @@ impl ChunkFeeder {
         segmenter.push(&fresh.samples)
     }
 
-    /// Хвост записи: последний кусок и всё, что не успели снять тиком.
+    /// Tail of the recording: the last chunk and everything the tick did not take
     ///
-    /// Последний элемент — хвост, остальные обычные куски: если между последним тиком и отпусканием
-    /// клавиши человек успел договорить целую фразу, в остатке может оказаться сразу несколько.
+    /// The last element is the tail, and the others are ordinary chunks. If the person finished
+    /// a whole sentence between the last tick and the key release, the remainder may hold several
     pub fn finish(&mut self, full: &PcmAudio) -> Vec<Chunk> {
         let Some(segmenter) = self.segmenter.as_mut() else {
             return Vec::new();
@@ -219,18 +220,19 @@ impl ChunkFeeder {
         chunks
     }
 
-    /// Запись отменили: сегментатор больше не нужен.
+    /// The recording was cancelled: the segmenter is no longer needed
     pub fn cancel(&mut self) {
         self.segmenter = None;
         self.fed = 0;
     }
 }
 
-/// Распознать один кусок реплики.
+/// Recognize one chunk of a phrase
 ///
-/// Язык фиксируется по первому куску: whisper всё равно читает фрагмент одним языком, а прыгающий
-/// от куска к куску язык дал бы одну фразу в двух прочтениях. Текст, похожий на галлюцинацию на
-/// тишине, до черновика не доходит — иначе посреди реплики выросло бы «Продолжение следует».
+/// The language is fixed by the first chunk: whisper reads a fragment in one language anyway,
+/// and a language that jumps from chunk to chunk would give one sentence in two readings.
+/// Text that looks like a hallucination on silence does not reach the draft. Otherwise
+/// "Продолжение следует" would grow in the middle of a phrase
 pub fn transcribe_chunk(
     engine: &mut dyn SttEngine,
     audio: &PcmAudio,
@@ -252,7 +254,8 @@ pub fn transcribe_chunk(
     })
 }
 
-/// Параметры распознавания для куска: язык реплики и подсказка с хвостом уже сказанного.
+/// Recognition parameters for a chunk: the phrase language and a hint with the tail of what
+/// was already said
 pub fn chunk_options(options: &SttOptions, context: &ChunkContext) -> SttOptions {
     SttOptions {
         language: match &context.language {
@@ -264,7 +267,8 @@ pub fn chunk_options(options: &SttOptions, context: &ChunkContext) -> SttOptions
     }
 }
 
-/// Параметры для хвоста реплики: тот же язык и тот же контекст, что и у последнего куска.
+/// Parameters for the tail of a phrase: the same language and the same context as for the last
+/// chunk
 pub fn tail_options(options: &SttOptions, prefix: &ChunkPrefix) -> SttOptions {
     chunk_options(
         options,
@@ -276,7 +280,7 @@ pub fn tail_options(options: &SttOptions, prefix: &ChunkPrefix) -> SttOptions {
     )
 }
 
-/// Склеить начало реплики из кусков с распознанным хвостом.
+/// Join the start of a phrase, made of chunks, with the recognized tail
 pub fn merge(prefix: &ChunkPrefix, tail: Option<Transcript>) -> Transcript {
     let (tail_text, tail_language) = match tail {
         Some(tail) => (tail.text.trim().to_string(), tail.detected_language),
@@ -286,12 +290,13 @@ pub fn merge(prefix: &ChunkPrefix, tail: Option<Transcript>) -> Transcript {
         text: join_texts(&[prefix.text.clone(), tail_text]),
         segments: Vec::new(),
         detected_language: prefix.language.clone().or(tail_language),
-        // Речь в реплике уже нашлась в кусках: оценка тишины по одному хвосту выбросила бы её всю.
+        // The speech of the phrase was already found in the chunks: a silence estimate on the
+        // tail alone would discard it all
         no_speech_prob: None,
     }
 }
 
-/// Подсказка для куска: термины словаря плюс хвост уже распознанного текста.
+/// Hint for a chunk: the dictionary terms plus the tail of the already recognized text
 pub fn chunk_prompt(dictionary_hint: Option<&str>, previous_text: &str) -> Option<String> {
     let previous = previous_text.trim();
     let hint = dictionary_hint.unwrap_or("").trim();
@@ -304,7 +309,7 @@ pub fn chunk_prompt(dictionary_hint: Option<&str>, previous_text: &str) -> Optio
     Some(joined)
 }
 
-/// Хвост текста не длиннее [`PROMPT_CONTEXT_CHARS`] символов, по границе слова.
+/// Tail of a text no longer than [`PROMPT_CONTEXT_CHARS`] characters, cut at a word boundary
 pub fn tail_context(text: &str) -> String {
     let text = text.trim();
     let count = text.chars().count();
@@ -313,14 +318,15 @@ pub fn tail_context(text: &str) -> String {
     }
     let skip = count - PROMPT_CONTEXT_CHARS;
     let tail: String = text.chars().skip(skip).collect();
-    // Обрезать посередине слова незачем: подсказка из огрызка только сбивает модель.
+    // There is no reason to cut in the middle of a word: a hint made of a stump only confuses
+    // the model
     match tail.find(' ') {
         Some(space) => tail[space + 1..].to_string(),
         None => tail,
     }
 }
 
-/// Склейка текстов: пробел между кусками, пустые пропускаются.
+/// Join of texts: a space between chunks, and empty ones are skipped
 fn join_texts(parts: &[String]) -> String {
     parts
         .iter()
@@ -330,7 +336,7 @@ fn join_texts(parts: &[String]) -> String {
         .join(" ")
 }
 
-/// Язык куска: что определила модель, а если она молчит — что просили.
+/// Language of a chunk: what the model detected, and if it is silent, what was requested
 fn language_of(options: &SttOptions, transcript: &Transcript) -> Option<String> {
     transcript
         .detected_language
@@ -373,19 +379,22 @@ mod tests {
             &context("первая часть реплики", Some("ru")),
             0.6,
         )
-        .expect("кусок распознан");
+        .expect("the chunk is recognized");
 
         let call = &engine.calls[0];
-        let prompt = call.initial_prompt.as_deref().expect("подсказка есть");
-        assert!(prompt.contains("MolvAI"), "потерялся словарь: {prompt}");
+        let prompt = call.initial_prompt.as_deref().expect("there is a hint");
+        assert!(
+            prompt.contains("MolvAI"),
+            "the dictionary was lost: {prompt}"
+        );
         assert!(
             prompt.contains("первая часть реплики"),
-            "потерялся контекст предыдущего куска: {prompt}"
+            "the context of the previous chunk was lost: {prompt}"
         );
         assert_eq!(
             call.language,
             LanguageHint::Fixed("ru".into()),
-            "язык реплики выбирается один раз и держится до конца"
+            "the phrase language is chosen once and holds to the end"
         );
     }
 
@@ -399,10 +408,10 @@ mod tests {
             &ChunkContext::default(),
             0.6,
         )
-        .expect("кусок обработан");
+        .expect("the chunk is processed");
         assert_eq!(
             chunk.text, "",
-            "хвост субтитров попал бы в середину реплики"
+            "a subtitle tail would land in the middle of a phrase"
         );
     }
 
@@ -416,17 +425,14 @@ mod tests {
         assert_eq!(acc.draft(), "первый кусок второй кусок");
         let prefix = acc.take_prefix(7.5);
         assert_eq!(prefix.text, "первый кусок второй кусок");
-        assert_eq!(prefix.stt_ms, 320, "время кусков суммируется");
+        assert_eq!(prefix.stt_ms, 320, "the times of the chunks add up");
         assert_eq!(
             prefix.first_hypothesis_ms,
             Some(900),
-            "первая гипотеза — это первый кусок с текстом"
+            "the first hypothesis is the first chunk with text"
         );
         assert_eq!(prefix.audio_secs, Some(7.5));
-        assert!(
-            acc.is_empty(),
-            "копилка обязана очиститься под новую реплику"
-        );
+        assert!(acc.is_empty(), "the collector must clear for a new phrase");
     }
 
     #[test]
@@ -475,7 +481,7 @@ mod tests {
         assert!(tail.chars().count() <= PROMPT_CONTEXT_CHARS);
         assert!(
             tail.starts_with("слово"),
-            "подсказка начинается с огрызка: {tail}"
+            "the hint starts with a stump: {tail}"
         );
     }
 
@@ -501,7 +507,7 @@ mod tests {
         assert_eq!(merged.detected_language.as_deref(), Some("ru"));
         assert_eq!(
             merged.no_speech_prob, None,
-            "речь уже нашлась в кусках: тишина в хвосте не отменяет реплику"
+            "the speech was already found in chunks: silence in the tail does not cancel the phrase"
         );
     }
 
@@ -516,9 +522,9 @@ mod tests {
 
     #[test]
     fn the_feeder_cuts_the_stream_while_the_recording_is_still_running() {
-        // Порции по восемь секунд: два тика — и в сегментаторе уже есть на что резать.
+        // Portions of eight seconds: two ticks, and the segmenter already has something to cut
         let mut source = FakeAudioSource::paced(speech(14.0), 8_000);
-        source.start(None).expect("запись началась");
+        source.start(None).expect("recording started");
         let mut feeder = ChunkFeeder::new(&SttConfig::default(), &AudioConfig::default());
         feeder.start(Instant::now());
 
@@ -527,12 +533,12 @@ mod tests {
 
         assert!(
             !first.is_empty() || !second.is_empty(),
-            "за четырнадцать секунд речи не отдано ни куска: обработка так и ждёт отпускания"
+            "no chunk returned in fourteen seconds of speech: processing still waits for the release"
         );
-        let full = source.stop().expect("запись остановлена");
+        let full = source.stop().expect("recording stopped");
         let streamed = feeder.emitted();
-        // Остаток после отпускания: хвоста может и не быть, если запись кончилась на паузе —
-        // тишину распознавать незачем.
+        // The remainder after the release: there may be no tail if the recording ended on a
+        // pause, because there is no reason to recognize silence
         let rest = feeder.finish(&full);
 
         assert!(streamed > 0);
@@ -544,14 +550,14 @@ mod tests {
             .sum();
         assert!(
             seconds > 12.0,
-            "куски покрывают не всю запись: {seconds:.1} с из четырнадцати"
+            "the chunks do not cover the whole recording: {seconds:.1} s of fourteen"
         );
     }
 
     #[test]
     fn a_source_that_cannot_stream_yields_no_chunks() {
         let mut source = FakeAudioSource::silence(20.0);
-        source.start(None).expect("запись началась");
+        source.start(None).expect("recording started");
         let mut feeder = ChunkFeeder::new(&SttConfig::default(), &AudioConfig::default());
         feeder.start(Instant::now());
 
@@ -559,7 +565,7 @@ mod tests {
         assert_eq!(feeder.emitted(), 0);
         assert!(
             feeder.finish(&source.stop().unwrap()).is_empty(),
-            "без сегментатора хвоста быть не может"
+            "without a segmenter there can be no tail"
         );
     }
 
@@ -570,7 +576,7 @@ mod tests {
             ..SttConfig::default()
         };
         let mut source = FakeAudioSource::paced(speech(20.0), 20_000);
-        source.start(None).expect("запись началась");
+        source.start(None).expect("recording started");
         let mut feeder = ChunkFeeder::new(&stt, &AudioConfig::default());
         feeder.start(Instant::now());
 
@@ -587,7 +593,7 @@ mod tests {
         }
     }
 
-    /// Речь с паузами: тон по полторы секунды через паузу в секунду.
+    /// Speech with pauses: a tone of one and a half seconds, then a pause of one second
     fn speech(secs: f32) -> PcmAudio {
         let rate = 16_000usize;
         let mut samples = Vec::new();

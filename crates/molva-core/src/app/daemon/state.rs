@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: MIT
-//! Машина состояний демона: `Idle → Recording → Transcribing → PostProcessing → Injecting → Idle`.
+//! State machine of the daemon: `Idle → Recording → Transcribing → PostProcessing → Injecting → Idle`
 //!
-//! Здесь нет ни аудио, ни потоков: вход — событие, выход — список действий и, возможно, ошибка
-//! для ответа клиенту. Время берётся из `Clock`, поэтому все правила про удержание клавиши
-//! проверяются тестами без единой реальной паузы.
+//! It has no audio and no threads. The input is an event, and the output is a list of actions
+//! and, maybe, an error for the reply to the client. The time comes from `Clock`, so tests
+//! check all the rules about key hold without a single real pause
 //!
-//! Главное правило ввода: **удержание и переключатель доступны одновременно**, выбирать между
-//! ними в настройках не нужно. Долгое нажатие — это push-to-talk: запись идёт, пока клавиша
-//! зажата, и заканчивается на отпускании. Короткий тап той же клавиши (`hotkeys.tap_toggles`)
-//! защёлкивает запись hands-free, и она продолжается до следующего нажатия. Отдельная клавиша
-//! `hotkeys.toggle` включает и выключает запись нажатием всегда, независимо от первой.
+//! The main input rule: **key hold and toggle are available at the same time**, and the
+//! settings need no choice between them. A long press is push-to-talk: recording runs while the
+//! key is held and ends at the release. A short tap of the same key (`hotkeys.tap_toggles`)
+//! latches the recording in hands-free mode, and it continues until the next press. The
+//! separate key `hotkeys.toggle` always starts and stops recording by a press, independent of
+//! the first key
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -20,37 +21,37 @@ use crate::domain::entry::Mode;
 use crate::domain::hotkeys::{HotkeyAction, HotkeyEvent, KeyState};
 use crate::ipc::protocol::{DaemonState, ErrorCode, IpcError};
 
-/// Почему запись закончилась, не породив реплику.
+/// Why a recording ended without producing a phrase
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiscardReason {
-    /// Клавишу отпустили раньше `min_hold_ms`: это промах, а не диктовка.
+    /// The key was released before `min_hold_ms`: this is a mistake, not dictation
     TooShort,
-    /// Пользователь отменил запись явно.
+    /// The user cancelled the recording explicitly
     Cancelled,
 }
 
 impl DiscardReason {
-    /// Текст для уведомления; пустая строка означает «молчать».
+    /// Text for the notification; an empty string means "stay silent"
     pub fn message(self) -> &'static str {
         match self {
-            DiscardReason::TooShort => "слишком короткое нажатие — запись отброшена",
-            DiscardReason::Cancelled => "запись отменена",
+            DiscardReason::TooShort => "press too short, recording discarded",
+            DiscardReason::Cancelled => "recording cancelled",
         }
     }
 }
 
-/// Что демон обязан сделать после перехода.
+/// What the daemon must do after a transition
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
-    /// Включить захват с микрофона.
+    /// Turn on capture from the microphone
     StartCapture { mode: Mode, style: Option<String> },
-    /// Остановить захват и отправить аудио в обработку.
+    /// Stop capture and send the audio to processing
     StopCaptureAndProcess { mode: Mode, style: Option<String> },
-    /// Остановить захват и выбросить записанное.
+    /// Stop capture and throw away the recorded audio
     DiscardCapture { reason: DiscardReason },
 }
 
-/// Вход машины: команда IPC, событие хоткея или сигнал самого демона.
+/// Input of the machine: an IPC command, a hotkey event or a signal of the daemon itself
 #[derive(Debug, Clone, PartialEq)]
 pub enum Input {
     RecordStart {
@@ -63,16 +64,16 @@ pub enum Input {
         style: Option<String>,
     },
     RecordCancel,
-    /// Достигнут `audio.max_duration_secs`.
+    /// `audio.max_duration_secs` is reached
     MaxDuration,
-    /// Обработка перешла на следующий шаг конвейера.
+    /// Processing moved to the next step of the pipeline
     ProcessingStage(DaemonState),
     ProcessingDone,
     ProcessingFailed,
     Hotkey(HotkeyEvent),
 }
 
-/// Результат перехода: что делать и что ответить клиенту.
+/// Result of a transition: what to do and what to reply to the client
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Outcome {
     pub actions: Vec<Action>,
@@ -80,7 +81,7 @@ pub struct Outcome {
 }
 
 impl Outcome {
-    /// Переход принят, делать нечего.
+    /// The transition is accepted, and there is nothing to do
     pub fn nothing() -> Self {
         Self::default()
     }
@@ -98,7 +99,7 @@ impl Outcome {
             error: Some(IpcError {
                 code: ErrorCode::Busy,
                 message: message.to_string(),
-                hint: Some("дождитесь окончания обработки или нажмите клавишу ещё раз".into()),
+                hint: Some("wait for the processing to end or press the key again".into()),
             }),
         }
     }
@@ -108,13 +109,13 @@ impl Outcome {
     }
 }
 
-/// Идущая запись.
+/// A recording in progress
 #[derive(Debug, Clone, PartialEq)]
 pub struct Recording {
     pub mode: Mode,
     pub style: Option<String>,
     pub since: Instant,
-    /// Запись «защёлкнута» коротким нажатием и продолжается без удержания клавиши.
+    /// The recording is "latched" by a short press and continues without the key held
     pub latched: bool,
 }
 
@@ -122,21 +123,22 @@ pub struct Recording {
 enum Phase {
     Idle,
     Recording(Recording),
-    /// Обработка: `Transcribing`, `PostProcessing` или `Injecting`.
+    /// Processing: `Transcribing`, `PostProcessing` or `Injecting`
     Processing(DaemonState),
 }
 
-/// Машина состояний. Один экземпляр на демон, живёт в управляющем потоке.
+/// State machine. One instance per daemon, and it lives in the control thread
 #[derive(Debug)]
 pub struct Machine {
     phase: Phase,
     hotkeys: HotkeysConfig,
     clock: Arc<dyn Clock>,
-    /// Момент нажатия, которое машина приняла к исполнению: окно подавления двойного нажатия.
+    /// Moment of the press that the machine accepted: the window for double-press suppression
     last_press: Option<Instant>,
-    /// Сколько реплик сейчас в обработке. Запись следующей реплики начинается, не дожидаясь
-    /// конца обработки предыдущей: микрофон свободен, а задания рабочему потоку идут по
-    /// очереди сами. В «готов» машина уходит, только когда обработаны все.
+    /// How many phrases are in processing now. The recording of the next phrase starts without
+    /// waiting for the end of the previous processing: the microphone is free, and the jobs
+    /// for the worker thread queue up by themselves. The machine goes to "ready" only when all
+    /// are processed
     in_flight: u32,
 }
 
@@ -151,12 +153,12 @@ impl Machine {
         }
     }
 
-    /// Сколько реплик ещё обрабатывается.
+    /// How many phrases are still in processing
     pub fn in_flight(&self) -> u32 {
         self.in_flight
     }
 
-    /// Состояние, видимое клиентам.
+    /// State visible to clients
     pub fn state(&self) -> DaemonState {
         match &self.phase {
             Phase::Idle => DaemonState::Idle,
@@ -165,17 +167,17 @@ impl Machine {
         }
     }
 
-    /// Захват реально начался: удержание считается с этого момента, а не с команды старта.
-    /// Открытие микрофона занимает до нескольких сотен миллисекунд, и без этой поправки
-    /// короткий тап выглядел бы как удержание дольше `short_press_ms` — запись завершалась
-    /// бы пустой вместо того, чтобы защёлкнуться.
+    /// Capture has really started: the hold counts from this moment, not from the start command.
+    /// Opening the microphone takes up to several hundred milliseconds, and without this
+    /// correction a short tap would look like a hold longer than `short_press_ms`, and the
+    /// recording would end empty instead of latching
     pub fn capture_started(&mut self, at: Instant) {
         if let Phase::Recording(rec) = &mut self.phase {
             rec.since = at;
         }
     }
 
-    /// Идущая запись, если она есть: нужна `status` для длительности.
+    /// The recording in progress, if there is one: `status` needs it for the duration
     pub fn recording(&self) -> Option<&Recording> {
         match &self.phase {
             Phase::Recording(rec) => Some(rec),
@@ -183,12 +185,12 @@ impl Machine {
         }
     }
 
-    /// Новая конфигурация горячих клавиш после `config.reload`.
+    /// New hotkey configuration after `config.reload`
     pub fn set_hotkeys(&mut self, hotkeys: HotkeysConfig) {
         self.hotkeys = hotkeys;
     }
 
-    /// Обработать вход. Для событий хоткеев время берётся из самого события.
+    /// Handle an input. For hotkey events the time comes from the event itself
     pub fn on(&mut self, input: Input) -> Outcome {
         match input {
             Input::Hotkey(event) => self.on_hotkey(event),
@@ -217,7 +219,7 @@ impl Machine {
                 style: None,
             }),
             (HotkeyAction::Cancel, KeyState::Pressed) => Some(Input::RecordCancel),
-            // Отпускание toggle/cancel и смена стиля машину состояний не двигают.
+            // The release of toggle/cancel and a style change do not move the state machine
             _ => None,
         };
         match input {
@@ -245,8 +247,8 @@ impl Machine {
             }
             Input::ProcessingDone | Input::ProcessingFailed => {
                 self.in_flight = self.in_flight.saturating_sub(1);
-                // Пока идёт следующая запись, машина остаётся в ней; «готов» — когда
-                // обработаны все реплики, а не первая из них.
+                // While the next recording runs, the machine stays in it; "ready" comes when
+                // all phrases are processed, not the first of them
                 if self.in_flight == 0 && matches!(self.phase, Phase::Processing(_)) {
                     self.phase = Phase::Idle;
                 }
@@ -258,15 +260,15 @@ impl Machine {
 
     fn start(&mut self, mode: Mode, style: Option<String>, at: Instant) -> Outcome {
         match &self.phase {
-            // Во время обработки предыдущей реплики микрофон свободен: следующая запись
-            // начинается сразу, а её обработка встанет в очередь рабочего потока.
+            // While the previous phrase is in processing, the microphone is free: the next
+            // recording starts at once, and its processing joins the queue of the worker thread
             Phase::Idle | Phase::Processing(_) => {
                 self.last_press = Some(at);
                 self.begin(mode, style, at, false)
             }
             Phase::Recording(rec) => {
-                // Второе нажатие завершает hands-free, но только вне окна двойного нажатия:
-                // дребезг и автоповтор клавиши не должны обрывать только что начатую запись.
+                // The second press ends hands-free, but only outside the double-press window:
+                // key bounce and auto-repeat must not cut a recording that has just started
                 let since_press = self
                     .last_press
                     .map_or(Duration::MAX, |p| at.saturating_duration_since(p));
@@ -274,22 +276,22 @@ impl Machine {
                     self.last_press = Some(at);
                     return self.finish();
                 }
-                Outcome::busy("запись уже идёт")
+                Outcome::busy("a recording is already running")
             }
         }
     }
 
     fn stop(&mut self, at: Instant) -> Outcome {
         let Phase::Recording(rec) = &mut self.phase else {
-            // Остановка вне записи — не ошибка: отпускание клавиши после отмены штатно.
+            // A stop outside a recording is no error: a key release after a cancel is normal
             return Outcome::nothing();
         };
         let held = at.saturating_duration_since(rec.since);
         if !rec.latched && self.hotkeys.tap_toggles && held < Self::ms(self.hotkeys.short_press_ms)
         {
-            // Короткий тап включает hands-free: запись продолжается без удержания клавиши.
-            // Удержание при этом никуда не девается — длинное нажатие той же клавиши остаётся
-            // push-to-talk, и оба способа работают одновременно (AM-01).
+            // A short tap turns on hands-free: the recording continues without the key held.
+            // The hold does not go away: a long press of the same key stays push-to-talk, and
+            // both ways work at the same time (AM-01)
             rec.latched = true;
             return Outcome::nothing();
         }
@@ -306,14 +308,14 @@ impl Machine {
         match &self.phase {
             Phase::Idle | Phase::Processing(_) => {
                 self.last_press = Some(at);
-                // Toggle сразу защёлкнут: отпускание клавиши запись не остановит.
+                // Toggle is latched at once: the key release does not stop the recording
                 self.begin(mode, style, at, true)
             }
             Phase::Recording(_) => self.toggle_off(at),
         }
     }
 
-    /// Toggle во время записи всегда завершает её, каким бы коротким ни было нажатие.
+    /// Toggle during a recording always ends it, however short the press is
     fn toggle_off(&mut self, at: Instant) -> Outcome {
         self.last_press = Some(at);
         self.finish()
@@ -346,7 +348,7 @@ impl Machine {
         Outcome::act(Action::StartCapture { mode, style })
     }
 
-    /// Закончить запись и уйти в обработку.
+    /// End the recording and go to processing
     fn finish(&mut self) -> Outcome {
         let Phase::Recording(rec) = &self.phase else {
             return Outcome::nothing();
@@ -418,7 +420,10 @@ mod tests {
         m.on(start());
         clock.advance(Duration::from_secs(1));
         let out = m.on(start());
-        assert!(out.actions.is_empty(), "вторая запись не должна начаться");
+        assert!(
+            out.actions.is_empty(),
+            "the second recording must not start"
+        );
         assert_eq!(out.error.unwrap().code, ErrorCode::Busy);
         assert_eq!(m.state(), DaemonState::Recording);
     }
@@ -432,7 +437,7 @@ mod tests {
         assert_eq!(m.state(), DaemonState::Transcribing);
         assert_eq!(m.in_flight(), 1);
 
-        // Микрофон свободен: следующая реплика пишется, пока первая обрабатывается.
+        // The microphone is free: the next phrase records while the first one is in processing
         clock.advance(Duration::from_secs(1));
         let out = m.on(start());
         assert!(out.is_ok(), "{out:?}");
@@ -457,7 +462,7 @@ mod tests {
         assert_eq!(m.in_flight(), 2);
         assert_eq!(m.state(), DaemonState::Transcribing);
 
-        // Первая реплика обработана, вторая — ещё нет: «готов» рано.
+        // The first phrase is processed and the second is not yet: it is too early for "ready"
         m.on(Input::ProcessingDone);
         assert_eq!(m.state(), DaemonState::Transcribing);
         assert_eq!(m.in_flight(), 1);
@@ -478,7 +483,7 @@ mod tests {
         assert_eq!(
             m.state(),
             DaemonState::Recording,
-            "конец обработки первой реплики не трогает идущую запись"
+            "the end of processing of the first phrase does not touch the running recording"
         );
     }
 
@@ -499,7 +504,7 @@ mod tests {
                 reason: DiscardReason::TooShort
             }]
         );
-        assert_eq!(m.state(), DaemonState::Idle, "обработка не запускается");
+        assert_eq!(m.state(), DaemonState::Idle, "processing does not start");
     }
 
     #[test]
@@ -528,7 +533,7 @@ mod tests {
         m.on(start());
         clock.advance(Duration::from_millis(100));
         let out = m.on(Input::RecordStop);
-        assert!(out.actions.is_empty(), "тап не должен останавливать запись");
+        assert!(out.actions.is_empty(), "a tap must not stop the recording");
         assert_eq!(m.state(), DaemonState::Recording);
         assert!(m.recording().unwrap().latched);
     }
@@ -573,12 +578,15 @@ mod tests {
         let (mut m, clock) = machine();
         let first = m.on(start());
         assert_eq!(first.actions.len(), 1);
-        // Тап защёлкивает запись, а мгновенное второе нажатие — это дребезг.
+        // A tap latches the recording, and an instant second press is bounce
         clock.advance(Duration::from_millis(80));
         m.on(Input::RecordStop);
         clock.advance(Duration::from_millis(100));
         let second = m.on(start());
-        assert!(second.actions.is_empty(), "дребезг не останавливает запись");
+        assert!(
+            second.actions.is_empty(),
+            "bounce does not stop the recording"
+        );
         assert_eq!(second.error.unwrap().code, ErrorCode::Busy);
         assert_eq!(m.state(), DaemonState::Recording);
     }
@@ -594,8 +602,8 @@ mod tests {
                 style: None
             }]
         );
-        // Toggle защёлкивает запись сразу: короткое нажатие её не отменяет и не превращает
-        // в промах по `min_hold_ms`.
+        // Toggle latches the recording at once: a short press does not cancel it and does not
+        // turn it into a miss by `min_hold_ms`
         assert!(m.recording().unwrap().latched);
         clock.advance(Duration::from_secs(1));
         let off = m.on(toggle());
@@ -611,8 +619,8 @@ mod tests {
 
     #[test]
     fn a_toggled_recording_is_short_press_proof() {
-        // Запись, начатая toggle, не должна умереть от того, что клавишу отпустили быстро:
-        // ровно этим отличается hands-free от удержания.
+        // A recording started by toggle must not die because the key was released fast:
+        // this is exactly how hands-free differs from key hold
         let (mut m, clock) = machine();
         m.on(toggle());
         clock.advance(Duration::from_millis(30));
@@ -628,10 +636,10 @@ mod tests {
 
     #[test]
     fn hold_and_toggle_both_work() {
-        // Критерий AM-01: удержание и переключатель доступны одновременно, на одних настройках.
+        // Criterion AM-01: key hold and toggle are available at the same time, on the same settings
         let (mut m, clock) = machine();
 
-        // Удержание: запись идёт, пока клавиша зажата, и заканчивается на отпускании.
+        // Key hold: the recording runs while the key is held and ends at the release
         m.on(start());
         clock.advance(Duration::from_millis(900));
         let held = m.on(Input::RecordStop);
@@ -641,11 +649,11 @@ mod tests {
                 mode: Mode::Dictation,
                 style: None
             }],
-            "удержание обязано работать при tap_toggles = true"
+            "key hold must work with tap_toggles = true"
         );
         m.on(Input::ProcessingDone);
 
-        // Переключатель: нажал — пишет, нажал ещё раз — закончил, клавишу держать не надо.
+        // Toggle: press to record, press again to finish, and no need to hold the key
         clock.advance(Duration::from_secs(1));
         let on = m.on(toggle());
         assert_eq!(
@@ -663,11 +671,11 @@ mod tests {
                 mode: Mode::Dictation,
                 style: None
             }],
-            "переключатель обязан работать на тех же настройках"
+            "toggle must work on the same settings"
         );
         m.on(Input::ProcessingDone);
 
-        // Короткий тап клавиши удержания тоже защёлкивает запись: третий способ на той же клавише.
+        // A short tap of the hold key also latches the recording: a third way on the same key
         clock.advance(Duration::from_secs(1));
         m.on(start());
         clock.advance(Duration::from_millis(100));
@@ -680,16 +688,16 @@ mod tests {
     fn slow_microphone_open_does_not_turn_a_tap_into_a_hold() {
         let (mut m, clock) = machine();
         m.on(start());
-        // Микрофон открывался 300 мс — дольше порога короткого нажатия.
+        // The microphone took 300 ms to open, which is longer than the short press threshold
         clock.advance(Duration::from_millis(300));
         m.capture_started(clock.instant());
-        // Клавишу отпустили через 50 мс после реального старта захвата: это тап.
+        // The key was released 50 ms after the real start of capture: this is a tap
         clock.advance(Duration::from_millis(50));
         let out = m.on(Input::RecordStop);
         assert!(out.actions.is_empty(), "{:?}", out.actions);
         assert!(
             m.recording().unwrap().latched,
-            "тап после медленного открытия микрофона обязан защёлкнуть запись"
+            "a tap after a slow microphone open must latch the recording"
         );
     }
 
@@ -716,7 +724,7 @@ mod tests {
         m.on(Input::RecordStop);
         let out = m.on(Input::RecordStop);
         assert!(out.actions.is_empty());
-        assert!(out.is_ok(), "повторный stop не ошибка");
+        assert!(out.is_ok(), "a repeated stop is no error");
         assert_eq!(m.state(), DaemonState::Transcribing);
     }
 
