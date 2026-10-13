@@ -1,135 +1,135 @@
-# MolvAI на V0ICE: конспект хакатона 5–6 сентября 2026
+# MolvAI at V0ICE: notes on the hackathon of 5–6 September 2026
 
-Подробный пересказ двух суток: что делали, в каком порядке, где спотыкались и чем лечили. Написан сразу после финала по логам сессии, журналу коммитов и `docs/STATUS.md`. Итог: первое место, 314 из 332 автоматических критериев в последнем прогоне чекера жюри, релизы до `v0.1.5` для трёх ОС.
+A detailed retelling of two days: what we did, in what order, where we stumbled and what cured it. We wrote it right after the final, from the session logs, the commit log and `docs/STATUS.md`. The result: first place, 314 of 332 automatic criteria in the last run of the jury checker, releases up to `v0.1.5` for three operating systems
 
-## Кратко
+## In short
 
-- Задача: открытый аналог Wispr Flow. Зажал клавишу, сказал, отпустил, текст появился в активном поле. Обработка на ноутбуке, одинаково на Linux, Windows и macOS.
-- Решение: Rust-workspace из трёх крейтов. `molva-core` (домен, конвейер, инфраструктура), `molva` (CLI и демон), `molva-gui` (Tauri 2 с React). Распознавание whisper.cpp через whisper-rs, постобработка словарём, правилами и локальной моделью через Ollama, вставка через композитор или эмуляцию клавиатуры, журнал реплик в JSONL.
-- Процесс: один человек плюс параллельные сессии Claude Code. Днём шесть дорожек A–F на Opus в отдельных worktree, ночью три дорожки G–I, утром второго дня один агент на Fable для keyring. Координатор сливал ветки, гонял гейт и чинил стыки.
-- Дисциплина тестов по скиллу `tests`: гейт `just check`, список дефектов `tests/defects.sh` и `just falsify`, который ломает каждую гарантию и требует, чтобы сьют это заметил. К финалу 742 теста и 136 записей дефектов, все ловятся.
+- The task: an open analogue of Wispr Flow. Hold a key, speak, release, and the text appears in the active field. Processing runs on the laptop, the same on Linux, Windows and macOS
+- The solution: a Rust workspace of three crates. `molva-core` (domain, pipeline, infrastructure), `molva` (CLI and daemon), `molva-gui` (Tauri 2 with React). Recognition is whisper.cpp through whisper-rs. Post-processing uses a dictionary, rules and a local model through Ollama. The paste goes through the compositor or keyboard emulation, and the phrase journal is JSONL
+- The process: one person plus parallel Claude Code sessions. In the day, six tracks A–F on Opus in separate worktrees. At night, three tracks G–I. In the morning of the second day, one agent on Fable for the keyring. A coordinator merged the branches, ran the gate and fixed the joints
+- Test discipline by the `tests` skill: the `just check` gate, the defect list `tests/defects.sh`, and `just falsify`, which breaks each guarantee and requires the suite to notice. By the final there were 742 tests and 136 defect entries, and all of them are caught
 
-## Хронология
+## Chronology
 
-### 5 сентября, день: план и каркас
+### 5 September, day: plan and skeleton
 
-- 15:00 первый коммит с лицензией, дальше полтора часа на план: 612 критериев жюри разложены по разделам, решения зафиксированы (Cargo workspace, Tauri 2, JSONL вместо SQLite, PTT плюс переключатель плюс режим команд, режим вывода `auto`, только свободные лицензии).
-- 16:57 каркас: контракты трейтов `AudioSource`, `SttEngine`, `LlmClient`, `TextInjector`, `HotkeySource`, `Journal`, `Clock`, `Notifier` с фейками, протокол IPC, схема журнала, конфиг с умолчаниями.
-- 17:00 запущены шесть дорожек на Opus: A захват и whisper, B GUI, C Nix, CI, лицензии, установка, D правила, словарь, стили, LLM, журнал, статистика, E декодер файлов, модели, WER, bench, F демон, IPC, цепочка вставки, хоткеи.
-- 18:13 склейка whisper, cpal, журнала и конвейера в демон. 18:20 все дорожки в `main`, 610 тестов.
-- Вечер: CI доведён до зелёного через восемь отдельных падений на Windows и macOS. Сквозная диктовка проверена на Hyprland. CUDA-сборка через `nix develop .#cuda`. Лидерборд организаторов, прогон 07 в 18:31: первое место, 272 из 296.
-- 23:58 срез в `docs/STATUS.md`, задачи на ночь, запуск дорожек G линтеры и энтропия имён, H признаки чекера, звук, `history paste`, I нарезка по паузам, черновик, язык.
+- 15:00 the first commit with the license, then an hour and a half on the plan: 612 jury criteria sorted into sections, and the decisions fixed (Cargo workspace, Tauri 2, JSONL instead of SQLite, PTT plus toggle plus command mode, output mode `auto`, free licenses only)
+- 16:57 the skeleton: the trait contracts `AudioSource`, `SttEngine`, `LlmClient`, `TextInjector`, `HotkeySource`, `Journal`, `Clock`, `Notifier` with fakes, the IPC protocol, the journal schema, the config with defaults
+- 17:00 six tracks started on Opus: A capture and whisper, B GUI, C Nix, CI, licenses, installation, D rules, dictionary, styles, LLM, journal, statistics, E file decoder, models, WER, bench, F daemon, IPC, paste chain, hotkeys
+- 18:13 whisper, cpal, the journal and the pipeline joined into the daemon. 18:20 all tracks in `main`, 610 tests
+- Evening: CI brought to green after eight separate failures on Windows and macOS. End-to-end dictation checked on Hyprland. CUDA build through `nix develop .#cuda`. The leaderboard of the organizers, run 07 at 18:31: first place, 272 of 296
+- 23:58 a cut in `docs/STATUS.md`, tasks for the night, and the start of tracks G linters and name entropy, H checker signs, sound, `history paste`, I cutting at pauses, draft, language
 
-### Ночь с 5 на 6 сентября
+### The night from 5 to 6 September
 
-- 00:05 пользователь ушёл спать с просьбой вести ночной прогон и беречь лимит. Попутно просьба на пункт «Открыть панель…» в трее, сделано за десять минут.
-- 00:20 CI на Windows красный: GUI-клиент IPC строил имя сокета сам, а путь из tempdir на Windows не является именем канала. Отображение пути в `\\.\pipe\molva-…` вынесено в ядро одной функцией для сервера, CLI и GUI.
-- 01:30 дорожка I слита: сегментатор по паузам, чанки в рабочий поток, черновик по умолчанию, дешёвый выбор языка среди разрешённых через `lang_detect` на коротком окне.
-- 02:00 дорожка H слита: звуковые метки, пауза перед вставкой, чистка ответа модели, `history paste`, освобождение микрофона с замером, вставка в терминал, single-instance с кодом выхода 7, тихий трей.
-- 02:30 живой Ollama. Обнаружилось, что `molva transcribe` принимал `--style` и `--no-llm`, но конвейер к файлам не применял вовсе. Подключён словарь, правила и модель. Тут же второй сюрприз: `qwen3.5:4b` отвечал пустой строкой, потому что тратил весь `max_tokens` на размышления. `think = false` через OpenAI-совместимый вход Ollama не работает, работает `reasoning_effort = none`. Появился ключ `llm.reasoning_effort = auto`.
-- 03:00 Windows снова красный, теперь тест перезагрузки словаря: две записи файла подряд получают одну метку времени. Отпечаток файла из mtime и размера, тест через `File::set_modified`.
-- 04:10 дорожка G слита: `clippy::pedantic` на весь workspace, запрет `unwrap` и `panic` вне тестов, cargo-machete в гейте, 466 сокращений в именах развёрнуты. Две находки pedantic под `cfg` macOS и Windows пришли только из матрицы CI.
-- 04:40 `molva doctor` научился проверять веса whisper по sha256 и провайдера модели через `GET /models`. Документация звала несуществующую команду `molva model download`, исправлено на `molva models pull`.
-- 07:33 тег `v0.1.0-alpha`: архивы CLI собрались, а GUI нет, потому что `tauri-action` не ставит зависимости npm. Шаг `npm ci` и тег `v0.1.0-alpha.1`, релиз целиком. Тут же выяснилось, что мои метки времени в STATUS были на два часа вперёд: ориентировалась по ощущению, а не по `date`.
-- 08:40 полный `just falsify` по итоговому main: 125 из 127, две записи `stale`, потому что `list_models` продублировал строки клиента. Вынесен общий `send`, все записи ловятся.
+- 00:05 the user went to sleep with a request to run the night and to save the limit. On the way, a request for the item "Open panel…" in the tray, done in ten minutes
+- 00:20 CI on Windows is red: the GUI IPC client built the socket name itself, and a path from tempdir on Windows is not a pipe name. The mapping of the path to `\\.\pipe\molva-…` moved to the core as one function for the server, the CLI and the GUI
+- 01:30 track I merged: the segmenter by pauses, chunks into the worker thread, a draft by default, a cheap choice of language among the allowed ones through `lang_detect` on a short window
+- 02:00 track H merged: sound marks, a pause before the paste, cleanup of the model answer, `history paste`, release of the microphone with a measurement, paste into the terminal, single-instance with exit code 7, a quiet tray
+- 02:30 a live Ollama. It turned out that `molva transcribe` accepted `--style` and `--no-llm`, but the pipeline did not apply to files at all. We connected the dictionary, the rules and the model. At once a second surprise: `qwen3.5:4b` answered with an empty string, because it spent the whole `max_tokens` on reasoning. `think = false` does not work through the OpenAI-compatible input of Ollama, and `reasoning_effort = none` works. The key `llm.reasoning_effort = auto` appeared
+- 03:00 Windows is red again, now the test of the dictionary reload: two file writes in a row get the same timestamp. The file fingerprint is mtime and size, and the test uses `File::set_modified`
+- 04:10 track G merged: `clippy::pedantic` on the whole workspace, a ban on `unwrap` and `panic` outside tests, cargo-machete in the gate, 466 abbreviations in names expanded. Two pedantic findings under `cfg` for macOS and Windows came only from the CI matrix
+- 04:40 `molva doctor` learned to check the whisper weights by sha256 and the model provider through `GET /models`. The documentation called a nonexistent command `molva model download`, and we fixed it to `molva models pull`
+- 07:33 the tag `v0.1.0-alpha`: the CLI archives built, but the GUI did not, because `tauri-action` does not install the npm dependencies. An `npm ci` step and the tag `v0.1.0-alpha.1`, the release in full. At the same time it turned out that my timestamps in STATUS were two hours ahead: I went by feel and not by `date`
+- 08:40 the full `just falsify` on the final main: 125 of 127, two entries `stale`, because `list_models` duplicated the lines of the client. We moved out a common `send`, and all entries are caught
 
-### 6 сентября, утро: живая репетиция
+### 6 September, morning: the live rehearsal
 
-- 11:50 пользователь принёс матрицу критериев прогона 13 (314 из 332, первое место, второе место 307) и первый баг: на F9 сначала ошибка «пустое аудио», второе нажатие работает.
-- Разбор занял час и оказался слоёным. Сначала подозревала ALSA-ошибку в логе, но она печаталась при каждом успешном старте, это шум от опроса USB-карты. Потом воспроизвела через CLI: старт и стоп через миллисекунды завершали запись с нулевым аудио, хотя короткий тап должен защёлкивать hands-free. Тест с поддельными часами проходил. Отладочный лог входов и исходов машины состояний показал: `since` ставился в момент команды старта, а открытие микрофона занимало до 300 мс из-за перебора всех устройств с опросом; отпускание через 8 мс после реального старта выглядело как 308 мс удержания, больше порога 250. Два лечения: отсчёт от реально открытого микрофона и без перебора устройств для `default`, старт стал 23 мс.
-- Пока чинила, пользователь сообщил «снова воспроизвелось», хотя демон ещё был старый: пересборка CUDA-бинаря занимает минуты, и об этом надо предупреждать заранее.
-- Второй сценарий из того же лога: нажатие во время обработки предыдущей реплики получало «занят» и пропадало. Сначала сделала очередь, потом по предложению пользователя заменила настоящей параллельностью: микрофон свободен сразу после отпускания, следующая запись идёт, пока предыдущая распознаётся, машина состояний считает реплики в обработке.
-- Смена стиля из панели «ничего не делает». Оказалось два дефекта разом: демон вообще не обрабатывал `config.reload` и `style.set`, а панель слала идентификаторы `raw` и `email`, которых в ядре нет. Плюс `molva config reload` в CLI отсутствовал, хотя подсказка на него ссылалась.
-- Оригинальная фича, голосовая правка выделенного текста, оказалась не подключённой: `copy_selection` не был реализован ни в цепочке вставки, ни в hyprctl-бэкенде. Сделала через `sendshortcut CTRL+C` и чтение буфера.
-- Параллельно закрыты дешёвые критерии: `rustfmt.toml`, имена шагов CI по инструментам, `UNIQUENESS.md` в корне, разделы README «Работа без интернета», «Одной командой», скриншоты панели. Четыре PR dependabot с мажорными обновлениями действий закрыты с комментарием.
-- Шифрование журнала M-17: XChaCha20-Poly1305, случайный nonce, ключ в `journal.key` с правами владельца, остальные поля строки открыты, чтобы статистика работала без ключа. Пользователь спросил, что сложного в keyring, и оказалось, что на его Hyprland работает gnome-keyring. Отдельный агент на Fable в своём worktree сделал `SecretStore` с тремя реализациями: хранилище ОС, файл, память для тестов, плюс `molva secret set/delete/status`. CI прогнан через PR, слито по зелёному.
-- 12:55 умолчания хоткеев переведены на F9 и Ctrl+Alt: нарочно неэргономичные, зато свободные на любом стенде. Из-за спешки пуш ушёл без `cargo fmt` и с тестом на старую клавишу, CI покраснел, починка через пять минут.
-- 13:15 режим команд выдал документ с заголовками и выдуманным содержимым вместо перевода одного слова. Промпт переписан: инструкция впереди текста, явный запрет заголовков, markdown и пояснений. Проверено на пяти инструкциях через Ollama.
-- 13:20 режим команд стал получать не выделение, а прошлое содержимое буфера, и каждая правка наслаивалась на старый мусор. Буфер теперь чистится до Ctrl+C и опрашивается до 600 мс.
-- 13:38 тег `v0.1.0`, релиз целиком к 14:00.
+- 11:50 the user brought the criteria matrix of run 13 (314 of 332, first place, second place 307) and the first bug: on F9 first an "empty audio" error, the second press works
+- The analysis took an hour and turned out layered. First I suspected the ALSA error in the log, but it printed on each successful start, and it is noise from the polling of the USB card. Then I reproduced it through the CLI: a start and a stop within milliseconds ended the recording with zero audio, although a short tap must latch hands-free. The test with a fake clock passed. A debug log of the inputs and outcomes of the state machine showed this: `since` was set at the moment of the start command, and the opening of the microphone took up to 300 ms because of the enumeration of all devices with polling. A release 8 ms after the real start looked like a 308 ms hold, above the threshold of 250. Two cures: counting from the really open microphone, and no enumeration of devices for `default`. The start became 23 ms
+- While I fixed it, the user reported "reproduced again", although the daemon was still the old one: a rebuild of the CUDA binary takes minutes, and we must warn about this in advance
+- The second scenario from the same log: a press during the processing of the previous phrase got "busy" and vanished. First I made a queue, then, on the suggestion of the user, replaced it with real concurrency: the microphone is free right after the release, the next recording runs while the previous one is recognized, and the state machine counts the phrases in processing
+- A style change from the panel "does nothing". It turned out to be two defects at once: the daemon did not handle `config.reload` and `style.set` at all, and the panel sent the identifiers `raw` and `email`, which are not in the core. Also `molva config reload` was missing in the CLI, although the hint referred to it
+- The original feature, voice editing of the selected text, turned out not to be connected: `copy_selection` was not implemented in the paste chain or in the hyprctl backend. I made it through `sendshortcut CTRL+C` and reading the buffer
+- In parallel we closed the cheap criteria: `rustfmt.toml`, the names of the CI steps by tool, `UNIQUENESS.md` in the root, the README sections "Works offline" and "With one command", the screenshots of the panel. Four dependabot PRs with major updates of the actions were closed with a comment
+- Journal encryption M-17: XChaCha20-Poly1305, a random nonce, the key in `journal.key` with owner permissions, and the other fields of the line open, so that the statistics work without the key. The user asked what is hard in the keyring, and it turned out that gnome-keyring works on his Hyprland. A separate agent on Fable in its own worktree made `SecretStore` with three implementations: the OS store, a file, and memory for tests, plus `molva secret set/delete/status`. CI ran through a PR, merged on green
+- 12:55 the hotkey defaults moved to F9 and Ctrl+Alt: deliberately not ergonomic, but free on any stand. Because of the haste the push went without `cargo fmt` and with a test on the old key, CI went red, and the fix came five minutes later
+- 13:15 command mode gave a document with headings and invented content instead of a translation of one word. We rewrote the prompt: the instruction goes before the text, with an explicit ban on headings, markdown and explanations. Checked on five instructions through Ollama
+- 13:20 command mode began to get not the selection but the previous content of the buffer, and each edit stacked on the old garbage. The buffer is now cleared before Ctrl+C and polled for up to 600 ms
+- 13:38 the tag `v0.1.0`, the release in full by 14:00
 
-### 6 сентября, день: проверка без человека и заморозка
+### 6 September, day: a check without a human, and the freeze
 
-- Пользователь уехал и попросил протестировать фичу за него. Синтезировала инструкцию через espeak-ng, попыталась подать её в виртуальный микрофон PipeWire тремя способами, ни один не дал сигнала в cpal. Открыла GTK4-редактор с текстом, и тут выяснилось, что `sendshortcut` с keysym `C` не доходит до приложения при активной русской раскладке, а `code:54` работает. Это объяснило и то, почему у пользователя вставка шла через запасной способ. Сочетания переведены на коды клавиш.
-- Инструкцию подала через второй демон с поддельным распознавателем на своём сокете: выделенная строка в редакторе заменилась ответом модели, скриншоты «до и после» ушли в README.
-- 14:15 пользователь на Windows: установщик кладёт только окно без CLI. Сайдкар не был объявлен в конфиге Tauri. Объявление вынесено в отдельный `tauri.sidecar.conf.json` только для релизной сборки, чтобы гейт CI не требовал готового бинарника. Тег `v0.1.1` с CLI внутри пакетов.
-- 14:30 автозагрузка весов при старте демона с полоской прогресса в stderr. Тест упал, потому что автозагрузка отработала по-настоящему и скачала 490 МБ во временный каталог за минуту: тесты не должны ходить в сеть, добавлен явный `auto_pull = false`.
-- 14:50 первая попытка CUDA-сборки в релизе отдельным необязательным job, тег `v0.1.2` за семь минут до заморозки. 15:00 заморозка, main зелёный.
+- The user left and asked me to test the feature for him. I synthesized an instruction through espeak-ng and tried to feed it into a virtual PipeWire microphone in three ways, and none gave a signal in cpal. I opened a GTK4 editor with text, and then it turned out that `sendshortcut` with the keysym `C` does not reach the application with the Russian layout active, while `code:54` works. This also explained why the paste of the user went through the fallback method. We moved the combinations to key codes
+- I fed the instruction through a second daemon with a fake recognizer on its own socket: the selected line in the editor was replaced by the model answer, and the "before and after" screenshots went to the README
+- 14:15 the user on Windows: the installer puts only the window, without the CLI. The sidecar was not declared in the Tauri config. We moved the declaration to a separate `tauri.sidecar.conf.json` for the release build only, so that the CI gate does not need a ready binary. The tag `v0.1.1` with the CLI inside the packages
+- 14:30 automatic download of the weights at the start of the daemon with a progress bar in stderr. A test failed because the automatic download worked for real and downloaded 490 MB to a temporary directory in a minute: tests must not go to the network, so we added an explicit `auto_pull = false`
+- 14:50 the first attempt of a CUDA build in the release as a separate optional job, the tag `v0.1.2` seven minutes before the freeze. 15:00 the freeze, main is green
 
-### 6 сентября, вечер: релизы после заморозки
+### 6 September, evening: releases after the freeze
 
-- Пользователь тестировал пакеты на Windows и macOS. Ссылка на веса «не существует»: адрес был собран вручную без косой черты, а Hugging Face оказался недоступен из его сети; обход через копирование `ggml-small.bin` с Linux-машины. На macOS «образ повреждён»: это Gatekeeper для неподписанного приложения, лечится `xattr -cr`. Стили «без нейронки»: в пакетах модель выключена по умолчанию, и порог 10 слов.
-- Версии пакетов: `MolvAI_0.1.0` при теге `v0.1.2`, потому что версия жила в двух местах. Теперь единственный источник `Cargo.toml`, а `release.yml` сверяет тег с `cargo pkgid`.
-- CUDA на раннерах GitHub: пять падений подряд, каждое на своём слое. Сетевой установщик не регистрирует toolset в MSBuild, лечение генератор Ninja и окружение MSVC. В bash из Git первым в PATH стоит coreutils `link.exe`, rustc линковал им, лечение шаг из PowerShell. CUDA 12.6 не знает Visual Studio 2026 с `windows-latest`, `cudafe++` падает даже с `-allow-unsupported-compiler`, лечение раннер `windows-2022`. Каждая попытка через тег стоила версию и сорок минут, поэтому отладка вынесена в отдельный `cuda.yml` по ручному запуску. Шестая попытка прошла, архив на 451 МБ с `molva.exe` и тремя DLL NVIDIA приложен к `v0.1.5` вручную.
-- Пользователь после стенда: полоски загрузки в окне GUI не было, только в stderr демона; пути к моделям захардкожены; на Windows поведение зависит от раскладки. Это первые задачи на возвращение.
+- The user tested the packages on Windows and macOS. The link to the weights "does not exist": the address was assembled by hand without a slash, and Hugging Face was unreachable from his network. The workaround was to copy `ggml-small.bin` from the Linux machine. On macOS "the image is damaged": this is Gatekeeper for an unsigned application, and `xattr -cr` cures it. The styles "without the neural network": in the packages the model is off by default, and the threshold is 10 words
+- The package versions: `MolvAI_0.1.0` with the tag `v0.1.2`, because the version lived in two places. Now the only source is `Cargo.toml`, and `release.yml` compares the tag with `cargo pkgid`
+- CUDA on the GitHub runners: five failures in a row, each on its own layer. The network installer does not register the toolset in MSBuild, and the cure is the Ninja generator and the MSVC environment. In bash from Git, the coreutils `link.exe` is first in PATH, rustc linked with it, and the cure is a step from PowerShell. CUDA 12.6 does not know Visual Studio 2026 on `windows-latest`, `cudafe++` fails even with `-allow-unsupported-compiler`, and the cure is the runner `windows-2022`. Each attempt through a tag cost a version and forty minutes, so we moved the debugging to a separate `cuda.yml` with a manual start. The sixth attempt passed, and an archive of 451 MB with `molva.exe` and three NVIDIA DLLs was attached to `v0.1.5` by hand
+- The user after the stand: there was no download bar in the GUI window, only in the stderr of the daemon; the paths to the models are hardcoded; on Windows the behaviour depends on the layout. These are the first tasks for the return
 
-## Подводные камни по темам
+## Pitfalls by topic
 
-### whisper.cpp и модели
+### whisper.cpp and models
 
-- Под Nix `SOURCE_DATE_EPOCH` выключает `GGML_NATIVE`, и ggml собирается без SIMD: реплика 4 с шла 84 с. В devShell `GGML_NATIVE=ON`, в пакете и CI переносимый x86-64-v3 через `GGML_AVX2`, `GGML_FMA`, `GGML_F16C`.
-- `stt.language = "auto"` на CPU в пять раз дороже фиксированного языка: whisper определяет язык до применения `audio_ctx`, то есть всегда по полному окну в 30 с. Обход: короткий прогон с известным языком и `lang_detect` по той же спектрограмме среди разрешённых языков. Всё равно дороже фиксированного на 48–149 %, умолчание `ru`.
-- `detect_language = true` в whisper.cpp значит «определи язык и выйди»: текста не будет вовсе.
-- Энкодер всегда считает окно 30 с: `audio_ctx` под длину реплики даёт четырёхкратный выигрыш на CPU.
-- Нарезка по паузам на CPU выигрывает только при кусках около 3 с: распознавание идёт со скоростью речи, с кусками 5 с очередь не разгребается до отпускания. Суммарной работы больше на треть, зато ожидание вдвое меньше.
-- Готовые биндинги whisper-rs-sys не совпадают по ABI с MSVC: на Windows биндинги генерируются libclang, на Linux и macOS `WHISPER_DONT_GENERATE_BINDINGS=1`.
-- `qwen3.5:0.8b` отвечает за полсекунды, но выдаёт кашу и теряет слова; по умолчанию остаётся `4b`. Стиль `cleanup` на `4b` выкидывал обращения вроде «солнышко», промпт теперь перечисляет, что считать паразитом, и запрещает удалять остальное.
+- Under Nix, `SOURCE_DATE_EPOCH` turns off `GGML_NATIVE`, and ggml builds without SIMD: a 4 s phrase took 84 s. In the devShell, `GGML_NATIVE=ON`. In the package and CI, a portable x86-64-v3 through `GGML_AVX2`, `GGML_FMA`, `GGML_F16C`
+- `stt.language = "auto"` on CPU is five times more expensive than a fixed language: whisper detects the language before it applies `audio_ctx`, that is, always on the full 30 s window. The workaround: a short run with a known language and `lang_detect` on the same spectrogram among the allowed languages. It is still 48–149 % more expensive than a fixed one, so the default is `ru`
+- `detect_language = true` in whisper.cpp means "detect the language and exit": there will be no text at all
+- The encoder always computes a 30 s window: `audio_ctx` sized to the phrase length gives a fourfold gain on CPU
+- Cutting at pauses on CPU wins only with chunks of about 3 s: recognition runs at the speed of speech, and with 5 s chunks the queue does not clear before the release. There is a third more total work, but the wait is twice shorter
+- The ready bindings of whisper-rs-sys do not match the ABI of MSVC: on Windows libclang generates the bindings, and on Linux and macOS `WHISPER_DONT_GENERATE_BINDINGS=1`
+- `qwen3.5:0.8b` answers in half a second but gives a mess and loses words; the default stays `4b`. The `cleanup` style on `4b` dropped forms of address such as "солнышко", and now the prompt lists what counts as a filler and forbids deleting the rest
 
-### Ollama и языковая модель
+### Ollama and the language model
 
-- Рассуждающие модели тратят весь `max_tokens` на размышления и отдают пустой `content`. `think = false` через `/v1/chat/completions` Ollama не работает, `reasoning_effort = "none"` работает: 0,6 с вместо 12 с и пустоты.
-- Пустой ответ модели не должен затирать текст: конвейер возвращает текст после правил.
-- Режим команд: инструкция должна идти первой, текст вторым, иначе маленькая модель принимает фрагмент за задание и сочиняет документ с заголовками.
+- Reasoning models spend the whole `max_tokens` on reasoning and return an empty `content`. `think = false` does not work through `/v1/chat/completions` of Ollama, and `reasoning_effort = "none"` works: 0.6 s instead of 12 s and emptiness
+- An empty answer of the model must not wipe the text: the pipeline returns the text after the rules
+- Command mode: the instruction must go first and the text second, otherwise a small model takes the fragment for the task and invents a document with headings
 
-### Демон, хоткеи, микрофон
+### Daemon, hotkeys, microphone
 
-- Удержание считалось от команды старта, а открытие микрофона занимало до 300 мс из-за перебора всех устройств с опросом: короткий тап выглядел удержанием и завершал запись пустой. Отсчёт от реального старта захвата и без перебора для `default`.
-- Нажатие во время обработки терялось как «занят». Правильный ответ не очередь, а параллельность: микрофон свободен, задания рабочему потоку и так идут по порядку, машина состояний считает реплики в обработке.
-- Демон не обрабатывал `config.reload` и `style.set`, а панель слала чужие идентификаторы стилей. Новые команды IPC нужно проверять тестом через ручку демона, а не только через машину состояний.
-- ALSA-строка `pcm_dsnoop: unable to open slave` в логе при каждом старте — шум от опроса USB-карты, которую держит PipeWire, а не ошибка захвата.
+- The hold was counted from the start command, and the opening of the microphone took up to 300 ms because of the enumeration of all devices with polling: a short tap looked like a hold and ended the recording empty. Count from the real start of the capture, and without enumeration for `default`
+- A press during processing was lost as "busy". The right answer is not a queue but concurrency: the microphone is free, the jobs for the worker thread go in order anyway, and the state machine counts the phrases in processing
+- The daemon did not handle `config.reload` and `style.set`, and the panel sent foreign style identifiers. Test new IPC commands through the daemon handle, not only through the state machine
+- The ALSA line `pcm_dsnoop: unable to open slave` in the log at each start is noise from the polling of a USB card that PipeWire holds, not a capture error
 
-### Wayland и вставка
+### Wayland and paste
 
-- Hyprland оставляет модификатор нажатым после `sendshortcut`, клиент отрабатывает сочетание только после `sendkeystate up`, и между ними нужна пауза.
-- При активной русской раскладке keysym `V` и `C` не находятся на клавиатуре, `sendshortcut` молча ничего не шлёт. Клавиши задавать кодами: `code:55` для V, `code:54` для C. Ctrl+A в GTK4 тоже не доходит, выделять через Home и Shift+End.
-- `wl-paste` сразу после Ctrl+C отдаёт прошлое содержимое буфера. Чистить буфер до Ctrl+C и опрашивать до 600 мс.
-- Оверлей записи вырезан намеренно: `gtk-layer-shell` под GPL.
+- Hyprland leaves the modifier pressed after `sendshortcut`, the client handles the combination only after `sendkeystate up`, and a pause is needed between them
+- With the Russian layout active, the keysyms `V` and `C` are not found on the keyboard, and `sendshortcut` silently sends nothing. Set the keys by codes: `code:55` for V, `code:54` for C. Ctrl+A does not reach GTK4 either, so select through Home and Shift+End
+- `wl-paste` right after Ctrl+C returns the previous content of the buffer. Clear the buffer before Ctrl+C and poll for up to 600 ms
+- The recording overlay is cut on purpose: `gtk-layer-shell` is under GPL
 
-### CI, релизы, лицензии
+### CI, releases, licenses
 
-- Windows: именованные каналы только `\\.\pipe\…`, путь из tempdir отображается на имя канала детерминированно. Закрытый порт отвечает около секунды, тесты на «недоступен» получают таймаут. CRLF в файлах маркеров ломает харнесс, нужен `.gitattributes` с `eol=lf`. Две записи файла подряд получают одну метку времени.
-- macOS: bash 3.2 без `[[ -v ]]`, `declare -A`, `mapfile`.
-- cargo-deny: `Unlicense` у whisper-rs, `CDLA-Permissive-2.0` у корневых сертификатов, path-зависимости как wildcard требуют `publish = false`, gtk-rs 0.18 из Tauri объявлен unmaintained. `rustsec/audit-check` требует `checks: write`.
-- pedantic clippy под `cfg` других ОС на Linux не виден, находки приходят только из матрицы CI.
-- `tauri-action` не ставит зависимости npm, нужен свой `npm ci`. Сайдкар не бандлится, если не объявлен, а объявление в основном конфиге ломает гейт CI, где бинарника ещё нет: отдельный конфиг через `--config` только для релиза.
-- Версия релиза должна жить в одном месте, и тег должен сверяться с ней до сборки.
-- CUDA на раннерах Windows: Ninja вместо MSBuild, шаг из PowerShell, раннер `windows-2022`. Отлаживать по `workflow_dispatch`, не тегами.
-- Пакеты GUI не подписаны: macOS показывает «повреждён», лечится `xattr -cr`. Настоящая подпись требует платного аккаунта Apple.
+- Windows: named pipes only `\\.\pipe\…`, and a path from tempdir maps deterministically to a pipe name. A closed port answers in about a second, and the tests for "unavailable" get a timeout. CRLF in the marker files breaks the harness, and a `.gitattributes` with `eol=lf` is needed. Two file writes in a row get the same timestamp
+- macOS: bash 3.2 without `[[ -v ]]`, `declare -A`, `mapfile`
+- cargo-deny: `Unlicense` at whisper-rs, `CDLA-Permissive-2.0` at the root certificates, the path dependencies as a wildcard need `publish = false`, gtk-rs 0.18 from Tauri is declared unmaintained. `rustsec/audit-check` needs `checks: write`
+- Pedantic clippy under the `cfg` of other operating systems is not visible on Linux, and the findings come only from the CI matrix
+- `tauri-action` does not install the npm dependencies, so you need your own `npm ci`. The sidecar is not bundled if it is not declared, and a declaration in the main config breaks the CI gate, where there is no binary yet: a separate config through `--config` for the release only
+- The release version must live in one place, and the tag must be compared with it before the build
+- CUDA on the Windows runners: Ninja instead of MSBuild, a step from PowerShell, the runner `windows-2022`. Debug through `workflow_dispatch`, not through tags
+- The GUI packages are not signed: macOS shows "damaged", and `xattr -cr` cures it. A real signature needs a paid Apple account
 
-### Процесс и инструменты
+### Process and tools
 
-- Параллельные дорожки в worktree конфликтуют всегда в одних местах: `mod.rs`, `main.rs`, `Cargo.toml`, `Cargo.lock`, `tests/defects.sh`. Решение union и `--theirs Cargo.lock` с пересборкой.
-- Параллельный `just falsify` в том же worktree восстанавливает файлы из git и затирает незакоммиченные правки. Либо правки, либо falsify.
-- rustfmt переносит длинные строки, и записи `defects.sh` с однострочным FIND становятся `stale` после форматирования.
-- Чекер жюри читает код агентом по «признакам» и меряет мутационный балл, включая тестовые фикстуры. Энтропия имён идентификаторов роняется короткими именами, а не длинными: `id`, `err`, `cfg` вредят, длинные имена тестов помогают. До порога 3,0 бит не дотянули структурно: половина имён в любом проекте короче семи символов.
-- Дорожки на Opus упирались в лимит сессии дважды, агенты возобновлялись через сообщение с указанием, что изменилось в main за это время.
-- Ориентироваться во времени только по `date`: ощущение времени в длинной сессии уезжает на часы.
-- Перед тем как просить пользователя перепроверить баг, убедиться, что демон уже перезапущен на новой сборке.
+- Parallel tracks in worktrees always conflict in the same places: `mod.rs`, `main.rs`, `Cargo.toml`, `Cargo.lock`, `tests/defects.sh`. The solution is union and `--theirs Cargo.lock` with a rebuild
+- A parallel `just falsify` in the same worktree restores the files from git and overwrites the uncommitted edits. Either edits or falsify
+- rustfmt wraps long lines, and the `defects.sh` entries with a one-line FIND become `stale` after the formatting
+- The jury checker reads the code with an agent by "signs" and measures a mutation score, including the test fixtures. The entropy of identifier names falls because of short names, not long ones: `id`, `err`, `cfg` hurt, and long test names help. We did not reach the threshold of 3.0 bits for a structural reason: half of the names in any project are shorter than seven characters
+- The tracks on Opus hit the session limit twice, and the agents resumed through a message that said what had changed in main in the meantime
+- Keep track of time only by `date`: the sense of time in a long session drifts by hours
+- Before you ask the user to recheck a bug, make sure that the daemon is already restarted on the new build
 
-## Цифры на финал
+## Final numbers
 
-- Коммитов за хакатон: около двухсот, из них ни одного squash и force-push.
-- Тестов: 742 в гейте, 136 записей дефектов, все ловятся.
-- Лидерборд, прогон 13 в 09:44 второго дня: 314 из 332, первое место, отрыв от второго 7 критериев.
-- Задержка на CPU с моделью `small`: реплика 15 с ждёт после отпускания 6 с вместо 12 при нарезке; на RTX 3060 с CUDA 0,5–0,9 с на реплику.
-- Модель постобработки `qwen3.5:4b`: около секунды на реплику из десяти слов на GPU.
+- Commits during the hackathon: about two hundred, and none of them is a squash or a force-push
+- Tests: 742 in the gate, 136 defect entries, all caught
+- The leaderboard, run 13 at 09:44 of the second day: 314 of 332, first place, a lead of 7 criteria over the second
+- Latency on CPU with the `small` model: a 15 s phrase waits 6 s after the release instead of 12 with cutting. On an RTX 3060 with CUDA, 0.5–0.9 s per phrase
+- The post-processing model `qwen3.5:4b`: about a second per phrase of ten words on GPU
 
-## Что делать дальше
+## What to do next
 
-1. Полоска загрузки весов в окне GUI: событие о прогрессе из демона в панель и индикатор в React.
-2. Каталог моделей и зеркало настройкой (`stt.models_mirror`), потому что Hugging Face бывает недоступен.
-3. Windows: проверить хоткеи и вставку через enigo с русской раскладкой, так же как чинили hyprctl.
-4. Подпись и нотаризация пакетов macOS; установщик для Windows с автозапуском.
-5. Пре-ролл буфера захвата как опция для тех, кому важнее первый слог, чем выключенный микрофон.
-6. Дип-ресёрч моделей: GigaAM и Parakeet для русского, малые модели правки текста, Silero TE для пунктуации без LLM.
-7. Фильтрация воды через токенизацию и SVD как исследовательская ветка после накопления корпуса реплик в журнале.
+1. A download bar for the weights in the GUI window: a progress event from the daemon to the panel and an indicator in React
+2. A catalog of models and a mirror by setting (`stt.models_mirror`), because Hugging Face is sometimes unreachable
+3. Windows: check the hotkeys and the paste through enigo with the Russian layout, the same way we fixed hyprctl
+4. Signing and notarization of the macOS packages; an installer for Windows with autostart
+5. A pre-roll of the capture buffer as an option for those who care more about the first syllable than about a switched-off microphone
+6. Deep research of models: GigaAM and Parakeet for Russian, small text-editing models, Silero TE for punctuation without an LLM
+7. Filtering of filler through tokenization and SVD as a research branch after a corpus of phrases accumulates in the journal
