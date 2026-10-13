@@ -84,7 +84,7 @@ evdev = "0.13"
 notify-rust = "4.18"
 
 # Дорожка E: декодирование файлов, загрузка весов, CLI
-symphonia = { version = "0.5", default-features = false, features = [
+symphonia = { version = "0.6", default-features = false, features = [
     "mp3",
     "vorbis",
     "ogg",

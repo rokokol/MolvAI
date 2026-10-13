@@ -12,13 +12,12 @@ use std::fs::File;
 use std::io::{Cursor, Read};
 use std::path::Path;
 
-use symphonia::core::audio::SampleBuffer;
-use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
+use symphonia::core::codecs::audio::AudioDecoderOptions;
 use symphonia::core::errors::Error as SymphoniaError;
-use symphonia::core::formats::FormatOptions;
+use symphonia::core::formats::probe::Hint;
+use symphonia::core::formats::{FormatOptions, TrackType};
 use symphonia::core::io::{MediaSource, MediaSourceStream, MediaSourceStreamOptions};
 use symphonia::core::meta::MetadataOptions;
-use symphonia::core::probe::Hint;
 
 use crate::domain::audio::{downmix_to_mono, AudioError, PcmAudio};
 
@@ -107,35 +106,35 @@ fn decode_source(
     label: &str,
 ) -> Result<PcmAudio, AudioError> {
     let stream = MediaSourceStream::new(source, MediaSourceStreamOptions::default());
-    // enable_gapless убирает служебные отсчёты кодировщика (задержка mp3 и priming AAC),
-    // иначе длительность файла заметно расходится с исходной.
-    let format_opts = FormatOptions {
-        enable_gapless: true,
-        ..FormatOptions::default()
-    };
-    let probed = symphonia::default::get_probe()
-        .format(hint, stream, &format_opts, &MetadataOptions::default())
+    let mut format = symphonia::default::get_probe()
+        .probe(
+            hint,
+            stream,
+            FormatOptions::default(),
+            MetadataOptions::default(),
+        )
         .map_err(|e| decode_error(label, format!("формат не распознан: {e}")))?;
-    let mut format = probed.format;
 
-    let track = format
-        .tracks()
-        .iter()
-        .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
+    let (track_id, params) = format
+        .default_track(TrackType::Audio)
+        .and_then(|track| Some((track.id, track.codec_params.as_ref()?.audio()?.clone())))
         .ok_or_else(|| decode_error(label, "в файле нет звуковой дорожки"))?;
-    let track_id = track.id;
+    // gapless убирает служебные отсчёты кодировщика (задержка mp3 и priming AAC),
+    // иначе длительность файла заметно расходится с исходной.
     let mut decoder = symphonia::default::get_codecs()
-        .make(&track.codec_params, &DecoderOptions::default())
+        .make_audio_decoder(&params, &AudioDecoderOptions::default().gapless(true))
         .map_err(|e| decode_error(label, format!("кодек не поддерживается: {e}")))?;
 
     let mut mono: Vec<f32> = Vec::new();
-    let mut sample_rate = track.codec_params.sample_rate.unwrap_or(0);
-    let mut buffer: Option<SampleBuffer<f32>> = None;
+    let mut sample_rate = params.sample_rate.unwrap_or(0);
+    let mut interleaved: Vec<f32> = Vec::new();
 
     loop {
         let packet = match format.next_packet() {
-            Ok(packet) => packet,
-            // Конец потока symphonia сообщает как io-ошибку UnexpectedEof.
+            Ok(Some(packet)) => packet,
+            Ok(None) => break,
+            // Обрезанный файл обрывается io-ошибкой UnexpectedEof: всё, что успело
+            // декодироваться до обрыва, остаётся в результате.
             Err(SymphoniaError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                 break
             }
@@ -147,19 +146,16 @@ fn decode_source(
             }
             Err(e) => return Err(decode_error(label, format!("файл повреждён: {e}"))),
         };
-        if packet.track_id() != track_id {
+        if packet.track_id != track_id {
             continue;
         }
         match decoder.decode(&packet) {
             Ok(frames) => {
-                let spec = *frames.spec();
-                sample_rate = spec.rate;
-                let channels = spec.channels.count() as u16;
-                let buf = buffer.get_or_insert_with(|| {
-                    SampleBuffer::<f32>::new(frames.capacity() as u64, spec)
-                });
-                buf.copy_interleaved_ref(frames);
-                mono.extend_from_slice(&downmix_to_mono(buf.samples(), channels));
+                let spec = frames.spec();
+                sample_rate = spec.rate();
+                let channels = spec.channels().count() as u16;
+                frames.copy_to_vec_interleaved(&mut interleaved);
+                mono.extend_from_slice(&downmix_to_mono(&interleaved, channels));
             }
             // Битый пакет посреди файла — пропускаем: остальная запись всё ещё полезна.
             Err(SymphoniaError::DecodeError(_)) => {}
