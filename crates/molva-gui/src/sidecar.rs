@@ -47,12 +47,12 @@ pub fn locate() -> Result<PathBuf, SidecarError> {
     Ok(PathBuf::from(exe_name))
 }
 
-/// Как завершился запущенный нами демон, если он упал.
+/// How the daemon that we started ended, if it crashed
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DaemonFailure {
-    /// `None`, если процесс убит сигналом.
+    /// `None` if a signal killed the process
     pub code: Option<i32>,
-    /// Последняя строка stderr: `molva` печатает фатальную ошибку последней.
+    /// Last stderr line: `molva` prints the fatal error last
     pub last_line: String,
 }
 

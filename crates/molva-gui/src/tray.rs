@@ -512,8 +512,8 @@ mod tests {
 
     #[test]
     fn the_tray_icon_changes_at_most_twice_during_a_reply() {
-        // Criterion AM-11: during a phrase the icon changes to "recording" and to "processing", and no more.
-        // The signal level arrives in tens of events, but the state does not change
+        // Criterion AM-11: during a phrase the icon changes to "recording" and to
+        // "processing", and no more. The signal level arrives in tens of events, but the state does not change
         let mut reply = vec![Some(DaemonState::Recording); 40];
         reply.extend([
             Some(DaemonState::Transcribing),

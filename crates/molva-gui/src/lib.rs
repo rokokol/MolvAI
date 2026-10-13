@@ -190,8 +190,10 @@ fn spawn_subscription(app: AppHandle) {
     });
 }
 
-/// Start the application. An error while reading the settings is not silent: it shows in the terminal
-// The Tauri build is the only failure with nobody to return it to: see `expect` at the end of the function
+/// Start the application. An error while reading the settings is not silent: it shows in
+/// the terminal
+// The Tauri build is the only failure with nobody to return it to: see `expect` at the end
+// of the function
 #[allow(clippy::expect_used)]
 pub fn run() {
     tracing_subscriber::fmt()

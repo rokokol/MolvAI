@@ -193,7 +193,8 @@ pub fn summary(
         },
     );
 
-    // The series follows the calendar, not the presence of entries: empty days are zeros on the chart
+    // The series follows the calendar, not the presence of entries: empty days are zeros
+    // on the chart
     let span = range_days.max(1);
     let first_day = today
         .checked_sub_days(Days::new(u64::from(span - 1)))

@@ -33,7 +33,8 @@ impl FakeDaemon {
     fn start(reply: impl Fn(&Request) -> Option<Vec<String>> + Send + 'static) -> Self {
         let dir = tempfile::tempdir().expect("temporary directory");
         let path = dir.path().join("molva.sock");
-        // The core builds the name, as it does for the client: on Windows a tempdir path is not a pipe name
+        // The core builds the name, as it does for the client: on Windows a tempdir path
+        // is not a pipe name
         let name = molva_core::infra::ipc::transport::socket_name(&path).expect("socket name");
         let listener = ListenerOptions::new()
             .name(name)
@@ -224,7 +225,8 @@ fn subscription_streams_events_until_the_daemon_closes() {
 
 #[test]
 fn closed_connection_is_reported_not_hung() {
-    // The daemon accepted a request and died without an answer: the client must return a broken-link error
+    // The daemon accepted a request and died without an answer: the client must return
+    // a broken-link error
     let daemon = FakeDaemon::start(|_| None);
     let mut connection = Connection::connect_at(daemon.path()).expect("connection");
     // The first request stays without an answer, and then the server closes the connection

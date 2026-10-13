@@ -61,7 +61,8 @@ impl IpcClientError {
         }
     }
 
-    /// Tells "no daemon" from "the daemon answered with an error": the UI shows them in different ways
+    /// Tells "no daemon" from "the daemon answered with an error": the UI shows them
+    /// in different ways
     pub fn is_unavailable(&self) -> bool {
         matches!(self, Self::NotRunning { .. } | Self::Disconnected)
     }

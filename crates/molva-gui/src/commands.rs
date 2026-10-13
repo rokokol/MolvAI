@@ -361,7 +361,8 @@ pub struct Status {
     pub message: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
-    /// The daemon has not opened the socket yet, because it downloads model weights (`stt.auto_pull`)
+    /// The daemon has not opened the socket yet, because it downloads model weights
+    /// (`stt.auto_pull`)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub download: Option<DownloadProgress>,
     /// The daemon that this GUI started has crashed: exit code and its last stderr line
@@ -409,7 +410,8 @@ fn unreachable_status(
     }
 }
 
-/// Parse the `status` response: the daemon may not give all fields yet, and a missing field is no error
+/// Parse the `status` response: the daemon may not give all fields yet,
+/// and a missing field is no error
 pub fn parse_status(value: &serde_json::Value) -> (Option<DaemonState>, Option<String>) {
     let state = value
         .get("state")
