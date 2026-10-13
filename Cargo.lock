@@ -3056,7 +3056,7 @@ dependencies = [
 
 [[package]]
 name = "molva"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3076,7 +3076,7 @@ dependencies = [
 
 [[package]]
 name = "molva-core"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "arboard",
  "chacha20poly1305",
@@ -3107,7 +3107,7 @@ dependencies = [
 
 [[package]]
 name = "molva-gui"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "chrono",
  "directories",
