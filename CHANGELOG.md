@@ -6,6 +6,19 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ## Unreleased
 
+### Added
+
+- The GUI tray menu, its tooltip, system notices and setting errors follow the interface language, Russian or English
+- A daemon error in the GUI starts with a title in the interface language, and the daemon's English text follows it
+
+### Changed
+
+- The daemon and the CLI are English only: messages, errors, help text, table headers and "molva doctor" output
+- The built-in style names in the CLI are English: Verbatim, Cleanup, Messenger, Email, Code and Formal
+- A GUI string with no translation falls back to English instead of Russian
+- The Hyprland snippet in the GUI settings has English comments
+- The documentation is in English
+
 ## [0.1.9] - 2026-10-13
 
 ### Added
