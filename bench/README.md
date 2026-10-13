@@ -1,58 +1,53 @@
-# Локальный чекер MolvAI
+# MolvAI local checker
 
-Организаторы не дают своего чекера, поэтому качество и скорость MolvAI меряет сам — одной командой
+The organizers do not provide a checker, so MolvAI measures its own quality and speed with one command
 
 ```sh
 molva bench
 ```
 
-Она читает `bench/manifest.toml`, прогоняет каждый кейс через движок распознавания и печатает сводку: WER и CER по кейсам и в среднем, задержки p50/p95/p99 и отношение p99/p50, суммарную длительность аудио и RTF (отношение времени распознавания к длительности записи)
+The command reads `bench/manifest.toml`, runs each case through the recognition engine and prints a summary: WER and CER per case and on average, the p50/p95/p99 latencies and the p99/p50 ratio, the total audio duration, and the RTF (the ratio of recognition time to recording duration)
 
-Плохой WER — не ошибка запуска, а результат измерения, поэтому код выхода остаётся нулевым.
-Ненулевой код (6) означает, что набора нет или он не читается
+A bad WER is not a launch error but a measurement result, so the exit code stays zero. A non-zero code (6) means the set is missing or unreadable
 
-## Как это выглядит
+## What it looks like
 
 ```sh
-molva bench --summary            # таблица, поведение по умолчанию
-molva bench --json               # полный отчёт в JSON, для CI и графиков
-molva bench --repeat 5           # пять прогонов каждого кейса: виден разброс задержек
-molva bench --engine fake        # самопроверка конвейера без весов модели
-molva bench --set my-set/        # другой набор
+molva bench --summary            # a table, the default behaviour
+molva bench --json               # the full report in JSON, for CI and charts
+molva bench --repeat 5           # five runs of each case: the latency spread is visible
+molva bench --engine fake        # a pipeline self-test without model weights
+molva bench --set my-set/        # another set
 ```
 
-Данные идут в stdout, прогресс и предупреждения — в stderr, поэтому `molva bench --json > report.json` даёт чистый JSON
+Data goes to stdout. Progress and warnings go to stderr, so `molva bench --json > report.json` gives clean JSON
 
-## Формат набора
+## The set format
 
-Набор — это каталог с `manifest.toml` и аудиофайлами. Пути к аудио указываются относительно каталога набора
+A set is a directory with `manifest.toml` and audio files. Audio paths are relative to the set directory
 
 ```toml
 [[case]]
-id = "ru-короткая-фраза"          # необязательно; по умолчанию — имя файла
-audio = "audio/привет.wav"        # любой формат: wav, mp3, ogg, flac, m4a
-reference = "Привет, как дела?"   # эталонный текст
-language = "ru"                   # необязательно; без него — автоопределение
+id = "ru-short-phrase"          # optional; the file name by default
+audio = "audio/привет.wav"        # any format: wav, mp3, ogg, flac, m4a
+reference = "Привет, как дела?"   # the reference text
+language = "ru"                   # optional; without it the language is detected automatically
 ```
 
-Эталон сравнивается с расшифровкой после нормализации: регистр, знаки препинания и «ё» не считаются ошибками, потому что человек их на слух не различает.
-Пустой `reference` означает «здесь речи нет»: любая расшифровка такого кейса — галлюцинация, и WER будет равен единице
+The checker compares the reference with the transcript after normalization: case, punctuation and "ё" do not count as errors, because a person cannot tell them apart by ear. An empty `reference` means "there is no speech here": any transcript of such a case is a hallucination, and the WER is one
 
-## Как добавить свой кейс
+## How to add your own case
 
-1. Запишите фразу и положите файл в набор, например в `bench/audio/`
-2. Добавьте блок `[[case]]` с путём к файлу и точным текстом того, что сказано
-3. Запустите `molva bench` и посмотрите строку своего кейса в таблице
+1. Record a phrase and put the file in the set, for example in `bench/audio/`
+2. Add a `[[case]]` block with the path to the file and the exact text of what you said
+3. Run `molva bench` and look at the row of your case in the table
 
-Пишите эталон так, как человек записал бы услышанное: с обычной пунктуацией и заглавными буквами.
-Приводить его к «машинному» виду не нужно — это делает сам чекер
+Write the reference as a person would write what they heard: with normal punctuation and capital letters. You do not need to convert it to a "machine" form, because the checker does that
 
-## Что уже в наборе
+## What the set already has
 
-Речевые фикстуры репозитория (`tests/fixtures/`) плюс `silence.wav` — секунда тишины.
-Тишина здесь не ради полноты: это единственный кейс, который ловит галлюцинации модели на пустом входе, и он же проверяет, что конвейер не падает на записи без речи
+The speech fixtures of the repository (`tests/fixtures/`) and `silence.wav`, one second of silence. The silence is not there for completeness. It is the only case that catches model hallucinations on empty input, and it also checks that the pipeline does not crash on a recording without speech
 
-## Повторяемость
+## Repeatability
 
-Балл (`wer_avg`, `cer_avg`, число упавших кейсов) зависит только от аудио, эталонов и движка, поэтому два прогона подряд дают одно и то же число.
-Задержки, разумеется, плавают от запуска к запуску и в балл не входят — их смотрят отдельно, по p50/p95/p99
+The score (`wer_avg`, `cer_avg`, the number of failed cases) depends only on the audio, the references and the engine, so two runs in a row give the same number. The latencies, of course, vary from run to run and are not part of the score. Look at them separately, by p50/p95/p99
