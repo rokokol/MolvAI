@@ -431,7 +431,7 @@ pub fn parse_status(value: &serde_json::Value) -> (Option<DaemonState>, Option<S
 async fn ask_daemon(cmd: Command) -> Result<serde_json::Value, CommandError> {
     tauri::async_runtime::spawn_blocking(move || ipc::request(cmd))
         .await
-        .map_err(|e| CommandError::new("internal", format!("запрос к демону прерван: {e}")))?
+        .map_err(|e| CommandError::new("internal", format!("the daemon request was interrupted: {e}")))?
         .map_err(CommandError::from)
 }
 
@@ -529,7 +529,7 @@ fn parse_devices(value: &serde_json::Value) -> Result<Vec<DeviceInfo>, CommandEr
         .cloned()
         .unwrap_or(serde_json::Value::Array(Vec::new()));
     serde_json::from_value(devices)
-        .map_err(|e| CommandError::new("daemon", format!("список устройств не разобран: {e}")))
+        .map_err(|e| CommandError::new("daemon", format!("the device list could not be parsed: {e}")))
 }
 
 /// Ask the daemon for the devices from a normal thread: the event subscription does this
@@ -708,7 +708,7 @@ pub fn history_apps(state: State<'_, AppState>) -> Result<Vec<String>, CommandEr
 #[tauri::command]
 pub fn history_delete(state: State<'_, AppState>, id: String) -> Result<bool, CommandError> {
     let id = Uuid::parse_str(&id)
-        .map_err(|e| CommandError::new("history", format!("неверный идентификатор: {e}")))?;
+        .map_err(|e| CommandError::new("history", format!("invalid id: {e}")))?;
     let path = history::journal_path(&state.config())?;
     Ok(history::delete(&path, id)?)
 }
@@ -803,7 +803,7 @@ pub async fn transcribe_file<R: Runtime>(
         .map_err(CommandError::from)
     })
     .await
-    .map_err(|e| CommandError::new("sidecar", format!("задача разбора прервана: {e}")))?
+    .map_err(|e| CommandError::new("sidecar", format!("the transcription task was interrupted: {e}")))?
 }
 
 #[tauri::command]

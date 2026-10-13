@@ -19,10 +19,10 @@ pub fn hyprland_snippet(config: &HotkeysConfig) -> String {
     let command = hypr_key(&config.command);
     let cancel = hypr_key(&config.cancel);
     format!(
-        "# MolvAI: удержание клавиши — диктовка, отпускание — вставка текста\n\
+        "# MolvAI: hold the key to dictate, release it to paste the text\n\
          bind  = {ptt}, exec, molva record start\n\
          bindr = {ptt}, exec, molva record stop\n\
-         # переключатель, командный режим и отмена\n\
+         # toggle, command mode and cancel\n\
          bind  = {toggle}, exec, molva record toggle\n\
          bind  = {command}, exec, molva record toggle --mode command\n\
          bind  = {cancel}, exec, molva record cancel\n"
