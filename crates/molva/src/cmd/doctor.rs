@@ -132,7 +132,7 @@ pub(crate) fn llm_check(config: &Config) -> Check {
         provider.is_local(),
     ) {
         Ok(client) => client,
-        Err(error) => return Check::new("LLM", false, error.to_string()),
+        Err(error) => return client_not_built(&error),
     };
     match client.list_models() {
         Ok(names) if names.iter().any(|name| name == &config.llm.model) => Check::new(
@@ -173,6 +173,19 @@ pub(crate) fn llm_check(config: &Config) -> Check {
             format!("{error}; запустите провайдера или выключите llm.enabled"),
         ),
     }
+}
+
+/// HTTP-клиент не собрался: до провайдера запрос не дошёл, поэтому совет — про окружение
+/// этой машины, а не про запуск модели.
+pub(crate) fn client_not_built(error: &LlmError) -> Check {
+    Check::new(
+        "LLM",
+        false,
+        format!(
+            "{error}; HTTP-клиент не создан: проверьте системные сертификаты (SSL_CERT_FILE) \
+             и переменные прокси или выключите llm.enabled"
+        ),
+    )
 }
 
 /// Полный отчёт: строки в том порядке, в котором их читают.
@@ -371,6 +384,20 @@ mod tests {
         config.llm.base_url = "http://127.0.0.1:9/v1".into();
         let check = llm_check(&config);
         assert!(!check.ok);
+        assert!(check.detail.contains("llm.enabled"), "{}", check.detail);
+    }
+
+    #[test]
+    fn a_client_that_cannot_be_built_names_the_environment_and_the_way_out() {
+        let error = LlmError::Unavailable("builder error: no CA certificates found".into());
+        let check = client_not_built(&error);
+        assert!(!check.ok);
+        assert!(
+            check.detail.contains("no CA certificates found"),
+            "{}",
+            check.detail
+        );
+        assert!(check.detail.contains("сертификат"), "{}", check.detail);
         assert!(check.detail.contains("llm.enabled"), "{}", check.detail);
     }
 
