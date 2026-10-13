@@ -13,26 +13,26 @@ crates/molva-gui/binaries/
 result
 result-*
 
-# Логи и артефакты харнесса тестов
+# Logs and artifacts of the test harness
 .test-logs/
 *.log
 coverage.lcov
 lcov.info
 
-# SBOM пересобирается из Cargo.lock (`just sbom`) и уезжает в релизные артефакты
+# The SBOM is rebuilt from Cargo.lock (`just sbom`) and goes into the release artifacts
 sbom/
 *.cdx.json
 
-# Модели и локальные данные никогда не попадают в репозиторий
+# Models and local data never enter the repository
 *.bin
 *.gguf
 *.sqlite
 journal.jsonl
 
-# Worktree агентов Claude Code
+# Worktrees of Claude Code agents
 .claude/worktrees/
 
-# Редакторы
+# Editors
 .idea/
 .vscode/
 *.swp

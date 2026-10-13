@@ -1,9 +1,9 @@
-# Все текстовые файлы хранятся и выкачиваются с LF: харнесс t.sh читает markers/*.txt
-# построчно, и CRLF на Windows превращал пустую строку в маркер "\r", совпадающий с каждой
-# строкой лога (гейт падал на здоровом прогоне).
+# All text files are stored and checked out with LF: the t.sh harness reads markers/*.txt
+# line by line, and CRLF on Windows turned an empty line into a "\r" marker that matched
+# every log line (the gate failed on a healthy run)
 * text=auto eol=lf
 
-# Бинарные фикстуры и иконки не трогать
+# Do not touch binary fixtures and icons
 *.wav binary
 *.mp3 binary
 *.ogg binary

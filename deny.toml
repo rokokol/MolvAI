@@ -1,5 +1,5 @@
-# cargo-deny: лицензии зависимостей, уязвимости, источники.
-# Проект под MIT, копилефт-зависимости запрещены (критерии Z-07, Z-08, Z-10).
+# cargo-deny: dependency licenses, vulnerabilities, sources
+# The project is under MIT, and copyleft dependencies are forbidden (criteria Z-07, Z-08, Z-10)
 
 [graph]
 all-features = false
@@ -17,32 +17,32 @@ allow = [
     "Unicode-3.0",
     "Unicode-DFS-2016",
     "CC0-1.0",
-    # Набор корневых сертификатов Mozilla (webpki-root-certs) — данные, а не код;
-    # лицензия разрешительная и без копилефта, поэтому Z-07/Z-08 не нарушает.
+    # The Mozilla root certificate set (webpki-root-certs) is data, not code.
+    # The license is permissive and has no copyleft, so it does not break Z-07/Z-08
     "CDLA-Permissive-2.0",
     "BSL-1.0",
     "0BSD",
     "OpenSSL",
-    "Unlicense",   # whisper-rs и whisper-rs-sys: общественное достояние, OSI-approved
+    "Unlicense",   # whisper-rs and whisper-rs-sys: public domain, OSI-approved
 ]
 confidence-threshold = 0.8
 
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
-# Крейты workspace ссылаются друг на друга по path без версии — это не wildcard из реестра
+# Workspace crates refer to each other by path without a version: this is not a registry wildcard
 allow-wildcard-paths = true
 
 [advisories]
 yanked = "deny"
-# Tauri 2 на Linux тянет gtk-rs 0.18 (GTK3), proc-macro-error и unic-*, объявленные
-# unmaintained; заменить их не в нашей власти, поэтому статус unmaintained проверяется
-# только у прямых зависимостей workspace. Уязвимости остаются ошибкой при любой глубине.
+# On Linux, Tauri 2 pulls in gtk-rs 0.18 (GTK3), proc-macro-error and unic-*, which are
+# declared unmaintained. We cannot replace them, so the unmaintained status is checked
+# only for the direct dependencies of the workspace. A vulnerability stays an error at any depth.
 unmaintained = "workspace"
 ignore = [
-    # glib 0.18 (через Tauri 2 / GTK3): unsound в VariantStrIter, который мы не вызываем;
-    # исправлено в glib ≥ 0.20, куда Tauri перейдёт вместе с GTK4
-    { id = "RUSTSEC-2024-0429", reason = "glib 0.18 приходит транзитивно из Tauri 2; VariantStrIter не используется" },
+    # glib 0.18 (through Tauri 2 / GTK3): unsound in VariantStrIter, which we do not call;
+    # fixed in glib >= 0.20, which Tauri will move to together with GTK4
+    { id = "RUSTSEC-2024-0429", reason = "glib 0.18 comes transitively from Tauri 2; VariantStrIter is not used" },
 ]
 
 [sources]

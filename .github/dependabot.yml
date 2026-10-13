@@ -1,7 +1,7 @@
-# Закрепления двигаются pull request-ом, а не сюрпризом: dependabot следит за версиями
-# действий в uses:, за крейтами в Cargo.lock и за пакетами интерфейса, среди которых CLI Tauri,
-# собирающий релизные пакеты. Бамп попадает в main только через зелёный
-# гейт build.yml, потому что pull request проверяется тем же workflow, что и всё остальное.
+# Pins move by a pull request, not by surprise: dependabot watches the action versions in uses:,
+# the crates in Cargo.lock and the interface packages, among them the Tauri CLI that
+# builds the release packages. A bump reaches main only through the green gate of
+# build.yml, because a pull request is checked by the same workflow as everything else
 version: 2
 
 updates:
@@ -14,7 +14,7 @@ updates:
       timezone: Europe/Moscow
     commit-message:
       prefix: "ci"
-    labels: ["зависимости"]
+    labels: ["dependencies"]
 
   - package-ecosystem: cargo
     directory: /
@@ -25,8 +25,8 @@ updates:
       timezone: Europe/Moscow
     commit-message:
       prefix: "build"
-    labels: ["зависимости"]
-    # Патчи крейтов приходят пачками и по одному pull request на каждый читать невозможно
+    labels: ["dependencies"]
+    # Crate patches arrive in batches, and it is impossible to read one pull request for each
     groups:
       patch-updates:
         update-types: ["patch"]
@@ -40,7 +40,7 @@ updates:
       timezone: Europe/Moscow
     commit-message:
       prefix: "build"
-    labels: ["зависимости"]
+    labels: ["dependencies"]
     groups:
       patch-updates:
         update-types: ["patch"]

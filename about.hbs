@@ -1,17 +1,17 @@
 # THIRD-PARTY
 
-Файл собран командой `just third-party` (cargo-about) и описывает лицензии зависимостей, попадающих в бинарники MolvAI. Правила отбора — в `about.toml`, гейт по лицензиям — в `deny.toml`
+This file is built by the `just third-party` command (cargo-about). It lists the licenses of the dependencies that enter the MolvAI binaries. The selection rules are in `about.toml`, and the license gate is in `deny.toml`
 
-Лицензии весов моделей распознавания здесь не перечислены: веса в репозиторий не входят, их условия описаны в [docs/model-licenses.md](docs/model-licenses.md)
+The licenses of the speech recognition model weights are not listed here: the weights are not part of the repository, and their terms are described in [docs/model-licenses.md](docs/model-licenses.md)
 
 {{#each overview}}
-- {{name}} — зависимостей: {{count}}
+- {{name}} — dependencies: {{count}}
 {{/each}}
 
 {{#each licenses}}
 ## {{name}}
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 {{#each used_by}}
 - [{{crate.name}} {{crate.version}}]({{#if crate.repository}}{{{crate.repository}}}{{else}}https://crates.io/crates/{{crate.name}}{{/if}})

@@ -3,8 +3,9 @@ resolver = "2"
 members = ["crates/molva-core", "crates/molva", "crates/molva-gui"]
 
 [workspace.package]
-# Единственный источник версии: CLI (`molva --version`), пакеты GUI (tauri.conf.json версию
-# не задаёт и берёт её отсюда) и тег релиза `v<версия>` — release.yml сверяет их перед сборкой.
+# The single source of the version: the CLI (`molva --version`), the GUI packages (tauri.conf.json
+# does not set a version and takes it from here) and the release tag `v<version>`. release.yml
+# compares them before the build
 version = "0.1.9"
 edition = "2021"
 license = "MIT"
@@ -12,9 +13,9 @@ repository = "https://github.com/rokokol/MolvAI"
 rust-version = "1.85"
 authors = ["rokokol"]
 
-# Единый набор правил для всех крейтов: каждый подключает его через `[lints] workspace = true`.
-# Гейт `just clippy` запускает линтер с `-D warnings`, поэтому «warn» здесь означает «сборка
-# падает». Уровень «allow» стоит только у педантичных правил про вкус, а не про качество.
+# One set of rules for all crates: each crate connects it with `[lints] workspace = true`.
+# The `just clippy` gate runs the linter with `-D warnings`, so "warn" here means "the build
+# fails". The level "allow" is only for pedantic rules about taste, not about quality
 [workspace.lints.rust]
 unsafe_code = "deny"
 missing_debug_implementations = "warn"
@@ -27,35 +28,36 @@ broken_intra_doc_links = "deny"
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
-# `nursery` не включаем: там слишком много недоделанных правил, гейт превратился бы в шум.
+# We do not enable `nursery`: it has too many unfinished rules, and the gate would turn into noise
 
-# Аварийные выходы в коде продукта: ошибка должна быть значением, а не паникой.
-# В `#[cfg(test)]` эти правила сняты через `cfg_attr` в корне каждого крейта.
+# Emergency exits in the product code: an error must be a value, not a panic.
+# In `#[cfg(test)]` these rules are lifted through `cfg_attr` in the root of each crate
 unwrap_used = "warn"
 expect_used = "warn"
 panic = "warn"
 todo = "deny"
 unimplemented = "deny"
 dbg_macro = "deny"
-# Данные идут в stdout, всё остальное — в stderr. Печать данных разрешена точечно,
-# `#[allow(clippy::print_stdout)]` на модуле команды; stderr не ограничен.
+# Data goes to stdout, everything else goes to stderr. Printing data is allowed case by case with
+# `#[allow(clippy::print_stdout)]` on the command module; stderr is not limited
 print_stdout = "warn"
 print_stderr = "allow"
 
-# Педантичные правила про вкус, а не про качество: снимаем разом, чтобы не разносить
-# по коду два десятка `#[allow]`. Пороги сложности — в `clippy.toml` рядом.
+# Pedantic rules about taste, not about quality: we lift them all at once, so as not to spread
+# two dozen `#[allow]` over the code. The complexity limits are in `clippy.toml` next to this file
 module_name_repetitions = "allow"
 must_use_candidate = "allow"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 struct_excessive_bools = "allow"
 doc_markdown = "allow"
-# `push_str(&format!(…))` против `write!`: правило про лишнюю аллокацию, а взамен предлагает
-# `write!`, чей `Result` для `String` не может быть ошибкой. Гасить его пришлось бы `let _ =`
-# в два десятка мест (`unwrap` запрещён выше) — это хуже, чем одна аллокация на строку отчёта.
+# `push_str(&format!(…))` against `write!`: the rule is about an extra allocation, and it suggests
+# `write!` instead, whose `Result` cannot be an error for `String`. To silence it we would need
+# `let _ =` in two dozen places (`unwrap` is forbidden above). This is worse than
+# one allocation per report line
 format_push_string = "allow"
-# Приведения между размерами чисел: аудио — это f32 из i16 и обратно, ограничения
-# проверяются в коде, а не типом.
+# Casts between number sizes: audio is f32 from i16 and back, and the limits are
+# checked in the code, not by the type
 cast_precision_loss = "allow"
 cast_possible_truncation = "allow"
 cast_sign_loss = "allow"
@@ -75,7 +77,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clap = { version = "4", features = ["derive", "env"] }
 strsim = "0.11"
 tempfile = "3"
-# Дорожка F: IPC, вставка, горячие клавиши, уведомления
+# Track F: IPC, paste, hotkeys, notifications
 interprocess = "2.4"
 which = "8"
 arboard = "3.6"
@@ -83,7 +85,7 @@ enigo = "0.6"
 evdev = "0.13"
 notify-rust = "4.18"
 
-# Дорожка E: декодирование файлов, загрузка весов, CLI
+# Track E: file decoding, weight download, CLI
 symphonia = { version = "0.6", default-features = false, features = [
     "mp3",
     "vorbis",
@@ -95,9 +97,9 @@ symphonia = { version = "0.6", default-features = false, features = [
     "pcm",
 ] }
 hound = "3.5"
-# Без default-tls: TLS только через rustls; доверенные корни берёт rustls-platform-verifier —
-# системное хранилище, а где его нет, набор Mozilla из webpki-root-certs. Один клиент на
-# загрузку весов (blocking) и на LLM (json).
+# Without default-tls: TLS only through rustls. The trusted roots come from rustls-platform-verifier:
+# the system store, and where there is none, the Mozilla set from webpki-root-certs. One client
+# for the weight download (blocking) and for the LLM (json)
 reqwest = { version = "0.13", default-features = false, features = [
     "blocking",
     "json",
@@ -108,10 +110,10 @@ reqwest = { version = "0.13", default-features = false, features = [
     "system-proxy",
 ] }
 sha2 = "0.11"
-# Шифрование текстов журнала по настройке journal.encrypt (AEAD, RustCrypto, MIT/Apache-2.0)
+# Encryption of the journal texts by the journal.encrypt setting (AEAD, RustCrypto, MIT/Apache-2.0)
 chacha20poly1305 = "0.11"
-# Хранилище ключей ОС: Secret Service (Linux, чистый Rust через zbus, без libdbus),
-# Credential Manager (Windows), Keychain (macOS). Лицензия MIT/Apache-2.0.
+# The OS key store: Secret Service (Linux, pure Rust through zbus, without libdbus),
+# Credential Manager (Windows), Keychain (macOS). The license is MIT/Apache-2.0
 keyring = { version = "3", default-features = false, features = [
     "async-secret-service",
     "async-io",

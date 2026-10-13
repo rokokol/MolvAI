@@ -1,6 +1,6 @@
-# Единый источник правды для гейта: CI вызывает эти же рецепты.
-# Тестовые прогоны идут через scripts/t.sh (скилл tests): статус — собственный статус cargo,
-# лог читается даже при exit 0.
+# The single source of truth for the gate: CI calls these same recipes
+# Test runs go through scripts/t.sh (the tests skill): the status is the own status of cargo,
+# and the log is read even at exit 0
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
@@ -9,44 +9,44 @@ test_cmd := "cargo test --workspace --no-fail-fast"
 
 default: check
 
-# Полный гейт: форматирование, линтер, зависимости, тесты, SPDX-заголовки, отсутствие заглушек
+# The full gate: formatting, linter, dependencies, tests, SPDX headers, no stubs
 check: fmt clippy lint-deps test spdx-check no-stubs
 
 fmt:
     cargo fmt --all --check
 
-# Правила линтера — в [workspace.lints] корневого Cargo.toml, пороги — в clippy.toml
+# The linter rules are in [workspace.lints] of the root Cargo.toml, the limits are in clippy.toml
 clippy:
     cargo clippy --workspace --all-targets -- -D warnings
 
-# Зависимость, которую никто не использует, тянет сборку и аудит на пустом месте
+# A dependency that nobody uses slows the build and the audit for nothing
 lint-deps:
     cargo machete
 
-# Документация без предупреждений: битые ссылки в docs — это deny (см. [workspace.lints.rustdoc])
+# Documentation without warnings: a broken link in docs is a deny (see [workspace.lints.rustdoc])
 doc:
     cargo doc --no-deps --workspace
 
 build:
     {{build_cmd}}
 
-# Тесты с честным вердиктом и прочтённым логом
+# Tests with an honest verdict and a log that is read
 test:
     scripts/t.sh run -- {{test_cmd}}
 
-# N прогонов подряд: расходятся ли результаты на одном и том же коде
+# N runs in a row: do the results differ on the same code
 flaky N:
     scripts/t.sh flaky {{N}} -- {{test_cmd}}
 
-# Ломаем гарантии из tests/defects.sh по одной и требуем, чтобы сьют заметил
+# Break the guarantees from tests/defects.sh one by one and require the suite to notice
 falsify *FILTER:
     scripts/t.sh falsify -d tests/defects.sh -b '{{build_cmd}}' {{FILTER}} -- {{test_cmd}}
 
-# Какой коммит сломал сьют, начиная с GOOD
+# Which commit broke the suite, starting from GOOD
 bisect GOOD:
     scripts/t.sh bisect {{GOOD}} -b '{{build_cmd}}' -- {{test_cmd}}
 
-# У каждого исходника есть SPDX-заголовок
+# Every source file has an SPDX header
 spdx-check:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -54,18 +54,18 @@ spdx-check:
         --exclude-dir=target --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=gen \
         'SPDX-License-Identifier: MIT' crates || true)
     if [ -n "$missing" ]; then
-        echo "Нет SPDX-заголовка:"; echo "$missing"; exit 1
+        echo "No SPDX header:"; echo "$missing"; exit 1
     fi
     echo "SPDX: ok"
 
-# В коде продукта нет заглушек todo!/unimplemented!
+# The product code has no todo!/unimplemented! stubs
 no-stubs:
     #!/usr/bin/env bash
     set -euo pipefail
     if grep -rnE 'todo!\(|unimplemented!\(' --include='*.rs' --exclude-dir=target crates | grep -v '/tests/'; then
-        echo "Заглушки в коде продукта"; exit 1
+        echo "Stubs in the product code"; exit 1
     fi
-    echo "Заглушек нет"
+    echo "No stubs"
 
 deny:
     cargo deny check
@@ -73,11 +73,11 @@ deny:
 audit:
     cargo audit
 
-# Лицензии зависимостей в THIRD-PARTY.md: правила в about.toml, шаблон в about.hbs
+# Dependency licenses in THIRD-PARTY.md: the rules are in about.toml, the template is in about.hbs
 third-party:
     cargo about generate about.hbs -o THIRD-PARTY.md
 
-# Ведомость состава (SBOM) в формате CycloneDX: sbom/molva*.cdx.json
+# Bill of materials (SBOM) in the CycloneDX format: sbom/molva*.cdx.json
 sbom:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -86,6 +86,6 @@ sbom:
     find crates -name '*.cdx.json' -exec mv {} sbom/ \;
     ls sbom
 
-# Покрытие как карта, не как гейт: артефакт для CI
+# Coverage as a map, not as a gate: an artifact for CI
 cov:
     cargo llvm-cov --workspace --lcov --output-path coverage.lcov

@@ -1,6 +1,7 @@
-# Настройки rustfmt. Форматирование проверяется в гейте: `just fmt` = `cargo fmt --all -- --check`,
-# тот же шаг идёт в CI на трёх ОС. Значения намеренно стандартные: спорить о стиле некогда,
-# файл существует, чтобы стиль был зафиксирован явно, а не по умолчанию текущей версии.
+# rustfmt settings. The gate checks formatting: `just fmt` = `cargo fmt --all -- --check`,
+# and CI runs the same step on three operating systems. The values are standard on purpose:
+# there is no time to argue about style, and the file exists so that the style is fixed
+# explicitly and does not depend on the defaults of the current version
 edition = "2021"
 max_width = 100
 newline_style = "Unix"

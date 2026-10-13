@@ -1,13 +1,13 @@
 [package]
 name = "molva"
-description = "MolvAI: системный голосовой ввод — CLI и демон"
+description = "MolvAI: system-wide voice input — CLI and daemon"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 authors.workspace = true
-# Бинарь распространяется релизами, не через crates.io: path-зависимость на ядро без версии
+# The binary is distributed by releases, not through crates.io: a path dependency on the core without a version
 publish = false
 
 [[bin]]

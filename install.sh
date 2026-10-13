@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Форма скрипта — из скилла huix-standard
+# The shape of the script comes from the huix-standard skill
 set -euo pipefail
 
 here="$(cd -- "$(dirname -- "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
-# Версия живёт в одном месте — Cargo.toml рабочего пространства. Второй источник
-# разъехался бы с первым, поэтому здесь она читается, а не повторяется
-# Первая строка берётся из значения, а не через `| head`: читатель, который останавливается
-# рано, оставляет sed писать в закрытую трубу, и под pipefail этот SIGPIPE становится
-# статусом удавшегося чтения
+# The version lives in one place: Cargo.toml of the workspace. A second source
+# would drift apart from the first, so here the version is read and not repeated
+# The first line is taken from the value and not through `| head`: a reader that stops
+# early leaves sed writing into a closed pipe, and under pipefail this SIGPIPE becomes
+# the status of a read that succeeded
 VERSION="$(sed -n '/^\[workspace\.package\]/,/^\[/s/^version *= *"\([^"]*\)".*/\1/p' \
   "$here/Cargo.toml")"
 VERSION="${VERSION%%$'\n'*}"
 if [[ -z "$VERSION" ]]; then
-  echo "install.sh: не удалось прочитать версию из Cargo.toml — сломался разбор, а не проект" >&2
+  echo "install.sh: cannot read the version from Cargo.toml — the parsing is broken, not the project" >&2
   exit 2
 fi
 
@@ -23,49 +23,49 @@ OS_RELEASE="${OS_RELEASE:-/etc/os-release}"
 
 usage() {
   cat <<EOF
-установка MolvAI $VERSION в префикс пользователя
+install MolvAI $VERSION into the user prefix
 
-Установка MolvAI на систему без Nix. Скрипт делает ровно то же, что даёт \`nix develop\`
-плюс \`cargo build\`: кладёт бинарник в префикс пользователя, при необходимости — файл
-рабочего стола и автозапуск, и записывает манифест, по которому --uninstall всё снимает
+Installs MolvAI on a system without Nix. The script does exactly what \`nix develop\`
+plus \`cargo build\` give: it puts the binary into the user prefix, and when asked, a
+desktop file and an autostart entry, and it writes a manifest that --uninstall uses to remove everything
 
-Зависимости скрипт не устанавливает никогда: он собирает список недостающего и печатает
-точные команды для дистрибутива, а решение принимает человек
+The script never installs dependencies: it collects the list of what is missing and prints
+the exact commands for the distribution, and a person makes the decision
 
-Каждый запуск приводит префикс ровно к тем флагам, которые заданы: запуск без флага
-снимает то, что этот флаг ставил в прошлый раз
+Each run brings the prefix to exactly the flags that are given: a run without a flag
+removes what this flag installed last time
 
-использование: ./install.sh [опции]
-  -h, --help          показать эту справку и выйти
-  -v, --version       напечатать версию и выйти
-  -c, --check         только проверить зависимости, ничего не устанавливать
-      --prefix DIR    префикс установки (сейчас: $PREFIX; переменная PREFIX)
-      --destdir DIR   промежуточный корень: файлы ложатся в DESTDIR/PREFIX,
-                      живая система не трогается (переменная DESTDIR)
-      --desktop       поставить файл рабочего стола в меню приложений
-      --autostart     запускать MolvAI при входе в систему
-      --uninstall     снять всё, что записал прошлый запуск, по манифесту
-      --purge         вместе с --uninstall: снести настройки и журнал реплик
-      --keep-history  вместе с --uninstall: сохранить настройки и журнал без вопроса
+usage: ./install.sh [options]
+  -h, --help          show this help and exit
+  -v, --version       print the version and exit
+  -c, --check         only check the dependencies, install nothing
+      --prefix DIR    install prefix (now: $PREFIX; the PREFIX variable)
+      --destdir DIR   staging root: files go to DESTDIR/PREFIX,
+                      the live system is not touched (the DESTDIR variable)
+      --desktop       install a desktop file into the application menu
+      --autostart     start MolvAI at login
+      --uninstall     remove everything the last run recorded, by the manifest
+      --purge         with --uninstall: delete the settings and the phrase journal
+      --keep-history  with --uninstall: keep the settings and the journal without asking
 
-Права администратора не нужны: по умолчанию всё ложится в \$HOME/.local.
-Установка поверх сохраняет настройки и журнал — они лежат вне префикса
+Administrator rights are not needed: by default everything goes to \$HOME/.local.
+An install over an existing one keeps the settings and the journal, because they are outside the prefix
 
-коды возврата:
-  0  сделано; сюда же справка, версия и успешная проверка зависимостей
-  1  ошибка использования или окружения: неизвестная опция, опция без значения,
-     относительный --prefix, несочетаемые флаги, нехватка зависимостей, сборка не дала
-     бинарник
-  2  версию не удалось прочитать из Cargo.toml — сломался разбор, а не проект
+exit codes:
+  0  done; this also covers help, version and a successful dependency check
+  1  usage or environment error: unknown option, option without a value,
+     relative --prefix, incompatible flags, missing dependencies, a build that gave
+     no binary
+  2  the version could not be read from Cargo.toml — the parsing is broken, not the project
 EOF
 }
 
-# need_value ОПЦИЯ ЗНАЧЕНИЕ... — отказ, если за опцией ничего нет. `${2:?}` печатает
-# сообщение самого bash и выходит с кодом 1, тогда как отсутствие аргумента — ошибка
-# использования, о которой скрипт обязан сказать своим голосом и своим кодом
+# need_value OPTION VALUE... — refuse if nothing follows the option. `${2:?}` prints
+# the message of bash itself and exits with code 1, but a missing argument is a usage
+# error, and the script must report it in its own voice and with its own code
 need_value() {
   [[ -n "${2:-}" ]] && return 0
-  echo "install.sh: нужен каталог после $1" >&2
+  echo "install.sh: a directory is needed after $1" >&2
   usage >&2
   exit 1
 }
@@ -125,7 +125,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     *)
-      echo "install.sh: неизвестная опция: $1" >&2
+      echo "install.sh: unknown option: $1" >&2
       usage >&2
       exit 1
       ;;
@@ -133,15 +133,15 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "$PREFIX" != /* ]]; then
-  echo "install.sh: PREFIX должен быть абсолютным путём: $PREFIX" >&2
+  echo "install.sh: PREFIX must be an absolute path: $PREFIX" >&2
   exit 1
 fi
 if ((UNINSTALL)) && [[ -n "$config_given" ]]; then
-  echo "install.sh: --uninstall не сочетается с $config_given" >&2
+  echo "install.sh: --uninstall cannot be combined with $config_given" >&2
   exit 1
 fi
 if ((PURGE)) && ((KEEP_HISTORY)); then
-  echo "install.sh: --purge и --keep-history взаимно исключают друг друга" >&2
+  echo "install.sh: --purge and --keep-history exclude each other" >&2
   exit 1
 fi
 
@@ -154,9 +154,9 @@ config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/molva"
 data_dir="${XDG_DATA_HOME:-$HOME/.local/share}/molva"
 autostart_file="${XDG_CONFIG_HOME:-$HOME/.config}/autostart/molva.desktop"
 
-# --- манифест ---------------------------------------------------------------------------
-# Каждый созданный путь записывается в конечном виде, без DESTDIR: манифест едет внутри
-# промежуточного дерева и остаётся верным там, где это дерево окажется
+# --- manifest ---------------------------------------------------------------------------
+# Each created path is recorded in its final form, without DESTDIR: the manifest travels
+# inside the staging tree and stays correct wherever this tree ends up
 
 old_paths=()
 if [[ -f "$manifest" ]]; then
@@ -165,13 +165,13 @@ fi
 
 installed=()
 
-put() { # put РЕЖИМ ИСТОЧНИК КОНЕЧНЫЙ_ПУТЬ
+put() { # put MODE SOURCE FINAL_PATH
   install -D -m "$1" "$2" "${DESTDIR%/}$3"
   installed+=("$3")
 }
 
-# write_file РЕЖИМ КОНЕЧНЫЙ_ПУТЬ СОДЕРЖИМОЕ. Содержимое передаётся аргументом, а не по
-# конвейеру: правая часть конвейера — подоболочка, и запись в манифест из неё пропадала
+# write_file MODE FINAL_PATH CONTENT. The content is passed as an argument and not through
+# a pipeline: the right side of a pipeline is a subshell, and the manifest entry from it was lost
 write_file() {
   install -d "$(dirname "${DESTDIR%/}$2")"
   printf '%s\n' "$3" >"${DESTDIR%/}$2"
@@ -179,7 +179,7 @@ write_file() {
   installed+=("$2")
 }
 
-prune() { # убрать опустевшие родительские каталоги, не выходя за префикс
+prune() { # remove parent directories that became empty, without leaving the prefix
   local dir stop
   dir="$(dirname "${DESTDIR%/}$1")"
   stop="$root"
@@ -189,15 +189,15 @@ prune() { # убрать опустевшие родительские ката�
   done
 }
 
-# --- удаление ---------------------------------------------------------------------------
+# --- uninstall --------------------------------------------------------------------------
 
 if ((UNINSTALL)); then
   if [[ ! -f "$manifest" ]]; then
-    echo "MolvAI: нечего удалять в $root — манифеста установки нет"
+    echo "MolvAI: nothing to remove in $root — there is no install manifest"
     exit 0
   fi
 
-  # Демон держит горячую клавишу; пока он жив, снимать файлы бессмысленно
+  # The daemon holds the hotkey; while it is alive, removing the files is pointless
   if [[ -z "$DESTDIR" ]] && command -v molva >/dev/null 2>&1; then
     molva quit >/dev/null 2>&1 || true
   fi
@@ -214,64 +214,64 @@ if ((UNINSTALL)); then
   rm -f "$manifest"
   rmdir "$share" 2>/dev/null || true
 
-  echo "MolvAI $VERSION снят с $root"
-  echo "Снятые компоненты:"
+  echo "MolvAI $VERSION removed from $root"
+  echo "Removed components:"
   if ((${#removed[@]})); then
     printf '  - %s\n' "${removed[@]}"
   else
-    echo "  - ничего: файлы уже отсутствовали"
+    echo "  - nothing: the files were already absent"
   fi
 
-  # У промежуточного дерева нет живого состояния: настройки и журнал его не касаются
+  # A staging tree has no live state: the settings and the journal do not belong to it
   if [[ -n "$DESTDIR" ]]; then
     exit 0
   fi
 
-  # Настройки и журнал живут вне префикса: их судьбу решает пользователь, а не манифест
+  # The settings and the journal live outside the prefix: the user decides their fate, not the manifest
   history_paths=()
   [[ -e "$config_dir" ]] && history_paths+=("$config_dir")
   [[ -e "$data_dir" ]] && history_paths+=("$data_dir")
 
   if ((${#history_paths[@]} == 0)); then
-    echo "Настроек и журнала не найдено — удалять нечего"
+    echo "No settings or journal found — nothing to remove"
     exit 0
   fi
 
   if ((KEEP_HISTORY)); then
-    echo "Сохранены (--keep-history):"
+    echo "Kept (--keep-history):"
     printf '  - %s\n' "${history_paths[@]}"
     exit 0
   fi
 
   if ! ((PURGE)); then
     echo
-    echo "Остались настройки и журнал реплик:"
+    echo "The settings and the phrase journal remain:"
     printf '  - %s\n' "${history_paths[@]}"
     if [[ -t 0 ]]; then
-      read -r -p "Удалить их тоже? [y/N] " answer
+      read -r -p "Remove them too? [y/N] " answer
       case "$answer" in
         [yY] | [yY][eE][sS]) PURGE=1 ;;
       esac
     else
-      echo "Ввод недоступен, история сохранена: повторите с --purge или --keep-history"
+      echo "No input available, the history is kept: repeat with --purge or --keep-history"
       exit 0
     fi
   fi
 
   if ((PURGE)); then
     rm -rf "${history_paths[@]}"
-    echo "Удалены:"
+    echo "Removed:"
     printf '  - %s\n' "${history_paths[@]}"
   else
-    echo "Сохранены:"
+    echo "Kept:"
     printf '  - %s\n' "${history_paths[@]}"
   fi
   exit 0
 fi
 
-# --- проверка зависимостей: громко отказаться, ничего не поставив ------------------------
-# Обязательные — без них установка невозможна; сессионные — их даёт рабочая сессия
-# пользователя, по одному предупреждению и установка продолжается
+# --- dependency check: refuse loudly and install nothing ---------------------------------
+# Required ones: the install is impossible without them. Session ones: the user's work
+# session provides them, one warning each, and the install goes on
 
 missing=()
 absent=()
@@ -288,7 +288,7 @@ if [[ ! -x "$binary" ]]; then
   need cc
 fi
 
-# Способ вставки текста зависит от типа сессии, поэтому и проверяется по нему
+# The way to paste text depends on the session type, so the check follows it
 case "${XDG_SESSION_TYPE:-}" in
   wayland)
     want wtype
@@ -305,54 +305,54 @@ distro_id() {
 }
 
 guidance() {
-  # Один рекомендованный способ на систему. Запускаемые строки печатаются как `  $ команда`
-  # — два пробела, доллар, пробел: этот формат читают и человек, и тест
+  # One recommended way for each system. The lines to run are printed as `  $ command`
+  # — two spaces, a dollar sign, a space: both a person and a test read this format
   case "$(uname -s)" in
     Darwin)
-      echo "Поставьте их на macOS:"
+      echo "Install them on macOS:"
       echo '  $ brew install cmake pkg-config'
-      echo "  плюс инструменты командной строки Xcode: xcode-select --install"
+      echo "  plus the Xcode command line tools: xcode-select --install"
       return
       ;;
     MINGW* | MSYS* | CYGWIN*)
-      echo "Поставьте их на Windows:"
+      echo "Install them on Windows:"
       echo '  $ winget install Rustlang.Rustup Kitware.CMake'
-      echo "  плюс Build Tools for Visual Studio с рабочей нагрузкой C++"
+      echo "  plus Build Tools for Visual Studio with the C++ workload"
       return
       ;;
   esac
   case " $(distro_id) " in
     *" nixos "*)
-      echo "На NixOS всё нужное даёт флейк репозитория, ставить в систему ничего не надо:"
+      echo "On NixOS the flake of the repository gives everything needed, and nothing must be installed in the system:"
       echo '  $ nix develop --command ./install.sh'
       ;;
     *" arch "*)
-      echo "Поставьте их на Arch:"
+      echo "Install them on Arch:"
       echo '  $ sudo pacman -S --needed base-devel cmake pkgconf alsa-lib libxkbcommon rustup'
-      echo "Для Wayland дополнительно:"
+      echo "For Wayland, also:"
       echo '  $ sudo pacman -S --needed wtype wl-clipboard'
       ;;
     *" debian "* | *" ubuntu "*)
-      echo "Поставьте их на Debian или Ubuntu:"
+      echo "Install them on Debian or Ubuntu:"
       echo '  $ sudo apt install build-essential cmake pkg-config libasound2-dev libxkbcommon-dev rustup'
-      echo "Для Wayland дополнительно:"
+      echo "For Wayland, also:"
       echo '  $ sudo apt install wtype wl-clipboard'
       ;;
     *" fedora "* | *" rhel "*)
-      echo "Поставьте их на Fedora:"
+      echo "Install them on Fedora:"
       echo '  $ sudo dnf install gcc-c++ cmake pkgconf-pkg-config alsa-lib-devel libxkbcommon-devel rustup'
-      echo "Для Wayland дополнительно:"
+      echo "For Wayland, also:"
       echo '  $ sudo dnf install wtype wl-clipboard'
       ;;
     *" suse "* | *" opensuse "*)
-      echo "Поставьте их на openSUSE:"
+      echo "Install them on openSUSE:"
       echo '  $ sudo zypper install gcc-c++ cmake pkg-config alsa-devel libxkbcommon-devel rustup'
-      echo "Для Wayland дополнительно:"
+      echo "For Wayland, also:"
       echo '  $ sudo zypper install wtype wl-clipboard'
       ;;
     *)
-      echo "Поставьте их пакетным менеджером вашей системы:"
-      echo "  компилятор C и C++, cmake, pkg-config, заголовки ALSA, rustup"
+      echo "Install them with the package manager of your system:"
+      echo "  a C and C++ compiler, cmake, pkg-config, ALSA headers, rustup"
       echo "  https://rustup.rs"
       ;;
   esac
@@ -360,7 +360,7 @@ guidance() {
 
 if ((${#missing[@]})); then
   {
-    echo "install.sh: не хватает зависимостей:"
+    echo "install.sh: dependencies are missing:"
     printf '  - %s\n' "${missing[@]}"
     echo
     guidance
@@ -369,24 +369,24 @@ if ((${#missing[@]})); then
 fi
 
 if ((${#absent[@]})); then
-  printf 'install.sh: не найдено (даёт рабочая сессия, установка продолжается): %s\n' \
+  printf 'install.sh: not found (the work session provides it, the install goes on): %s\n' \
     "${absent[@]}" >&2
-  echo "install.sh: без них вставка текста упадёт на буфер обмена — рабочий режим, но не тот" >&2
+  echo "install.sh: without them paste falls back to the clipboard — a working mode, but not the best one" >&2
 fi
 
 if ((CHECK_ONLY)); then
-  echo "install.sh: обязательные зависимости на месте, установка возможна"
+  echo "install.sh: the required dependencies are present, the install is possible"
   exit 0
 fi
 
-# --- установка --------------------------------------------------------------------------
+# --- install ----------------------------------------------------------------------------
 
 if [[ ! -x "$binary" ]]; then
-  echo "install.sh: собираю MolvAI $VERSION (это надолго в первый раз)"
+  echo "install.sh: building MolvAI $VERSION (this takes long the first time)"
   (cd "$here" && cargo build --locked --release --bin molva)
 fi
 if [[ ! -x "$binary" ]]; then
-  echo "install.sh: сборка не дала $binary" >&2
+  echo "install.sh: the build did not give $binary" >&2
   exit 1
 fi
 
@@ -400,7 +400,7 @@ desktop_entry() {
 [Desktop Entry]
 Type=Application
 Name=MolvAI
-Comment=Системный голосовой ввод
+Comment=System-wide voice input
 Exec=$PREFIX/bin/molva daemon
 Terminal=false
 Categories=Utility;Accessibility;
@@ -414,13 +414,13 @@ fi
 
 if ((AUTOSTART)); then
   if [[ -n "$DESTDIR" ]]; then
-    echo "install.sh: --autostart пропущен: с --destdir живое состояние не трогается" >&2
+    echo "install.sh: --autostart skipped: with --destdir the live state is not touched" >&2
   else
     write_file 644 "$autostart_file" "$(desktop_entry)"
   fi
 fi
 
-# Объявительный смысл флагов: что прошлый запуск поставил, а этот — нет, снимается
+# The declarative meaning of the flags: what the last run installed and this one did not is removed
 for path in "${old_paths[@]}"; do
   keep=0
   for now in "${installed[@]}"; do
@@ -433,23 +433,23 @@ for path in "${old_paths[@]}"; do
 done
 
 {
-  echo "# манифест установки MolvAI $VERSION"
+  echo "# MolvAI $VERSION install manifest"
   printf '%s\n' "${installed[@]}"
 } >"$manifest"
 
-echo "MolvAI $VERSION установлен в $root"
+echo "MolvAI $VERSION installed in $root"
 printf '  - %s\n' "${installed[@]}"
-echo "Манифест: $manifest"
+echo "Manifest: $manifest"
 
 case ":$PATH:" in
   *":$PREFIX/bin:"*) ;;
   *)
     echo
-    echo "install.sh: $PREFIX/bin не в PATH. Добавьте в файл вашей оболочки:"
+    echo "install.sh: $PREFIX/bin is not in PATH. Add this to the file of your shell:"
     echo "  export PATH=\"$PREFIX/bin:\$PATH\""
     ;;
 esac
 
 echo
-echo "Дальше: molva model download small && molva devices && molva test-inject"
-echo "Удалить: $here/install.sh --uninstall"
+echo "Next: molva model download small && molva devices && molva test-inject"
+echo "Uninstall: $here/install.sh --uninstall"

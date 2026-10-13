@@ -1,6 +1,6 @@
-# cargo-about: из чего собирается THIRD-PARTY.md.
-# Список разрешённых лицензий держится в согласии с deny.toml: там он гейт,
-# здесь — фильтр отчёта.
+# cargo-about: what THIRD-PARTY.md is built from
+# The list of accepted licenses stays in step with deny.toml:
+# there it is the gate, here it is the filter of the report
 
 accepted = [
     "MIT",
@@ -17,17 +17,17 @@ accepted = [
     "BSL-1.0",
     "0BSD",
     "OpenSSL",
-    "Unlicense",            # whisper-rs, memchr: общественное достояние
+    "Unlicense",            # whisper-rs, memchr: public domain
     "MIT-0",
-    "CDLA-Permissive-2.0",  # корневые сертификаты Mozilla в webpki-roots: данные
+    "CDLA-Permissive-2.0",  # Mozilla root certificates in webpki-roots: data
 ]
 
-# Отчёт про то, что реально попадает в бинарник, а не про dev-зависимости
+# The report covers what really enters the binary, not the dev dependencies
 ignore-build-dependencies = true
 ignore-dev-dependencies = true
 ignore-transitive-dependencies = false
 
-# Целевые платформы: лицензии зависят от того, что вообще собирается на платформе
+# Target platforms: licenses depend on what the platform builds at all
 targets = [
     "x86_64-unknown-linux-gnu",
     "aarch64-unknown-linux-gnu",
