@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-//! Запуск демона и разбор файлов через CLI `molva`.
+//! Start of the daemon and transcription of files through the `molva` CLI
 //!
-//! GUI останавливает только тот демон, который запустил сам: чужой процесс переживает Quit.
+//! The GUI stops only the daemon that it started itself: a foreign process survives Quit
 
 use std::collections::VecDeque;
 use std::io::{BufRead, BufReader};
@@ -15,25 +15,25 @@ use crate::lock;
 
 #[derive(Debug, Error)]
 pub enum SidecarError {
-    #[error("исполняемый файл molva не найден: положите его рядом с GUI или в PATH")]
+    #[error("molva executable not found: put it next to the GUI or in PATH")]
     NotFound,
-    #[error("не удалось запустить {program}: {source}")]
+    #[error("cannot start {program}: {source}")]
     Spawn {
         program: String,
         #[source]
         source: std::io::Error,
     },
-    #[error("`molva transcribe` завершился с кодом {code}: {stderr}")]
+    #[error("`molva transcribe` exited with code {code}: {stderr}")]
     Failed { code: i32, stderr: String },
-    #[error("разбор отменён")]
+    #[error("transcription cancelled")]
     Cancelled,
-    #[error("`molva transcribe` вернул не JSON: {0}")]
+    #[error("`molva transcribe` returned output that is not JSON: {0}")]
     BadOutput(String),
 }
 
-/// Где искать `molva`: рядом с GUI, потом в целевом каталоге сборки, потом в PATH.
+/// Where to look for `molva`: next to the GUI, then in the build target directory, then in PATH
 ///
-/// Проверка PATH оставлена системе: `Command` сам найдёт бинарь по имени.
+/// The system checks PATH: `Command` finds the binary by name on its own
 pub fn locate() -> Result<PathBuf, SidecarError> {
     let exe_name = if cfg!(windows) { "molva.exe" } else { "molva" };
     if let Ok(current) = std::env::current_exe() {
@@ -56,13 +56,13 @@ pub struct DaemonFailure {
     pub last_line: String,
 }
 
-/// Убрать цветовые коды ANSI, которые tracing пишет и в трубу.
+/// Remove the ANSI color codes that tracing also writes to the pipe
 pub fn strip_ansi(line: &str) -> String {
     let mut out = String::with_capacity(line.len());
     let mut chars = line.chars();
     while let Some(c) = chars.next() {
         if c == '\u{1b}' {
-            // CSI: ESC [ параметры… финальный байт из диапазона @–~.
+            // CSI: ESC [ parameters, then a final byte from the range @ to ~
             if chars.next() == Some('[') {
                 for c in chars.by_ref() {
                     if ('@'..='~').contains(&c) {
@@ -77,19 +77,19 @@ pub fn strip_ansi(line: &str) -> String {
     out
 }
 
-/// Сколько последних строк stderr демона держится в памяти.
+/// How many of the last daemon stderr lines the process keeps in memory
 const STDERR_TAIL: usize = 20;
 
-/// Демон, запущенный этим процессом.
+/// The daemon that this process started
 #[derive(Debug, Default)]
 pub struct Daemon {
     child: Option<Child>,
-    /// Хвост stderr: его читает отдельный поток, иначе полная труба остановила бы демона.
+    /// Tail of stderr: a separate thread reads it, otherwise a full pipe would stop the daemon
     stderr_tail: Arc<Mutex<VecDeque<String>>>,
 }
 
 impl Daemon {
-    /// Запустить `molva daemon`. Повторный вызов при живом процессе ничего не делает.
+    /// Start `molva daemon`. A second call while the process lives does nothing
     pub fn start(&mut self) -> Result<(), SidecarError> {
         if self.is_alive() {
             return Ok(());
@@ -132,10 +132,11 @@ impl Daemon {
         Ok(())
     }
 
-    /// Упал ли запущенный нами демон, и что он сказал последним.
+    /// Whether the daemon that we started has crashed, and what it said last
     ///
-    /// Поток чтения может ещё не дочитать трубу в момент выхода процесса, поэтому последняя
-    /// строка ждётся недолго: без неё окно показало бы код выхода без причины.
+    /// The reader thread may not have drained the pipe yet when the process exits. So we wait
+    /// a short time for the last line: without it the window would show an exit code with no
+    /// reason
     pub fn failure(&mut self) -> Option<DaemonFailure> {
         let status = self.child.as_mut()?.try_wait().ok()??;
         if status.success() {
@@ -155,7 +156,7 @@ impl Daemon {
         })
     }
 
-    /// Жив ли запущенный нами процесс.
+    /// Whether the process that we started is alive
     pub fn is_alive(&mut self) -> bool {
         match self.child.as_mut() {
             None => false,
@@ -163,12 +164,12 @@ impl Daemon {
         }
     }
 
-    /// Мы ли владеем демоном: только его Quit имеет право останавливать.
+    /// Whether we own the daemon: only our own Quit may stop it
     pub fn is_ours(&self) -> bool {
         self.child.is_some()
     }
 
-    /// Дождаться завершения после `Command::Shutdown`, иначе убить.
+    /// Wait for the exit after `Command::Shutdown`, otherwise kill
     pub fn stop(&mut self) {
         if let Some(mut child) = self.child.take() {
             if matches!(child.try_wait(), Ok(None)) {
@@ -179,17 +180,17 @@ impl Daemon {
     }
 }
 
-/// Прогресс разбора файла, как он уходит во фронтенд.
+/// File transcription progress, as it goes to the frontend
 pub type ProgressSink = Arc<dyn Fn(&str) + Send + Sync>;
 
-/// Запущенные разборы файлов: ключ — идентификатор задачи из фронтенда.
+/// Running file transcriptions: the key is the job identifier from the frontend
 #[derive(Debug, Default)]
 pub struct Transcriptions {
     running: Mutex<Vec<(String, Child)>>,
 }
 
 impl Transcriptions {
-    /// Отменить разбор по идентификатору. `false` — такой задачи уже нет.
+    /// Cancel a transcription by identifier. `false` means the job no longer exists
     pub fn cancel(&self, id: &str) -> bool {
         let mut running = lock(&self.running);
         if let Some(pos) = running.iter().position(|(key, _)| key == id) {
@@ -207,10 +208,11 @@ impl Transcriptions {
     }
 }
 
-/// Разобрать аудиофайл через `molva transcribe <path> --json`.
+/// Transcribe an audio file through `molva transcribe <path> --json`
 ///
-/// Прогресс идёт в `progress` построчно из stderr, результат — распарсенный JSON stdout.
-/// Команду реализует дорожка E; до этого вызов честно сообщает, что подкоманды нет.
+/// Progress goes to `progress` line by line from stderr, and the result is the parsed JSON
+/// from stdout. Track E implements the command; until then the call reports plainly that the
+/// subcommand does not exist
 pub fn transcribe(
     registry: &Transcriptions,
     id: &str,
@@ -238,7 +240,7 @@ pub fn transcribe(
         running.push((id.to_string(), child));
     }
 
-    // stderr читаем в отдельном потоке: иначе полный буфер трубы остановит процесс.
+    // We read stderr in a separate thread: otherwise a full pipe buffer stops the process
     let stderr_thread = stderr.map(|stderr| {
         std::thread::spawn(move || {
             let mut collected = String::new();
@@ -265,7 +267,7 @@ pub fn transcribe(
     let status = {
         let mut running = lock(&registry.running);
         match running.iter().position(|(key, _)| key == id) {
-            // Задачу вынули из реестра — значит её отменили.
+            // Someone took the job out of the registry, so it was cancelled
             None => return Err(SidecarError::Cancelled),
             Some(pos) => {
                 let (_, mut child) = running.remove(pos);
@@ -304,16 +306,17 @@ mod tests {
         let mut daemon = Daemon::default();
         assert!(!daemon.is_ours());
         assert!(!daemon.is_alive());
-        // Остановка того, чего мы не запускали, ничего не ломает.
+        // Stopping what we did not start breaks nothing
         daemon.stop();
     }
 
     #[test]
     fn colour_codes_are_stripped_from_a_log_line() {
         assert_eq!(
-            strip_ansi("\u{1b}[2m2026\u{1b}[0m \u{1b}[32m INFO\u{1b}[0m демон запускается"),
-            "2026  INFO демон запускается"
+            strip_ansi("\u{1b}[2m2026\u{1b}[0m \u{1b}[32m INFO\u{1b}[0m daemon is starting"),
+            "2026  INFO daemon is starting"
         );
+        // Non-ASCII text must pass through unchanged
         assert_eq!(
             strip_ansi("ошибка: сеть недоступна"),
             "ошибка: сеть недоступна"
@@ -337,22 +340,22 @@ mod tests {
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
-        panic!("скрипт не завершился");
+        panic!("the script did not finish");
     }
 
     #[cfg(unix)]
     #[test]
     fn a_failed_daemon_reports_its_last_stderr_line_and_exit_code() {
         let mut daemon = daemon_from_script(
-            "printf '\\033[32m INFO\\033[0m весов нет, скачиваю\\n' >&2; \
-             echo 'ошибка: сеть недоступна (https://huggingface.co)' >&2; exit 5",
+            "printf '\\033[32m INFO\\033[0m no weights, downloading\\n' >&2; \
+             echo 'error: network unreachable (https://huggingface.co)' >&2; exit 5",
         );
         wait_for_exit(&mut daemon);
         let exit = daemon.failure().unwrap();
         assert_eq!(exit.code, Some(5));
         assert_eq!(
             exit.last_line,
-            "ошибка: сеть недоступна (https://huggingface.co)"
+            "error: network unreachable (https://huggingface.co)"
         );
     }
 
@@ -363,7 +366,7 @@ mod tests {
         assert!(running.failure().is_none());
         running.stop();
 
-        let mut clean = daemon_from_script("echo 'всё хорошо' >&2; exit 0");
+        let mut clean = daemon_from_script("echo 'all good' >&2; exit 0");
         wait_for_exit(&mut clean);
         assert!(clean.failure().is_none());
     }
@@ -371,6 +374,6 @@ mod tests {
     #[test]
     fn cancelling_an_unknown_task_reports_that_there_was_none() {
         let registry = Transcriptions::default();
-        assert!(!registry.cancel("нет такой задачи"));
+        assert!(!registry.cancel("no such job"));
     }
 }

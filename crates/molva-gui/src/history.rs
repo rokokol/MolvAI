@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-//! Чтение и правка журнала реплик (JSONL) для вкладки «История».
+//! Reading and editing of the phrase journal (JSONL) for the History tab
 //!
-//! Временная реализация: дорожка D даёт `molva_core::app::journal::FileJournal`
-//! с `open/load_all/delete/clear`; тогда тело функций заменяется вызовами ядра,
-//! а фильтрация (чистая функция ниже) остаётся здесь.
+//! A temporary implementation: track D provides `molva_core::app::journal::FileJournal`
+//! with `open/load_all/delete/clear`. Then calls to the core replace the function bodies,
+//! and the filtering (the pure function below) stays here
 
 use std::path::{Path, PathBuf};
 
@@ -16,32 +16,32 @@ use uuid::Uuid;
 
 #[derive(Debug, Error)]
 pub enum HistoryError {
-    #[error("не удалось прочитать журнал {path}: {source}")]
+    #[error("cannot read the journal {path}: {source}")]
     Read {
         path: PathBuf,
         #[source]
         source: std::io::Error,
     },
-    #[error("не удалось записать журнал {path}: {source}")]
+    #[error("cannot write the journal {path}: {source}")]
     Write {
         path: PathBuf,
         #[source]
         source: std::io::Error,
     },
-    #[error("не удалось определить каталог данных пользователя")]
+    #[error("cannot determine the user data directory")]
     NoDataDir,
-    #[error("не удалось сериализовать запись журнала: {0}")]
+    #[error("cannot serialize the journal entry: {0}")]
     Serialize(String),
 }
 
-/// Каталог данных: `$XDG_DATA_HOME/molva` и аналоги.
+/// Data directory: `$XDG_DATA_HOME/molva` and its equivalents
 pub fn data_dir() -> Result<PathBuf, HistoryError> {
     directories::ProjectDirs::from("", "", "molva")
         .map(|dirs| dirs.data_dir().to_path_buf())
         .ok_or(HistoryError::NoDataDir)
 }
 
-/// Путь к журналу: из конфига, а если там пусто — `<каталог данных>/journal.jsonl`.
+/// Journal path: from the config, or `<data directory>/journal.jsonl` if the config is empty
 pub fn journal_path(config: &Config) -> Result<PathBuf, HistoryError> {
     if !config.journal.path.trim().is_empty() {
         return Ok(PathBuf::from(&config.journal.path));
@@ -49,9 +49,9 @@ pub fn journal_path(config: &Config) -> Result<PathBuf, HistoryError> {
     Ok(data_dir()?.join("journal.jsonl"))
 }
 
-/// Разбор журнала: битые строки пропускаются, их число возвращается вторым значением.
+/// Parse the journal: broken lines are skipped, and their count is the second return value
 ///
-/// Журнал пишется дописыванием, поэтому оборванная последняя строка — норма, а не авария.
+/// The journal is written by appending, so a truncated last line is normal, not a failure
 pub fn parse_lines(text: &str) -> (Vec<Entry>, usize) {
     let mut entries = Vec::new();
     let mut broken = 0usize;
@@ -64,16 +64,17 @@ pub fn parse_lines(text: &str) -> (Vec<Entry>, usize) {
             Ok(entry) => entries.push(entry),
             Err(err) => {
                 broken += 1;
-                tracing::warn!(line = number + 1, %err, "пропущена битая строка журнала");
+                tracing::warn!(line = number + 1, %err, "skipped a broken journal line");
             }
         }
     }
     (entries, broken)
 }
 
-/// Все записи журнала, новые сверху. Отсутствующий файл — пустая история.
-/// Записи по настройкам через ядро: с `journal.encrypt = true` тексты приходят расшифрованными,
-/// а без ключа — пустыми, но никогда шифротекстом в окне истории.
+/// All journal entries, newest first. A missing file means an empty history.
+/// The entries load by the settings through the core: with `journal.encrypt = true` the texts
+/// arrive decrypted, and without a key they arrive empty, but never as ciphertext in the
+/// history window
 pub fn load_for(config: &Config) -> Result<Vec<Entry>, HistoryError> {
     let path = journal_path(config)?;
     let read_error = |error: molva_core::domain::journal::JournalError| HistoryError::Read {
@@ -100,7 +101,7 @@ pub fn load_all(path: &Path) -> Result<Vec<Entry>, HistoryError> {
     Ok(entries)
 }
 
-/// Перезаписать журнал атомарно: временный файл рядом плюс переименование.
+/// Rewrite the journal atomically: a temporary file next to it, then a rename
 fn write_atomic(path: &Path, entries: &[Entry]) -> Result<(), HistoryError> {
     let parent = path.parent().unwrap_or(Path::new("."));
     std::fs::create_dir_all(parent).map_err(|source| HistoryError::Write {
@@ -108,7 +109,7 @@ fn write_atomic(path: &Path, entries: &[Entry]) -> Result<(), HistoryError> {
         source,
     })?;
     let mut body = String::new();
-    // Файл дописывается по времени, поэтому на диск возвращаем хронологический порядок.
+    // The file grows by appending in time order, so we write the chronological order back to disk
     let mut ordered: Vec<&Entry> = entries.iter().collect();
     ordered.sort_by_key(|entry| entry.ts);
     for entry in ordered {
@@ -128,7 +129,7 @@ fn write_atomic(path: &Path, entries: &[Entry]) -> Result<(), HistoryError> {
     })
 }
 
-/// Удалить одну реплику. `false` — записи с таким идентификатором не было.
+/// Delete one phrase. `false` means no entry had this identifier
 pub fn delete(path: &Path, id: Uuid) -> Result<bool, HistoryError> {
     let entries = load_all(path)?;
     let before = entries.len();
@@ -140,22 +141,22 @@ pub fn delete(path: &Path, id: Uuid) -> Result<bool, HistoryError> {
     Ok(true)
 }
 
-/// Очистить журнал целиком.
+/// Clear the whole journal
 pub fn clear(path: &Path) -> Result<(), HistoryError> {
     write_atomic(path, &[])
 }
 
-/// Условия отбора для вкладки «История». Пустые поля ничего не ограничивают.
+/// Selection conditions for the History tab. Empty fields restrict nothing
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Filter {
-    /// Подстрока, без учёта регистра; ищется в исходном и итоговом тексте.
+    /// Substring, case-insensitive; the search covers the raw and the final text
     pub query: String,
-    /// Точное имя приложения из записи.
+    /// Exact application name from the entry
     pub app: String,
     pub since: Option<DateTime<Utc>>,
     pub until: Option<DateTime<Utc>>,
-    /// 0 — без ограничения.
+    /// 0 means no limit
     pub limit: usize,
 }
 
@@ -166,7 +167,7 @@ fn matches_query(entry: &Entry, needle: &str) -> bool {
         .any(|text| text.to_lowercase().contains(needle))
 }
 
-/// Отбор записей: подстрока, приложение, диапазон дат, ограничение по количеству.
+/// Select entries: substring, application, date range, limit on the count
 pub fn filter_entries(entries: &[Entry], filter: &Filter) -> Vec<Entry> {
     let needle = filter.query.trim().to_lowercase();
     let app = filter.app.trim();
@@ -184,7 +185,7 @@ pub fn filter_entries(entries: &[Entry], filter: &Filter) -> Vec<Entry> {
     out
 }
 
-/// Приложения, встречающиеся в журнале, по алфавиту — для выпадающего фильтра.
+/// Applications that occur in the journal, in alphabetical order, for the drop-down filter
 pub fn apps_of(entries: &[Entry]) -> Vec<String> {
     let mut apps: Vec<String> = entries.iter().filter_map(|e| e.app.clone()).collect();
     apps.sort();
@@ -241,7 +242,7 @@ mod tests {
     #[test]
     fn broken_lines_are_skipped_and_counted() {
         let good = serde_json::to_string(&entry(1, "2026-09-01T10:00:00Z", None, "раз")).unwrap();
-        let text = format!("{good}\n{{битая строка\n\n{good}\n");
+        let text = format!("{good}\n{{broken line\n\n{good}\n");
         let (entries, broken) = parse_lines(&text);
         assert_eq!(entries.len(), 2);
         assert_eq!(broken, 1);
@@ -357,7 +358,7 @@ mod tests {
             .collect();
         assert!(
             leftovers.is_empty(),
-            "остались временные файлы: {leftovers:?}"
+            "temporary files remain: {leftovers:?}"
         );
     }
 
