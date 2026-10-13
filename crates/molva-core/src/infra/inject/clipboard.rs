@@ -85,7 +85,7 @@ impl<B: ClipboardBackend> ClipboardGuard<B> {
 /// System clipboard: arboard, and if it did not start, `wl-copy`/`wl-paste`
 ///
 /// On Wayland arboard needs the `wlr-data-control` protocol; on compositors without it
-/// (and in sessions without permission for the protocol) the external utilities remain.
+/// (and in sessions without permission for the protocol) the external utilities remain
 ///
 /// There is a second, less obvious reason to keep `wl-copy`: on Wayland the clipboard content
 /// lives in the owner process. A short-lived command such as `molva test-inject` puts the text
