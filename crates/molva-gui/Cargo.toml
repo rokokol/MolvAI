@@ -38,6 +38,7 @@ uuid = { workspace = true }
 directories = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+sys-locale = "0.3.2"
 
 # Вторая копия приложения показывает окно первой; на мобильных плагина нет.
 [target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]

@@ -1,30 +1,27 @@
 // SPDX-License-Identifier: MIT
-// Выбор языка интерфейса: явная настройка важнее системы, а незнакомая система — английский.
+// Lookup rules of the window's dictionaries. Which language applies is resolved on the Rust
+// side and tested there, in `crates/molva-gui/src/i18n.rs`
 
 import { describe, expect, it } from "vitest";
 
-import { resolveLang } from "./index";
+import en from "./en.json";
+import ru from "./ru.json";
+import { translate } from "./index";
 
-describe("resolveLang", () => {
-  it("берёт язык из настройки, если он задан явно", () => {
-    expect(resolveLang("ru", "en-US")).toBe("ru");
-    expect(resolveLang("en", "ru-RU")).toBe("en");
+describe("translate", () => {
+  it("takes the string from the dictionary of the language", () => {
+    expect(translate("ru", "tray.quit")).toBe(ru["tray.quit"]);
+    expect(translate("en", "tray.quit")).toBe(en["tray.quit"]);
+    expect(ru["tray.quit"]).not.toBe(en["tray.quit"]);
   });
 
-  it("при auto следует языку системы", () => {
-    expect(resolveLang("auto", "ru-RU")).toBe("ru");
-    expect(resolveLang("auto", "ru")).toBe("ru");
-    expect(resolveLang("auto", "en-GB")).toBe("en");
+  it("shows a missing key as it is", () => {
+    expect(translate("ru", "no.such.key")).toBe("no.such.key");
   });
 
-  it("незнакомый или пустой язык системы даёт английский", () => {
-    expect(resolveLang("auto", "de-DE")).toBe("en");
-    expect(resolveLang("auto", "")).toBe("en");
-    expect(resolveLang(undefined, "C")).toBe("en");
-  });
-
-  it("мусор в настройке ведёт себя как auto", () => {
-    expect(resolveLang("kz", "ru-RU")).toBe("ru");
-    expect(resolveLang("kz", "fr-FR")).toBe("en");
+  it("substitutes variables and leaves a missing one visible", () => {
+    const text = translate("en", "validation.range", { min: 1 });
+    expect(text).toContain("1");
+    expect(text).toContain("{max}");
   });
 });

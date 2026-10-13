@@ -21,6 +21,7 @@
 pub mod commands;
 pub mod history;
 pub mod hotkeys;
+pub mod i18n;
 pub mod ipc;
 pub mod sidecar;
 pub mod stats;
@@ -62,7 +63,7 @@ struct DaemonPresence {
 pub fn notify_error(app: &AppHandle, message: &str, hint: Option<&str>) {
     use tauri_plugin_notification::NotificationExt;
     let body = match hint {
-        Some(hint) => format!("{message}\nЧто делать: {hint}"),
+        Some(hint) => format!("{message}\n{}: {hint}", i18n::t("common.nextStep")),
         None => message.to_string(),
     };
     if let Err(err) = app
@@ -110,7 +111,8 @@ fn handle_event(app: &AppHandle, event: Event) {
             message,
             hint,
         } => {
-            tracing::warn!(?code, %message, "ошибка демона");
+            tracing::warn!(?code, %message, "daemon error");
+            let message = format!("{}: {message}", i18n::daemon_error_title(code));
             notify_error(app, &message, hint.as_deref());
         }
         Event::ConfigReloaded => {
@@ -137,7 +139,7 @@ fn spawn_subscription(app: AppHandle) {
                     "molva://daemon",
                     DaemonPresence {
                         connected: false,
-                        message: Some(err.to_string()),
+                        message: Some(err.user_message()),
                         hint: err.hint(),
                     },
                 );
@@ -173,8 +175,8 @@ fn spawn_subscription(app: AppHandle) {
                     "molva://daemon",
                     DaemonPresence {
                         connected: false,
-                        message: Some("демон закрыл соединение".into()),
-                        hint: Some("Проверьте, работает ли `molva daemon`".into()),
+                        message: Some(i18n::t("daemon.closed")),
+                        hint: Some(i18n::t("daemon.closedHint")),
                     },
                 );
                 app.state::<AppState>().remember_state(None);
@@ -265,6 +267,7 @@ pub fn run() {
             commands::stats_export_csv,
             commands::transcribe_file,
             commands::transcribe_cancel,
+            commands::ui_language,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 
 import { api, asCommandError } from "./api";
-import { I18nContext, resolveLang, translate, type Lang } from "./i18n";
+import { I18nContext, isLang, translate, type Lang } from "./i18n";
 import type {
   CommandError,
   Config,
@@ -54,7 +54,20 @@ export default function App() {
   const [hypothesis, setHypothesis] = useState("");
   const [error, setError] = useState<CommandError | null>(null);
 
-  const lang: Lang = resolveLang(config?.ui_language, navigator.language);
+  const [lang, setLang] = useState<Lang>("en");
+  // Every settings change can change the language: ask again rather than resolve it here
+  useEffect(() => {
+    api
+      .uiLanguage()
+      .then((code) => {
+        if (isLang(code)) {
+          setLang(code);
+        }
+      })
+      .catch(() => {
+        // Without an answer the window stays in English, the fallback language
+      });
+  }, [config]);
   const t = useCallback(
     (key: string, vars?: Record<string, string | number>) => translate(lang, key, vars),
     [lang],

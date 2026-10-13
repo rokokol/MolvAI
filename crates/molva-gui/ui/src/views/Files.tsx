@@ -51,7 +51,7 @@ export default function Files({ onError }: ViewProps) {
       })
       .catch((err) => {
         const error = asCommandError(err);
-        const cancelled = error.message.includes("отмен");
+        const cancelled = error.kind === "cancelled";
         update(id, {
           status: cancelled ? "cancelled" : "failed",
           progress: error.message,

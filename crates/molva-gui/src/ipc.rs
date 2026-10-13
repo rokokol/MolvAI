@@ -13,6 +13,8 @@ use molva_core::ipc::{Command, ErrorCode, Event, IpcError, Request, Response};
 use serde_json::Value;
 use thiserror::Error;
 
+use crate::i18n;
+
 /// Счётчик идентификаторов запросов на весь процесс: ответы сопоставляются по нему.
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -36,11 +38,25 @@ impl IpcClientError {
     /// Что предложить пользователю следующим шагом — попадает в уведомление и в UI.
     pub fn hint(&self) -> Option<String> {
         match self {
-            Self::NotRunning { .. } | Self::Disconnected => {
-                Some("Запустите демон кнопкой «Запустить демон» или командой `molva daemon`".into())
-            }
+            Self::NotRunning { .. } | Self::Disconnected => Some(i18n::t("daemon.notRunningHint")),
             Self::Daemon(err) => err.hint.clone(),
             _ => None,
+        }
+    }
+
+    /// The message for the window and the notice, in the interface language
+    ///
+    /// `Display` stays English for the log. The failures a user acts on are translated; the
+    /// rest are protocol and transport details, kept as they are. A daemon error gets a
+    /// translated title by its code, and the daemon's own English text after it
+    pub fn user_message(&self) -> String {
+        match self {
+            Self::NotRunning { path, reason } => {
+                i18n::tv("daemon.notRunning", &[("path", path), ("reason", reason)])
+            }
+            Self::Disconnected => i18n::t("daemon.closed"),
+            Self::Daemon(err) => format!("{}: {}", i18n::daemon_error_title(err.code), err.message),
+            _ => self.to_string(),
         }
     }
 

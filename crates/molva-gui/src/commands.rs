@@ -24,6 +24,7 @@ use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use uuid::Uuid;
 
 use crate::history::{self, Filter, HistoryError};
+use crate::i18n;
 use crate::ipc::{self, IpcClientError};
 use crate::lock;
 use crate::sidecar::{self, Daemon, DaemonFailure, SidecarError, Transcriptions};
@@ -67,7 +68,7 @@ impl From<IpcClientError> for CommandError {
             "daemon"
         };
         let hint = err.hint();
-        Self::new(kind, err.to_string()).with_hint(hint)
+        Self::new(kind, err.user_message()).with_hint(hint)
     }
 }
 
@@ -86,13 +87,18 @@ impl From<HistoryError> for CommandError {
 impl From<SidecarError> for CommandError {
     fn from(err: SidecarError) -> Self {
         let hint = match err {
-            SidecarError::NotFound | SidecarError::Spawn { .. } => Some(
-                "Соберите CLI (`cargo build -p molva`) и положите `molva` рядом с GUI или в PATH"
-                    .to_string(),
-            ),
+            SidecarError::NotFound | SidecarError::Spawn { .. } => {
+                Some(i18n::t("files.cliMissingHint"))
+            }
             _ => None,
         };
-        Self::new("sidecar", err.to_string()).with_hint(hint)
+        // The window tells a cancel from a failure by the kind, never by the wording
+        let kind = if matches!(err, SidecarError::Cancelled) {
+            "cancelled"
+        } else {
+            "sidecar"
+        };
+        Self::new(kind, err.to_string()).with_hint(hint)
     }
 }
 
@@ -107,7 +113,7 @@ pub struct ValidationError {
 impl From<ValidationError> for CommandError {
     fn from(err: ValidationError) -> Self {
         let hint = (!err.allowed.is_empty())
-            .then(|| format!("Допустимые значения: {}", err.allowed.join(", ")));
+            .then(|| i18n::tv("validation.allowed", &[("values", &err.allowed.join(", "))]));
         Self {
             kind: "validation".into(),
             message: err.message,
@@ -123,7 +129,7 @@ fn one_of(field: &str, value: &str, allowed: &[&str]) -> Result<(), ValidationEr
     }
     Err(ValidationError {
         field: field.into(),
-        message: format!("недопустимое значение «{value}»"),
+        message: i18n::tv("validation.invalidValue", &[("value", value)]),
         allowed: allowed.iter().map(ToString::to_string).collect(),
     })
 }
@@ -134,8 +140,11 @@ fn in_range(field: &str, value: f32, min: f32, max: f32) -> Result<(), Validatio
     }
     Err(ValidationError {
         field: field.into(),
-        message: format!("значение {value} вне диапазона"),
-        allowed: vec![format!("от {min} до {max}")],
+        message: i18n::tv("validation.outOfRange", &[("value", &value.to_string())]),
+        allowed: vec![i18n::tv(
+            "validation.range",
+            &[("min", &min.to_string()), ("max", &max.to_string())],
+        )],
     })
 }
 
@@ -172,14 +181,14 @@ pub fn validate_config(config: &Config) -> Result<(), ValidationError> {
     if config.audio.max_duration_secs == 0 {
         return Err(ValidationError {
             field: "audio.max_duration_secs".into(),
-            message: "длительность записи не может быть нулевой".into(),
-            allowed: vec!["от 1 секунды".into()],
+            message: i18n::t("validation.zeroDuration"),
+            allowed: vec![i18n::t("validation.minDuration")],
         });
     }
     if config.stt.model.trim().is_empty() {
         return Err(ValidationError {
             field: "stt.model".into(),
-            message: "модель распознавания не выбрана".into(),
+            message: i18n::t("validation.noModel"),
             allowed: vec![
                 "tiny".into(),
                 "base".into(),
@@ -191,7 +200,7 @@ pub fn validate_config(config: &Config) -> Result<(), ValidationError> {
     if config.llm.enabled && config.llm.base_url.trim().is_empty() {
         return Err(ValidationError {
             field: "llm.base_url".into(),
-            message: "у включённой модели должен быть адрес".into(),
+            message: i18n::t("validation.noBaseUrl"),
             allowed: vec!["http://localhost:11434/v1".into()],
         });
     }
@@ -213,23 +222,17 @@ pub fn is_cloud_provider(provider: &str) -> bool {
     !matches!(provider, "ollama" | "lmstudio" | "custom")
 }
 
-/// Встроенные стили постобработки: идентификатор и подпись для меню.
-// Идентификаторы совпадают с `molva_core::app::styles::builtin`: демон принимает только их,
-// и чужой идентификатор молча откатывался бы на стиль по умолчанию.
-pub const BUILTIN_STYLES: [(&str, &str); 6] = [
-    ("verbatim", "Как сказано"),
-    ("cleanup", "Чистка"),
-    ("messenger", "Мессенджер"),
-    ("mail", "Письмо"),
-    ("code", "Код"),
-    ("formal", "Формально"),
-];
+/// Built-in post-processing styles; the menu label of each is `style.<id>` in the dictionaries
+// The ids match `molva_core::app::styles::builtin`: the daemon accepts only these, and an
+// unknown id would silently fall back to the default style
+pub const BUILTIN_STYLES: [&str; 6] =
+    ["verbatim", "cleanup", "messenger", "mail", "code", "formal"];
 
-/// Встроенные стили плюс пользовательские из конфига, без повторов по идентификатору.
+/// Built-in styles plus the user's own from the config, without repeated ids
 pub fn builtin_style_options(config: &Config) -> Vec<(String, String)> {
     let mut options: Vec<(String, String)> = BUILTIN_STYLES
         .iter()
-        .map(|(id, name)| (id.to_string(), name.to_string()))
+        .map(|id| (id.to_string(), i18n::t(&format!("style.{id}"))))
         .collect();
     for style in &config.style.custom {
         if options.iter().any(|(id, _)| id == &style.id) {
@@ -276,6 +279,7 @@ impl AppState {
         let config_path = Config::default_path()?;
         let first_run = !config_path.exists();
         let config = Config::load_or_create(&config_path)?;
+        i18n::apply(&config.ui_language);
         Ok(Self {
             config: Mutex::new(config),
             config_path,
@@ -288,9 +292,11 @@ impl AppState {
         })
     }
 
-    /// Записать настройки на диск и запомнить их: так меняет конфиг трей.
+    /// Write the settings to disk and keep them; every settings change goes through here, so
+    /// the interface language follows the new `ui_language` at once
     pub fn replace_config(&self, config: Config) -> Result<(), ConfigError> {
         config.save(&self.config_path)?;
+        i18n::apply(&config.ui_language);
         *lock(&self.config) = config;
         Ok(())
     }
@@ -377,14 +383,17 @@ fn unreachable_status(
         std::time::SystemTime::now(),
     );
     let exit_reason = failure.map(|failure| {
-        let code = failure.code.map_or_else(
-            || "по сигналу".to_string(),
-            |code| format!("с кодом {code}"),
+        let how = failure.code.map_or_else(
+            || i18n::t("daemon.exitSignal"),
+            |code| i18n::tv("daemon.exitCode", &[("code", &code.to_string())]),
         );
         if failure.last_line.is_empty() {
-            format!("демон завершился {code}")
+            i18n::tv("daemon.exited", &[("how", &how)])
         } else {
-            format!("демон завершился {code}: {}", failure.last_line)
+            i18n::tv(
+                "daemon.exitedLine",
+                &[("how", &how), ("line", &failure.last_line)],
+            )
         }
     });
     Status {
@@ -620,8 +629,7 @@ pub fn import_config(state: State<'_, AppState>, path: String) -> Result<Config,
         .map_err(|e| CommandError::new("config", format!("{}: {e}", path.display())))?;
     let config = Config::from_toml_str(&path, &text)?;
     validate_config(&config)?;
-    config.save(state.config_path())?;
-    *lock(&state.config) = config.clone();
+    state.replace_config(config.clone())?;
     notify_config_reload();
     Ok(config)
 }
@@ -629,10 +637,15 @@ pub fn import_config(state: State<'_, AppState>, path: String) -> Result<Config,
 #[tauri::command]
 pub fn reset_config(state: State<'_, AppState>) -> Result<Config, CommandError> {
     let config = Config::default();
-    config.save(state.config_path())?;
-    *lock(&state.config) = config.clone();
+    state.replace_config(config.clone())?;
     notify_config_reload();
     Ok(config)
+}
+
+/// The interface language, resolved on the Rust side only so the window and the tray agree
+#[tauri::command]
+pub fn ui_language() -> &'static str {
+    i18n::current().code()
 }
 
 #[tauri::command]
@@ -650,9 +663,8 @@ pub fn set_autostart<R: Runtime>(app: AppHandle<R>, enabled: bool) -> Result<boo
         manager.disable()
     };
     result.map_err(|e| {
-        CommandError::new("autostart", e.to_string()).with_hint(Some(
-            "Проверьте права на запись в каталог автозапуска пользователя".into(),
-        ))
+        CommandError::new("autostart", e.to_string())
+            .with_hint(Some(i18n::t("settings.autostartHint")))
     })?;
     Ok(manager.is_enabled().unwrap_or(enabled))
 }

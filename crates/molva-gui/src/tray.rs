@@ -12,7 +12,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{AppHandle, Manager, Wry};
 
 use crate::commands::{builtin_style_options, AppState};
-use crate::ipc;
+use crate::{i18n, ipc};
 
 pub const TRAY_ID: &str = "molva";
 
@@ -20,13 +20,8 @@ const ICON_IDLE: &[u8] = include_bytes!("../icons/tray-idle.png");
 const ICON_RECORDING: &[u8] = include_bytes!("../icons/tray-recording.png");
 const ICON_PROCESSING: &[u8] = include_bytes!("../icons/tray-processing.png");
 
-/// Режимы вывода в подменю Output.
-const OUTPUT_MODES: [(&str, &str); 4] = [
-    ("auto", "Авто"),
-    ("paste", "Вставка"),
-    ("type", "Набор"),
-    ("clipboard", "Только буфер"),
-];
+/// Output modes in the Output submenu; the label of each is `settings.output.<mode>`
+const OUTPUT_MODES: [&str; 4] = ["auto", "paste", "type", "clipboard"];
 
 /// Иконка и подсказка по состоянию демона. `None` — демон не запущен.
 fn icon_bytes(state: Option<DaemonState>) -> &'static [u8] {
@@ -74,24 +69,34 @@ pub fn should_update_icon(shown: Option<TrayIcon>, next: TrayIcon, tray_animatio
     shown != Some(next)
 }
 
-/// Текст подсказки трея: короткая фраза о том, что происходит прямо сейчас.
-pub fn tooltip(state: Option<DaemonState>) -> &'static str {
+/// The dictionary key that names a daemon state, the same one the window's badge uses
+fn state_key(state: Option<DaemonState>) -> &'static str {
     match state {
-        None => "MolvAI: демон не запущен",
-        Some(DaemonState::Idle) => "MolvAI: готов",
-        Some(DaemonState::Recording) => "MolvAI: идёт запись",
-        Some(DaemonState::Transcribing) => "MolvAI: распознавание",
-        Some(DaemonState::PostProcessing) => "MolvAI: обработка текста",
-        Some(DaemonState::Injecting) => "MolvAI: вставка текста",
+        None => "daemon.stopped",
+        Some(DaemonState::Idle) => "state.idle",
+        Some(DaemonState::Recording) => "state.recording",
+        Some(DaemonState::Transcribing) => "state.transcribing",
+        Some(DaemonState::PostProcessing) => "state.post_processing",
+        Some(DaemonState::Injecting) => "state.injecting",
     }
 }
 
-/// Надпись на первом пункте меню: во время записи он останавливает, иначе начинает.
+/// The tray tooltip: a short phrase about what happens right now
+pub fn tooltip(state: Option<DaemonState>) -> String {
+    format!("MolvAI: {}", i18n::t(state_key(state)))
+}
+
+/// The label of the first menu item: it stops a recording in progress and starts one otherwise
 fn record_label(state: Option<DaemonState>) -> &'static str {
     match state {
-        Some(DaemonState::Recording) => "Остановить запись",
-        _ => "Начать запись",
+        Some(DaemonState::Recording) => "tray.recordStop",
+        _ => "tray.recordStart",
     }
+}
+
+/// A menu item that opens a window tab, labelled as that tab in the window's navigation
+fn open_tab_label(tab: &str) -> String {
+    format!("{}…", i18n::t(&format!("nav.{tab}")))
 }
 
 fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
@@ -102,14 +107,19 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let record = MenuItem::with_id(
         app,
         "record",
-        record_label(daemon_state),
+        i18n::t(record_label(daemon_state)),
         true,
         None::<&str>,
     )?;
     // Второй пункт — сама панель: на Wayland это единственный путь к спрятанному окну
     // помимо левого щелчка, а его не все хосты трея передают.
-    let open_panel =
-        MenuItem::with_id(app, "open:dashboard", "Открыть панель…", true, None::<&str>)?;
+    let open_panel = MenuItem::with_id(
+        app,
+        "open:dashboard",
+        i18n::t("tray.openPanel"),
+        true,
+        None::<&str>,
+    )?;
 
     let style_items: Vec<CheckMenuItem<Wry>> = builtin_style_options(&config)
         .into_iter()
@@ -128,15 +138,15 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         .iter()
         .map(|i| i as &dyn tauri::menu::IsMenuItem<Wry>)
         .collect();
-    let style_menu = Submenu::with_items(app, "Стиль", true, &style_refs)?;
+    let style_menu = Submenu::with_items(app, i18n::t("dashboard.style"), true, &style_refs)?;
 
     let output_items: Vec<CheckMenuItem<Wry>> = OUTPUT_MODES
         .iter()
-        .map(|(id, name)| {
+        .map(|id| {
             CheckMenuItem::with_id(
                 app,
                 format!("output:{id}"),
-                *name,
+                i18n::t(&format!("settings.output.{id}")),
                 true,
                 *id == config.output.mode,
                 None::<&str>,
@@ -147,14 +157,15 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         .iter()
         .map(|i| i as &dyn tauri::menu::IsMenuItem<Wry>)
         .collect();
-    let output_menu = Submenu::with_items(app, "Вывод", true, &output_refs)?;
+    let output_menu =
+        Submenu::with_items(app, i18n::t("settings.section.output"), true, &output_refs)?;
 
     let devices = state.devices();
     let mic_items: Vec<CheckMenuItem<Wry>> = if devices.is_empty() {
         vec![CheckMenuItem::with_id(
             app,
             "mic:none",
-            "Список устройств недоступен",
+            i18n::t("tray.devicesUnavailable"),
             false,
             false,
             None::<&str>,
@@ -163,7 +174,7 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         std::iter::once(CheckMenuItem::with_id(
             app,
             "mic:default",
-            "Устройство по умолчанию",
+            i18n::t("settings.deviceDefault"),
             true,
             config.audio.device == "default",
             None::<&str>,
@@ -184,20 +195,29 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         .iter()
         .map(|i| i as &dyn tauri::menu::IsMenuItem<Wry>)
         .collect();
-    let mic_menu = Submenu::with_items(app, "Микрофон", true, &mic_refs)?;
+    let mic_menu = Submenu::with_items(app, i18n::t("tray.microphone"), true, &mic_refs)?;
 
-    let history = MenuItem::with_id(app, "open:history", "История…", true, None::<&str>)?;
-    let settings = MenuItem::with_id(app, "open:settings", "Настройки…", true, None::<&str>)?;
-    let stats_item = MenuItem::with_id(app, "open:stats", "Статистика…", true, None::<&str>)?;
+    let open_tab = |tab: &str| {
+        MenuItem::with_id(
+            app,
+            format!("open:{tab}"),
+            open_tab_label(tab),
+            true,
+            None::<&str>,
+        )
+    };
+    let history = open_tab("history")?;
+    let settings = open_tab("settings")?;
+    let stats_item = open_tab("stats")?;
     let pause = CheckMenuItem::with_id(
         app,
         "pause",
-        "Приостановить хоткеи",
+        i18n::t("tray.pauseHotkeys"),
         true,
         state.hotkeys_paused(),
         None::<&str>,
     )?;
-    let quit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", i18n::t("tray.quit"), true, None::<&str>)?;
 
     Menu::with_items(
         app,
@@ -318,7 +338,7 @@ fn send_async(app: &AppHandle, command: Command) {
     let app = app.clone();
     std::thread::spawn(move || {
         if let Err(err) = ipc::request(command) {
-            crate::notify_error(&app, &err.to_string(), err.hint().as_deref());
+            crate::notify_error(&app, &err.user_message(), err.hint().as_deref());
         }
     });
 }
@@ -406,11 +426,44 @@ fn set_device(app: &AppHandle, device: &str) {
 mod tests {
     use super::*;
 
+    const ALL_STATES: [Option<DaemonState>; 6] = [
+        None,
+        Some(DaemonState::Idle),
+        Some(DaemonState::Recording),
+        Some(DaemonState::Transcribing),
+        Some(DaemonState::PostProcessing),
+        Some(DaemonState::Injecting),
+    ];
+
     #[test]
-    fn every_state_has_its_own_wording() {
-        assert!(tooltip(None).contains("не запущен"));
-        assert!(tooltip(Some(DaemonState::Recording)).contains("запись"));
-        assert!(tooltip(Some(DaemonState::Transcribing)).contains("распознавание"));
+    fn every_state_has_its_own_wording_in_both_languages() {
+        for lang in [i18n::Lang::En, i18n::Lang::Ru] {
+            let wordings: std::collections::BTreeSet<String> = ALL_STATES
+                .iter()
+                .map(|state| i18n::translate(lang, state_key(*state), &[]))
+                .collect();
+            assert_eq!(wordings.len(), ALL_STATES.len(), "{lang:?}: {wordings:?}");
+            assert!(
+                wordings.iter().all(|text| !text.contains('.')),
+                "{lang:?}: a state shows its key: {wordings:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn menu_labels_are_in_the_dictionaries() {
+        for state in ALL_STATES {
+            let key = record_label(state);
+            assert_ne!(i18n::translate(i18n::Lang::Ru, key, &[]), key);
+        }
+        for tab in WINDOW_TABS {
+            let key = format!("nav.{tab}");
+            assert_ne!(i18n::translate(i18n::Lang::Ru, &key, &[]), key);
+        }
+        for mode in OUTPUT_MODES {
+            let key = format!("settings.output.{mode}");
+            assert_ne!(i18n::translate(i18n::Lang::Ru, &key, &[]), key);
+        }
     }
 
     #[test]
@@ -434,9 +487,10 @@ mod tests {
     fn record_item_offers_the_opposite_of_the_current_state() {
         assert_eq!(
             record_label(Some(DaemonState::Recording)),
-            "Остановить запись"
+            "tray.recordStop"
         );
-        assert_eq!(record_label(None), "Начать запись");
+        assert_eq!(record_label(None), "tray.recordStart");
+        assert_eq!(record_label(Some(DaemonState::Idle)), "tray.recordStart");
     }
 
     /// Сколько раз трей переставит значок за перечисленные события.

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
-// Переводы интерфейса. Ключ, которого нет в словаре, возвращается как есть —
-// так пропущенная строка видна сразу, а не подменяется пустотой.
+// Interface translations. A key missing in the dictionary comes back as it is, so a missing
+// string shows at once instead of as an empty label. The tray and the system notices read the
+// same files on the Rust side, which also resolves the language: see `api.uiLanguage`
 
 import { createContext, useContext } from "react";
 
@@ -11,6 +12,7 @@ export type Lang = "ru" | "en";
 
 const DICTIONARIES: Record<Lang, Record<string, string>> = { ru, en };
 
+// Each language is named in itself, so a user finds their own in a list they cannot read
 export const LANGUAGES: { id: Lang; name: string }[] = [
   { id: "ru", name: "Русский" },
   { id: "en", name: "English" },
@@ -20,29 +22,19 @@ export function isLang(value: string): value is Lang {
   return value === "ru" || value === "en";
 }
 
-/** Значение `ui_language`, при котором язык берётся из системы. */
+/** The `ui_language` value that takes the language from the system */
 export const AUTO_LANG = "auto";
 
 /**
- * Язык интерфейса: явная настройка, иначе язык системы.
- * `systemLanguage` — это `navigator.language`, его webview берёт из системы.
+ * The string for `key` with each `{name}` replaced from `vars`; a missing variable stays in
+ * the text. A key missing in the language falls back to English, then to the key itself
  */
-export function resolveLang(configured: string | undefined, systemLanguage: string): Lang {
-  if (configured !== undefined && isLang(configured)) {
-    return configured;
-  }
-  // Английский — запасной: каталоги и сборочные машины запускают приложение с локалью C
-  const primary = systemLanguage.toLowerCase().split(/[-_]/)[0];
-  return isLang(primary) ? primary : "en";
-}
-
-/** Подстановка `{name}` из `vars`; отсутствующая переменная остаётся в тексте. */
 export function translate(
   lang: Lang,
   key: string,
   vars?: Record<string, string | number>,
 ): string {
-  const text = DICTIONARIES[lang][key] ?? DICTIONARIES.ru[key] ?? key;
+  const text = DICTIONARIES[lang][key] ?? DICTIONARIES.en[key] ?? key;
   if (!vars) {
     return text;
   }
@@ -54,8 +46,8 @@ export function translate(
 export type Translate = (key: string, vars?: Record<string, string | number>) => string;
 
 export const I18nContext = createContext<{ lang: Lang; t: Translate }>({
-  lang: "ru",
-  t: (key) => translate("ru", key),
+  lang: "en",
+  t: (key) => translate("en", key),
 });
 
 export function useI18n() {

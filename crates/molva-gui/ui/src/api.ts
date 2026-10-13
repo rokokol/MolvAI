@@ -47,6 +47,8 @@ export const api = {
   stopDaemon: () => invoke<void>("stop_daemon"),
 
   getConfig: () => invoke<Config>("get_config"),
+  /** The resolved interface language; the Rust side resolves it so the tray agrees */
+  uiLanguage: () => invoke<string>("ui_language"),
   getConfigPath: () => invoke<string>("get_config_path"),
   isFirstRun: () => invoke<boolean>("is_first_run"),
   saveConfig: (config: Config) => invoke<void>("save_config", { config }),

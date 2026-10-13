@@ -53,8 +53,12 @@ export default function Dashboard({
 
   useEffect(() => {
     void loadToday();
-    api.availableStyles().then(setStyles).catch(() => setStyles([]));
   }, [loadToday]);
+
+  // Built-in style names come translated from the Rust side: ask again when the language changes
+  useEffect(() => {
+    api.availableStyles().then(setStyles).catch(() => setStyles([]));
+  }, [lang]);
 
   // Новая реплика меняет счётчики «сегодня»: перечитываем их сразу после события.
   useEffect(() => {

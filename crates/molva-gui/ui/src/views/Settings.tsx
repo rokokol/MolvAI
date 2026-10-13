@@ -77,7 +77,7 @@ export default function Settings({
   theme,
   onThemeChange,
 }: Props) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [draft, setDraft] = useState<Config | null>(config);
   const [saved, setSaved] = useState(false);
   const [invalid, setInvalid] = useState<CommandError | null>(null);
@@ -99,9 +99,13 @@ export default function Settings({
   useEffect(() => {
     api.getAutostart().then(setAutostart).catch(() => setAutostart(false));
     api.getConfigPath().then(setConfigPath).catch(() => setConfigPath(""));
-    api.availableStyles().then(setStyles).catch(() => setStyles([]));
     api.listDevices().then(setDevices).catch(() => setDevices([]));
   }, []);
+
+  // Built-in style names come translated from the Rust side: ask again when the language changes
+  useEffect(() => {
+    api.availableStyles().then(setStyles).catch(() => setStyles([]));
+  }, [lang]);
 
   useEffect(() => {
     api.hyprlandSnippet().then(setSnippet).catch(() => setSnippet(""));
