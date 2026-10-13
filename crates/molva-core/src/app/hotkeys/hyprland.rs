@@ -246,18 +246,19 @@ mod tests {
 
     #[test]
     fn the_file_goes_to_the_xdg_config_directory_or_to_the_home_config() {
-        assert_eq!(
-            config_path(Some(Path::new("/cfg")), Some(Path::new("/home/u"))),
-            Some(PathBuf::from("/cfg/hypr/molvai.lua"))
-        );
-        assert_eq!(
-            config_path(None, Some(Path::new("/home/u"))),
-            Some(PathBuf::from("/home/u/.config/hypr/molvai.lua"))
-        );
+        // Paths that are absolute on every platform: `/cfg` has no drive, so on Windows it is
+        // relative and would be ignored as an XDG directory
+        let base = std::env::temp_dir();
+        let xdg = base.join("cfg");
+        let home = base.join("home");
+        let in_xdg = xdg.join("hypr").join(FILE_NAME);
+        let in_home = home.join(".config").join("hypr").join(FILE_NAME);
+        assert_eq!(config_path(Some(&xdg), Some(&home)), Some(in_xdg));
+        assert_eq!(config_path(None, Some(&home)), Some(in_home.clone()));
         // A relative XDG_CONFIG_HOME is invalid by the spec and is ignored
         assert_eq!(
-            config_path(Some(Path::new("cfg")), Some(Path::new("/home/u"))),
-            Some(PathBuf::from("/home/u/.config/hypr/molvai.lua"))
+            config_path(Some(Path::new("cfg")), Some(&home)),
+            Some(in_home)
         );
         assert_eq!(config_path(None, None), None);
     }
