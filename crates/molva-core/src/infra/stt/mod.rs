@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
-//! Распознавание речи: движок whisper.cpp и политика выбора языка.
+//! Speech recognition: the whisper.cpp engine and the language choice policy
 //!
-//! Политика вынесена из движка в чистую функцию: она проверяется на фейке без модели и работает
-//! одинаково для любого движка (whisper.cpp, облачный).
+//! The policy is moved out of the engine into a pure function: tests check it on a fake with no
+//! model, and it works the same for any engine (whisper.cpp, cloud)
 
 pub mod whisper;
 
@@ -16,21 +16,22 @@ use crate::config::SttConfig;
 use crate::domain::audio::PcmAudio;
 use crate::domain::stt::{LanguageHint, SttEngine, SttError, SttOptions, Transcript};
 
-/// Как выбирается язык реплики.
+/// How the language of a phrase is chosen
 ///
-/// Разница видна на процессоре: `Fixed` — это один прогон модели с известным языком, `DetectAmong` —
-/// короткое определение по первым секундам плюс тот же прогон. Режима `auto` у самого whisper.cpp
-/// здесь нет вовсе: он считает полное окно в тридцать секунд и обходится в разы дороже.
+/// The difference shows on the CPU: `Fixed` is one model run with a known language, `DetectAmong`
+/// is a short detection on the first seconds plus the same run. The `auto` mode of whisper.cpp
+/// itself is not used here at all: it computes the full thirty-second window and costs many
+/// times more
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LanguagePolicy {
-    /// Язык задан настройками: автоопределение выключено.
+    /// The settings fix the language: auto-detection is off
     Fixed(String),
-    /// Язык выбирается среди разрешённых. Пустой список означает «доверить выбор модели».
+    /// The language is chosen among the allowed ones. An empty list means "leave the choice to the model"
     DetectAmong(Vec<String>),
 }
 
 impl LanguagePolicy {
-    /// Политика по настройкам: `language = "auto"` со списком разрешённых даёт `DetectAmong`.
+    /// Policy from the settings: `language = "auto"` with a list of allowed languages gives `DetectAmong`
     pub fn from_config(cfg: &SttConfig) -> Self {
         match LanguageHint::parse(&cfg.language) {
             LanguageHint::Fixed(code) => LanguagePolicy::Fixed(code),
@@ -38,7 +39,7 @@ impl LanguagePolicy {
         }
     }
 
-    /// Подсказка языка для движка.
+    /// Language hint for the engine
     pub fn hint(&self) -> LanguageHint {
         match self {
             LanguagePolicy::Fixed(code) => LanguageHint::Fixed(code.clone()),
@@ -46,7 +47,7 @@ impl LanguagePolicy {
         }
     }
 
-    /// Языки, среди которых разрешено выбирать.
+    /// Languages among which the choice is allowed
     pub fn allowed(&self) -> &[String] {
         match self {
             LanguagePolicy::Fixed(_) => &[],
@@ -55,10 +56,10 @@ impl LanguagePolicy {
     }
 }
 
-/// Параметры распознавания из настроек: одно место, где конфиг превращается в `SttOptions`.
+/// Recognition options from the settings: the one place where the config becomes `SttOptions`
 ///
-/// `initial_prompt` заполняет словарь терминов уже на стороне конвейера — он знает,
-/// какие термины актуальны для этой реплики.
+/// The pipeline fills `initial_prompt` with the dictionary terms on its own side — it knows
+/// which terms are relevant for this phrase
 pub fn stt_options_from_config(cfg: &SttConfig, timestamps: bool) -> SttOptions {
     SttOptions {
         language: LanguagePolicy::from_config(cfg).hint(),
@@ -69,10 +70,10 @@ pub fn stt_options_from_config(cfg: &SttConfig, timestamps: bool) -> SttOptions 
     }
 }
 
-/// Путь к файлу весов: явный `model_path` из настроек либо имя модели в каталоге моделей.
+/// Path to the weights file: the explicit `model_path` from the settings, or the model name in the models directory
 ///
-/// Каталог передаётся параметром, потому что им владеет каталог моделей (`molva models`), а не
-/// движок: так путь считается одинаково и в демоне, и в CLI.
+/// The directory is a parameter because the model catalogue (`molva models`) owns it, not the
+/// engine: so the path is computed the same way in the daemon and in the CLI
 pub fn model_file_path(cfg: &SttConfig, models_dir: &Path) -> PathBuf {
     let explicit = cfg.model_path.trim();
     if !explicit.is_empty() {
@@ -81,10 +82,10 @@ pub fn model_file_path(cfg: &SttConfig, models_dir: &Path) -> PathBuf {
     models_dir.join(format!("ggml-{}.bin", cfg.model.trim()))
 }
 
-/// Фразы, которые whisper выдаёт на тишине и шуме, независимо от того, что записали.
+/// Phrases that whisper returns on silence and noise, whatever was recorded
 ///
-/// Модель обучалась на субтитрах, поэтому на пустом входе уверенно печатает концовку ролика.
-/// Сравнение идёт по нормализованной форме: без регистра, знаков препинания и лишних пробелов.
+/// The model trained on subtitles, so on an empty input it confidently prints the end of a video.
+/// The comparison uses the normalised form: no case, no punctuation and no extra spaces
 const SILENCE_HALLUCINATIONS: [&str; 10] = [
     "продолжение следует",
     "субтитры сделал dimatorzok",
@@ -98,11 +99,11 @@ const SILENCE_HALLUCINATIONS: [&str; 10] = [
     "you",
 ];
 
-/// Похоже ли, что распознана тишина, а не речь.
+/// Whether the recognized result looks like silence, not speech
 ///
-/// Две проверки: собственная оценка модели `no_speech_prob` (порог из настроек,
-/// `stt.no_speech_threshold`) и список фраз, которые whisper печатает на пустом входе. Пустой
-/// текст — тоже тишина. Вызывающий по `true` не вставляет ничего (F-22).
+/// There are two checks: the own estimate of the model, `no_speech_prob` (the threshold comes from
+/// the settings, `stt.no_speech_threshold`), and the list of phrases that whisper prints on an
+/// empty input. Empty text is silence too. On `true` the caller pastes nothing (F-22)
 pub fn is_silence_hallucination(transcript: &Transcript, no_speech_threshold: f32) -> bool {
     if transcript.text.trim().is_empty() {
         return true;
@@ -119,7 +120,7 @@ pub fn is_silence_hallucination(transcript: &Transcript, no_speech_threshold: f3
         .any(|phrase| normalised == *phrase)
 }
 
-/// Нормализация для сравнения с образцами: нижний регистр, только буквы и цифры, один пробел.
+/// Normalisation for the comparison with the patterns: lower case, only letters and digits, one space
 fn normalise_for_match(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for ch in text.chars() {
@@ -132,16 +133,16 @@ fn normalise_for_match(text: &str) -> String {
     out.trim().to_string()
 }
 
-/// Распознать по политике выбора языка.
+/// Recognize by the language choice policy
 ///
-/// Сначала дешёвое определение языка по первым секундам среди разрешённых: движок, который так
-/// умеет, избавляет от режима `auto` у самого распознавания — а тот считает полное окно в тридцать
-/// секунд и на процессоре обходится в разы дороже.
+/// First a cheap detection of the language on the first seconds, among the allowed ones: an engine
+/// that can do this avoids the `auto` mode of the recognition itself — and that mode computes the
+/// full thirty-second window and costs many times more on the CPU
 ///
-/// Если движок определять не умеет, остаётся прежний путь: распознать и, если модель выбрала язык
-/// вне списка разрешённых, повторить ровно один раз с первым языком списка (I-06). Типичная ошибка
-/// whisper на коротких репликах — принять русскую речь за украинскую или болгарскую. При
-/// фиксированном языке (I-07) автоопределения нет вовсе и повтор не нужен.
+/// If the engine cannot detect, the old path stays: recognize and, if the model chose a language
+/// outside the allowed list, repeat exactly once with the first language of the list (I-06). A
+/// typical whisper error on short phrases is to take Russian speech for Ukrainian or Bulgarian.
+/// With a fixed language (I-07) there is no auto-detection at all and no retry is needed
 pub fn transcribe_with_language_policy(
     engine: &mut dyn SttEngine,
     audio: &PcmAudio,
@@ -149,7 +150,7 @@ pub fn transcribe_with_language_policy(
 ) -> Result<Transcript, SttError> {
     if options.language == LanguageHint::Auto && !options.allowed_languages.is_empty() {
         if let Some(code) = engine.detect_language(audio, options) {
-            debug!(language = %code, "язык определён до распознавания");
+            debug!(language = %code, "language detected before recognition");
             let detected = SttOptions {
                 language: LanguageHint::Fixed(code),
                 ..options.clone()
@@ -164,7 +165,7 @@ pub fn transcribe_with_language_policy(
     debug!(
         detected = first.detected_language.as_deref().unwrap_or("?"),
         fallback = %fallback,
-        "определённый язык вне списка разрешённых, повтор с фиксированным языком"
+        "detected language is outside the allowed list, retry with a fixed language"
     );
     let retry_opts = SttOptions {
         language: LanguageHint::Fixed(fallback),
@@ -173,10 +174,10 @@ pub fn transcribe_with_language_policy(
     engine.transcribe(audio, &retry_opts)
 }
 
-/// Язык для повторного прогона или `None`, если повтор не нужен.
+/// Language for the repeat run, or `None` if no retry is needed
 ///
-/// Повтор нужен только когда язык выбирала модель, список разрешённых непуст и выбранный язык в
-/// него не попал.
+/// A retry is needed only when the model chose the language, the allowed list is not empty and
+/// the chosen language is not in it
 pub fn retry_language(options: &SttOptions, detected: Option<&str>) -> Option<String> {
     if options.language != LanguageHint::Auto {
         return None;
@@ -199,7 +200,7 @@ mod tests {
     use super::*;
     use crate::domain::fakes::FakeStt;
 
-    /// Движок, который умеет определять язык до распознавания.
+    /// Engine that can detect the language before recognition
     #[derive(Debug)]
     struct DetectingStt {
         inner: FakeStt,
@@ -271,19 +272,19 @@ mod tests {
         );
 
         let out = transcribe_with_language_policy(&mut engine, &audio(), &opts_auto(&["ru", "en"]))
-            .expect("успех");
+            .expect("success");
 
         assert_eq!(out.text, "hello there");
         assert_eq!(engine.detect_calls, 1);
         assert_eq!(
             engine.inner.calls.len(),
             1,
-            "определение языка не должно добавлять второй прогон модели"
+            "language detection must not add a second model run"
         );
         assert_eq!(
             engine.inner.calls[0].language,
             LanguageHint::Fixed("en".into()),
-            "распознавание идёт с определённым языком, а не в режиме auto"
+            "recognition runs with the detected language, not in auto mode"
         );
     }
 
@@ -295,9 +296,9 @@ mod tests {
             ..opts_auto(&["ru", "en"])
         };
 
-        transcribe_with_language_policy(&mut engine, &audio(), &opts).expect("успех");
+        transcribe_with_language_policy(&mut engine, &audio(), &opts).expect("success");
 
-        assert_eq!(engine.detect_calls, 0, "лишняя работа на каждой реплике");
+        assert_eq!(engine.detect_calls, 0, "extra work on every phrase");
         assert_eq!(
             engine.inner.calls[0].language,
             LanguageHint::Fixed("ru".into())
@@ -315,7 +316,7 @@ mod tests {
         );
 
         let out = transcribe_with_language_policy(&mut engine, &audio(), &opts_auto(&["ru", "en"]))
-            .expect("успех");
+            .expect("success");
 
         assert_eq!(out.text, "началось");
         assert_eq!(engine.detect_calls, 1);
@@ -348,7 +349,7 @@ mod tests {
         );
         assert!(
             LanguagePolicy::from_config(&fixed).allowed().is_empty(),
-            "при фиксированном языке выбирать не из чего"
+            "with a fixed language there is nothing to choose from"
         );
     }
 
@@ -360,15 +361,15 @@ mod tests {
         ]);
         let options = opts_auto(&["ru", "en"]);
 
-        let out = transcribe_with_language_policy(&mut engine, &audio(), &options).expect("успех");
+        let out = transcribe_with_language_policy(&mut engine, &audio(), &options).expect("success");
 
-        assert_eq!(out.text, "началось", "взят результат повтора, а не первый");
-        assert_eq!(engine.calls.len(), 2, "повтор должен быть ровно один");
+        assert_eq!(out.text, "началось", "the result of the retry is taken, not the first one");
+        assert_eq!(engine.calls.len(), 2, "there must be exactly one retry");
         assert_eq!(engine.calls[0].language, LanguageHint::Auto);
         assert_eq!(
             engine.calls[1].language,
             LanguageHint::Fixed("ru".into()),
-            "повтор идёт с первым языком из allowed_languages"
+            "the retry uses the first language from allowed_languages"
         );
     }
 
@@ -380,10 +381,10 @@ mod tests {
         ]);
 
         let out = transcribe_with_language_policy(&mut engine, &audio(), &opts_auto(&["ru", "en"]))
-            .expect("успех");
+            .expect("success");
 
         assert_eq!(out.text, "привет");
-        assert_eq!(engine.calls.len(), 1, "лишний прогон удваивает задержку");
+        assert_eq!(engine.calls.len(), 1, "an extra run doubles the delay");
     }
 
     #[test]
@@ -397,7 +398,7 @@ mod tests {
             ..opts_auto(&["ru"])
         };
 
-        let out = transcribe_with_language_policy(&mut engine, &audio(), &options).expect("успех");
+        let out = transcribe_with_language_policy(&mut engine, &audio(), &options).expect("success");
 
         assert_eq!(out.text, "почалося");
         assert_eq!(engine.calls.len(), 1);
@@ -408,7 +409,7 @@ mod tests {
         let mut engine = FakeStt::with_responses(vec![Ok(detected("de", "guten tag"))]);
 
         let out =
-            transcribe_with_language_policy(&mut engine, &audio(), &opts_auto(&[])).expect("успех");
+            transcribe_with_language_policy(&mut engine, &audio(), &opts_auto(&[])).expect("success");
 
         assert_eq!(out.text, "guten tag");
         assert_eq!(engine.calls.len(), 1);
@@ -416,11 +417,11 @@ mod tests {
 
     #[test]
     fn unknown_detected_language_is_not_retried() {
-        // Движок не сообщил язык — гадать не о чем.
+        // The engine did not report a language — there is nothing to guess
         let mut engine = FakeStt::with_responses(vec![Ok(Transcript::text_only("привет"))]);
 
         let out = transcribe_with_language_policy(&mut engine, &audio(), &opts_auto(&["ru"]))
-            .expect("успех");
+            .expect("success");
 
         assert_eq!(out.text, "привет");
         assert_eq!(engine.calls.len(), 1);
@@ -457,7 +458,7 @@ mod tests {
 
     #[test]
     fn subtitle_boilerplate_is_recognised_as_hallucination() {
-        // Уверенность модели высокая, а текст — концовка ролика из обучающей выборки.
+        // The model is confident, but the text is the end of a video from the training set
         for text in ["Продолжение следует...", "Субтитры сделал DimaTorzok"]
         {
             let transcript = Transcript {
@@ -467,7 +468,7 @@ mod tests {
             };
             assert!(
                 is_silence_hallucination(&transcript, 0.6),
-                "не отсеяно: {text}"
+                "not filtered out: {text}"
             );
         }
     }
@@ -480,7 +481,7 @@ mod tests {
 
     #[test]
     fn phrase_that_merely_contains_boilerplate_is_kept() {
-        // «Спасибо за просмотр отчёта» — это речь пользователя, а не хвост субтитров.
+        // "Спасибо за просмотр отчёта" is the speech of the user, not a subtitle tail
         let transcript = Transcript {
             text: "Спасибо за просмотр отчёта, до связи".into(),
             no_speech_prob: Some(0.02),
@@ -543,11 +544,11 @@ mod tests {
     #[test]
     fn failure_of_the_first_pass_is_returned_as_is() {
         let mut engine =
-            FakeStt::with_responses(vec![Err(SttError::Inference("сломалось".into()))]);
+            FakeStt::with_responses(vec![Err(SttError::Inference("broke".into()))]);
 
         let error = transcribe_with_language_policy(&mut engine, &audio(), &opts_auto(&["ru"]))
-            .expect_err("ошибка движка должна дойти до вызывающего");
+            .expect_err("the engine error must reach the caller");
 
-        assert_eq!(error, SttError::Inference("сломалось".into()));
+        assert_eq!(error, SttError::Inference("broke".into()));
     }
 }
