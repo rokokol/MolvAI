@@ -43,7 +43,7 @@ defect 'daemon/min-hold-discards-audio' 'crates/molva-core/src/app/daemon/state.
   'an accidental touch of the key starts recognition of half a second of silence and pastes garbage'
 
 defect 'daemon/second-start-is-busy' 'crates/molva-core/src/app/daemon/state.rs' \
-  '                Outcome::busy("recording is already in progress")' \
+  '                Outcome::busy("a recording is already running")' \
   '                Outcome::nothing()' \
   'a second press during a recording silently does nothing: the user does not understand that the daemon is busy'
 
