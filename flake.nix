@@ -6,11 +6,12 @@
   outputs =
     { self, nixpkgs }:
     let
+      # No x86_64-darwin: Nixpkgs 26.05 is its last release, and the release workflow builds
+      # macOS for Apple silicon only
       systems = [
         "x86_64-linux"
         "aarch64-linux"
         "aarch64-darwin"
-        "x86_64-darwin"
       ];
       forAll = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
     in
@@ -62,7 +63,7 @@
               # The sandbox has no system TLS roots, and the HTTP client does not build at all:
               # the test of an unreachable provider would then check a broken TLS, not the network.
               # The cacert hook sets SSL_CERT_FILE, and rustls-platform-verifier reads it
-              nativeCheckInputs = [ pkgs.cacert ];
+              nativeCheckInputs = with pkgs; [ cacert ];
 
               nativeBuildInputs = with pkgs; [
                 cmake
@@ -218,7 +219,7 @@
             // {
               packages =
                 base.packages
-                ++ [ pkgs.rustPlatform.bindgenHook ]
+                ++ (with pkgs; [ rustPlatform.bindgenHook ])
                 ++ pkgs.lib.optionals isLinux (
                   with pkgs;
                   [
@@ -236,5 +237,44 @@
       # to check the formatting with. nixfmt-tree walks the tree, not the files that were
       # passed to it, so one command covers future .nix files too
       formatter = forAll (pkgs: pkgs.nixfmt-tree);
+
+      # homeModules is the name the flake schema knows; homeManagerModules is what most
+      # consumers still write, so both point at the same module
+      homeModules.default = import ./nix/module.nix { inherit self; };
+      homeManagerModules.default = self.homeModules.default;
+
+      checks = forAll (pkgs: {
+        # Enabling the module has to be enough: the package, and under a Lua Hyprland the
+        # include line and the activation step that writes the binds
+        module-wiring =
+          let
+            wiring = import ./nix/module-test.nix {
+              inherit (pkgs) lib;
+              inherit pkgs;
+              module = self.homeModules.default;
+            };
+          in
+          pkgs.runCommand "module-wiring"
+            {
+              nativeBuildInputs = with pkgs; [ jq ];
+              dump = builtins.toJSON wiring;
+              passAsFile = [ "dump" ];
+            }
+            ''
+              want() { jq -e "$1" "$dumpPath" >/dev/null || { echo "module wiring: $2"; exit 1; }; }
+
+              want '.lua.packages | any(test("molva"))' "no package installed"
+              want '.lua.extraConfig | contains("dofile(molvai)")' "no include under a Lua Hyprland"
+              want '.lua.extraConfig | contains("/home/u/.config/hypr/molvai.lua")' "the include does not follow xdg.configHome"
+              want '.lua.activation | contains("setup hyprland --write")' "no activation step writes the binds"
+              want '.hyprlang.extraConfig == "" and .hyprlang.activation == ""' "a Lua line reaches a hyprlang config"
+              want '.optedOut.extraConfig == "" and .optedOut.activation == ""' "hyprland.enable = false is ignored"
+              want '.optedOut.packages | any(test("molva"))' "opting out of Hyprland drops the package"
+              want '.lua.daemon | endswith("/bin/molva daemon")' "no user service runs the daemon"
+              want '.noDaemon.daemon == ""' "daemon.enable = false is ignored"
+              want '.off.packages == [] and .off.extraConfig == "" and .off.daemon == ""' "the module acts while disabled"
+              touch $out
+            '';
+      });
     };
 }

@@ -45,6 +45,14 @@ Ready builds for Linux, Windows and macOS are on the [releases page](https://git
 nix run github:rokokol/MolvAI -- --help   # build and run without cloning
 ```
 
+With Home Manager, the flake's module installs `molva` and runs `molva daemon` as a user service of the graphical session. Under Hyprland with `wayland.windowManager.hyprland.configType = "lua"`, it also binds the hotkeys: each switch writes `~/.config/hypr/molvai.lua` from the `[hotkeys]` settings, and `hyprland.lua` includes it. `programs.molvai.daemon.enable` and `programs.molvai.hyprland.enable` turn either part off
+
+```nix
+# flake inputs: molvai.url = "github:rokokol/MolvAI";
+imports = [ inputs.molvai.homeModules.default ];
+programs.molvai.enable = true;
+```
+
 ```sh
 nix develop                        # the toolchain and system libraries, nothing is installed in the system
 cargo build --release --bin molva

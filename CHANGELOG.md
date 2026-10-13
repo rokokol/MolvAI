@@ -13,6 +13,7 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 - The built-in styles and command mode send the model an English prompt for a phrase in any language but Russian. A Russian phrase keeps the Russian prompt
 - A button in the GUI settings writes the Hyprland binds to "~/.config/hypr/molvai.lua" and shows the line that includes the file in "hyprland.lua". The GUI rewrites the file and reloads Hyprland when the hotkeys change
 - "molva setup hyprland --write" writes the same file and prints the same line
+- A Home Manager module, "homeModules.default": "programs.molvai" installs molva, runs "molva daemon" as a user service and, under Hyprland with a Lua config, writes and includes the binds on each switch
 
 ### Changed
 
@@ -25,6 +26,10 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 - "molva setup" refuses a hotkey that does not parse, in place of a bind that the compositor rejects
 - The documentation is in English
 - An empty "command_mode.system_prompt" now means the built-in prompt in the language of the instruction, and it is the new default. A settings file that holds the old default Russian prompt is migrated to the empty value; a prompt the user wrote stays
+
+### Removed
+
+- The flake no longer offers packages for x86_64-darwin: Nixpkgs 26.05 is its last release, and the macOS release build is for Apple silicon only
 
 ## [0.1.9] - 2026-10-13
 
