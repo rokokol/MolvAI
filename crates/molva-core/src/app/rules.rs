@@ -1,52 +1,55 @@
 // SPDX-License-Identifier: MIT
-//! Правила постобработки без модели: пунктуация словами, структура, повторы, числа, пробелы.
+//! Post-processing rules without a model: spoken punctuation, structure, repeats, numbers, spaces
 //!
-//! Правила дёшевы и предсказуемы, поэтому применяются всегда, а модель — только когда стиль
-//! этого требует и реплика достаточно длинная. Порядок в наборе фиксирован:
+//! The rules are cheap and predictable, so they always apply, and the model applies only when
+//! the style needs it and the phrase is long enough. The order in the set is fixed:
 //!
-//! 1. `Lists` и `NewLine` — голосовые команды структуры, они режут текст на строки;
-//! 2. `SpokenPunctuation` — «запятая» превращается в отдельный токен `,`;
-//! 3. `Glue` — почтовый адрес и ссылка собираются обратно из кусков;
-//! 4. `RemoveFillers`, `RemoveRepeats` — мусор речи;
-//! 5. `NumbersAsDigits` — числительные в цифры;
-//! 6. `Whitespace` — склейка знаков препинания, лишние пробелы, неразрывные пробелы;
-//! 7. `Capitalize` — заглавная в начале предложения.
+//! 1. `Lists` and `NewLine` are voice commands for structure, and they cut the text into lines;
+//! 2. `SpokenPunctuation` turns "запятая" into a separate token `,`;
+//! 3. `Glue` puts an email address and a link back together from pieces;
+//! 4. `RemoveFillers`, `RemoveRepeats` remove speech garbage;
+//! 5. `NumbersAsDigits` turns numerals into digits;
+//! 6. `Whitespace` joins punctuation, removes extra spaces and sets non-breaking spaces;
+//! 7. `Capitalize` sets a capital letter at the start of a sentence
 //!
-//! ## Принятые решения
+//! ## Decisions taken
 //!
-//! - **Повторы.** Подряд идущее одинаковое слово снимается, кроме короткого списка усилителей
-//!   (`очень`, `чуть`, `еле`, `very`), где повтор — часть смысла, а не сбой речи.
-//! - **Заполнители.** Снимаются только как отдельные слова и только если после этого что-то
-//!   останется: реплика из одного «ну» превращается в пустую строку не должна.
-//! - **Числа.** Одиночное «один»/«one» цифрой не становится — слишком часто это местоимение.
-//!   Числительные складываются, только пока разряд строго убывает: «три четыре» остаётся «3 4».
-//! - **Пунктуация словами.** «точка» перед «зрения», «отсчёта», «кипения», «опоры» не считается
-//!   командой.
-//! - **Точка внутри слова.** `example.com` и `whisper.cpp` не разводятся пробелом и не получают
-//!   заглавную после точки: концом предложения точка считается только перед пробелом или
-//!   заглавной буквой. Само слово «собака» в `@` не превращается — цена ошибки выше пользы.
-//! - **Язык.** `ru` и `en` берут свои таблицы; неизвестный код — обе, потому что автоопределение
-//!   языка могло не сработать, а команды пунктуации в двух языках не пересекаются.
+//! - **Repeats.** The same word in a row is removed, except for a short list of intensifiers
+//!   (`очень`, `чуть`, `еле`, `very`), where the repeat is part of the meaning, not a speech slip.
+//! - **Fillers.** They are removed only as separate words and only if something remains after
+//!   that: a phrase of one "ну" must not turn into an empty string.
+//! - **Numbers.** A single "один"/"one" does not become a digit, because it is too often a
+//!   pronoun. Numerals add up only while the digit position strictly decreases: "три четыре"
+//!   stays "3 4".
+//! - **Spoken punctuation.** "точка" before "зрения", "отсчёта", "кипения", "опоры" does not
+//!   count as a command.
+//! - **Dot inside a word.** `example.com` and `whisper.cpp` do not get a space and do not get a
+//!   capital letter after the dot: a dot counts as the end of a sentence only before a space or
+//!   a capital letter. The word "собака" does not turn into `@`, because the cost of an error is
+//!   higher than the benefit.
+//! - **Language.** `ru` and `en` take their own tables; an unknown code takes both, because the
+//!   language auto-detection may have failed, and the punctuation commands of the two languages
+//!   do not overlap
 
 use crate::config::RulesConfig;
 use crate::domain::text::TextRule;
 
-/// Единицы, которые прилипают к числу неразрывным пробелом.
+/// Units that stick to a number with a non-breaking space
 ///
-/// Однобуквенные и омонимичные предлогам («с», «м», «т», «г») сюда не входят: цена ложного
-/// срабатывания выше пользы.
+/// Single-letter units and units that sound like prepositions ("с", "м", "т", "г") are not
+/// included: the cost of a false match is higher than the benefit
 const UNITS: &[&str] = &[
     "кг", "мг", "км", "см", "мм", "мл", "л", "га", "шт", "мин", "сек", "%", "₽", "$", "€", "руб",
     "гб", "мб", "кб", "тб", "kg", "km", "cm", "mm", "ml", "gb", "mb", "kb",
 ];
 
-/// Усилители, для которых повтор — приём, а не сбой.
+/// Intensifiers for which a repeat is a device, not a slip
 const REPEAT_ALLOWED: &[&str] = &["очень", "чуть", "еле", "very"];
 
-/// Слова, после которых «точка» — часть выражения, а не команда.
+/// Words after which "точка" is part of an expression, not a command
 const DOT_IS_NOT_A_COMMAND: &[&str] = &["зрения", "отсчета", "кипения", "опоры", "невозврата"];
 
-/// Разбор текста на токены. Переводы строк остаются отдельными токенами `\n` и `\n\n`.
+/// Split of a text into tokens. Line breaks stay as separate tokens `\n` and `\n\n`
 pub(crate) fn tokenize(text: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut word = String::new();
@@ -90,7 +93,7 @@ fn is_newline(token: &str) -> bool {
     !token.is_empty() && token.chars().all(|c| c == '\n')
 }
 
-/// Сборка токенов обратно: пробел между словами, но не вокруг переводов строки.
+/// Join of tokens back: a space between words, but not around line breaks
 pub(crate) fn join(tokens: &[String]) -> String {
     let mut out = String::new();
     for token in tokens {
@@ -107,7 +110,7 @@ pub(crate) fn join(tokens: &[String]) -> String {
     out
 }
 
-/// Форма слова для сравнения со словарями команд: нижний регистр, без крайних знаков, `ё` как `е`.
+/// Form of a word for comparison with the command tables: lower case, no edge marks, `ё` as `е`
 pub(crate) fn normalize(token: &str) -> String {
     token
         .trim_matches(|c: char| !c.is_alphanumeric() && c != '-' && c != '%')
@@ -115,9 +118,9 @@ pub(crate) fn normalize(token: &str) -> String {
         .replace('ё', "е")
 }
 
-/// Самое длинное совпадение фразы из таблицы, начиная с позиции `at`.
+/// The longest match of a phrase from the table, starting at position `at`
 ///
-/// Возвращает число съеденных токенов и замену.
+/// Returns the number of consumed tokens and the replacement
 fn longest_match<'a>(
     tokens: &[String],
     at: usize,
@@ -140,7 +143,7 @@ fn longest_match<'a>(
     best
 }
 
-/// Какая таблица команд действует для языка реплики.
+/// Which command table applies for the language of the phrase
 fn tables_for<'a, T>(lang: &str, ru: &'a [T], en: &'a [T]) -> Vec<&'a T> {
     let lang = lang.to_lowercase();
     if lang.starts_with("ru") {
@@ -160,7 +163,7 @@ fn table_for(
     tables_for(lang, ru, en).into_iter().copied().collect()
 }
 
-// --- Пунктуация словами -------------------------------------------------------------------
+// --- Spoken punctuation -------------------------------------------------------------------
 
 const PUNCTUATION_RU: &[(&str, &str)] = &[
     ("вопросительный знак", "?"),
@@ -204,7 +207,7 @@ const PUNCTUATION_EN: &[(&str, &str)] = &[
     ("hyphen", "-"),
 ];
 
-/// «запятая» → `,`, «вопросительный знак» → `?` и так далее.
+/// "запятая" → `,`, "вопросительный знак" → `?` and so on
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SpokenPunctuation;
 
@@ -245,7 +248,7 @@ fn is_dot_of_a_phrase(tokens: &[String], index: usize) -> bool {
         .is_some_and(|next| DOT_IS_NOT_A_COMMAND.contains(&normalize(next).as_str()))
 }
 
-// --- Переводы строки ----------------------------------------------------------------------
+// --- Line breaks --------------------------------------------------------------------------
 
 const NEWLINE_RU: &[(&str, &str)] = &[
     ("с новой строки", "\n"),
@@ -263,7 +266,7 @@ const NEWLINE_EN: &[(&str, &str)] = &[
     ("paragraph", "\n\n"),
 ];
 
-/// «с новой строки» → перевод строки, «абзац» → пустая строка между абзацами.
+/// "с новой строки" → line break, "абзац" → an empty line between paragraphs
 #[derive(Debug, Default, Clone, Copy)]
 pub struct NewLine;
 
@@ -290,9 +293,9 @@ impl TextRule for NewLine {
     }
 }
 
-// --- Списки -------------------------------------------------------------------------------
+// --- Lists --------------------------------------------------------------------------------
 
-/// Триггер списка: фраза, флаг нумерации и слово-разделитель пунктов.
+/// List trigger: the phrase, the numbering flag and the separator word of the items
 struct ListTrigger {
     phrase: &'static [&'static str],
     numbered: bool,
@@ -327,9 +330,9 @@ const LIST_TRIGGERS: &[ListTrigger] = &[
     },
 ];
 
-/// «маркированный список пункт молоко пункт хлеб» → список строками.
+/// "маркированный список пункт молоко пункт хлеб" → a list in lines
 ///
-/// Список тянется до конца реплики: явной команды «конец списка» в речи обычно не звучит.
+/// The list runs to the end of the phrase: an explicit command "конец списка" is usually not spoken
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Lists;
 
@@ -397,15 +400,16 @@ fn find_trigger(tokens: &[String]) -> Option<(usize, &'static ListTrigger)> {
     None
 }
 
-// --- Адреса и ссылки ------------------------------------------------------------------------
+// --- Addresses and links --------------------------------------------------------------------
 
-/// Схемы, после которых идёт адрес, а не новое предложение.
+/// Schemes after which an address follows, not a new sentence
 const URL_STARTS: &[&str] = &["http://", "https://", "www.", "ftp://"];
 
-/// Собирает обратно почтовые адреса и ссылки, которые распознаватель разорвал пробелами.
+/// Puts back together the email addresses and links that the recognizer broke with spaces
 ///
-/// Правило сознательно узкое: склеивается только то, где уже есть `@` или начало ссылки. Само
-/// слово «собака» в `@` не превращается — «погладить собака Барсика» дороже, чем один адрес.
+/// The rule is narrow on purpose: it joins only where an `@` or the start of a link is already
+/// there. The word "собака" does not turn into `@`: "погладить собака Барсика" costs more than one
+/// address
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Glue;
 
@@ -420,7 +424,7 @@ impl TextRule for Glue {
         let mut index = 0;
         while index < tokens.len() {
             let token = &tokens[index];
-            // `имя @ домен` — три токена в один.
+            // `name @ domain`: three tokens into one
             if token == "@" && !out.is_empty() && index + 1 < tokens.len() {
                 let left = out.last().cloned().unwrap_or_default();
                 let right = tokens[index + 1].clone();
@@ -431,7 +435,7 @@ impl TextRule for Glue {
                     continue;
                 }
             }
-            // `адрес . ru` или `www . example` — точка приклеивается к обеим сторонам.
+            // `address . ru` or `www . example`: the dot sticks to both sides
             if token == "." && !out.is_empty() && index + 1 < tokens.len() {
                 let left = out.last().cloned().unwrap_or_default();
                 let right = tokens[index + 1].clone();
@@ -442,7 +446,7 @@ impl TextRule for Glue {
                     continue;
                 }
             }
-            // `адрес .ru` — точка уже приросла к правому куску.
+            // `address .ru`: the dot already grew onto the right piece
             if let Some(rest) = token.strip_prefix('.') {
                 let left = out.last().cloned().unwrap_or_default();
                 if !out.is_empty() && continues_an_address(&left) && is_address_part(rest) {
@@ -459,7 +463,7 @@ impl TextRule for Glue {
     }
 }
 
-/// Кусок адреса: буквы, цифры, дефисы и подчёркивания, без знаков препинания.
+/// Piece of an address: letters, digits, hyphens and underscores, with no punctuation
 fn is_address_part(token: &str) -> bool {
     !token.is_empty()
         && token.chars().any(char::is_alphanumeric)
@@ -468,7 +472,7 @@ fn is_address_part(token: &str) -> bool {
             .all(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | '@' | '/' | ':'))
 }
 
-/// Слева от точки уже есть адрес или ссылка, а не конец предложения.
+/// To the left of the dot there is already an address or a link, not the end of a sentence
 fn continues_an_address(token: &str) -> bool {
     if !is_address_part(token) {
         return false;
@@ -479,9 +483,9 @@ fn continues_an_address(token: &str) -> bool {
         || URL_STARTS.iter().any(|start| lowered.starts_with(start))
 }
 
-// --- Повторы и заполнители ------------------------------------------------------------------
+// --- Repeats and fillers --------------------------------------------------------------------
 
-/// Подряд идущее одинаковое слово оставляется в одном экземпляре.
+/// The same word in a row is kept as one instance
 #[derive(Debug, Default, Clone, Copy)]
 pub struct RemoveRepeats;
 
@@ -526,7 +530,7 @@ const FILLERS_RU: &[&str] = &[
 
 const FILLERS_EN: &[&str] = &["you know", "i mean", "um", "uh", "erm", "like"];
 
-/// Слова-заполнители снимаются, но только если после этого что-то останется.
+/// Filler words are removed, but only if something remains after that
 #[derive(Debug, Default, Clone, Copy)]
 pub struct RemoveFillers;
 
@@ -554,21 +558,21 @@ impl TextRule for RemoveFillers {
             .iter()
             .all(|token| !token.chars().any(char::is_alphanumeric))
         {
-            // Реплика состояла из одних заполнителей: пустая строка хуже, чем сказанное.
+            // The phrase held only fillers: an empty string is worse than what was said
             return text.to_string();
         }
         join(&out)
     }
 }
 
-// --- Числительные ---------------------------------------------------------------------------
+// --- Numerals -------------------------------------------------------------------------------
 
-/// Значение числительного и его разряд: разряд нужен, чтобы не складывать «три четыре».
+/// Value of a numeral and its digit class: the class is needed to avoid adding "три четыре"
 struct Numeral {
     value: u64,
-    /// 1 — единицы и подростковые, 2 — десятки, 3 — сотни; множители обрабатываются отдельно.
+    /// 1 is units and teens, 2 is tens, 3 is hundreds; multipliers are handled separately
     class: u8,
-    /// Множитель: «сто» в английском и «тысяча» в обоих языках умножают накопленное.
+    /// Multiplier: "сто" in English and "тысяча" in both languages multiply the accumulated value
     multiplier: bool,
 }
 
@@ -713,12 +717,12 @@ fn numeral_en(word: &str) -> Option<Numeral> {
     }
 }
 
-/// Одиночные числительные, которые чаще местоимение или артикль, чем число.
+/// Single numerals that are more often a pronoun or an article than a number
 fn is_lonely_pronoun(word: &str) -> bool {
     matches!(word, "один" | "одна" | "одно" | "одни" | "one")
 }
 
-/// Корни порядковых числительных: «две тысячи двадцать шестого» цифрами не записывается.
+/// Roots of ordinal numerals: "две тысячи двадцать шестого" is not written in digits
 const ORDINAL_ROOTS: &[&str] = &[
     "перв",
     "втор",
@@ -756,20 +760,20 @@ const ORDINAL_ROOTS: &[&str] = &[
     "tenth",
 ];
 
-/// Стоит ли сразу за цепочкой порядковое числительное: тогда цепочку трогать нельзя.
+/// Whether an ordinal numeral follows the chain at once: then the chain must not be touched
 fn followed_by_ordinal(tokens: &[String], after: usize) -> bool {
     let Some(next) = tokens.get(after) else {
         return false;
     };
     let next = normalize(next);
-    // Само числительное порядковым не считается: «двадцать пять» — это 25.
+    // A numeral itself does not count as ordinal: "двадцать пять" is 25
     if numeral_ru(&next).is_some() || numeral_en(&next).is_some() {
         return false;
     }
     ORDINAL_ROOTS.iter().any(|root| next.starts_with(root))
 }
 
-/// «двадцать пять» → «25», «две тысячи двадцать шесть» → «2026».
+/// "двадцать пять" → "25", "две тысячи двадцать шесть" → "2026"
 #[derive(Debug, Default, Clone, Copy)]
 pub struct NumbersAsDigits;
 
@@ -785,13 +789,14 @@ impl TextRule for NumbersAsDigits {
         while index < tokens.len() {
             match numeral_run(&tokens, index, lang) {
                 Some((len, Some(value))) => {
-                    // Хвост знаков препинания у последнего слова остаётся при числе.
+                    // The trailing punctuation of the last word stays with the number
                     let tail = trailing_punctuation(&tokens[index + len - 1]);
                     out.push(format!("{value}{tail}"));
                     index += len;
                 }
                 Some((len, None)) => {
-                    // Цепочка распознана, но записывать её цифрами нельзя: оставляем словами.
+                    // The chain is recognized, but it must not be written in digits: we keep the
+                    // words
                     out.extend(tokens[index..index + len].iter().cloned());
                     index += len;
                 }
@@ -805,10 +810,10 @@ impl TextRule for NumbersAsDigits {
     }
 }
 
-/// Длина цепочки числительных с позиции `at` и её значение.
+/// Length of the numeral chain from position `at` and its value
 ///
-/// `Some((len, None))` — цепочка есть, но записывать её цифрами нельзя (порядковое следом,
-/// одинокое «один»): такие токены проходят дальше словами.
+/// `Some((len, None))` means there is a chain, but it must not be written in digits (an ordinal
+/// follows, or a lonely "один"): such tokens pass on as words
 fn numeral_run(tokens: &[String], at: usize, lang: &str) -> Option<(usize, Option<u64>)> {
     let mut total = 0u64;
     let mut current = 0u64;
@@ -862,12 +867,12 @@ fn trailing_punctuation(token: &str) -> String {
         .collect()
 }
 
-// --- Пробелы --------------------------------------------------------------------------------
+// --- Spaces ---------------------------------------------------------------------------------
 
-/// Лишние пробелы, пробел перед знаком препинания, неразрывный пробел в «5 кг».
+/// Extra spaces, a space before punctuation, a non-breaking space in "5 кг"
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Whitespace {
-    /// Неразрывные пробелы ставятся только там, где числа уже записаны цифрами.
+    /// Non-breaking spaces are set only where the numbers are already written in digits
     pub non_breaking_units: bool,
 }
 
@@ -894,7 +899,7 @@ fn is_number(token: &str) -> bool {
         && trimmed.chars().any(|c| c.is_ascii_digit())
 }
 
-/// Число и единица склеиваются неразрывным пробелом: «5 кг» не переносится по строкам.
+/// A number and a unit are joined with a non-breaking space: "5 кг" does not wrap across lines
 fn glue_units(tokens: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::with_capacity(tokens.len());
     let mut index = 0;
@@ -913,13 +918,13 @@ fn glue_units(tokens: &[String]) -> Vec<String> {
     out
 }
 
-/// Чистка на уровне символов: пробелы, знаки препинания, пустые строки.
+/// Cleanup at the character level: spaces, punctuation, empty lines
 fn tidy(text: &str) -> String {
     let chars: Vec<char> = text.chars().collect();
     let mut out: Vec<char> = Vec::with_capacity(chars.len());
     for (index, &ch) in chars.iter().enumerate() {
         if ch == ' ' {
-            // Пробел перед закрывающим знаком препинания не нужен.
+            // A space before closing punctuation is not needed
             if let Some(next) = chars.get(index + 1) {
                 if matches!(
                     next,
@@ -928,11 +933,11 @@ fn tidy(text: &str) -> String {
                     continue;
                 }
             }
-            // Два пробела подряд — один пробел.
+            // Two spaces in a row become one space
             if out.last() == Some(&' ') || out.is_empty() {
                 continue;
             }
-            // Пробел после открывающей скобки или кавычки уже съеден ниже.
+            // The space after an opening bracket or quote is already eaten below
             if matches!(out.last(), Some('(' | '«' | '\u{201c}')) {
                 continue;
             }
@@ -940,7 +945,7 @@ fn tidy(text: &str) -> String {
         out.push(ch);
     }
 
-    // Пробел после знака препинания, если его забыли; десятичные дроби не трогаем.
+    // A space after punctuation, if it was forgotten; decimal fractions are not touched
     let chars = out;
     let mut spaced: Vec<char> = Vec::with_capacity(chars.len() + 8);
     for (index, &ch) in chars.iter().enumerate() {
@@ -958,8 +963,9 @@ fn tidy(text: &str) -> String {
         if previous.is_ascii_digit() && next.is_ascii_digit() {
             continue;
         }
-        // Точка внутри слова — это `example.com`, `whisper.cpp` или версия, а не конец
-        // предложения: разводить такое пробелом нельзя. Признак предложения — заглавная следом.
+        // A dot inside a word is `example.com`, `whisper.cpp` or a version, not the end of a
+        // sentence: such a dot must not get a space. The sign of a sentence is a capital letter
+        // after it
         if ch == '.' && previous.is_alphanumeric() && !next.is_uppercase() {
             continue;
         }
@@ -967,7 +973,7 @@ fn tidy(text: &str) -> String {
     }
 
     let text: String = spaced.into_iter().collect();
-    // Больше одной пустой строки подряд не бывает.
+    // There is never more than one empty line in a row
     let mut result = text.trim().to_string();
     while result.contains("\n\n\n") {
         result = result.replace("\n\n\n", "\n\n");
@@ -979,28 +985,28 @@ fn tidy(text: &str) -> String {
         .join("\n")
 }
 
-// --- Заглавные ------------------------------------------------------------------------------
+// --- Capital letters ------------------------------------------------------------------------
 
-/// Заглавная буква в начале текста, после точки и после перевода строки.
+/// Capital letter at the start of the text, after a dot and after a line break
 ///
-/// Маркер списка в начале строки (`-`, `1.`) предложение не открывает и не закрывает: пункт
-/// списка начинается с заглавной так же, как обычная фраза.
+/// A list marker at the start of a line (`-`, `1.`) neither opens nor closes a sentence: a list
+/// item starts with a capital letter in the same way as an ordinary phrase
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Capitalize;
 
-/// Символы, которые могут стоять перед первой буквой предложения.
+/// Characters that can stand before the first letter of a sentence
 fn opens_a_sentence(ch: char) -> bool {
     matches!(ch, '«' | '"' | '(' | '\u{201c}')
 }
 
-/// Маркер пункта списка в начале строки.
+/// Marker of a list item at the start of a line
 fn is_list_marker(ch: char) -> bool {
     ch.is_ascii_digit() || matches!(ch, '-' | '*' | '•' | '.' | ')')
 }
 
-/// Точка заканчивает предложение только если за ней пробел или конец текста.
+/// A dot ends a sentence only if a space or the end of the text follows it
 ///
-/// Иначе `whisper.cpp` превращается в `whisper.Cpp`, а `example.com` — в `example.Com`.
+/// Otherwise `whisper.cpp` turns into `whisper.Cpp`, and `example.com` into `example.Com`
 fn ends_a_sentence(chars: &[char], at: usize) -> bool {
     match chars.get(at + 1) {
         None => true,
@@ -1046,9 +1052,9 @@ impl TextRule for Capitalize {
     }
 }
 
-// --- Набор правил ---------------------------------------------------------------------------
+// --- Rule set -------------------------------------------------------------------------------
 
-/// Набор правил в фиксированном порядке, собранный по настройкам.
+/// Set of rules in a fixed order, built from the settings
 pub struct RuleSet {
     rules: Vec<Box<dyn TextRule>>,
 }
@@ -1062,7 +1068,7 @@ impl std::fmt::Debug for RuleSet {
 }
 
 impl RuleSet {
-    /// Собрать набор по настройкам. `rules.enabled = false` даёт пустой набор.
+    /// Build the set from the settings. `rules.enabled = false` gives an empty set
     pub fn from_config(cfg: &RulesConfig) -> Self {
         let mut rules: Vec<Box<dyn TextRule>> = Vec::new();
         if !cfg.enabled {
@@ -1073,7 +1079,8 @@ impl RuleSet {
         if cfg.spoken_punctuation {
             rules.push(Box::new(SpokenPunctuation));
         }
-        // После пунктуации, но до чистки пробелов: иначе `Whitespace` разведёт адрес обратно.
+        // After punctuation but before the space cleanup: otherwise `Whitespace` splits the
+        // address again
         rules.push(Box::new(Glue));
         if cfg.remove_fillers {
             rules.push(Box::new(RemoveFillers));
@@ -1093,7 +1100,7 @@ impl RuleSet {
         Self { rules }
     }
 
-    /// Идентификаторы правил в порядке применения — для диагностики и логов.
+    /// Identifiers of the rules in the order of application, for diagnostics and logs
     pub fn ids(&self) -> Vec<&'static str> {
         self.rules.iter().map(|rule| rule.id()).collect()
     }
@@ -1102,7 +1109,7 @@ impl RuleSet {
         self.rules.is_empty()
     }
 
-    /// Применить набор целиком. Пустой набор возвращает текст без изменений.
+    /// Apply the whole set. An empty set returns the text unchanged
     pub fn apply(&self, text: &str, lang: &str) -> String {
         self.rules
             .iter()
@@ -1193,7 +1200,7 @@ mod tests {
             RemoveFillers.apply("ну как бы это типа работает", "ru"),
             "это работает"
         );
-        // «Вот» внутри слова не трогается.
+        // "Вот" inside a word is not touched
         assert_eq!(RemoveFillers.apply("вотум доверия", "ru"), "вотум доверия");
         assert_eq!(RemoveFillers.apply("um i think uh so", "en"), "i think so");
     }
@@ -1201,7 +1208,7 @@ mod tests {
     #[test]
     fn an_utterance_made_only_of_fillers_is_kept() {
         assert_eq!(RemoveFillers.apply("ну короче", "ru"), "ну короче");
-        // От реплики остались одни знаки препинания — это тоже пустая реплика.
+        // Only punctuation remains of the phrase: this is also an empty phrase
         assert_eq!(RemoveFillers.apply("ну — короче", "ru"), "ну — короче");
     }
 
@@ -1236,7 +1243,7 @@ mod tests {
             NumbersAsDigits.apply("двадцать пятого числа", "ru"),
             "двадцать пятого числа"
         );
-        // Обычное существительное после числа конвертации не мешает.
+        // An ordinary noun after a number does not block the conversion
         assert_eq!(
             NumbersAsDigits.apply("двадцать пять коробок", "ru"),
             "25 коробок"
@@ -1264,7 +1271,7 @@ mod tests {
         assert_eq!(rule.apply("привет,мир", "ru"), "привет, мир");
         assert_eq!(rule.apply("цена 1.5 рубля", "ru"), "цена 1.5 рубля");
         assert_eq!(rule.apply("итого 1,5 кг", "ru"), "итого 1,5 кг");
-        // Точка между словами разводится пробелом только перед заглавной буквой.
+        // A dot between words gets a space only before a capital letter
         assert_eq!(rule.apply("конец.Новое", "ru"), "конец. Новое");
         assert_eq!(rule.apply("собери whisper.cpp", "ru"), "собери whisper.cpp");
     }
@@ -1276,7 +1283,7 @@ mod tests {
         };
         assert_eq!(rule.apply("5 кг картошки", "ru"), "5\u{a0}кг картошки");
         assert_eq!(rule.apply("рост 10 %", "ru"), "рост 10\u{a0}%");
-        // Слово, похожее на единицу, но без числа перед ним — обычный пробел.
+        // A word that looks like a unit but has no number before it gets an ordinary space
         assert_eq!(rule.apply("просто кг", "ru"), "просто кг");
     }
 
@@ -1287,7 +1294,7 @@ mod tests {
             "Привет. Как дела? Хорошо"
         );
         assert_eq!(Capitalize.apply("строка\nвторая", "ru"), "Строка\nВторая");
-        // Регистр внутри слов не меняется: идентификаторы кода остаются собой.
+        // The case inside words does not change: code identifiers stay as they are
         assert_eq!(
             Capitalize.apply("вызови getUserById потом exit", "ru"),
             "Вызови getUserById потом exit"
@@ -1304,7 +1311,7 @@ mod tests {
             Capitalize.apply("готово. следующий шаг", "ru"),
             "Готово. Следующий шаг"
         );
-        // Точка в конце текста предложение всё-таки закрывает.
+        // A dot at the end of the text does close the sentence
         assert_eq!(Capitalize.apply("готово.", "ru"), "Готово.");
     }
 
@@ -1322,7 +1329,7 @@ mod tests {
             full().apply("почта ivan @ example точка com точка", "ru"),
             "Почта ivan@example.com."
         );
-        // «собака» словом в `@` не превращается: слишком часто это животное.
+        // The word "собака" does not turn into `@`: too often it is the animal
         assert!(!full().apply("погладить собака барсика", "ru").contains('@'));
     }
 
@@ -1340,7 +1347,7 @@ mod tests {
 
     #[test]
     fn an_ordinary_sentence_is_not_glued_into_an_address() {
-        // Точка в конце предложения не приклеивает следующее слово.
+        // A dot at the end of a sentence does not glue the next word
         assert_eq!(
             Glue.apply("работа сделана . завтра продолжим", "ru"),
             "работа сделана . завтра продолжим"
@@ -1408,16 +1415,16 @@ mod tests {
         assert_eq!(full().apply("hello period", "auto"), "Hello.");
     }
 
-    // --- Golden-тесты: реальные фразы целиком -------------------------------------------
+    // --- Golden tests: real phrases as a whole ------------------------------------------
 
     fn golden_dir() -> std::path::PathBuf {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../tests/golden/rules")
             .canonicalize()
-            .expect("каталог golden-тестов существует")
+            .expect("the golden test directory exists")
     }
 
-    /// Язык берётся из имени файла: `ru-punctuation.in.txt` → `ru`.
+    /// The language comes from the file name: `ru-punctuation.in.txt` → `ru`
     fn lang_of(name: &str) -> String {
         name.split('-').next().unwrap_or("ru").to_string()
     }
@@ -1427,15 +1434,12 @@ mod tests {
         let directory = golden_dir();
         let update = std::env::var("UPDATE_GOLDEN").is_ok();
         let mut cases: Vec<std::path::PathBuf> = std::fs::read_dir(&directory)
-            .expect("golden-каталог читается")
+            .expect("the golden directory is readable")
             .filter_map(|entry| entry.ok().map(|e| e.path()))
             .filter(|path| path.to_string_lossy().ends_with(".in.txt"))
             .collect();
         cases.sort();
-        assert!(
-            !cases.is_empty(),
-            "нет ни одного golden-случая в {directory:?}"
-        );
+        assert!(!cases.is_empty(), "no golden case in {directory:?}");
 
         let mut failures = Vec::new();
         for input_path in cases {
@@ -1452,17 +1456,17 @@ mod tests {
                 continue;
             }
             let expected = std::fs::read_to_string(&expected_path)
-                .unwrap_or_else(|_| panic!("нет эталона {expected_path:?}; UPDATE_GOLDEN=1"));
+                .unwrap_or_else(|_| panic!("no reference {expected_path:?}; UPDATE_GOLDEN=1"));
             let expected = expected.trim_end_matches('\n');
             if actual != expected {
                 failures.push(format!(
-                    "{name}:\n  вход:    {input:?}\n  ожидали: {expected:?}\n  вышло:   {actual:?}"
+                    "{name}:\n  input:    {input:?}\n  expected: {expected:?}\n  actual:   {actual:?}"
                 ));
             }
         }
         assert!(
             failures.is_empty(),
-            "golden-случаи разошлись с эталоном:\n{}",
+            "golden cases differ from the reference:\n{}",
             failures.join("\n")
         );
     }

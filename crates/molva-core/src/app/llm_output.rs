@@ -1,22 +1,23 @@
 // SPDX-License-Identifier: MIT
-//! Чистка ответа модели: в поле ввода попадает текст, а не служебная разметка.
+//! Cleanup of the model reply: the input field gets text, not service markup
 //!
-//! Критерий: **служебные теги модели не попадают в текст**. Рассуждающие модели пишут
-//! `<think>…</think>`, инструкт-модели оборачивают ответ в ```-ограждения, вежливые модели
-//! начинают с «Вот исправленный текст:», а мелкие модели любят вернуть кусок системного промпта
-//! или подсказку словаря вместо ответа. Всё это — мусор в поле пользователя, поэтому ответ
-//! проходит через [`sanitize_llm_output`] до того, как его увидит вставка.
+//! The criterion is that **service tags of the model do not reach the text**. Reasoning models
+//! write `<think>…</think>`, instruct models wrap the reply in ``` fences, polite models start
+//! with "Вот исправленный текст:", and small models like to return a piece of the system prompt
+//! or the dictionary hint instead of the reply. All of this is garbage in the user's field,
+//! so the reply goes through [`sanitize_llm_output`] before the paste step sees it
 //!
-//! Функция намеренно чистая: разметка сложная, ошибок в ней много, и каждая правка проверяется
-//! тестом, а не запуском модели.
+//! The function is pure on purpose: the markup is complex and has many error cases, and a test
+//! checks each fix, not a run of the model
 
-/// Теги рассуждений, которые вырезаются вместе с содержимым.
+/// Reasoning tags that are cut out together with their content
 const THINKING_TAGS: [&str; 4] = ["think", "reasoning", "thinking", "thought"];
 
-/// Слова-приметы вводной фразы вида «Вот исправленный текст:».
+/// Marker words of an introductory phrase such as "Вот исправленный текст:"
 ///
-/// Список намеренно узкий: «текст» без «вот» и «исправленный» встречается и в живой речи
-/// («Текст доклада: …»), а срезанная реплика — потеря пользователя, в отличие от лишней вводной.
+/// The list is narrow on purpose: "текст" without "вот" and "исправленный" also occurs in live
+/// speech ("Текст доклада: …"), and a phrase that is cut off is a loss for the user, unlike an
+/// extra introduction
 const PREAMBLE_MARKERS: [&str; 10] = [
     "вот",
     "результат",
@@ -30,16 +31,16 @@ const PREAMBLE_MARKERS: [&str; 10] = [
     "corrected",
 ];
 
-/// Максимальная длина вводной фразы: длинная строка с двоеточием — это уже текст пользователя.
+/// Maximum length of an introductory phrase: a long line with a colon is already user text
 const MAX_PREAMBLE_CHARS: usize = 60;
 
-/// Пары кавычек, в которые модель заворачивает ответ целиком.
+/// Pairs of quotes in which the model wraps the whole reply
 const QUOTE_PAIRS: [(char, char); 4] = [('"', '"'), ('«', '»'), ('“', '”'), ('\'', '\'')];
 
-/// Очистить ответ модели от служебной разметки.
+/// Clean the model reply of service markup
 ///
-/// `dictionary_prompt` — подсказка словаря, которую конвейер отдаёт распознавателю и модели:
-/// если модель вернула её эхом вместо ответа, это не текст пользователя.
+/// `dictionary_prompt` is the dictionary hint that the pipeline gives to the recognizer and to
+/// the model: if the model returned it as an echo instead of a reply, it is not user text
 pub fn sanitize_llm_output(text: &str, dictionary_prompt: &str) -> String {
     let mut out = text.to_string();
     for tag in THINKING_TAGS {
@@ -52,10 +53,10 @@ pub fn sanitize_llm_output(text: &str, dictionary_prompt: &str) -> String {
     out.trim().to_string()
 }
 
-/// Вырезать `<tag>…</tag>` вместе с содержимым; незакрытый тег съедает хвост ответа.
+/// Cut `<tag>…</tag>` together with the content; an unclosed tag eats the tail of the reply
 ///
-/// Незакрытый `<think>` означает, что модель не успела закончить рассуждение: всё после него —
-/// обрывок мысли, а не ответ.
+/// An unclosed `<think>` means that the model did not finish its reasoning: everything after it
+/// is a fragment of a thought, not a reply
 fn strip_tag_block(text: &str, tag: &str) -> String {
     let open = format!("<{tag}>");
     let close = format!("</{tag}>");
@@ -74,14 +75,14 @@ fn strip_tag_block(text: &str, tag: &str) -> String {
     out.trim().to_string()
 }
 
-/// Снять ведущее и замыкающее ```-ограждение.
+/// Remove the leading and the trailing ``` fence
 fn strip_code_fences(text: &str) -> String {
     let trimmed = text.trim();
     if !trimmed.starts_with("```") {
         return trimmed.to_string();
     }
     let mut lines: Vec<&str> = trimmed.lines().collect();
-    // Первая строка — само ограждение, возможно с именем языка.
+    // The first line is the fence itself, maybe with a language name
     lines.remove(0);
     if lines
         .last()
@@ -96,7 +97,7 @@ fn strip_code_fences(text: &str) -> String {
     lines.join("\n").trim().to_string()
 }
 
-/// Убрать строки, в которых модель вернула подсказку словаря вместо ответа.
+/// Remove the lines in which the model returned the dictionary hint instead of a reply
 fn strip_dictionary_echo(text: &str, dictionary_prompt: &str) -> String {
     let prompt = dictionary_prompt.trim();
     if prompt.is_empty() {
@@ -114,7 +115,7 @@ fn strip_dictionary_echo(text: &str, dictionary_prompt: &str) -> String {
         .to_string()
 }
 
-/// Ключ для сравнения строк: без регистра, пробелов по краям и хвостовой пунктуации.
+/// Key to compare lines: no case, no edge spaces and no trailing punctuation
 fn normalize(line: &str) -> String {
     line.trim()
         .trim_end_matches(['.', ',', ':', ';', '!', '?'])
@@ -122,7 +123,7 @@ fn normalize(line: &str) -> String {
         .to_lowercase()
 }
 
-/// Срезать вводную фразу вроде «Вот исправленный текст:».
+/// Cut an introductory phrase such as "Вот исправленный текст:"
 fn strip_preamble(text: &str) -> String {
     let text = text.trim_start();
     let Some(colon) = text.find(':') else {
@@ -132,7 +133,7 @@ fn strip_preamble(text: &str) -> String {
     if head.chars().count() > MAX_PREAMBLE_CHARS || head.contains('\n') {
         return text.to_string();
     }
-    // Двоеточие внутри предложения (адреса, время, «итак: » в цитате) — не вводная фраза.
+    // A colon inside a sentence (addresses, time, "итак: " in a quote) is not an introduction
     if head.contains(['.', '!', '?']) {
         return text.to_string();
     }
@@ -141,11 +142,11 @@ fn strip_preamble(text: &str) -> String {
         return text.to_string();
     }
     let rest = text[colon + ':'.len_utf8()..].trim_start();
-    // Вводная фраза без текста после неё — это и есть весь ответ: вернуть нечего.
+    // An introduction with no text after it is the whole reply: there is nothing to return
     rest.to_string()
 }
 
-/// Снять кавычки, в которые модель обернула ответ целиком.
+/// Remove the quotes in which the model wrapped the whole reply
 fn unwrap_quotes(text: &str) -> String {
     let trimmed = text.trim();
     let mut chars = trimmed.chars();
@@ -158,7 +159,7 @@ fn unwrap_quotes(text: &str) -> String {
     for (open, close) in QUOTE_PAIRS {
         if first == open && last == close {
             let inner = &trimmed[open.len_utf8()..trimmed.len() - close.len_utf8()];
-            // Кавычки внутри текста означают цитату, а не обёртку.
+            // Quotes inside the text mean a quotation, not a wrapper
             if !inner.contains(open) && !inner.contains(close) {
                 return inner.trim().to_string();
             }
@@ -188,7 +189,7 @@ mod tests {
         assert_eq!(
             clean("<THINK>шум</THINK> Текст."),
             "Текст.",
-            "регистр тега значения не имеет"
+            "the case of the tag does not matter"
         );
     }
 
@@ -207,7 +208,7 @@ mod tests {
         assert_eq!(
             clean("```\nfn main() {}\n```"),
             "fn main() {}",
-            "код внутри ограждения остаётся кодом"
+            "code inside a fence stays code"
         );
     }
 
@@ -243,7 +244,7 @@ mod tests {
         assert_eq!(
             clean("Он сказал так. Вот главное: идём."),
             "Он сказал так. Вот главное: идём.",
-            "вводная фраза бывает только в начале ответа"
+            "an introduction occurs only at the start of a reply"
         );
     }
 
@@ -267,12 +268,12 @@ mod tests {
         assert_eq!(
             sanitize_llm_output(hint, hint),
             "",
-            "один только словарь — это не реплика"
+            "a dictionary alone is not a phrase"
         );
         assert_eq!(
             sanitize_llm_output("MolvAI умеет вставлять текст.", hint),
             "MolvAI умеет вставлять текст.",
-            "термин внутри реплики остаётся на месте"
+            "a term inside a phrase stays in place"
         );
     }
 

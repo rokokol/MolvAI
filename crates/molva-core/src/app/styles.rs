@@ -1,37 +1,37 @@
 // SPDX-License-Identifier: MIT
-//! Стили постобработки: встроенные профили и пользовательские из настроек.
+//! Post-processing styles: built-in profiles and custom ones from the settings
 //!
-//! Стиль решает две вещи: нужна ли вообще модель (`uses_llm`) и что ей сказать
-//! (`system_prompt`). `verbatim` модель не зовёт вовсе — это дешёвый и предсказуемый режим для
-//! паролей, команд и кода.
+//! A style decides two things: whether a model is needed at all (`uses_llm`) and what to tell
+//! the model (`system_prompt`). `verbatim` never calls the model. It is a cheap and predictable
+//! mode for passwords, commands and code
 //!
-//! Каждый системный промпт заканчивается общим условием: сохранить язык входа, не добавлять
-//! фактов, вывести только результат. Без него модель охотно отвечает «Конечно! Вот исправленный
-//! текст:» — и это уезжает прямо в активное поле пользователя.
+//! Every system prompt ends with a common condition: keep the input language, add no facts,
+//! output only the result. Without it the model readily answers "Конечно! Вот исправленный
+//! текст:", and this goes straight into the active field of the user
 
 use crate::config::StyleConfig;
 use crate::domain::text::Style;
 
-/// Стиль по умолчанию, если в настройках указан несуществующий.
+/// Default style, used when the settings name a style that does not exist
 pub const FALLBACK_STYLE: &str = "cleanup";
 
-/// Общий хвост системного промпта — единственная защита от болтливости модели.
+/// Common tail of the system prompt, the only protection against a talkative model
 const COMMON_RULES: &str = " Сохрани язык входного текста. Не добавляй фактов, которых нет в \
     исходном тексте, и ничего не выдумывай. Выведи только результат без пояснений, кавычек и \
     вступлений.";
 
-/// Встроенные стили в порядке перебора по горячей клавише.
+/// Built-in styles, in the order the hotkey cycles through them
 fn builtin() -> Vec<Style> {
     vec![
         Style {
             id: "verbatim".into(),
-            name: "Дословно".into(),
+            name: "Verbatim".into(),
             uses_llm: false,
             system_prompt: String::new(),
         },
         Style {
             id: "cleanup".into(),
-            name: "Чистка".into(),
+            name: "Cleanup".into(),
             uses_llm: true,
             system_prompt: format!(
                 "Ты редактируешь расшифровку устной речи. Исправь пунктуацию, регистр и \
@@ -43,7 +43,7 @@ fn builtin() -> Vec<Style> {
         },
         Style {
             id: "messenger".into(),
-            name: "Мессенджер".into(),
+            name: "Messenger".into(),
             uses_llm: true,
             system_prompt: format!(
                 "Ты превращаешь расшифровку речи в короткое сообщение для мессенджера: одна-три \
@@ -53,7 +53,7 @@ fn builtin() -> Vec<Style> {
         },
         Style {
             id: "mail".into(),
-            name: "Почта".into(),
+            name: "Email".into(),
             uses_llm: true,
             system_prompt: format!(
                 "Ты превращаешь расшифровку речи в связный абзац делового письма: полные \
@@ -63,7 +63,7 @@ fn builtin() -> Vec<Style> {
         },
         Style {
             id: "code".into(),
-            name: "Код".into(),
+            name: "Code".into(),
             uses_llm: true,
             system_prompt: format!(
                 "Ты оформляешь техническую заметку по расшифровке речи. Идентификаторы, имена \
@@ -73,7 +73,7 @@ fn builtin() -> Vec<Style> {
         },
         Style {
             id: "formal".into(),
-            name: "Официально".into(),
+            name: "Formal".into(),
             uses_llm: true,
             system_prompt: format!(
                 "Ты приводишь расшифровку речи к официально-деловому стилю: полные предложения, \
@@ -83,7 +83,7 @@ fn builtin() -> Vec<Style> {
     ]
 }
 
-/// Набор доступных стилей: встроенные плюс пользовательские из настроек.
+/// Set of available styles: the built-in ones plus the custom ones from the settings
 #[derive(Debug, Clone)]
 pub struct Styles {
     styles: Vec<Style>,
@@ -96,7 +96,7 @@ impl Default for Styles {
 }
 
 impl Styles {
-    /// Собрать набор по настройкам. Пользовательский стиль с тем же `id` заменяет встроенный.
+    /// Build the set from the settings. A custom style with the same `id` replaces a built-in one
     pub fn from_config(cfg: &StyleConfig) -> Self {
         let mut styles = builtin();
         for custom in &cfg.custom {
@@ -122,7 +122,7 @@ impl Styles {
         self.styles.iter().find(|style| style.id == id)
     }
 
-    /// Следующий стиль по кругу — для горячей клавиши «сменить стиль».
+    /// Next style in a circle, for the "change style" hotkey
     pub fn next(&self, id: &str) -> &str {
         if self.styles.is_empty() {
             return FALLBACK_STYLE;
@@ -135,7 +135,8 @@ impl Styles {
         &self.styles[next].id
     }
 
-    /// Стиль для класса окна: сначала точное правило, потом регистронезависимое, потом умолчание.
+    /// Style for a window class: first the exact rule, then the case-insensitive rule, then the
+    /// default
     pub fn for_app(&self, class: Option<&str>, cfg: &StyleConfig) -> String {
         if let Some(class) = class {
             if let Some(style) = cfg.by_app.get(class) {
@@ -147,8 +148,8 @@ impl Styles {
                     return style.clone();
                 }
             }
-            // Классы окон приходят в разном виде (`org.mozilla.firefox`, `firefox`), поэтому
-            // правило срабатывает и как подстрока.
+            // Window classes come in different forms (`org.mozilla.firefox`, `firefox`), so a
+            // rule also matches as a substring
             for (pattern, style) in &cfg.by_app {
                 let pattern = pattern.to_lowercase();
                 if !pattern.is_empty() && lowered.contains(&pattern) {
@@ -159,9 +160,9 @@ impl Styles {
         cfg.default.clone()
     }
 
-    /// Итоговый стиль реплики: явный выбор важнее автоматики по окну.
+    /// Final style of a phrase: an explicit choice beats the automatic choice by window
     ///
-    /// Неизвестный идентификатор не роняет конвейер: остаётся `cleanup`.
+    /// An unknown identifier does not break the pipeline: the style stays `cleanup`
     pub fn resolve(&self, requested: Option<&str>, app: Option<&str>, cfg: &StyleConfig) -> Style {
         let id = match requested {
             Some(id) if self.get(id).is_some() => id.to_string(),
@@ -173,7 +174,7 @@ impl Styles {
             .cloned()
             .unwrap_or_else(|| Style {
                 id: FALLBACK_STYLE.into(),
-                name: "Чистка".into(),
+                name: "Cleanup".into(),
                 uses_llm: true,
                 system_prompt: format!("Исправь расшифровку речи.{COMMON_RULES}"),
             })
@@ -189,7 +190,7 @@ mod tests {
     fn all_builtin_styles_are_present_and_verbatim_skips_the_model() {
         let styles = Styles::default();
         for id in ["verbatim", "cleanup", "messenger", "mail", "code", "formal"] {
-            assert!(styles.get(id).is_some(), "нет стиля {id}");
+            assert!(styles.get(id).is_some(), "no style {id}");
         }
         assert!(!styles.get("verbatim").unwrap().uses_llm);
         assert!(styles.get("cleanup").unwrap().uses_llm);
@@ -220,23 +221,23 @@ mod tests {
         let cfg = StyleConfig {
             custom: vec![
                 CustomStyle {
-                    id: "поэма".into(),
-                    name: "Поэма".into(),
+                    id: "poem".into(),
+                    name: "Poem".into(),
                     uses_llm: true,
-                    system_prompt: "Пиши стихами.".into(),
+                    system_prompt: "Write in verse.".into(),
                 },
                 CustomStyle {
                     id: "cleanup".into(),
-                    name: "Моя чистка".into(),
+                    name: "My cleanup".into(),
                     uses_llm: true,
-                    system_prompt: "Мой промпт.".into(),
+                    system_prompt: "My prompt.".into(),
                 },
             ],
             ..StyleConfig::default()
         };
         let styles = Styles::from_config(&cfg);
-        assert_eq!(styles.get("поэма").unwrap().name, "Поэма");
-        assert_eq!(styles.get("cleanup").unwrap().system_prompt, "Мой промпт.");
+        assert_eq!(styles.get("poem").unwrap().name, "Poem");
+        assert_eq!(styles.get("cleanup").unwrap().system_prompt, "My prompt.");
         assert_eq!(styles.all().len(), 7);
     }
 
@@ -245,8 +246,8 @@ mod tests {
         let styles = Styles::default();
         assert_eq!(styles.next("verbatim"), "cleanup");
         assert_eq!(styles.next("formal"), "verbatim");
-        // Неизвестный стиль возвращает к началу списка.
-        assert_eq!(styles.next("нет такого"), "verbatim");
+        // An unknown style returns to the start of the list
+        assert_eq!(styles.next("no such style"), "verbatim");
     }
 
     #[test]
@@ -262,7 +263,7 @@ mod tests {
         let styles = Styles::default();
         assert_eq!(styles.for_app(Some("kitty"), &cfg), "code");
         assert_eq!(styles.for_app(Some("Kitty"), &cfg), "code");
-        // Класс окна длиннее правила: `org.telegram.desktop` тоже мессенджер.
+        // The window class is longer than the rule: `org.telegram.desktop` is a messenger too
         assert_eq!(
             styles.for_app(Some("org.telegram.desktop"), &cfg),
             "messenger"
@@ -288,10 +289,13 @@ mod tests {
     #[test]
     fn an_unknown_style_falls_back_instead_of_failing() {
         let cfg = StyleConfig {
-            default: "тоже нет".into(),
+            default: "none either".into(),
             ..StyleConfig::default()
         };
         let styles = Styles::default();
-        assert_eq!(styles.resolve(Some("нет такого"), None, &cfg).id, "cleanup");
+        assert_eq!(
+            styles.resolve(Some("no such style"), None, &cfg).id,
+            "cleanup"
+        );
     }
 }

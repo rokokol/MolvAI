@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-//! Словарь терминов: имена, бренды, идентификаторы кода, которые распознаватель слышит неверно.
+//! Dictionary of terms: names, brands and code identifiers that the recognizer hears wrongly
 //!
-//! Файл — TOML:
+//! The file is TOML:
 //!
 //! ```toml
 //! [[term]]
@@ -10,13 +10,13 @@
 //! case = "keep"
 //! ```
 //!
-//! Поиск идёт по нормализованной форме (нижний регистр, `ё` как `е`, без крайних знаков), поэтому
-//! словарь на 5000 позиций стоит одного обращения к `HashMap` на слово. Нечёткое совпадение
-//! включается настройкой и проверяется только против алиасов той же длины ±2 символа — иначе
-//! пришлось бы сравнивать каждое слово реплики с каждым алиасом.
+//! The search uses the normalized form (lower case, `ё` as `е`, no edge marks), so a dictionary
+//! of 5000 entries costs one `HashMap` lookup per word. Fuzzy matching is turned on by a
+//! setting. It checks only the aliases of the same length ±2 characters, because otherwise
+//! each word of the phrase would need a comparison with each alias
 //!
-//! Многословные алиасы («молв ай») работают: перед точным поиском по одному слову проверяются
-//! фразы длиной до `max_alias_words` токенов, длинная фраза выигрывает у короткой.
+//! Multi-word aliases ("молв ай") work: before the exact search for one word, the phrases of up
+//! to `max_alias_words` tokens are checked, and a long phrase wins over a short one
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -28,26 +28,26 @@ use tracing::warn;
 
 use super::rules::{join, normalize, tokenize};
 
-/// Порог нечёткого совпадения: ниже него подстановка чаще вредит, чем помогает.
+/// Threshold of the fuzzy match: below it a substitution does more harm than good
 pub const FUZZY_THRESHOLD: f64 = 0.85;
-/// Слова короче этого нечётко не сравниваются: у коротких слов расстояние ничего не значит.
+/// Words shorter than this are not compared fuzzily: for short words the distance means nothing
 pub const FUZZY_MIN_LEN: usize = 5;
-/// Насколько может отличаться длина кандидата при нечётком сравнении.
+/// How much the length of a candidate may differ in a fuzzy comparison
 pub const FUZZY_LEN_WINDOW: usize = 2;
-/// Ограничение подсказки для распознавателя: длинный prompt съедает контекст модели.
+/// Limit of the hint for the recognizer: a long prompt eats the context of the model
 pub const PROMPT_HINT_MAX_CHARS: usize = 800;
 
 #[derive(Debug, Error)]
 pub enum DictionaryError {
-    #[error("не удалось прочитать словарь {path}: {source}")]
+    #[error("cannot read the dictionary {path}: {source}")]
     Read {
         path: PathBuf,
         #[source]
         source: std::io::Error,
     },
-    #[error("ошибка в словаре {path}: {message}")]
+    #[error("error in the dictionary {path}: {message}")]
     Parse { path: PathBuf, message: String },
-    #[error("не удалось записать словарь {path}: {source}")]
+    #[error("cannot write the dictionary {path}: {source}")]
     Write {
         path: PathBuf,
         #[source]
@@ -55,18 +55,18 @@ pub enum DictionaryError {
     },
 }
 
-/// Что делать с регистром подставленного термина.
+/// What to do with the case of the substituted term
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CaseMode {
-    /// Как записано в словаре: `MolvAI` остаётся `MolvAI`.
+    /// As written in the dictionary: `MolvAI` stays `MolvAI`
     #[default]
     Keep,
     Upper,
     Lower,
 }
 
-/// Одна запись словаря.
+/// One entry of the dictionary
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Term {
     pub word: String,
@@ -85,7 +85,7 @@ impl Term {
         }
     }
 
-    /// Как термин выглядит в тексте.
+    /// How the term looks in the text
     fn rendered(&self) -> String {
         match self.case {
             CaseMode::Keep => self.word.clone(),
@@ -95,20 +95,20 @@ impl Term {
     }
 }
 
-/// Файл словаря целиком.
+/// The whole dictionary file
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 struct DictionaryFile {
     #[serde(default, rename = "term")]
     terms: Vec<Term>,
 }
 
-/// Словарь терминов с точным и нечётким поиском.
+/// Dictionary of terms with exact and fuzzy search
 #[derive(Debug, Clone, Default)]
 pub struct Dictionary {
     terms: Vec<Term>,
-    /// Нормализованный алиас (слова через пробел) → индекс термина.
+    /// Normalized alias (words separated by a space) → index of the term
     exact: HashMap<String, usize>,
-    /// Длина алиаса в символах → индексы кандидатов для нечёткого поиска.
+    /// Length of the alias in characters → indexes of the candidates for the fuzzy search
     by_len: HashMap<usize, Vec<(String, usize)>>,
     max_alias_words: usize,
     fuzzy: bool,
@@ -116,9 +116,10 @@ pub struct Dictionary {
     fingerprint: Option<FileFingerprint>,
 }
 
-/// Отпечаток файла для горячей перезагрузки: время изменения и размер вместе.
-/// Одного mtime мало — на Windows и на файловых системах с грубым временем две записи
-/// подряд получают одинаковую метку, и правка словаря остаётся незамеченной.
+/// Fingerprint of the file for hot reload: the modification time and the size together
+///
+/// The mtime alone is not enough. On Windows and on file systems with a coarse clock, two
+/// writes in a row get the same timestamp, and a dictionary edit goes unnoticed
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FileFingerprint {
     modified: SystemTime,
@@ -126,12 +127,12 @@ struct FileFingerprint {
 }
 
 impl Dictionary {
-    /// Пустой словарь: реплики проходят через него без изменений.
+    /// Empty dictionary: phrases pass through it unchanged
     pub fn empty() -> Self {
         Self::from_terms(Vec::new(), false)
     }
 
-    /// Словарь из готового списка терминов.
+    /// Dictionary from a ready list of terms
     pub fn from_terms(terms: Vec<Term>, fuzzy: bool) -> Self {
         let mut dictionary = Self {
             terms,
@@ -146,7 +147,7 @@ impl Dictionary {
         dictionary
     }
 
-    /// Прочитать словарь из файла. Отсутствующий файл — это пустой словарь, а не ошибка.
+    /// Read the dictionary from a file. A missing file is an empty dictionary, not an error
     pub fn load(path: &Path, fuzzy: bool) -> Result<Self, DictionaryError> {
         let text = match std::fs::read_to_string(path) {
             Ok(text) => text,
@@ -172,7 +173,7 @@ impl Dictionary {
         Ok(dictionary)
     }
 
-    /// Перечитать файл, если он изменился с прошлой загрузки. `true` — словарь обновился.
+    /// Reread the file if it changed since the last load. `true` means the dictionary was updated
     pub fn reload_if_changed(&mut self) -> Result<bool, DictionaryError> {
         let Some(path) = self.path.clone() else {
             return Ok(false);
@@ -190,7 +191,7 @@ impl Dictionary {
         Ok(true)
     }
 
-    /// Дописать термин в файл словаря и переиндексировать.
+    /// Append a term to the dictionary file and reindex
     pub fn add(&mut self, term: Term) -> Result<(), DictionaryError> {
         self.terms.push(term);
         self.index();
@@ -200,7 +201,7 @@ impl Dictionary {
         Ok(())
     }
 
-    /// Сохранить словарь в файл.
+    /// Save the dictionary to a file
     pub fn save(&self, path: &Path) -> Result<(), DictionaryError> {
         let file = DictionaryFile {
             terms: self.terms.clone(),
@@ -247,7 +248,7 @@ impl Dictionary {
         self.fuzzy = fuzzy;
     }
 
-    /// Подсказка для распознавателя: термины через запятую.
+    /// Hint for the recognizer: the terms separated by commas
     pub fn prompt_hint(&self) -> String {
         let mut hint = String::new();
         for term in &self.terms {
@@ -264,7 +265,7 @@ impl Dictionary {
         hint
     }
 
-    /// Подставить термины. Возвращает текст и число подстановок для поля `dict_hits`.
+    /// Substitute the terms. Returns the text and the number of substitutions for `dict_hits`
     pub fn apply(&self, text: &str) -> (String, u32) {
         if self.terms.is_empty() || text.trim().is_empty() {
             return (text.to_string(), 0);
@@ -291,7 +292,7 @@ impl Dictionary {
         (join(&out), hits)
     }
 
-    /// Самое длинное совпадение термина, начинающееся с позиции `at`.
+    /// The longest term match that starts at position `at`
     fn match_at(&self, tokens: &[String], at: usize) -> Option<(usize, &Term)> {
         let max = self.max_alias_words.min(tokens.len() - at);
         for len in (1..=max).rev() {
@@ -310,7 +311,7 @@ impl Dictionary {
         self.fuzzy_match(&word).map(|term| (1, &self.terms[term]))
     }
 
-    /// Ближайший алиас среди кандидатов близкой длины.
+    /// The nearest alias among the candidates of a similar length
     fn fuzzy_match(&self, word: &str) -> Option<usize> {
         let len = word.chars().count();
         if len < FUZZY_MIN_LEN {
@@ -331,7 +332,7 @@ impl Dictionary {
         best.map(|(_, term)| term)
     }
 
-    /// Построить индексы точного и нечёткого поиска.
+    /// Build the indexes for the exact and the fuzzy search
     fn index(&mut self) {
         self.exact.clear();
         self.by_len.clear();
@@ -342,11 +343,12 @@ impl Dictionary {
                 let words: Vec<String> = tokenize(form);
                 let phrase = normalized_phrase(&words);
                 if phrase.is_empty() {
-                    warn!(term = %term.word, "алиас без букв и цифр пропущен");
+                    warn!(term = %term.word, "alias without letters and digits skipped");
                     continue;
                 }
                 self.max_alias_words = self.max_alias_words.max(words.len());
-                // Первый термин с таким алиасом выигрывает: порядок в файле — воля пользователя.
+                // The first term with such an alias wins: the order in the file is the user's
+                // choice
                 self.exact.entry(phrase.clone()).or_insert(position);
                 if words.len() == 1 {
                     self.by_len
@@ -359,7 +361,7 @@ impl Dictionary {
     }
 }
 
-/// Нормализованная фраза: слова через пробел, `ё` как `е`, без крайних знаков.
+/// Normalized phrase: words separated by a space, `ё` as `е`, no edge marks
 fn normalized_phrase(words: &[String]) -> String {
     words
         .iter()
@@ -465,7 +467,7 @@ mod tests {
     #[test]
     fn fuzzy_matching_catches_a_misheard_ending_only_when_enabled() {
         let mut dictionary = molvai();
-        // «гипрланде» — падежная форма, которой нет в списке алиасов.
+        // "гипрланде" is a case form that is not in the alias list
         assert_eq!(
             dictionary.apply("работает на гипрланде").0,
             "работает на гипрланде"
@@ -480,9 +482,9 @@ mod tests {
     fn fuzzy_matching_leaves_short_and_distant_words_alone() {
         let mut dictionary = molvai();
         dictionary.set_fuzzy(true);
-        // Короткое слово: расстояние в одну букву — это половина слова.
+        // A short word: a distance of one letter is half of the word
         assert_eq!(dictionary.apply("мол").0, "мол");
-        // Далёкое слово не подтягивается.
+        // A distant word is not pulled in
         assert_eq!(dictionary.apply("документы").0, "документы");
     }
 
@@ -590,8 +592,8 @@ mod tests {
         let original_mtime = std::fs::metadata(&path).unwrap().modified().unwrap();
         let mut dictionary = Dictionary::load(&path, false).unwrap();
 
-        // Вторая запись получает ту же метку времени, как на файловых системах с грубым
-        // временем: словарь обязан заметить правку по размеру.
+        // The second write gets the same timestamp, as on file systems with a coarse clock:
+        // the dictionary must notice the edit by the size
         std::fs::write(
             &path,
             "[[term]]\nword = \"MolvAI\"\naliases = [\"молва\"]\n\
@@ -615,7 +617,7 @@ mod tests {
             .map(|i| {
                 Term::new(
                     &format!("Термин{i}"),
-                    &[], // алиасы добавляются ниже, чтобы не держать временные строки
+                    &[], // the aliases are added below, to avoid temporary strings
                 )
             })
             .map(|mut term| {
@@ -632,7 +634,7 @@ mod tests {
         assert!(out.ends_with("Термин4999"), "{out}");
         assert!(
             elapsed < std::time::Duration::from_secs(2),
-            "словарь на 5000 позиций тормозит: {elapsed:?}"
+            "a dictionary of 5000 entries is slow: {elapsed:?}"
         );
     }
 }
