@@ -124,7 +124,7 @@ impl OpenAiCompatClient {
         let http = reqwest::blocking::Client::builder()
             .timeout(timeout)
             .build()
-            .map_err(|e| LlmError::Unavailable(e.to_string()))?;
+            .map_err(|e| LlmError::Unavailable(with_causes(&e)))?;
         Ok(Self {
             base_url: base_url.into().trim_end_matches('/').to_string(),
             model: model.into(),
@@ -201,7 +201,7 @@ impl OpenAiCompatClient {
                 // Таймаут короче секунды в сообщении округляется вверх, а не до нуля.
                 LlmError::Timeout(self.timeout.as_secs().max(1))
             } else {
-                LlmError::Unavailable(format!("{url}: {err}"))
+                LlmError::Unavailable(format!("{url}: {}", with_causes(&err)))
             }
         })
     }
@@ -220,7 +220,7 @@ impl OpenAiCompatClient {
         }
         let text = response
             .text()
-            .map_err(|err| LlmError::BadResponse(err.to_string()))?;
+            .map_err(|err| LlmError::BadResponse(with_causes(&err)))?;
         let value: serde_json::Value = serde_json::from_str(&text)
             .map_err(|err| LlmError::BadResponse(format!("{err}: {}", snippet(&text))))?;
         let names = value
@@ -284,6 +284,20 @@ fn snippet(text: &str) -> String {
     text.chars().take(ERROR_SNIPPET).collect()
 }
 
+/// Текст ошибки вместе с цепочкой `source()`. reqwest пишет наверху только «builder error»
+/// или «error sending request», а причину, по которой пользователь что-то исправит, —
+/// нет сертификатов, отказ в соединении — держит в источнике.
+fn with_causes(error: &dyn std::error::Error) -> String {
+    let mut text = error.to_string();
+    let mut cause = error.source();
+    while let Some(inner) = cause {
+        text.push_str(": ");
+        text.push_str(&inner.to_string());
+        cause = inner.source();
+    }
+    text
+}
+
 impl LlmClient for OpenAiCompatClient {
     fn id(&self) -> &str {
         &self.provider_id
@@ -314,7 +328,7 @@ impl LlmClient for OpenAiCompatClient {
         let status = response.status();
         let text = response
             .text()
-            .map_err(|err| LlmError::BadResponse(err.to_string()))?;
+            .map_err(|err| LlmError::BadResponse(with_causes(&err)))?;
 
         if status.as_u16() == 401 || status.as_u16() == 403 {
             warn!(provider = %self.provider_id, status = status.as_u16(), "провайдер отверг ключ");
@@ -756,5 +770,25 @@ mod tests {
             client.endpoint(),
             "http://localhost:11434/v1/chat/completions"
         );
+    }
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("builder error")]
+    struct Outer(#[source] Inner);
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("no CA certificates found")]
+    struct Inner;
+
+    #[test]
+    fn an_error_message_keeps_the_cause_reqwest_hides_behind_its_own() {
+        let text = with_causes(&Outer(Inner));
+        assert!(text.starts_with("builder error"), "{text}");
+        assert!(text.contains("no CA certificates found"), "{text}");
+    }
+
+    #[test]
+    fn an_error_without_a_cause_reads_as_itself() {
+        assert_eq!(with_causes(&Inner), "no CA certificates found");
     }
 }
