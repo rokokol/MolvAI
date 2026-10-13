@@ -1,24 +1,24 @@
 # THIRD-PARTY
 
-Файл собран командой `just third-party` (cargo-about) и описывает лицензии зависимостей, попадающих в бинарники MolvAI. Правила отбора — в `about.toml`, гейт по лицензиям — в `deny.toml`
+This file is built by the `just third-party` command (cargo-about). It lists the licenses of the dependencies that enter the MolvAI binaries. The selection rules are in `about.toml`, and the license gate is in `deny.toml`
 
-Лицензии весов моделей распознавания здесь не перечислены: веса в репозиторий не входят, их условия описаны в [docs/model-licenses.md](docs/model-licenses.md)
+The licenses of the speech recognition model weights are not listed here: the weights are not part of the repository, and their terms are described in [docs/model-licenses.md](docs/model-licenses.md)
 
-- MIT License — зависимостей: 502
-- Unicode License v3 — зависимостей: 19
-- Mozilla Public License 2.0 — зависимостей: 17
-- Apache License 2.0 — зависимостей: 11
-- BSD 3-Clause &quot;New&quot; or &quot;Revised&quot; License — зависимостей: 6
-- ISC License — зависимостей: 5
-- BSD Zero Clause License — зависимостей: 2
-- Boost Software License 1.0 — зависимостей: 2
-- The Unlicense — зависимостей: 2
-- zlib License — зависимостей: 2
-- Community Data License Agreement Permissive 2.0 — зависимостей: 1
+- MIT License — dependencies: 514
+- Unicode License v3 — dependencies: 19
+- Mozilla Public License 2.0 — dependencies: 17
+- Apache License 2.0 — dependencies: 11
+- BSD 3-Clause &quot;New&quot; or &quot;Revised&quot; License — dependencies: 6
+- ISC License — dependencies: 5
+- BSD Zero Clause License — dependencies: 2
+- Boost Software License 1.0 — dependencies: 2
+- The Unlicense — dependencies: 2
+- zlib License — dependencies: 2
+- Community Data License Agreement Permissive 2.0 — dependencies: 1
 
 ## BSD Zero Clause License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [recvmsg 1.0.0](https://crates.io/crates/recvmsg)
 
@@ -41,7 +41,7 @@ PERFORMANCE OF THIS SOFTWARE.
 
 ## BSD Zero Clause License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [doctest-file 1.1.1](https://codeberg.org/Goat7658/doctest-file)
 
@@ -65,7 +65,7 @@ PERFORMANCE OF THIS SOFTWARE.
 
 ## Apache License 2.0
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [hound 3.5.1](https://github.com/ruuda/hound)
 
@@ -277,7 +277,7 @@ PERFORMANCE OF THIS SOFTWARE.
 
 ## Apache License 2.0
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [moxcms 0.8.1](https://github.com/awxkee/moxcms.git)
 - [pxfm 0.1.30](https://github.com/awxkee/pxfm)
@@ -489,7 +489,7 @@ PERFORMANCE OF THIS SOFTWARE.
 
 ## Apache License 2.0
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [cpal 0.18.2](https://github.com/RustAudio/cpal)
 
@@ -700,7 +700,7 @@ PERFORMANCE OF THIS SOFTWARE.
 
 ## Apache License 2.0
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [gethostname 1.1.0](https://codeberg.org/swsnr/gethostname.rs.git)
 
@@ -911,7 +911,7 @@ limitations under the License.
 
 ## Apache License 2.0
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [dpi 0.1.2](https://github.com/rust-windowing/winit)
 - [tao 0.35.3](https://github.com/tauri-apps/tao)
@@ -1122,7 +1122,7 @@ Apache License
 
 ## Apache License 2.0
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [aws-lc-sys 0.45.0](https://github.com/aws/aws-lc-rs)
 - [dunce 1.0.5](https://gitlab.com/kornelski/dunce)
@@ -1208,7 +1208,7 @@ limitations under the License.
 
 ## BSD 3-Clause &quot;New&quot; or &quot;Revised&quot; License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [alloc-no-stdlib 2.0.4](https://github.com/dropbox/rust-alloc-no-stdlib)
 - [brotli 8.0.4](https://github.com/dropbox/rust-brotli)
@@ -1231,7 +1231,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 ## BSD 3-Clause &quot;New&quot; or &quot;Revised&quot; License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [subtle 2.6.1](https://github.com/dalek-cryptography/subtle)
 
@@ -1270,7 +1270,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## BSD 3-Clause &quot;New&quot; or &quot;Revised&quot; License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [alloc-stdlib 0.2.4](https://github.com/dropbox/rust-alloc-no-stdlib)
 - [aws-lc-sys 0.45.0](https://github.com/aws/aws-lc-rs)
@@ -1292,7 +1292,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 ## BSD 3-Clause &quot;New&quot; or &quot;Revised&quot; License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [encoding_rs 0.8.35](https://github.com/hsivonen/encoding_rs)
 
@@ -1328,7 +1328,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## Boost Software License 1.0
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [error-code 3.4.0](https://github.com/DoumanAsh/error-code)
 
@@ -1361,7 +1361,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## Boost Software License 1.0
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [clipboard-win 5.4.1](https://github.com/DoumanAsh/clipboard-win)
 
@@ -1378,7 +1378,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ## Community Data License Agreement Permissive 2.0
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [webpki-roots 1.0.9](https://github.com/rustls/webpki-roots)
 
@@ -1449,7 +1449,7 @@ insights.
 
 ## ISC License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [untrusted 0.9.0](https://github.com/briansmith/untrusted)
 
@@ -1472,7 +1472,7 @@ insights.
 
 ## ISC License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [libloading 0.7.4](https://github.com/nagisa/rust_libloading/)
 
@@ -1494,7 +1494,7 @@ THIS SOFTWARE.
 
 ## ISC License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [rustls-webpki 0.103.15](https://github.com/rustls/webpki)
 
@@ -1523,7 +1523,7 @@ third-party/chromium/LICENSE.
 
 ## ISC License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [aws-lc-rs 1.18.1](https://github.com/aws/aws-lc-rs)
 - [aws-lc-sys 0.45.0](https://github.com/aws/aws-lc-rs)
@@ -1542,7 +1542,7 @@ THE SOFTWARE IS PROVIDED "AS IS" AND ISC DISCLAIMS ALL WARRANTIES WITH REGARD TO
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [uds_windows 1.2.1](https://github.com/haraldh/rust_uds_windows)
 
@@ -1573,7 +1573,7 @@ THE SOFTWARE IS PROVIDED "AS IS" AND ISC DISCLAIMS ALL WARRANTIES WITH REGARD TO
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [sha1 0.10.7](https://github.com/RustCrypto/hashes)
 - [sha2 0.10.9](https://github.com/RustCrypto/hashes)
@@ -1611,7 +1611,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [brotli 8.0.4](https://github.com/dropbox/rust-brotli)
 
@@ -1640,7 +1640,7 @@ THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [lazy_static 1.5.0](https://github.com/rust-lang-nursery/lazy-static.rs)
 
@@ -1675,7 +1675,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [core-foundation-sys 0.8.7](https://github.com/servo/core-foundation-rs)
 - [core-foundation 0.10.1](https://github.com/servo/core-foundation-rs)
@@ -1715,7 +1715,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [hex 0.4.3](https://github.com/KokaKiwi/rust-hex)
 
@@ -1745,7 +1745,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [form_urlencoded 1.2.2](https://github.com/servo/rust-url)
 
@@ -1780,7 +1780,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [idna 1.1.0](https://github.com/servo/rust-url/)
 - [percent-encoding 2.3.2](https://github.com/servo/rust-url/)
@@ -1817,7 +1817,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [cfg-if 1.0.4](https://github.com/rust-lang/cfg-if)
 - [openssl-probe 0.2.1](https://github.com/rustls/openssl-probe)
@@ -1855,7 +1855,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [mio 1.2.3](https://github.com/tokio-rs/mio)
 
@@ -1884,7 +1884,7 @@ THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [errno 0.3.14](https://github.com/lambda-fairy/rust-errno)
 
@@ -1919,7 +1919,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [mime 0.3.17](https://github.com/hyperium/mime)
 
@@ -1949,7 +1949,7 @@ THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [bitflags 1.3.2](https://github.com/bitflags/bitflags)
 - [bitflags 2.13.1](https://github.com/bitflags/bitflags)
@@ -1963,6 +1963,7 @@ THE SOFTWARE.
 - [num-traits 0.2.19](https://github.com/rust-num/num-traits)
 - [num 0.4.3](https://github.com/rust-num/num)
 - [regex-automata 0.4.18](https://github.com/rust-lang/regex)
+- [regex-lite 0.1.9](https://github.com/rust-lang/regex)
 - [regex-syntax 0.8.11](https://github.com/rust-lang/regex)
 - [regex 1.13.1](https://github.com/rust-lang/regex)
 
@@ -1997,7 +1998,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [uuid 1.26.0](https://github.com/uuid-rs/uuid)
 
@@ -2033,7 +2034,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [html5ever 0.38.0](https://github.com/servo/html5ever)
 - [markup5ever 0.38.0](https://github.com/servo/html5ever)
@@ -2070,7 +2071,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [dbus 0.9.12](https://github.com/diwic/dbus-rs)
 - [libdbus-sys 0.2.7](https://github.com/diwic/dbus-rs)
@@ -2099,7 +2100,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [nom 8.0.0](https://github.com/rust-bakery/nom)
 
@@ -2129,7 +2130,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [flate2 1.1.10](https://github.com/rust-lang/flate2-rs)
 
@@ -2164,7 +2165,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [hyper 1.11.1](https://github.com/hyperium/hyper)
 
@@ -2193,7 +2194,7 @@ THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [coreaudio-rs 0.14.2](https://github.com/RustAudio/coreaudio-rs.git)
 - [petgraph 0.8.3](https://github.com/petgraph/petgraph)
@@ -2231,7 +2232,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [plist 1.10.0](https://github.com/ebarnard/rust-plist/)
 
@@ -2259,7 +2260,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [wayland-backend 0.3.17](https://github.com/smithay/wayland-rs)
 - [wayland-client 0.31.15](https://github.com/smithay/wayland-rs)
@@ -2294,7 +2295,7 @@ THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [winreg 0.10.1](https://github.com/gentoo90/winreg-rs)
 
@@ -2323,7 +2324,7 @@ THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [new_debug_unreachable 1.0.6](https://github.com/mbrubeck/rust-debug-unreachable)
 
@@ -2358,7 +2359,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [tendril 0.5.1](https://github.com/servo/html5ever)
 
@@ -2393,7 +2394,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [tempfile 3.27.0](https://github.com/Stebalien/tempfile)
 
@@ -2428,7 +2429,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [heck 0.4.1](https://github.com/withoutboats/heck)
 - [heck 0.5.0](https://github.com/withoutboats/heck)
@@ -2466,7 +2467,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [quick-error 2.0.1](http://github.com/tailhook/quick-error)
 
@@ -2495,7 +2496,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [which 8.0.6](https://github.com/harryfei/which-rs.git)
 
@@ -2524,7 +2525,7 @@ THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [png 0.17.16](https://github.com/image-rs/image-png)
 - [png 0.18.1](https://github.com/image-rs/image-png)
@@ -2560,7 +2561,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [schannel 0.1.29](https://github.com/steffengy/schannel-rs)
 
@@ -2577,7 +2578,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [fixedbitset 0.5.7](https://github.com/petgraph/fixedbitset)
 
@@ -2612,7 +2613,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [winapi 0.3.9](https://github.com/retep998/winapi-rs)
 
@@ -2641,7 +2642,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [hkdf 0.12.4](https://github.com/RustCrypto/KDFs/)
 
@@ -2677,42 +2678,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
-
-- [poly1305 0.8.0](https://github.com/RustCrypto/universal-hashes)
-
-```
-Copyright (c) 2015-2019 RustCrypto Developers
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-
-```
-
-## MIT License
-
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [httparse 1.10.1](https://github.com/seanmonstar/httparse)
 
@@ -2742,7 +2708,42 @@ THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
+
+- [poly1305 0.9.1](https://github.com/RustCrypto/universal-hashes)
+
+```
+Copyright (c) 2015-2026 The RustCrypto Project Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+```
+
+## MIT License
+
+These crates are distributed under this license:
 
 - [futures-channel 0.3.34](https://github.com/rust-lang/futures-rs)
 - [futures-core 0.3.34](https://github.com/rust-lang/futures-rs)
@@ -2785,7 +2786,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [hashbrown 0.15.5](https://github.com/rust-lang/hashbrown)
 - [hashbrown 0.17.1](https://github.com/rust-lang/hashbrown)
@@ -2821,7 +2822,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [webkit2gtk-sys 2.0.2](https://github.com/tauri-apps/webkit2gtk-rs)
 
@@ -2849,7 +2850,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [webkit2gtk 2.0.2](https://github.com/tauri-apps/webkit2gtk-rs)
 
@@ -2879,7 +2880,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [utf8parse 0.2.2](https://github.com/alacritty/vte)
 
@@ -2914,11 +2915,11 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [hyper-rustls 0.27.9](https://github.com/rustls/hyper-rustls)
 - [rustls-native-certs 0.8.4](https://github.com/rustls/rustls-native-certs)
-- [rustls 0.23.43](https://github.com/rustls/rustls)
+- [rustls 0.23.45](https://github.com/rustls/rustls)
 
 ```
 Copyright (c) 2016 Joseph Birr-Pixton <jpixton@gmail.com>
@@ -2951,7 +2952,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [xkbcommon 0.9.0](https://github.com/rust-x-bindings/xkbcommon-rs)
 
@@ -2986,7 +2987,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [lock_api 0.4.14](https://github.com/Amanieu/parking_lot)
 - [parking_lot 0.12.5](https://github.com/Amanieu/parking_lot)
@@ -3024,7 +3025,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [keyring 3.6.3](https://github.com/hwchen/keyring-rs.git)
 
@@ -3059,7 +3060,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [secret-service 4.0.0](https://github.com/hwchen/secret-service-rs.git)
 
@@ -3094,7 +3095,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [indexmap 2.14.2](https://github.com/indexmap-rs/indexmap)
 
@@ -3129,7 +3130,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [equivalent 1.0.2](https://github.com/indexmap-rs/equivalent)
 
@@ -3164,7 +3165,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [scopeguard 1.2.0](https://github.com/bluss/scopeguard)
 
@@ -3199,7 +3200,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [cipher 0.4.4](https://github.com/RustCrypto/traits)
 
@@ -3234,7 +3235,42 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
+
+- [cipher 0.5.2](https://github.com/RustCrypto/traits)
+
+```
+Copyright (c) 2016-2025 RustCrypto Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+```
+
+## MIT License
+
+These crates are distributed under this license:
 
 - [reqwest 0.13.1](https://github.com/seanmonstar/reqwest)
 
@@ -3264,7 +3300,45 @@ THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
+
+- [sha2 0.11.1](https://github.com/RustCrypto/hashes)
+
+```
+Copyright (c) 2016-2026 The RustCrypto Project Developers
+Copyright (c) 2016 Artyom Pavlov
+Copyright (c) 2009-2013 Mozilla Foundation
+Copyright (c) 2006-2009 Graydon Hoare
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+```
+
+## MIT License
+
+These crates are distributed under this license:
 
 - [digest 0.10.7](https://github.com/RustCrypto/traits)
 - [hmac 0.12.1](https://github.com/RustCrypto/MACs)
@@ -3300,7 +3374,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [fnv 1.0.7](https://github.com/servo/rust-fnv)
 
@@ -3335,7 +3409,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [memoffset 0.9.1](https://github.com/Gilnaa/memoffset)
 
@@ -3363,7 +3437,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [enumflags2_derive 0.7.12](https://github.com/meithecatte/enumflags2)
 
@@ -3398,7 +3472,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [keyboard-types 0.7.0](https://github.com/pyfisch/keyboard-types)
 
@@ -3426,7 +3500,7 @@ THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [stable_deref_trait 1.2.1](https://github.com/storyyeller/stable_deref_trait)
 
@@ -3460,7 +3534,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [cookie 0.18.2](https://github.com/SergioBenitez/cookie-rs)
 
@@ -3496,7 +3570,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [foreign-types-macros 0.2.4](https://github.com/sfackler/foreign-types)
 - [foreign-types-shared 0.3.1](https://github.com/sfackler/foreign-types)
@@ -3527,7 +3601,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [h2 0.4.19](https://github.com/hyperium/h2)
 
@@ -3562,7 +3636,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [http 1.5.0](https://github.com/hyperium/http)
 
@@ -3597,7 +3671,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [tokio-rustls 0.26.5](https://github.com/rustls/tokio-rustls)
 
@@ -3632,7 +3706,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [signal-hook-registry 1.4.8](https://github.com/vorner/signal-hook)
 - [signal-hook 0.4.4](https://github.com/vorner/signal-hook)
@@ -3668,7 +3742,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [enumflags2 0.7.12](https://github.com/meithecatte/enumflags2)
 
@@ -3703,7 +3777,43 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
+
+- [digest 0.11.3](https://github.com/RustCrypto/traits)
+
+```
+Copyright (c) 2017-2025 RustCrypto Developers
+Copyright (c) 2017 Artyom Pavlov
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+```
+
+## MIT License
+
+These crates are distributed under this license:
 
 - [aes 0.8.4](https://github.com/RustCrypto/block-ciphers)
 
@@ -3738,7 +3848,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [bytes 1.12.1](https://github.com/tokio-rs/bytes)
 
@@ -3773,7 +3883,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [smallvec 1.16.0](https://github.com/servo/rust-smallvec)
 
@@ -3808,7 +3918,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [directories 6.0.0](https://github.com/soc/directories-rs)
 
@@ -3837,7 +3947,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [want 0.3.1](https://github.com/seanmonstar/want)
 
@@ -3867,7 +3977,7 @@ THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [block-buffer 0.10.4](https://github.com/RustCrypto/utils)
 - [block-padding 0.3.3](https://github.com/RustCrypto/utils)
@@ -3903,7 +4013,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [dirs-sys 0.3.7](https://github.com/dirs-dev/dirs-sys-rs)
 - [dirs-sys 0.5.0](https://github.com/dirs-dev/dirs-sys-rs)
@@ -3935,7 +4045,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [cbc 0.1.2](https://github.com/RustCrypto/block-modes)
 
@@ -3971,7 +4081,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [try-lock 0.2.5](https://github.com/seanmonstar/try-lock)
 
@@ -4002,42 +4112,7 @@ THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
-
-- [opaque-debug 0.3.1](https://github.com/RustCrypto/utils)
-
-```
-Copyright (c) 2018-2024 The RustCrypto Project Developers
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-
-```
-
-## MIT License
-
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [getrandom 0.2.17](https://github.com/rust-random/getrandom)
 
@@ -4073,7 +4148,42 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
+
+- [block-buffer 0.12.1](https://github.com/RustCrypto/utils)
+
+```
+Copyright (c) 2018-2025 The RustCrypto Project Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+```
+
+## MIT License
+
+These crates are distributed under this license:
 
 - [getrandom 0.3.4](https://github.com/rust-random/getrandom)
 
@@ -4109,7 +4219,42 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
+
+- [rand_core 0.10.1](https://github.com/rust-random/rand_core)
+
+```
+Copyright (c) 2018-2026 The Rand Project Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+```
+
+## MIT License
+
+These crates are distributed under this license:
 
 - [zeroize 1.9.0](https://github.com/RustCrypto/utils)
 
@@ -4144,7 +4289,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [getrandom 0.4.3](https://github.com/rust-random/getrandom)
 
@@ -4180,7 +4325,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [slab 0.4.12](https://github.com/tokio-rs/slab)
 
@@ -4215,7 +4360,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [sharded-slab 0.1.7](https://github.com/hawkw/sharded-slab)
 
@@ -4244,7 +4389,7 @@ THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [matchers 0.2.0](https://github.com/hawkw/matchers)
 
@@ -4273,7 +4418,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [wl-clipboard-rs 0.9.3](https://github.com/YaLTeR/wl-clipboard-rs)
 
@@ -4308,7 +4453,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [mach2 0.6.0](https://github.com/JohnTitor/mach2)
 
@@ -4343,7 +4488,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [ppv-lite86 0.2.21](https://github.com/cryptocorrosion/cryptocorrosion)
 
@@ -4378,78 +4523,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
-
-- [chacha20poly1305 0.10.1](https://github.com/RustCrypto/AEADs/tree/master/chacha20poly1305)
-
-```
-Copyright (c) 2019 The RustCrypto Project Developers
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-
-```
-
-## MIT License
-
-Под этой лицензией распространяются:
-
-- [aead 0.5.2](https://github.com/RustCrypto/traits)
-
-```
-Copyright (c) 2019 The RustCrypto Project Developers
-Copyright (c) 2019 MobileCoin, LLC
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-
-```
-
-## MIT License
-
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [tracing-attributes 0.1.31](https://github.com/tokio-rs/tracing)
 - [tracing-core 0.1.36](https://github.com/tokio-rs/tracing)
@@ -4488,7 +4562,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [tower-layer 0.3.3](https://github.com/tower-rs/tower)
 - [tower-service 0.3.3](https://github.com/tower-rs/tower)
@@ -4525,42 +4599,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
-
-- [universal-hash 0.5.1](https://github.com/RustCrypto/traits)
-
-```
-Copyright (c) 2019-2020 RustCrypto Developers
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-
-```
-
-## MIT License
-
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [tower-http 0.6.11](https://github.com/tower-rs/tower-http)
 
@@ -4595,12 +4634,12 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
-- [chacha20 0.9.1](https://github.com/RustCrypto/stream-ciphers)
+- [universal-hash 0.6.1](https://github.com/RustCrypto/traits)
 
 ```
-Copyright (c) 2019-2023 The RustCrypto Project Developers
+Copyright (c) 2019-2025 RustCrypto Developers
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -4630,7 +4669,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [http-body-util 0.1.5](https://github.com/hyperium/http-body)
 - [http-body 1.1.0](https://github.com/hyperium/http-body)
@@ -4666,7 +4705,79 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
+
+- [chacha20 0.10.2](https://github.com/RustCrypto/stream-ciphers)
+- [chacha20poly1305 0.11.0](https://github.com/RustCrypto/AEADs)
+
+```
+Copyright (c) 2019-2026 The RustCrypto Project Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+```
+
+## MIT License
+
+These crates are distributed under this license:
+
+- [aead 0.6.1](https://github.com/RustCrypto/traits)
+
+```
+Copyright (c) 2019-2026 The RustCrypto Project Developers
+Copyright (c) 2019 MobileCoin, LLC
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+```
+
+## MIT License
+
+These crates are distributed under this license:
 
 - [iana-time-zone 0.1.65](https://github.com/strawlab/iana-time-zone)
 
@@ -4701,7 +4812,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [downcast-rs 1.2.1](https://github.com/marcianx/downcast-rs)
 
@@ -4736,7 +4847,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [memmap2 0.9.11](https://github.com/RazrFalcon/memmap2-rs)
 
@@ -4772,7 +4883,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [cpufeatures 0.2.17](https://github.com/RustCrypto/utils)
 
@@ -4807,7 +4918,43 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
+
+- [const-oid 0.10.2](https://github.com/RustCrypto/formats)
+- [cpufeatures 0.3.1](https://github.com/RustCrypto/utils)
+
+```
+Copyright (c) 2020-2026 The RustCrypto Project Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+```
+
+## MIT License
+
+These crates are distributed under this license:
 
 - [crypto-common 0.1.7](https://github.com/RustCrypto/traits)
 
@@ -4842,7 +4989,42 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
+
+- [crypto-common 0.2.2](https://github.com/RustCrypto/traits)
+
+```
+Copyright (c) 2021-2026 RustCrypto Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+```
+
+## MIT License
+
+These crates are distributed under this license:
 
 - [inout 0.1.4](https://github.com/RustCrypto/utils)
 
@@ -4878,7 +5060,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [xkeysym 0.2.1](https://github.com/notgull/xkeysym)
 
@@ -4907,7 +5089,79 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
+
+- [inout 0.2.2](https://github.com/RustCrypto/utils)
+
+```
+Copyright (c) 2022-2025 The RustCrypto Project Developers
+Copyright (c) 2022 Artyom Pavlov
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+```
+
+## MIT License
+
+These crates are distributed under this license:
+
+- [cmov 0.5.4](https://github.com/RustCrypto/utils)
+- [hybrid-array 0.4.15](https://github.com/RustCrypto/hybrid-array)
+
+```
+Copyright (c) 2022-2026 The RustCrypto Project Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+```
+
+## MIT License
+
+These crates are distributed under this license:
 
 - [rustls-pki-types 1.15.1](https://github.com/rustls/pki-types)
 
@@ -4942,7 +5196,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [powerfmt 0.2.0](https://github.com/jhpratt/powerfmt)
 
@@ -4971,7 +5225,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [bit-set 0.8.0](https://github.com/contain-rs/bit-set)
 - [bit-vec 0.8.0](https://github.com/contain-rs/bit-vec)
@@ -5007,7 +5261,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [swift-rs 1.0.8](https://github.com/Brendonovich/swift-rs)
 
@@ -5036,7 +5290,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [hyper-util 0.1.20](https://github.com/hyperium/hyper-util)
 
@@ -5065,7 +5319,7 @@ THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [deranged 0.5.8](https://github.com/jhpratt/deranged)
 
@@ -5094,7 +5348,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [system-configuration-sys 0.6.0](https://github.com/mullvad/system-configuration-rs)
 - [system-configuration 0.7.0](https://github.com/mullvad/system-configuration-rs)
@@ -5130,7 +5384,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [zbus 4.4.0](https://github.com/dbus2/zbus/)
 - [zbus 5.19.0](https://github.com/z-galaxy/zbus/)
@@ -5173,7 +5427,42 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
+
+- [ctutils 0.4.2](https://github.com/RustCrypto/utils)
+
+```
+Copyright (c) 2025-2026 The RustCrypto Project Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+```
+
+## MIT License
+
+These crates are distributed under this license:
 
 - [zcheapstr 1.1.0](https://github.com/z-galaxy/zcheapstr/)
 
@@ -5208,23 +5497,23 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [anstream 1.0.0](https://github.com/rust-cli/anstyle.git)
 - [anstyle-parse 1.0.0](https://github.com/rust-cli/anstyle.git)
 - [anstyle-query 1.1.5](https://github.com/rust-cli/anstyle.git)
 - [anstyle-wincon 3.0.11](https://github.com/rust-cli/anstyle.git)
 - [anstyle 1.0.14](https://github.com/rust-cli/anstyle.git)
-- [clap 4.6.6](https://github.com/clap-rs/clap)
-- [clap_builder 4.6.6](https://github.com/clap-rs/clap)
-- [clap_complete 4.6.9](https://github.com/clap-rs/clap)
-- [clap_derive 4.6.4](https://github.com/clap-rs/clap)
+- [clap 4.6.7](https://github.com/clap-rs/clap)
+- [clap_builder 4.6.7](https://github.com/clap-rs/clap)
+- [clap_complete 4.6.11](https://github.com/clap-rs/clap)
+- [clap_derive 4.6.7](https://github.com/clap-rs/clap)
 - [clap_lex 1.1.0](https://github.com/clap-rs/clap)
 - [colorchoice 1.0.5](https://github.com/rust-cli/anstyle.git)
 - [is_terminal_polyfill 1.70.2](https://github.com/polyfill-rs/is_terminal_polyfill)
 - [once_cell_polyfill 1.70.2](https://github.com/polyfill-rs/once_cell_polyfill)
 - [serde_spanned 1.1.1](https://github.com/toml-rs/toml)
-- [toml 1.1.5+spec-1.1.0](https://github.com/toml-rs/toml)
+- [toml 1.1.6+spec-1.1.0](https://github.com/toml-rs/toml)
 - [toml_datetime 1.1.1+spec-1.1.0](https://github.com/toml-rs/toml)
 - [toml_edit 0.19.15](https://github.com/toml-rs/toml)
 - [toml_edit 0.20.2](https://github.com/toml-rs/toml)
@@ -5257,7 +5546,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [num-conv 0.2.2](https://github.com/jhpratt/num-conv)
 
@@ -5286,7 +5575,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [time-core 0.1.9](https://github.com/time-rs/time)
 - [time-macros 0.2.32](https://github.com/time-rs/time)
@@ -5317,7 +5606,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [libc 0.2.189](https://github.com/rust-lang/libc)
 
@@ -5352,7 +5641,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [idna_adapter 1.2.2](https://github.com/hsivonen/idna_adapter)
 
@@ -5387,42 +5676,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
-
-- [arrayvec 0.7.8](https://github.com/bluss/arrayvec)
-
-```
-Copyright (c) Ulrik Sverdrup "bluss" 2015-2023
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-
-```
-
-## MIT License
-
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [synstructure 0.13.2](https://github.com/mystor/synstructure)
 
@@ -5439,7 +5693,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [ipnet 2.12.1](https://github.com/krisprice/ipnet)
 
@@ -5456,7 +5710,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [rand 0.8.8](https://github.com/rust-random/rand)
 - [rand 0.9.5](https://github.com/rust-random/rand)
@@ -5497,7 +5751,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [x11rb-protocol 0.13.2](https://github.com/psychon/x11rb)
 - [x11rb 0.13.2](https://github.com/psychon/x11rb)
@@ -5533,7 +5787,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [extended 0.1.0](https://github.com/depp/extended-rs)
 
@@ -5562,7 +5816,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [softbuffer 0.4.8](https://github.com/rust-windowing/softbuffer)
 
@@ -5592,7 +5846,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [zerocopy-derive 0.8.56](https://github.com/google/zerocopy)
 - [zerocopy 0.8.56](https://github.com/google/zerocopy)
@@ -5629,7 +5883,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [encoding_rs 0.8.35](https://github.com/hsivonen/encoding_rs)
 - [utf8_iter 1.0.4](https://github.com/hsivonen/utf8_iter)
@@ -5665,7 +5919,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [fax 0.2.7](https://github.com/pdf-rs/fax)
 
@@ -5682,7 +5936,7 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [alsa 0.11.0](https://github.com/diwic/alsa-rs)
 
@@ -5713,7 +5967,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [field-offset 0.3.6](https://github.com/Diggsey/rust-field-offset)
 
@@ -5744,7 +5998,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [tree_magic_mini 3.2.2](https://github.com/mbrubeck/tree_magic/)
 
@@ -5775,7 +6029,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [tap 1.0.1](https://github.com/myrrlyn/tap)
 
@@ -5806,7 +6060,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [precomputed-hash 0.1.1](https://github.com/emilio/precomputed-hash)
 
@@ -5837,9 +6091,9 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
-- [notify-rust 4.18.0](https://github.com/hoodie/notify-rust)
+- [notify-rust 4.18.2](https://github.com/hoodie/notify-rust)
 
 ```
 MIT License
@@ -5868,7 +6122,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [json-patch 3.0.1](https://github.com/idubrov/json-patch)
 
@@ -5899,7 +6153,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [cfb 0.7.3](https://github.com/mdsteele/rust-cfb)
 
@@ -5930,7 +6184,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [static_assertions 1.1.0](https://github.com/nvzqz/static-assertions-rs)
 
@@ -5961,7 +6215,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [darling 0.23.0](https://github.com/TedDriggs/darling)
 - [darling_core 0.23.0](https://github.com/TedDriggs/darling)
@@ -5994,7 +6248,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [enigo 0.6.1](https://github.com/enigo-rs/enigo)
 
@@ -6025,7 +6279,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [libappindicator 0.9.0](https://crates.io/crates/libappindicator)
 
@@ -6057,7 +6311,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [ico 0.5.0](https://github.com/mdsteele/rust-ico)
 
@@ -6088,7 +6342,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [tiff 0.11.3](https://github.com/image-rs/image-tiff)
 
@@ -6119,7 +6373,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [crc32fast 1.5.1](https://github.com/srijs/rust-crc32fast)
 
@@ -6150,7 +6404,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [alsa-sys 0.4.0](https://github.com/diwic/alsa-sys)
 
@@ -6181,7 +6435,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [bitvec 1.1.1](https://github.com/bitvecto-rs/bitvec)
 - [wyz 0.5.1](https://github.com/myrrlyn/wyz)
@@ -6213,7 +6467,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [infer 0.19.0](https://github.com/bojand/infer)
 
@@ -6244,7 +6498,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [bytemuck 1.25.2](https://github.com/Lokathor/bytemuck)
 
@@ -6263,7 +6517,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [schemars 0.8.22](https://github.com/GREsau/schemars)
 - [schemars_derive 0.8.22](https://github.com/GREsau/schemars)
@@ -6295,7 +6549,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [raw-window-handle 0.6.2](https://github.com/rust-windowing/raw-window-handle)
 
@@ -6326,7 +6580,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [radium 0.7.0](https://github.com/bitvecto-rs/radium)
 
@@ -6357,7 +6611,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [proc-macro-error-attr 1.0.4](https://gitlab.com/CreepySkeleton/proc-macro-error)
 - [proc-macro-error 1.0.4](https://gitlab.com/CreepySkeleton/proc-macro-error)
@@ -6389,7 +6643,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [embed_plist 1.2.2](https://github.com/nvzqz/embed-plist-rs)
 
@@ -6420,7 +6674,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [funty 2.0.0](https://github.com/myrrlyn/funty)
 
@@ -6451,7 +6705,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [window-vibrancy 0.6.0](https://github.com/tauri-apps/tauri-plugin-vibrancy)
 
@@ -6482,7 +6736,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [wry 0.55.1](https://github.com/tauri-apps/wry)
 
@@ -6513,7 +6767,38 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
+
+- [sys-locale 0.3.2](https://github.com/1Password/sys-locale)
+
+```
+MIT License
+
+Copyright (c) 2021 1Password
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+```
+
+## MIT License
+
+These crates are distributed under this license:
 
 - [serialize-to-javascript-impl 0.1.2](https://github.com/chippers/serialize-to-javascript)
 - [serialize-to-javascript 0.1.2](https://github.com/chippers/serialize-to-javascript)
@@ -6545,7 +6830,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [urlpattern 0.3.0](https://github.com/denoland/rust-urlpattern)
 
@@ -6576,7 +6861,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [rustls-platform-verifier 0.6.2](https://github.com/rustls/rustls-platform-verifier)
 
@@ -6607,7 +6892,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [jsonptr 0.6.3](https://github.com/chanced/jsonptr)
 
@@ -6638,7 +6923,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [arboard 3.6.1](https://github.com/1Password/arboard)
 
@@ -6669,7 +6954,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [auto-launch 0.5.0](https://github.com/zzzgydi/auto-launch.git)
 
@@ -6700,7 +6985,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [global-hotkey 0.8.0](https://github.com/tauri-apps/global-hotkey)
 - [muda 0.19.3](https://github.com/tauri-apps/muda)
@@ -6733,7 +7018,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [dom_query 0.27.0](https://github.com/niklak/dom_query)
 
@@ -6769,7 +7054,7 @@ developed by Chen Jiaju, licensed under the MIT License and the Apache License 2
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [is-docker 0.2.0](https://github.com/TheLarkInn/is-docker)
 - [is-wsl 0.4.0](https://github.com/TheLarkInn/is-wsl)
@@ -6801,7 +7086,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [unit-prefix 0.5.2](https://codeberg.org/commons-rs/unit-prefix)
 
@@ -6832,11 +7117,11 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
-- [molva 0.1.0](https://github.com/rokokol/MolvAI)
-- [molva-core 0.1.0](https://github.com/rokokol/MolvAI)
-- [molva-gui 0.1.0](https://github.com/rokokol/MolvAI)
+- [molva 0.1.9](https://github.com/rokokol/MolvAI)
+- [molva-core 0.1.9](https://github.com/rokokol/MolvAI)
+- [molva-gui 0.1.9](https://github.com/rokokol/MolvAI)
 - [block2 0.6.2](https://github.com/madsmtm/objc2)
 - [brotli-decompressor 5.0.3](https://github.com/dropbox/rust-brotli-decompressor)
 - [chrono 0.4.45](https://github.com/chronotope/chrono)
@@ -6872,7 +7157,7 @@ SOFTWARE.
 - [tauri-runtime-wry 2.11.4](https://github.com/tauri-apps/tauri)
 - [tauri-runtime 2.11.3](https://github.com/tauri-apps/tauri)
 - [tauri-utils 2.9.3](https://github.com/tauri-apps/tauri)
-- [tauri-winrt-notification 0.7.3](https://github.com/tauri-apps/winrt-notification)
+- [tauri-winrt-notification 0.8.1](https://github.com/tauri-apps/winrt-notification)
 - [tauri 2.11.5](https://github.com/tauri-apps/tauri)
 - [unic-char-property 0.9.0](https://github.com/open-i18n/rust-unic/)
 - [unic-char-range 0.9.0](https://github.com/open-i18n/rust-unic/)
@@ -6939,7 +7224,7 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [tokio-util 0.7.19](https://github.com/tokio-rs/tokio)
 - [tokio 1.53.1](https://github.com/tokio-rs/tokio)
@@ -6971,7 +7256,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [simd-adler32 0.3.10](https://github.com/mcountryman/simd-adler32)
 
@@ -7002,7 +7287,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [zune-core 0.5.3](https://github.com/etemesi254/zune-image)
 - [zune-jpeg 0.5.15](https://github.com/etemesi254/zune-image/tree/dev/crates/zune-jpeg)
@@ -7034,7 +7319,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [miniz_oxide 0.8.9](https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide)
 - [miniz_oxide 0.9.1](https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide)
@@ -7070,7 +7355,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [fdeflate 0.3.7](https://github.com/image-rs/fdeflate)
 - [image 0.25.10](https://github.com/image-rs/image)
@@ -7106,7 +7391,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [half 2.7.1](https://github.com/VoidStarKat/half-rs)
 - [ident_case 1.0.1](https://github.com/TedDriggs/ident_case)
@@ -7137,7 +7422,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [async-recursion 1.1.1](https://github.com/dcchut/async-recursion)
 - [rustc-hash 2.1.3](https://github.com/rust-lang/rustc-hash)
@@ -7170,7 +7455,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [adler2 2.0.1](https://github.com/oyvindln/adler2)
 - [anyhow 1.0.104](https://github.com/dtolnay/anyhow)
@@ -7227,9 +7512,9 @@ DEALINGS IN THE SOFTWARE.
 - [syn 2.0.119](https://github.com/dtolnay/syn)
 - [syn 3.0.5](https://github.com/dtolnay/syn)
 - [thiserror-impl 1.0.69](https://github.com/dtolnay/thiserror)
-- [thiserror-impl 2.0.20](https://github.com/dtolnay/thiserror)
+- [thiserror-impl 2.0.21](https://github.com/dtolnay/thiserror)
 - [thiserror 1.0.69](https://github.com/dtolnay/thiserror)
-- [thiserror 2.0.20](https://github.com/dtolnay/thiserror)
+- [thiserror 2.0.21](https://github.com/dtolnay/thiserror)
 - [typeid 1.0.3](https://github.com/dtolnay/typeid)
 - [unicode-ident 1.0.24](https://github.com/dtolnay/unicode-ident)
 - [x11-dl 2.21.0](https://github.com/AltF02/x11-rs.git)
@@ -7269,7 +7554,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [winnow 0.5.40](https://github.com/winnow-rs/winnow)
 - [winnow 1.0.4](https://github.com/winnow-rs/winnow)
@@ -7298,7 +7583,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [encode_unicode 1.0.0](https://github.com/tormol/encode_unicode)
 
@@ -7325,7 +7610,7 @@ SOFTWARE
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [atk-sys 0.18.2](https://github.com/gtk-rs/gtk3-rs)
 - [atk 0.18.2](https://github.com/gtk-rs/gtk3-rs)
@@ -7374,7 +7659,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [ctor-proc-macro 0.0.7](https://github.com/mmastrac/rust-ctor)
 - [ctor 0.8.0](https://github.com/mmastrac/rust-ctor)
@@ -7389,7 +7674,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [javascriptcore-rs-sys 1.1.1](https://github.com/tauri-apps/javascriptcore-rs)
 - [soup3-sys 0.5.0](https://gitlab.gnome.org/World/Rust/soup3-rs)
@@ -7423,7 +7708,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [javascriptcore-rs 1.1.2](https://github.com/tauri-apps/javascriptcore-rs)
 
@@ -7456,7 +7741,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [typenum 1.20.1](https://github.com/paholg/typenum)
 
@@ -7487,7 +7772,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [phf 0.13.1](https://github.com/rust-phf/rust-phf)
 - [phf_generator 0.13.1](https://github.com/rust-phf/rust-phf)
@@ -7520,7 +7805,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [base64 0.21.7](https://github.com/marshallpierce/rust-base64)
 - [base64 0.22.1](https://github.com/marshallpierce/rust-base64)
@@ -7552,7 +7837,7 @@ THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [aho-corasick 1.1.5](https://github.com/BurntSushi/aho-corasick)
 - [byteorder-lite 0.1.0](https://github.com/image-rs/byteorder-lite)
@@ -7587,7 +7872,7 @@ THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [nix 0.29.0](https://github.com/nix-rust/nix)
 
@@ -7618,7 +7903,7 @@ THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [strsim 0.11.1](https://github.com/rapidfuzz/strsim-rs)
 
@@ -7651,7 +7936,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [security-framework-sys 2.17.0](https://github.com/kornelski/rust-security-framework)
 - [security-framework 3.7.0](https://github.com/kornelski/rust-security-framework)
@@ -7682,7 +7967,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [aws-lc-sys 0.45.0](https://github.com/aws/aws-lc-rs)
 
@@ -7714,7 +7999,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [derive_more-impl 2.1.1](https://github.com/JelteF/derive_more)
 - [derive_more 2.1.1](https://github.com/JelteF/derive_more)
@@ -7746,7 +8031,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [same-file 1.0.6](https://github.com/BurntSushi/same-file)
 - [winapi-util 0.1.11](https://github.com/BurntSushi/winapi-util)
@@ -7778,7 +8063,7 @@ THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [console 0.16.4](https://github.com/console-rs/console)
 - [indicatif 0.18.6](https://github.com/console-rs/indicatif)
@@ -7811,7 +8096,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [crossbeam-channel 0.5.16](https://github.com/crossbeam-rs/crossbeam)
 - [crossbeam-utils 0.8.22](https://github.com/crossbeam-rs/crossbeam)
@@ -7849,7 +8134,7 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [async-broadcast 0.7.2](https://github.com/smol-rs/async-broadcast)
 
@@ -7880,7 +8165,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [weezl 0.1.12](https://github.com/image-rs/weezl)
 
@@ -7912,7 +8197,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [os_pipe 1.2.3](https://github.com/oconnor663/os_pipe.rs)
 - [shared_child 1.1.2](https://github.com/oconnor663/shared_child.rs)
@@ -7942,7 +8227,7 @@ THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [open 5.4.3](https://github.com/Byron/open-rs)
 
@@ -7977,7 +8262,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [nu-ansi-term 0.50.3](https://github.com/nushell/nu-ansi-term)
 
@@ -8009,7 +8294,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [generic-array 0.14.7](https://github.com/fizyk20/generic-array.git)
 
@@ -8039,7 +8324,7 @@ SOFTWARE.
 
 ## MIT License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [quick-xml 0.41.0](https://github.com/tafia/quick-xml)
 
@@ -8072,7 +8357,7 @@ THE SOFTWARE.
 
 ## Mozilla Public License 2.0
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [dtoa-short 0.3.5](https://github.com/upsuper/dtoa-short)
 
@@ -8455,7 +8740,400 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 
 ## Mozilla Public License 2.0
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
+
+- [symphonia-bundle-flac 0.6.1](https://github.com/pdeljanov/Symphonia)
+- [symphonia-bundle-mp3 0.6.1](https://github.com/pdeljanov/Symphonia)
+- [symphonia-codec-aac 0.6.1](https://github.com/pdeljanov/Symphonia)
+- [symphonia-codec-pcm 0.6.1](https://github.com/pdeljanov/Symphonia)
+- [symphonia-codec-vorbis 0.6.1](https://github.com/pdeljanov/Symphonia)
+- [symphonia-common 0.6.1](https://github.com/pdeljanov/Symphonia)
+- [symphonia-core 0.6.1](https://github.com/pdeljanov/Symphonia)
+- [symphonia-format-isomp4 0.6.1](https://github.com/pdeljanov/Symphonia)
+- [symphonia-format-ogg 0.6.1](https://github.com/pdeljanov/Symphonia)
+- [symphonia-format-riff 0.6.1](https://github.com/pdeljanov/Symphonia)
+- [symphonia-metadata 0.6.1](https://github.com/pdeljanov/Symphonia)
+- [symphonia 0.6.1](https://github.com/pdeljanov/Symphonia)
+
+```
+Mozilla Public License Version 2.0
+==================================
+
+1. Definitions
+--------------
+
+1.1. "Contributor"
+    means each individual or legal entity that creates, contributes to
+    the creation of, or owns Covered Software.
+
+1.2. "Contributor Version"
+    means the combination of the Contributions of others (if any) used
+    by a Contributor and that particular Contributor's Contribution.
+
+1.3. "Contribution"
+    means Covered Software of a particular Contributor.
+
+1.4. "Covered Software"
+    means Source Code Form to which the initial Contributor has attached
+    the notice in Exhibit A, the Executable Form of such Source Code
+    Form, and Modifications of such Source Code Form, in each case
+    including portions thereof.
+
+1.5. "Incompatible With Secondary Licenses"
+    means
+
+    (a) that the initial Contributor has attached the notice described
+        in Exhibit B to the Covered Software; or
+
+    (b) that the Covered Software was made available under the terms of
+        version 1.1 or earlier of the License, but not also under the
+        terms of a Secondary License.
+
+1.6. "Executable Form"
+    means any form of the work other than Source Code Form.
+
+1.7. "Larger Work"
+    means a work that combines Covered Software with other material, in 
+    a separate file or files, that is not Covered Software.
+
+1.8. "License"
+    means this document.
+
+1.9. "Licensable"
+    means having the right to grant, to the maximum extent possible,
+    whether at the time of the initial grant or subsequently, any and
+    all of the rights conveyed by this License.
+
+1.10. "Modifications"
+    means any of the following:
+
+    (a) any file in Source Code Form that results from an addition to,
+        deletion from, or modification of the contents of Covered
+        Software; or
+
+    (b) any new file in Source Code Form that contains any Covered
+        Software.
+
+1.11. "Patent Claims" of a Contributor
+    means any patent claim(s), including without limitation, method,
+    process, and apparatus claims, in any patent Licensable by such
+    Contributor that would be infringed, but for the grant of the
+    License, by the making, using, selling, offering for sale, having
+    made, import, or transfer of either its Contributions or its
+    Contributor Version.
+
+1.12. "Secondary License"
+    means either the GNU General Public License, Version 2.0, the GNU
+    Lesser General Public License, Version 2.1, the GNU Affero General
+    Public License, Version 3.0, or any later versions of those
+    licenses.
+
+1.13. "Source Code Form"
+    means the form of the work preferred for making modifications.
+
+1.14. "You" (or "Your")
+    means an individual or a legal entity exercising rights under this
+    License. For legal entities, "You" includes any entity that
+    controls, is controlled by, or is under common control with You. For
+    purposes of this definition, "control" means (a) the power, direct
+    or indirect, to cause the direction or management of such entity,
+    whether by contract or otherwise, or (b) ownership of more than
+    fifty percent (50%) of the outstanding shares or beneficial
+    ownership of such entity.
+
+2. License Grants and Conditions
+--------------------------------
+
+2.1. Grants
+
+Each Contributor hereby grants You a world-wide, royalty-free,
+non-exclusive license:
+
+(a) under intellectual property rights (other than patent or trademark)
+    Licensable by such Contributor to use, reproduce, make available,
+    modify, display, perform, distribute, and otherwise exploit its
+    Contributions, either on an unmodified basis, with Modifications, or
+    as part of a Larger Work; and
+
+(b) under Patent Claims of such Contributor to make, use, sell, offer
+    for sale, have made, import, and otherwise transfer either its
+    Contributions or its Contributor Version.
+
+2.2. Effective Date
+
+The licenses granted in Section 2.1 with respect to any Contribution
+become effective for each Contribution on the date the Contributor first
+distributes such Contribution.
+
+2.3. Limitations on Grant Scope
+
+The licenses granted in this Section 2 are the only rights granted under
+this License. No additional rights or licenses will be implied from the
+distribution or licensing of Covered Software under this License.
+Notwithstanding Section 2.1(b) above, no patent license is granted by a
+Contributor:
+
+(a) for any code that a Contributor has removed from Covered Software;
+    or
+
+(b) for infringements caused by: (i) Your and any other third party's
+    modifications of Covered Software, or (ii) the combination of its
+    Contributions with other software (except as part of its Contributor
+    Version); or
+
+(c) under Patent Claims infringed by Covered Software in the absence of
+    its Contributions.
+
+This License does not grant any rights in the trademarks, service marks,
+or logos of any Contributor (except as may be necessary to comply with
+the notice requirements in Section 3.4).
+
+2.4. Subsequent Licenses
+
+No Contributor makes additional grants as a result of Your choice to
+distribute the Covered Software under a subsequent version of this
+License (see Section 10.2) or under the terms of a Secondary License (if
+permitted under the terms of Section 3.3).
+
+2.5. Representation
+
+Each Contributor represents that the Contributor believes its
+Contributions are its original creation(s) or it has sufficient rights
+to grant the rights to its Contributions conveyed by this License.
+
+2.6. Fair Use
+
+This License is not intended to limit any rights You have under
+applicable copyright doctrines of fair use, fair dealing, or other
+equivalents.
+
+2.7. Conditions
+
+Sections 3.1, 3.2, 3.3, and 3.4 are conditions of the licenses granted
+in Section 2.1.
+
+3. Responsibilities
+-------------------
+
+3.1. Distribution of Source Form
+
+All distribution of Covered Software in Source Code Form, including any
+Modifications that You create or to which You contribute, must be under
+the terms of this License. You must inform recipients that the Source
+Code Form of the Covered Software is governed by the terms of this
+License, and how they can obtain a copy of this License. You may not
+attempt to alter or restrict the recipients' rights in the Source Code
+Form.
+
+3.2. Distribution of Executable Form
+
+If You distribute Covered Software in Executable Form then:
+
+(a) such Covered Software must also be made available in Source Code
+    Form, as described in Section 3.1, and You must inform recipients of
+    the Executable Form how they can obtain a copy of such Source Code
+    Form by reasonable means in a timely manner, at a charge no more
+    than the cost of distribution to the recipient; and
+
+(b) You may distribute such Executable Form under the terms of this
+    License, or sublicense it under different terms, provided that the
+    license for the Executable Form does not attempt to limit or alter
+    the recipients' rights in the Source Code Form under this License.
+
+3.3. Distribution of a Larger Work
+
+You may create and distribute a Larger Work under terms of Your choice,
+provided that You also comply with the requirements of this License for
+the Covered Software. If the Larger Work is a combination of Covered
+Software with a work governed by one or more Secondary Licenses, and the
+Covered Software is not Incompatible With Secondary Licenses, this
+License permits You to additionally distribute such Covered Software
+under the terms of such Secondary License(s), so that the recipient of
+the Larger Work may, at their option, further distribute the Covered
+Software under the terms of either this License or such Secondary
+License(s).
+
+3.4. Notices
+
+You may not remove or alter the substance of any license notices
+(including copyright notices, patent notices, disclaimers of warranty,
+or limitations of liability) contained within the Source Code Form of
+the Covered Software, except that You may alter any license notices to
+the extent required to remedy known factual inaccuracies.
+
+3.5. Application of Additional Terms
+
+You may choose to offer, and to charge a fee for, warranty, support,
+indemnity or liability obligations to one or more recipients of Covered
+Software. However, You may do so only on Your own behalf, and not on
+behalf of any Contributor. You must make it absolutely clear that any
+such warranty, support, indemnity, or liability obligation is offered by
+You alone, and You hereby agree to indemnify every Contributor for any
+liability incurred by such Contributor as a result of warranty, support,
+indemnity or liability terms You offer. You may include additional
+disclaimers of warranty and limitations of liability specific to any
+jurisdiction.
+
+4. Inability to Comply Due to Statute or Regulation
+---------------------------------------------------
+
+If it is impossible for You to comply with any of the terms of this
+License with respect to some or all of the Covered Software due to
+statute, judicial order, or regulation then You must: (a) comply with
+the terms of this License to the maximum extent possible; and (b)
+describe the limitations and the code they affect. Such description must
+be placed in a text file included with all distributions of the Covered
+Software under this License. Except to the extent prohibited by statute
+or regulation, such description must be sufficiently detailed for a
+recipient of ordinary skill to be able to understand it.
+
+5. Termination
+--------------
+
+5.1. The rights granted under this License will terminate automatically
+if You fail to comply with any of its terms. However, if You become
+compliant, then the rights granted under this License from a particular
+Contributor are reinstated (a) provisionally, unless and until such
+Contributor explicitly and finally terminates Your grants, and (b) on an
+ongoing basis, if such Contributor fails to notify You of the
+non-compliance by some reasonable means prior to 60 days after You have
+come back into compliance. Moreover, Your grants from a particular
+Contributor are reinstated on an ongoing basis if such Contributor
+notifies You of the non-compliance by some reasonable means, this is the
+first time You have received notice of non-compliance with this License
+from such Contributor, and You become compliant prior to 30 days after
+Your receipt of the notice.
+
+5.2. If You initiate litigation against any entity by asserting a patent
+infringement claim (excluding declaratory judgment actions,
+counter-claims, and cross-claims) alleging that a Contributor Version
+directly or indirectly infringes any patent, then the rights granted to
+You by any and all Contributors for the Covered Software under Section
+2.1 of this License shall terminate.
+
+5.3. In the event of termination under Sections 5.1 or 5.2 above, all
+end user license agreements (excluding distributors and resellers) which
+have been validly granted by You or Your distributors under this License
+prior to termination shall survive termination.
+
+************************************************************************
+*                                                                      *
+*  6. Disclaimer of Warranty                                           *
+*  -------------------------                                           *
+*                                                                      *
+*  Covered Software is provided under this License on an "as is"       *
+*  basis, without warranty of any kind, either expressed, implied, or  *
+*  statutory, including, without limitation, warranties that the       *
+*  Covered Software is free of defects, merchantable, fit for a        *
+*  particular purpose or non-infringing. The entire risk as to the     *
+*  quality and performance of the Covered Software is with You.        *
+*  Should any Covered Software prove defective in any respect, You     *
+*  (not any Contributor) assume the cost of any necessary servicing,   *
+*  repair, or correction. This disclaimer of warranty constitutes an   *
+*  essential part of this License. No use of any Covered Software is   *
+*  authorized under this License except under this disclaimer.         *
+*                                                                      *
+************************************************************************
+
+************************************************************************
+*                                                                      *
+*  7. Limitation of Liability                                          *
+*  --------------------------                                          *
+*                                                                      *
+*  Under no circumstances and under no legal theory, whether tort      *
+*  (including negligence), contract, or otherwise, shall any           *
+*  Contributor, or anyone who distributes Covered Software as          *
+*  permitted above, be liable to You for any direct, indirect,         *
+*  special, incidental, or consequential damages of any character      *
+*  including, without limitation, damages for lost profits, loss of    *
+*  goodwill, work stoppage, computer failure or malfunction, or any    *
+*  and all other commercial damages or losses, even if such party      *
+*  shall have been informed of the possibility of such damages. This   *
+*  limitation of liability shall not apply to liability for death or   *
+*  personal injury resulting from such party's negligence to the       *
+*  extent applicable law prohibits such limitation. Some               *
+*  jurisdictions do not allow the exclusion or limitation of           *
+*  incidental or consequential damages, so this exclusion and          *
+*  limitation may not apply to You.                                    *
+*                                                                      *
+************************************************************************
+
+8. Litigation
+-------------
+
+Any litigation relating to this License may be brought only in the
+courts of a jurisdiction where the defendant maintains its principal
+place of business and such litigation shall be governed by laws of that
+jurisdiction, without reference to its conflict-of-law provisions.
+Nothing in this Section shall prevent a party's ability to bring
+cross-claims or counter-claims.
+
+9. Miscellaneous
+----------------
+
+This License represents the complete agreement concerning the subject
+matter hereof. If any provision of this License is held to be
+unenforceable, such provision shall be reformed only to the extent
+necessary to make it enforceable. Any law or regulation which provides
+that the language of a contract shall be construed against the drafter
+shall not be used to construe this License against a Contributor.
+
+10. Versions of the License
+---------------------------
+
+10.1. New Versions
+
+Mozilla Foundation is the license steward. Except as provided in Section
+10.3, no one other than the license steward has the right to modify or
+publish new versions of this License. Each version will be given a
+distinguishing version number.
+
+10.2. Effect of New Versions
+
+You may distribute the Covered Software under the terms of the version
+of the License under which You originally received the Covered Software,
+or under the terms of any subsequent version published by the license
+steward.
+
+10.3. Modified Versions
+
+If you create software not governed by this License, and you want to
+create a new license for such software, you may create and use a
+modified version of this License if you rename the license and remove
+any references to the name of the license steward (except to note that
+such modified license differs from this License).
+
+10.4. Distributing Source Code Form that is Incompatible With Secondary
+Licenses
+
+If You choose to distribute Source Code Form that is Incompatible With
+Secondary Licenses under the terms of this version of the License, the
+notice described in Exhibit B of this License must be attached.
+
+Exhibit A - Source Code Form License Notice
+-------------------------------------------
+
+  This Source Code Form is subject to the terms of the Mozilla Public
+  License, v. 2.0. If a copy of the MPL was not distributed with this
+  file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+If it is not possible or desirable to put the notice in a particular
+file, then You may include the notice in a location (such as a LICENSE
+file in a relevant directory) where a recipient would be likely to look
+for such a notice.
+
+You may add additional accurate notices of copyright ownership.
+
+Exhibit B - "Incompatible With Secondary Licenses" Notice
+---------------------------------------------------------
+
+  This Source Code Form is "Incompatible With Secondary Licenses", as
+  defined by the Mozilla Public License, v. 2.0.
+```
+
+## Mozilla Public License 2.0
+
+These crates are distributed under this license:
 
 - [cssparser-macros 0.6.1](https://github.com/servo/rust-cssparser)
 - [cssparser 0.36.0](https://github.com/servo/rust-cssparser)
@@ -8839,22 +9517,10 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 
 ## Mozilla Public License 2.0
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [option-ext 0.2.0](https://github.com/soc/option-ext.git)
 - [selectors 0.36.1](https://github.com/servo/stylo)
-- [symphonia-bundle-flac 0.5.5](https://github.com/pdeljanov/Symphonia)
-- [symphonia-bundle-mp3 0.5.5](https://github.com/pdeljanov/Symphonia)
-- [symphonia-codec-aac 0.5.5](https://github.com/pdeljanov/Symphonia)
-- [symphonia-codec-pcm 0.5.5](https://github.com/pdeljanov/Symphonia)
-- [symphonia-codec-vorbis 0.5.5](https://github.com/pdeljanov/Symphonia)
-- [symphonia-core 0.5.5](https://github.com/pdeljanov/Symphonia)
-- [symphonia-format-isomp4 0.5.5](https://github.com/pdeljanov/Symphonia)
-- [symphonia-format-ogg 0.5.5](https://github.com/pdeljanov/Symphonia)
-- [symphonia-format-riff 0.5.5](https://github.com/pdeljanov/Symphonia)
-- [symphonia-metadata 0.5.5](https://github.com/pdeljanov/Symphonia)
-- [symphonia-utils-xiph 0.5.5](https://github.com/pdeljanov/Symphonia)
-- [symphonia 0.5.5](https://github.com/pdeljanov/Symphonia)
 
 ```
 Mozilla Public License Version 2.0
@@ -9235,7 +9901,7 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 
 ## Unicode License v3
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [unicode-ident 1.0.24](https://github.com/dtolnay/unicode-ident)
 
@@ -9284,7 +9950,7 @@ authorization of the copyright holder.
 
 ## Unicode License v3
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [icu_collections 2.3.0](https://github.com/unicode-org/icu4x)
 - [icu_locale_core 2.3.0](https://github.com/unicode-org/icu4x)
@@ -9357,7 +10023,7 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 
 ## The Unlicense
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [whisper-rs 0.16.0](https://codeberg.org/tazz4843/whisper-rs)
 
@@ -9390,7 +10056,7 @@ For more information, please refer to <https://unlicense.org>
 
 ## The Unlicense
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [whisper-rs-sys 0.15.0](https://codeberg.org/tazz4843/whisper-rs)
 
@@ -9410,7 +10076,7 @@ For more information, please refer to <http://unlicense.org/>
 
 ## zlib License
 
-Под этой лицензией распространяются:
+These crates are distributed under this license:
 
 - [foldhash 0.1.5](https://github.com/orlp/foldhash)
 - [foldhash 0.2.0](https://github.com/orlp/foldhash)
