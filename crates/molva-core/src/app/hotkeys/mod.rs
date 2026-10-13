@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 //! Hotkeys: parsing of key combinations and their binding to actions
 
+pub mod hyprland;
 pub mod spec;
 
 use std::collections::HashMap;

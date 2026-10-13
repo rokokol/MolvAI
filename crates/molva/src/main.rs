@@ -119,6 +119,10 @@ enum Commands {
         /// Compatibility: the output is printed anyway
         #[arg(long)]
         print: bool,
+        /// Hyprland only: write the binds to ~/.config/hypr/molvai.lua and print the line that
+        /// includes it
+        #[arg(long)]
+        write: bool,
     },
     /// Check the text paste into the active window
     TestInject {
@@ -267,12 +271,14 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             let mut stdout = std::io::stdout().lock();
             Ok(cmd::bench::run(&args, &config, &mut stdout)?)
         }
-        Commands::Setup { target, ptt, .. } => {
+        Commands::Setup {
+            target, ptt, write, ..
+        } => {
             let config = Config::load(&config_path)?;
             let target = cmd::setup::Target::parse(&target).ok_or_else(|| {
                 anyhow::anyhow!("unknown compositor \"{target}\": hyprland | sway | kde | gnome")
             })?;
-            cmd::setup::run(target, &config.hotkeys, ptt.as_deref())
+            cmd::setup::run(target, &config.hotkeys, ptt.as_deref(), write)
         }
         Commands::TestInject { mode, text, delay } => {
             let config = Config::load(&config_path)?;

@@ -81,14 +81,8 @@ Open `~/.config/molva/config.toml` and show the user the `[hotkeys]` section. By
 
 The next step depends on the session that you found in step 1:
 
-- **Hyprland**: offer to add four lines to `~/.config/hypr/hyprland.conf` and explain that `bindr` fires on the release:
-
-  ```
-  bind  = , F9, exec, molva record start
-  bindr = , F9, exec, molva record stop
-  bind  = CTRL ALT, Z, exec, molva record toggle
-  bind  = CTRL ALT, X, exec, molva record toggle --mode command
-  ```
+- **Hyprland 0.55 and later** (check with `hyprctl version`): run `molva setup hyprland --write`. It writes the binds to `~/.config/hypr/molvai.lua` and prints one `dofile(...)` line. Offer to add that line to `~/.config/hypr/hyprland.lua`, then run `hyprctl reload`. Explain that the file comes from the `[hotkeys]` settings, so the user changes the keys there and not in the file
+- **Hyprland before 0.55**: the config is `~/.config/hypr/hyprland.conf`. Offer `bind = , F9, exec, molva record start` and `bindr = , F9, exec, molva record stop` for push-to-talk, where `bindr` fires on the release, plus `bind` lines for `molva record toggle` and `molva record toggle --mode command`
 
 - **GNOME, KDE**: show how to create a custom shortcut in the keyboard settings for the commands `molva record start` and `molva record stop`
 - **X11 without a desktop environment**: offer `sxhkd` or the built-in keyboard capture (`hotkeys.backend = "evdev"`, which needs membership in the `input` group)

@@ -409,6 +409,21 @@ defect 'dictionary/reload-notices-a-change' 'crates/molva-core/src/app/dictionar
   '        if true {' \
   'an addition to the dictionary is not picked up without a restart of the daemon'
 
+defect 'hyprland/push-to-talk-ends-on-release' 'crates/molva-core/src/app/hotkeys/hyprland.rs' \
+  '            release: true,' \
+  '            release: false,' \
+  'push-to-talk on Hyprland never stops: the release of the key does not end the phrase'
+
+defect 'hyprland/cancel-key-reaches-the-application' 'crates/molva-core/src/app/hotkeys/hyprland.rs' \
+  '            passes_through: true,' \
+  '            passes_through: false,' \
+  'with Escape as the cancel key, Escape stops working in every program under Hyprland'
+
+defect 'hotkeys/keysym-comes-from-the-table' 'crates/molva-core/src/app/hotkeys/spec.rs' \
+  '            return (*keysym).to_string();' \
+  '            return (*keysym).to_lowercase();' \
+  'the compositor binds name keys that do not exist, such as page_down, and Hyprland refuses the file'
+
 defect 'styles/verbatim-skips-the-model' 'crates/molva-core/src/app/styles.rs' \
   '            uses_llm: false,' \
   '            uses_llm: true,' \

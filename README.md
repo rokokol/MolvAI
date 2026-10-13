@@ -87,15 +87,20 @@ molva daemon                 # the daemon that listens to the hotkeys
 molva history paste --last   # paste the last phrase again, without dictating it
 ```
 
-The hotkeys in Hyprland are lines in `~/.config/hypr/hyprland.conf`, where `bindr` fires on the release:
+On Hyprland 0.55 and later the config is Lua. `molva setup hyprland --write`, or the button in the GUI settings, writes the binds from the `[hotkeys]` settings to `~/.config/hypr/molvai.lua`. Add one line to `~/.config/hypr/hyprland.lua`, once:
 
+```lua
+dofile(os.getenv("HOME") .. "/.config/hypr/molvai.lua")
 ```
-bind  = , F9, exec, molva record start
-bindr = , F9, exec, molva record stop
-bind  = CTRL ALT, Z, exec, molva record toggle
-bind  = CTRL ALT, X, exec, molva record toggle --mode command
-bind  = CTRL ALT, C, exec, molva record cancel
+
+The file then holds binds such as these, where `release = true` fires on the release of the key. The GUI rewrites the file when you change the hotkeys:
+
+```lua
+hl.bind("F9", hl.dsp.exec_cmd("molva record start"), { description = "MolvAI: dictate while the key is held" })
+hl.bind("F9", hl.dsp.exec_cmd("molva record stop"), { release = true, description = "MolvAI: paste the text on release" })
 ```
+
+Hyprland before 0.55 reads `~/.config/hypr/hyprland.conf` instead: there the same pair is `bind = , F9, exec, molva record start` and `bindr = , F9, exec, molva record stop`
 
 The hold and the toggle work at the same time and on the same settings. Hold `F9` and it records while you hold. Press the same key briefly and the recording latches and runs without the key until the next press. `Ctrl+Alt+Z` always starts and stops the recording by a press
 
@@ -270,8 +275,8 @@ The limits without a network: you cannot download a new model, and the styles wi
 
 How to reproduce it on Hyprland:
 
-```
-bind = SUPER ALT, C, exec, molva record toggle --mode command
+```lua
+hl.bind("SUPER + ALT + C", hl.dsp.exec_cmd("molva record toggle --mode command"))
 ```
 
 1. `molva config set llm.enabled true` and a running Ollama with `qwen3.5:4b` (`molva doctor` shows both lines green)

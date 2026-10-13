@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { api, asCommandError, copyToClipboard } from "../api";
 import { AUTO_LANG, LANGUAGES, useI18n } from "../i18n";
 import type { Theme, ViewProps } from "../App";
-import type { CommandError, Config, DeviceInfo, StyleOption } from "../types";
+import type { CommandError, Config, DeviceInfo, HyprlandBinds, StyleOption } from "../types";
 
 interface Props extends ViewProps {
   theme: Theme;
@@ -85,8 +85,8 @@ export default function Settings({
   const [styles, setStyles] = useState<StyleOption[]>([]);
   const [autostart, setAutostart] = useState(false);
   const [configPath, setConfigPath] = useState("");
-  const [snippet, setSnippet] = useState("");
-  const [snippetCopied, setSnippetCopied] = useState(false);
+  const [hyprland, setHyprland] = useState<HyprlandBinds | null>(null);
+  const [includeCopied, setIncludeCopied] = useState(false);
   const [importPath, setImportPath] = useState("");
   const [exportedTo, setExportedTo] = useState("");
   const [cloudAccepted, setCloudAccepted] = useState(false);
@@ -107,8 +107,9 @@ export default function Settings({
     api.availableStyles().then(setStyles).catch(() => setStyles([]));
   }, [lang]);
 
+  // A save of new hotkeys rewrites an existing file on the Rust side: read its state again
   useEffect(() => {
-    api.hyprlandSnippet().then(setSnippet).catch(() => setSnippet(""));
+    api.hyprlandBinds().then(setHyprland).catch(() => setHyprland(null));
   }, [config]);
 
   const patch = useCallback((change: (next: Config) => void) => {
@@ -263,16 +264,38 @@ export default function Settings({
         <div className="notice">
           <strong>{t("settings.wayland.title")}</strong>
           <p>{t("settings.wayland.body")}</p>
-          <textarea readOnly rows={7} value={snippet} aria-label={t("settings.wayland.title")} />
           <div className="row" style={{ marginTop: "0.4rem" }}>
             <button
               type="button"
               className="chip"
-              onClick={async () => setSnippetCopied(await copyToClipboard(snippet))}
+              onClick={() =>
+                api
+                  .writeHyprlandBinds()
+                  .then(setHyprland)
+                  .catch((err) => onError(asCommandError(err)))
+              }
             >
-              {snippetCopied ? t("common.copied") : t("common.copy")}
+              {hyprland?.written ? t("settings.wayland.rewrite") : t("settings.wayland.write")}
             </button>
           </div>
+          {hyprland?.written && (
+            <>
+              <p className="small">{t("settings.wayland.written", { path: hyprland.path })}</p>
+              <p>{t("settings.wayland.include")}</p>
+              <input readOnly value={hyprland.include_line} aria-label={t("settings.wayland.include")} />
+              <div className="row" style={{ marginTop: "0.4rem" }}>
+                <button
+                  type="button"
+                  className="chip"
+                  onClick={async () =>
+                    setIncludeCopied(await copyToClipboard(hyprland.include_line))
+                  }
+                >
+                  {includeCopied ? t("common.copied") : t("common.copy")}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </Section>
 

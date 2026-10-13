@@ -6,33 +6,35 @@ The fallback is to read `/dev/input/event*` through evdev (`hotkeys.backend = "e
 
 ## Push-to-talk, hands-free and command mode
 
-Push-to-talk needs two events from the compositor: the press and the release. Hyprland (`bind`/`bindr`) and Sway (`bindsym` / `bindsym --release`) give both. KDE Plasma and GNOME do not report the key release at all, so only the `molva record toggle` switch is available there
+Push-to-talk needs two events from the compositor: the press and the release. Hyprland (a bind with `release = true`) and Sway (`bindsym` / `bindsym --release`) give both. KDE Plasma and GNOME do not report the key release at all, so only the `molva record toggle` switch is available there
 
 The daemon itself tells a key hold from a short press. A hold shorter than `hotkeys.min_hold_ms` (200 ms) does not create a phrase. A press shorter than `hotkeys.short_press_ms` (250 ms) latches the recording when `hotkeys.tap_toggles = true`, and this is hands-free. A second press outside the `hotkeys.double_tap_ms` window ends the recording. Inside the window the daemon counts it as a bounce and ignores it
 
 ## Hyprland
 
-```
-# ~/.config/hypr/hyprland.conf
-# Push-to-talk: bind fires on the press, bindr fires on the release.
-bind  = , F9, exec, molva record start
-bindr = , F9, exec, molva record stop
+Since Hyprland 0.55 the config is Lua, and the hyprlang `hyprland.conf` is deprecated. MolvAI writes its binds to a file of their own, `~/.config/hypr/molvai.lua`, from the `[hotkeys]` settings: the button in the GUI settings, or `molva setup hyprland --write`. Your `hyprland.lua` includes it with one line:
 
-# Hands-free: one press starts the recording, the next press stops it.
-bind  = CTRL SHIFT, space, exec, molva record toggle
-
-# Command mode: voice editing of the selected text.
-bind  = CTRL SHIFT ALT, space, exec, molva record start --mode command
-bindr = CTRL SHIFT ALT, space, exec, molva record stop
-
-# Cancel the current recording.
-bind  = CTRL SHIFT, Escape, exec, molva record cancel
-
-# The daemon must be running.
-exec-once = molva daemon
+```lua
+dofile(os.getenv("HOME") .. "/.config/hypr/molvai.lua")
 ```
 
-Choose a push-to-talk key that has no other use: `F9`, `Pause` or `Control_R`. You set the right Ctrl as `bind = , Control_R, exec, molva record start`, because Hyprland accepts the keysym names from xkb
+With the default settings the file holds these binds:
+
+```lua
+hl.bind("F9", hl.dsp.exec_cmd("molva record start"), { description = "MolvAI: dictate while the key is held" })
+hl.bind("F9", hl.dsp.exec_cmd("molva record stop"), { release = true, description = "MolvAI: paste the text on release" })
+hl.bind("CTRL + ALT + Z", hl.dsp.exec_cmd("molva record toggle"), { description = "MolvAI: start or stop a recording" })
+hl.bind("CTRL + ALT + X", hl.dsp.exec_cmd("molva record toggle --mode command"), { description = "MolvAI: edit the selected text by voice" })
+hl.bind("CTRL + ALT + C", hl.dsp.exec_cmd("molva record cancel"), { non_consuming = true, description = "MolvAI: cancel the recording" })
+```
+
+The cancel bind is `non_consuming`: the key still reaches the application. Cancel matters only during a recording, and a bare `Escape` as the cancel key would otherwise stop working in every program
+
+When you change the hotkeys in the GUI, it rewrites the file and runs `hyprctl reload`. Without the GUI, start the daemon from `hyprland.lua`: `hl.on("hyprland.start", function() hl.exec_cmd("molva daemon") end)`
+
+Choose a push-to-talk key that has no other use: `F9`, `Pause` or `RightCtrl` in the settings, which becomes the xkb keysym `Control_R` in the file
+
+Hyprland before 0.55 reads `~/.config/hypr/hyprland.conf`. There push-to-talk is `bind = , F9, exec, molva record start` with `bindr = , F9, exec, molva record stop`, where `bindr` fires on the release
 
 ## Sway
 

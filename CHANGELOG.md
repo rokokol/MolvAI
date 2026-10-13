@@ -11,13 +11,18 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 - The GUI tray menu, its tooltip, system notices and setting errors follow the interface language, Russian or English
 - A daemon error in the GUI starts with a title in the interface language, and the daemon's English text follows it
 - The built-in styles and command mode send the model an English prompt for a phrase in any language but Russian. A Russian phrase keeps the Russian prompt
+- A button in the GUI settings writes the Hyprland binds to "~/.config/hypr/molvai.lua" and shows the line that includes the file in "hyprland.lua". The GUI rewrites the file and reloads Hyprland when the hotkeys change
+- "molva setup hyprland --write" writes the same file and prints the same line
 
 ### Changed
 
 - The daemon and the CLI are English only: messages, errors, help text, table headers and "molva doctor" output
 - The built-in style names in the CLI are English: Verbatim, Cleanup, Messenger, Email, Code and Formal
 - A GUI string with no translation falls back to English instead of Russian
-- The Hyprland snippet in the GUI settings has English comments
+- The Hyprland binds are Lua for Hyprland 0.55 and later, in the GUI and in "molva setup hyprland", in place of the hyprlang lines that the GUI settings showed
+- The Hyprland cancel bind lets its key reach the application, so a bare Escape as the cancel key keeps working in other programs
+- "molva setup" takes every key from the settings: command mode toggles, as in the GUI, and cancel uses "hotkeys.cancel" in place of a fixed Ctrl+Shift+Escape. The GNOME bind keeps the modifiers of the toggle key
+- "molva setup" refuses a hotkey that does not parse, in place of a bind that the compositor rejects
 - The documentation is in English
 - An empty "command_mode.system_prompt" now means the built-in prompt in the language of the instruction, and it is the new default. A settings file that holds the old default Russian prompt is migrated to the empty value; a prompt the user wrote stays
 

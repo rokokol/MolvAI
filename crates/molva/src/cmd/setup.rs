@@ -2,9 +2,13 @@
 //! `molva setup` — ready binds for the compositor
 //!
 //! On Wayland the compositor gives out the global hotkeys, not the application, so the "setup" is
-//! lines in the config of the user. The command prints them and does not edit foreign files: the config
-//! of the compositor is not our territory
+//! lines in the config of the user. The command prints them and never edits the user's config.
+//! For Hyprland it can write the binds to a file of their own (`--write`), which the user's
+//! `hyprland.lua` includes with one line: the GUI writes the same file from the same text
 
+use std::path::{Path, PathBuf};
+
+use molva_core::app::hotkeys::{hyprland, HotkeySpec};
 use molva_core::config::HotkeysConfig;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,146 +31,77 @@ impl Target {
     }
 }
 
-/// A combination parsed into modifiers and a key
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Combo {
-    pub mods: Vec<String>,
-    pub key: String,
+/// `Ctrl+Shift+space`: the combination as Sway and Plasma write it
+fn plus_combo(spec: &HotkeySpec) -> String {
+    spec.modifiers
+        .iter()
+        .map(|m| m.label().to_string())
+        .chain(std::iter::once(spec.keysym()))
+        .collect::<Vec<_>>()
+        .join("+")
 }
 
-impl Combo {
-    /// Parse `Ctrl+Shift+Space`; the last part is the key, the others are modifiers
-    pub(crate) fn parse(spec: &str) -> Combo {
-        let parts: Vec<&str> = spec
-            .split(['+', '-'])
-            .map(str::trim)
-            .filter(|p| !p.is_empty())
-            .collect();
-        let (key, mods) = parts
-            .split_last()
-            .map_or(("", &[] as &[&str]), |(k, m)| (*k, m));
-        Combo {
-            mods: mods.iter().map(|m| normalize_mod(m)).collect(),
-            key: key.to_string(),
-        }
+/// `<Ctrl><Alt>Z`: the combination as GNOME writes it
+fn gnome_combo(spec: &HotkeySpec) -> String {
+    let mut combo = String::new();
+    for modifier in &spec.modifiers {
+        combo.push('<');
+        combo.push_str(modifier.label());
+        combo.push('>');
     }
-
-    /// `CTRL SHIFT` for Hyprland; an empty string if there are no modifiers
-    fn hyprland_mods(&self) -> String {
-        self.mods
-            .iter()
-            .map(|m| m.to_uppercase())
-            .collect::<Vec<_>>()
-            .join(" ")
-    }
-
-    /// `Ctrl+Shift+space` for Sway
-    fn sway_combo(&self) -> String {
-        let mut parts = self.mods.clone();
-        parts.push(keysym(&self.key));
-        parts.join("+")
-    }
+    combo.push_str(&spec.keysym());
+    combo
 }
 
-fn normalize_mod(name: &str) -> String {
-    match name.trim().to_ascii_lowercase().as_str() {
-        "ctrl" | "control" => "Ctrl".into(),
-        "shift" => "Shift".into(),
-        "alt" | "option" => "Alt".into(),
-        "super" | "meta" | "win" | "cmd" => "Super".into(),
-        other => other.to_string(),
+/// The hotkeys with the push-to-talk key from `--ptt`, when it is given
+fn with_ptt(hotkeys: &HotkeysConfig, ptt: Option<&str>) -> HotkeysConfig {
+    let mut hotkeys = hotkeys.clone();
+    if let Some(ptt) = ptt {
+        hotkeys.push_to_talk = ptt.to_string();
     }
+    hotkeys
 }
 
-/// The key name in xkb terms: the compositors understand exactly these
-fn keysym(key: &str) -> String {
-    let key = key.trim();
-    if key.len() == 1 {
-        return key.to_uppercase();
-    }
-    let lower = key.to_ascii_lowercase();
-    if lower.starts_with('f') && lower[1..].chars().all(|c| c.is_ascii_digit()) {
-        return key.to_uppercase();
-    }
-    match lower.as_str() {
-        "space" => "space".into(),
-        "escape" | "esc" => "Escape".into(),
-        "enter" | "return" => "Return".into(),
-        "tab" => "Tab".into(),
-        "pause" => "Pause".into(),
-        "rightctrl" => "Control_R".into(),
-        "leftctrl" => "Control_L".into(),
-        "rightalt" => "Alt_R".into(),
-        "leftalt" => "Alt_L".into(),
-        "rightshift" => "Shift_R".into(),
-        "leftshift" => "Shift_L".into(),
-        other => other.to_string(),
-    }
+/// The snippet for a compositor
+pub(crate) fn snippet(
+    target: Target,
+    hotkeys: &HotkeysConfig,
+    ptt: Option<&str>,
+) -> anyhow::Result<String> {
+    let hotkeys = with_ptt(hotkeys, ptt);
+    Ok(match target {
+        Target::Hyprland => format!(
+            "{}\n\
+             -- Without the GUI, start the daemon with Hyprland:\n\
+             -- hl.on(\"hyprland.start\", function() hl.exec_cmd(\"molva daemon\") end)\n",
+            hyprland::lua(&hotkeys)?
+        ),
+        Target::Sway => sway(&hotkeys)?,
+        Target::Kde => kde(&HotkeySpec::parse(&hotkeys.toggle)?),
+        Target::Gnome => gnome(&HotkeySpec::parse(&hotkeys.toggle)?),
+    })
 }
 
-/// The snippet for a compositor. `ptt` overrides the push-to-talk key from the config
-pub(crate) fn snippet(target: Target, hotkeys: &HotkeysConfig, ptt: Option<&str>) -> String {
-    let ptt = Combo::parse(ptt.unwrap_or(&hotkeys.push_to_talk));
-    let toggle = Combo::parse(&hotkeys.toggle);
-    let command = Combo::parse(&hotkeys.command);
-    match target {
-        Target::Hyprland => hyprland(&ptt, &toggle, &command),
-        Target::Sway => sway(&ptt, &toggle, &command),
-        Target::Kde => kde(&toggle),
-        Target::Gnome => gnome(&toggle),
-    }
-}
-
-fn hyprland(ptt: &Combo, toggle: &Combo, command: &Combo) -> String {
-    format!(
-        "# MolvAI — ~/.config/hypr/hyprland.conf\n\
-         # Push-to-talk: bind fires on press, bindr fires on release\n\
-         bind  = {ptt_mods}, {ptt_key}, exec, molva record start\n\
-         bindr = {ptt_mods}, {ptt_key}, exec, molva record stop\n\
-         \n\
-         # Hands-free: one press starts the recording, the next one stops it\n\
-         bind  = {toggle_mods}, {toggle_key}, exec, molva record toggle\n\
-         \n\
-         # Command mode: voice editing of the selected text\n\
-         bind  = {command_mods}, {command_key}, exec, molva record start --mode command\n\
-         bindr = {command_mods}, {command_key}, exec, molva record stop\n\
-         \n\
-         # Cancel the current recording\n\
-         bind  = CTRL SHIFT, Escape, exec, molva record cancel\n\
-         \n\
-         # The daemon must be running: molva daemon\n\
-         exec-once = molva daemon\n",
-        ptt_mods = ptt.hyprland_mods(),
-        ptt_key = keysym(&ptt.key),
-        toggle_mods = toggle.hyprland_mods(),
-        toggle_key = keysym(&toggle.key),
-        command_mods = command.hyprland_mods(),
-        command_key = keysym(&command.key),
-    )
-}
-
-fn sway(ptt: &Combo, toggle: &Combo, command: &Combo) -> String {
-    format!(
+fn sway(hotkeys: &HotkeysConfig) -> anyhow::Result<String> {
+    let ptt = plus_combo(&HotkeySpec::parse(&hotkeys.push_to_talk)?);
+    let toggle = plus_combo(&HotkeySpec::parse(&hotkeys.toggle)?);
+    let command = plus_combo(&HotkeySpec::parse(&hotkeys.command)?);
+    let cancel = plus_combo(&HotkeySpec::parse(&hotkeys.cancel)?);
+    Ok(format!(
         "# MolvAI — ~/.config/sway/config\n\
          # --no-repeat stops the auto-repeat from starting the recording again\n\
          bindsym --no-repeat {ptt} exec molva record start\n\
          bindsym --release {ptt} exec molva record stop\n\
          \n\
          bindsym --no-repeat {toggle} exec molva record toggle\n\
+         bindsym --no-repeat {command} exec molva record toggle --mode command\n\
+         bindsym --no-repeat {cancel} exec molva record cancel\n\
          \n\
-         bindsym --no-repeat {command} exec molva record start --mode command\n\
-         bindsym --release {command} exec molva record stop\n\
-         \n\
-         bindsym --no-repeat Ctrl+Shift+Escape exec molva record cancel\n\
-         \n\
-         exec molva daemon\n",
-        ptt = ptt.sway_combo(),
-        toggle = toggle.sway_combo(),
-        command = command.sway_combo(),
-    )
+         exec molva daemon\n"
+    ))
 }
 
-fn kde(toggle: &Combo) -> String {
+fn kde(toggle: &HotkeySpec) -> String {
     format!(
         "# MolvAI — KDE Plasma\n\
          # Plasma does not give out the key release, so push-to-talk is unavailable there:\n\
@@ -176,16 +111,12 @@ fn kde(toggle: &Combo) -> String {
          #   command:     molva record toggle\n\
          #   shortcut:    {toggle}\n\
          #\n\
-         # Cancel:\n\
-         #   command:     molva record cancel\n\
-         #   shortcut:    Ctrl+Shift+Escape\n\
-         #\n\
          # Autostart of the daemon: System Settings → Autostart → molva daemon\n",
-        toggle = toggle.sway_combo(),
+        toggle = plus_combo(toggle),
     )
 }
 
-fn gnome(toggle: &Combo) -> String {
+fn gnome(toggle: &HotkeySpec) -> String {
     let path = "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/molva/";
     format!(
         "# MolvAI — GNOME\n\
@@ -197,20 +128,48 @@ fn gnome(toggle: &Combo) -> String {
          gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:{path} \\\n\
          \x20   command 'molva record toggle'\n\
          gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:{path} \\\n\
-         \x20   binding '<Ctrl><Shift>{key}'\n",
-        path = path,
-        key = keysym(&toggle.key),
+         \x20   binding '{binding}'\n",
+        binding = gnome_combo(toggle),
     )
 }
 
-// A signature shared by all subcommands: the dispatcher in `main` calls them all the same way
-#[allow(clippy::unnecessary_wraps)]
+/// Where `--write` puts the Hyprland file, from the environment Hyprland itself reads
+pub(crate) fn hyprland_path() -> anyhow::Result<PathBuf> {
+    let xdg = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from);
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    hyprland::config_path(xdg.as_deref(), home.as_deref())
+        .ok_or_else(|| anyhow::anyhow!("neither XDG_CONFIG_HOME nor HOME is set"))
+}
+
+/// Write the Hyprland file and say which line includes it
+pub(crate) fn write_hyprland(
+    hotkeys: &HotkeysConfig,
+    ptt: Option<&str>,
+    path: &Path,
+) -> anyhow::Result<String> {
+    hyprland::write(path, &hyprland::lua(&with_ptt(hotkeys, ptt))?)?;
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    Ok(format!(
+        "wrote {}\nadd this line to hyprland.lua once:\n{}\n",
+        path.display(),
+        hyprland::include_line(path, home.as_deref())
+    ))
+}
+
 pub(crate) fn run(
     target: Target,
     hotkeys: &HotkeysConfig,
     ptt: Option<&str>,
+    write: bool,
 ) -> anyhow::Result<()> {
-    print!("{}", snippet(target, hotkeys, ptt));
+    if write {
+        if target != Target::Hyprland {
+            anyhow::bail!("--write is for Hyprland only: the other compositors keep binds in their own config");
+        }
+        print!("{}", write_hyprland(hotkeys, ptt, &hyprland_path()?)?);
+        return Ok(());
+    }
+    print!("{}", snippet(target, hotkeys, ptt)?);
     Ok(())
 }
 
@@ -218,51 +177,44 @@ pub(crate) fn run(
 mod tests {
     use super::*;
 
-    #[test]
-    fn a_combination_splits_into_modifiers_and_a_key() {
-        let combo = Combo::parse("Ctrl+Shift+Space");
-        assert_eq!(combo.mods, vec!["Ctrl".to_string(), "Shift".to_string()]);
-        assert_eq!(combo.key, "Space");
-        assert_eq!(combo.hyprland_mods(), "CTRL SHIFT");
-        assert_eq!(combo.sway_combo(), "Ctrl+Shift+space");
+    fn spec(text: &str) -> HotkeySpec {
+        HotkeySpec::parse(text).unwrap()
     }
 
     #[test]
-    fn a_lone_key_has_no_modifiers() {
-        let combo = Combo::parse("F9");
-        assert!(combo.mods.is_empty());
-        assert_eq!(combo.hyprland_mods(), "");
-        assert_eq!(combo.sway_combo(), "F9");
+    fn combinations_take_each_compositor_spelling() {
+        assert_eq!(plus_combo(&spec("Ctrl+Shift+Space")), "Ctrl+Shift+space");
+        assert_eq!(plus_combo(&spec("F9")), "F9");
+        assert_eq!(gnome_combo(&spec("Ctrl+Alt+z")), "<Ctrl><Alt>Z");
     }
 
     #[test]
-    fn key_names_become_xkb_keysyms() {
-        assert_eq!(keysym("Space"), "space");
-        assert_eq!(keysym("escape"), "Escape");
-        assert_eq!(keysym("RightCtrl"), "Control_R");
-        assert_eq!(keysym("f9"), "F9");
-        assert_eq!(keysym("s"), "S");
-    }
-
-    #[test]
-    fn the_hyprland_snippet_binds_both_press_and_release() {
-        let text = snippet(Target::Hyprland, &HotkeysConfig::default(), Some("F9"));
+    fn the_hyprland_snippet_is_the_lua_file_of_the_core() {
+        let hotkeys = HotkeysConfig::default();
+        let text = snippet(Target::Hyprland, &hotkeys, None).unwrap();
         assert!(
-            text.contains("bind  = , F9, exec, molva record start"),
+            text.starts_with(&hyprland::lua(&hotkeys).unwrap()),
             "{text}"
         );
-        assert!(
-            text.contains("bindr = , F9, exec, molva record stop"),
-            "{text}"
-        );
-        assert!(text.contains("molva record toggle"), "{text}");
-        assert!(text.contains("--mode command"), "{text}");
-        assert!(text.contains("molva record cancel"), "{text}");
+        assert!(text.contains("molva daemon"), "{text}");
     }
 
     #[test]
-    fn the_sway_snippet_disables_key_repeat_on_press() {
-        let text = snippet(Target::Sway, &HotkeysConfig::default(), Some("F9"));
+    fn the_ptt_flag_overrides_the_config() {
+        let text = snippet(Target::Hyprland, &HotkeysConfig::default(), Some("Pause")).unwrap();
+        assert!(text.contains("hl.bind(\"Pause\""), "{text}");
+        // The default is F9: a deliberately simple key that is free on any test bench
+        let default = snippet(Target::Hyprland, &HotkeysConfig::default(), None).unwrap();
+        assert!(default.contains("hl.bind(\"F9\""), "{default}");
+    }
+
+    #[test]
+    fn the_sway_snippet_takes_every_key_from_the_settings() {
+        let hotkeys = HotkeysConfig {
+            cancel: "Ctrl+Alt+C".into(),
+            ..HotkeysConfig::default()
+        };
+        let text = snippet(Target::Sway, &hotkeys, Some("F9")).unwrap();
         assert!(
             text.contains("bindsym --no-repeat F9 exec molva record start"),
             "{text}"
@@ -271,31 +223,50 @@ mod tests {
             text.contains("bindsym --release F9 exec molva record stop"),
             "{text}"
         );
+        assert!(
+            text.contains("Ctrl+Alt+C exec molva record cancel"),
+            "{text}"
+        );
+        assert!(
+            text.contains("molva record toggle --mode command"),
+            "{text}"
+        );
     }
 
     #[test]
-    fn kde_and_gnome_offer_a_toggle_because_they_hide_key_release() {
-        let kde = snippet(Target::Kde, &HotkeysConfig::default(), None);
-        assert!(kde.contains("molva record toggle"), "{kde}");
+    fn kde_and_gnome_offer_the_toggle_with_its_own_modifiers() {
+        let hotkeys = HotkeysConfig {
+            toggle: "Super+Z".into(),
+            ..HotkeysConfig::default()
+        };
+        let kde = snippet(Target::Kde, &hotkeys, None).unwrap();
+        assert!(kde.contains("Super+Z"), "{kde}");
         assert!(
             !kde.contains("record start"),
             "push-to-talk does not work there: {kde}"
         );
-        let gnome = snippet(Target::Gnome, &HotkeysConfig::default(), None);
-        assert!(gnome.contains("gsettings set"), "{gnome}");
-        assert!(gnome.contains("molva record toggle"), "{gnome}");
+        let gnome = snippet(Target::Gnome, &hotkeys, None).unwrap();
+        assert!(gnome.contains("binding '<Super>Z'"), "{gnome}");
     }
 
     #[test]
-    fn the_ptt_flag_overrides_the_config() {
-        let text = snippet(Target::Hyprland, &HotkeysConfig::default(), Some("Pause"));
-        assert!(text.contains(", Pause, exec, molva record start"), "{text}");
-        // The default is F9: a deliberately simple key that is free on any test bench
-        let default = snippet(Target::Hyprland, &HotkeysConfig::default(), None);
-        assert!(
-            default.contains(", F9, exec, molva record start"),
-            "{default}"
-        );
+    fn a_hotkey_that_does_not_parse_is_reported() {
+        let hotkeys = HotkeysConfig {
+            toggle: "Ctrl+Telepathy".into(),
+            ..HotkeysConfig::default()
+        };
+        assert!(snippet(Target::Sway, &hotkeys, None).is_err());
+        assert!(snippet(Target::Hyprland, &hotkeys, None).is_err());
+    }
+
+    #[test]
+    fn write_puts_the_file_in_place_and_names_the_include_line() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("hypr").join(hyprland::FILE_NAME);
+        let report = write_hyprland(&HotkeysConfig::default(), None, &path).unwrap();
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(written, hyprland::lua(&HotkeysConfig::default()).unwrap());
+        assert!(report.contains("dofile("), "{report}");
     }
 
     #[test]

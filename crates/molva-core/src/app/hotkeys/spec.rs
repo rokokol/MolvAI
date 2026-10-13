@@ -52,60 +52,61 @@ impl Modifier {
     }
 }
 
-/// Named keys that do not derive from a letter or a digit
-const NAMED_KEYS: [(&str, u16); 40] = [
-    ("escape", 1),
-    ("esc", 1),
-    ("backspace", 14),
-    ("tab", 15),
-    ("enter", 28),
-    ("return", 28),
-    ("space", 57),
-    ("capslock", 58),
-    ("f1", 59),
-    ("f2", 60),
-    ("f3", 61),
-    ("f4", 62),
-    ("f5", 63),
-    ("f6", 64),
-    ("f7", 65),
-    ("f8", 66),
-    ("f9", 67),
-    ("f10", 68),
-    ("f11", 87),
-    ("f12", 88),
-    ("numlock", 69),
-    ("scrolllock", 70),
-    ("sysrq", 99),
-    ("printscreen", 99),
-    ("home", 102),
-    ("up", 103),
-    ("pageup", 104),
-    ("left", 105),
-    ("right", 106),
-    ("end", 107),
-    ("down", 108),
-    ("pagedown", 109),
-    ("insert", 110),
-    ("delete", 111),
-    ("pause", 119),
-    ("menu", 127),
-    ("minus", 12),
-    ("equal", 13),
-    ("grave", 41),
-    ("backslash", 43),
+/// Named keys that do not derive from a letter or a digit: the name in the settings, the kernel
+/// key code, and the xkb keysym that the compositors take in their own binds
+const NAMED_KEYS: [(&str, u16, &str); 40] = [
+    ("escape", 1, "Escape"),
+    ("esc", 1, "Escape"),
+    ("backspace", 14, "BackSpace"),
+    ("tab", 15, "Tab"),
+    ("enter", 28, "Return"),
+    ("return", 28, "Return"),
+    ("space", 57, "space"),
+    ("capslock", 58, "Caps_Lock"),
+    ("f1", 59, "F1"),
+    ("f2", 60, "F2"),
+    ("f3", 61, "F3"),
+    ("f4", 62, "F4"),
+    ("f5", 63, "F5"),
+    ("f6", 64, "F6"),
+    ("f7", 65, "F7"),
+    ("f8", 66, "F8"),
+    ("f9", 67, "F9"),
+    ("f10", 68, "F10"),
+    ("f11", 87, "F11"),
+    ("f12", 88, "F12"),
+    ("numlock", 69, "Num_Lock"),
+    ("scrolllock", 70, "Scroll_Lock"),
+    ("sysrq", 99, "Print"),
+    ("printscreen", 99, "Print"),
+    ("home", 102, "Home"),
+    ("up", 103, "Up"),
+    ("pageup", 104, "Page_Up"),
+    ("left", 105, "Left"),
+    ("right", 106, "Right"),
+    ("end", 107, "End"),
+    ("down", 108, "Down"),
+    ("pagedown", 109, "Page_Down"),
+    ("insert", 110, "Insert"),
+    ("delete", 111, "Delete"),
+    ("pause", 119, "Pause"),
+    ("menu", 127, "Menu"),
+    ("minus", 12, "minus"),
+    ("equal", 13, "equal"),
+    ("grave", 41, "grave"),
+    ("backslash", 43, "backslash"),
 ];
 
-/// Modifier keys that can be a hotkey on their own
-const SIDED_MODIFIERS: [(&str, u16); 8] = [
-    ("leftctrl", 29),
-    ("rightctrl", 97),
-    ("leftshift", 42),
-    ("rightshift", 54),
-    ("leftalt", 56),
-    ("rightalt", 100),
-    ("leftsuper", 125),
-    ("rightsuper", 126),
+/// Modifier keys that can be a hotkey on their own, with the kernel code and the keysym
+const SIDED_MODIFIERS: [(&str, u16, &str); 8] = [
+    ("leftctrl", 29, "Control_L"),
+    ("rightctrl", 97, "Control_R"),
+    ("leftshift", 42, "Shift_L"),
+    ("rightshift", 54, "Shift_R"),
+    ("leftalt", 56, "Alt_L"),
+    ("rightalt", 100, "Alt_R"),
+    ("leftsuper", 125, "Super_L"),
+    ("rightsuper", 126, "Super_R"),
 ];
 
 /// Letters of the US layout: the codes of the same keys as in `infra::inject::uinput`
@@ -138,11 +139,15 @@ const LETTER_CODES: [(char, u16); 26] = [
     ('z', 44),
 ];
 
+fn named(name: &str) -> Option<&'static (&'static str, u16, &'static str)> {
+    NAMED_KEYS
+        .iter()
+        .chain(SIDED_MODIFIERS.iter())
+        .find(|(n, _, _)| *n == name)
+}
+
 fn key_code(name: &str) -> Option<u16> {
-    if let Some((_, code)) = NAMED_KEYS.iter().find(|(n, _)| *n == name) {
-        return Some(*code);
-    }
-    if let Some((_, code)) = SIDED_MODIFIERS.iter().find(|(n, _)| *n == name) {
+    if let Some((_, code, _)) = named(name) {
         return Some(*code);
     }
     let mut chars = name.chars();
@@ -216,6 +221,40 @@ impl HotkeySpec {
             return active.is_superset(&self.modifiers) && active.contains(&own);
         }
         self.modifiers == *active
+    }
+
+    /// The xkb keysym of the main key, the name a compositor takes in its binds
+    ///
+    /// It comes from the key code through the same tables that the parsing reads, so every
+    /// spelling of a key (`esc`, `escape`) gives one keysym
+    pub fn keysym(&self) -> String {
+        if let Some((_, _, keysym)) = NAMED_KEYS
+            .iter()
+            .chain(SIDED_MODIFIERS.iter())
+            .find(|(_, code, _)| *code == self.key)
+        {
+            return (*keysym).to_string();
+        }
+        if let Some((letter, _)) = LETTER_CODES.iter().find(|(_, code)| *code == self.key) {
+            return letter.to_ascii_uppercase().to_string();
+        }
+        // Digits: codes 2..10 are 1..9, code 11 is 0
+        match self.key {
+            11 => "0".to_string(),
+            code => (code - 1).to_string(),
+        }
+    }
+}
+
+impl Modifier {
+    /// The modifier name as the compositors spell it, before their own case rules
+    pub fn label(self) -> &'static str {
+        match self {
+            Modifier::Ctrl => "Ctrl",
+            Modifier::Shift => "Shift",
+            Modifier::Alt => "Alt",
+            Modifier::Super => "Super",
+        }
     }
 }
 
@@ -309,5 +348,43 @@ mod tests {
         assert_eq!(Modifier::from_code(54), Some(Modifier::Shift));
         assert_eq!(Modifier::from_code(126), Some(Modifier::Super));
         assert_eq!(Modifier::from_code(57), None);
+    }
+
+    fn keysym(spec: &str) -> String {
+        HotkeySpec::parse(spec).unwrap().keysym()
+    }
+
+    #[test]
+    fn every_spelling_of_a_key_gives_its_xkb_keysym() {
+        assert_eq!(keysym("F9"), "F9");
+        assert_eq!(keysym("f12"), "F12");
+        assert_eq!(keysym("Ctrl+Space"), "space");
+        assert_eq!(keysym("esc"), keysym("Escape"));
+        assert_eq!(keysym("Escape"), "Escape");
+        assert_eq!(keysym("PageDown"), "Page_Down");
+        assert_eq!(keysym("Pause"), "Pause");
+        assert_eq!(keysym("RightCtrl"), "Control_R");
+        assert_eq!(keysym("Ctrl+Alt+z"), "Z");
+        assert_eq!(keysym("Super+1"), "1");
+        assert_eq!(keysym("Super+0"), "0");
+    }
+
+    #[test]
+    fn a_lone_modifier_as_the_key_is_its_left_keysym() {
+        assert_eq!(keysym("Ctrl"), "Control_L");
+    }
+
+    #[test]
+    fn every_named_key_has_a_keysym_and_one_code_gives_one_keysym() {
+        for (name, code, sym) in NAMED_KEYS.iter().chain(SIDED_MODIFIERS.iter()) {
+            assert!(!sym.is_empty(), "{name}");
+            let same_code = NAMED_KEYS
+                .iter()
+                .chain(SIDED_MODIFIERS.iter())
+                .filter(|(_, c, _)| c == code);
+            for (other, _, other_sym) in same_code {
+                assert_eq!(sym, other_sym, "{name} and {other} share code {code}");
+            }
+        }
     }
 }

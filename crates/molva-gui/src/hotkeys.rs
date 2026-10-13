@@ -3,53 +3,59 @@
 //!
 //! On Windows and macOS the GUI itself registers them through `tauri-plugin-global-shortcut`.
 //! On Wayland the compositor does not pass the key presses of other programs to the
-//! application, so the module is empty there. Settings shows a ready snippet of binds for
-//! Hyprland instead. [`hyprland_snippet`] builds it, and it exists on all platforms, so the
-//! text is the same everywhere
+//! application, so the module is empty there. For Hyprland the GUI writes the binds to a file
+//! of their own instead, from the same text as `molva setup hyprland`
 
+use std::path::{Path, PathBuf};
+
+use molva_core::app::hotkeys::hyprland;
 use molva_core::config::HotkeysConfig;
+use serde::Serialize;
 
-/// Hyprland binds for push-to-talk and the toggles: `bind` for a press, `bindr` for a release
-///
-/// The key comes from the settings as it is: the user writes the Hyprland key names
-/// (`Pause`, `SUPER, Z`) and the GUI does not translate them
-pub fn hyprland_snippet(config: &HotkeysConfig) -> String {
-    let ptt = hypr_key(&config.push_to_talk);
-    let toggle = hypr_key(&config.toggle);
-    let command = hypr_key(&config.command);
-    let cancel = hypr_key(&config.cancel);
-    format!(
-        "# MolvAI: hold the key to dictate, release it to paste the text\n\
-         bind  = {ptt}, exec, molva record start\n\
-         bindr = {ptt}, exec, molva record stop\n\
-         # toggle, command mode and cancel\n\
-         bind  = {toggle}, exec, molva record toggle\n\
-         bind  = {command}, exec, molva record toggle --mode command\n\
-         bind  = {cancel}, exec, molva record cancel\n"
-    )
+/// The Hyprland binds file as the settings show it: where it is, the line that includes it,
+/// and whether it exists yet
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HyprlandBinds {
+    pub path: String,
+    pub include_line: String,
+    pub written: bool,
 }
 
-/// `Ctrl+Shift+Space` becomes `CTRL SHIFT, Space`; a single key becomes `, Pause`
-fn hypr_key(binding: &str) -> String {
-    let parts: Vec<&str> = binding
-        .split('+')
-        .map(str::trim)
-        .filter(|p| !p.is_empty())
-        .collect();
-    let Some((key, modifiers)) = parts.split_last() else {
-        return String::from(", Pause");
-    };
-    let mods: Vec<String> = modifiers.iter().map(|m| hypr_modifier(m)).collect();
-    format!("{}, {}", mods.join(" "), key)
+fn home() -> Option<PathBuf> {
+    std::env::var_os("HOME").map(PathBuf::from)
 }
 
-fn hypr_modifier(name: &str) -> String {
-    match name.to_ascii_lowercase().as_str() {
-        "ctrl" | "control" | "leftctrl" | "rightctrl" => "CTRL".into(),
-        "shift" | "leftshift" | "rightshift" => "SHIFT".into(),
-        "alt" | "leftalt" | "rightalt" => "ALT".into(),
-        "super" | "meta" | "win" | "cmd" => "SUPER".into(),
-        other => other.to_ascii_uppercase(),
+/// Where the binds file goes, from the environment Hyprland itself reads
+pub fn hyprland_path() -> Option<PathBuf> {
+    let xdg = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from);
+    hyprland::config_path(xdg.as_deref(), home().as_deref())
+}
+
+/// The state of the binds file at `path`
+pub fn hyprland_binds(path: &Path) -> HyprlandBinds {
+    HyprlandBinds {
+        path: path.display().to_string(),
+        include_line: hyprland::include_line(path, home().as_deref()),
+        written: path.exists(),
+    }
+}
+
+/// Write the binds. The caller reloads Hyprland: a test must not reload the session it runs in
+pub fn write_hyprland_binds(path: &Path, config: &HotkeysConfig) -> Result<HyprlandBinds, String> {
+    let text = hyprland::lua(config).map_err(|err| err.to_string())?;
+    hyprland::write(path, &text).map_err(|err| format!("{}: {err}", path.display()))?;
+    Ok(hyprland_binds(path))
+}
+
+/// `hyprctl reload`, only inside a Hyprland session; a failure costs the user one manual reload
+pub fn reload_hyprland() {
+    if std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_none() {
+        return;
+    }
+    match std::process::Command::new("hyprctl").arg("reload").output() {
+        Ok(output) if output.status.success() => {}
+        Ok(output) => tracing::warn!(status = %output.status, "hyprctl reload failed"),
+        Err(err) => tracing::warn!(%err, "hyprctl reload did not start"),
     }
 }
 
@@ -150,30 +156,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn single_key_binding_has_an_empty_modifier_field() {
-        assert_eq!(hypr_key("Pause"), ", Pause");
+    fn writing_the_binds_reports_the_file_and_its_include_line() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("hypr").join(hyprland::FILE_NAME);
+        assert!(!hyprland_binds(&path).written);
+        let binds = write_hyprland_binds(&path, &HotkeysConfig::default()).unwrap();
+        assert!(binds.written);
+        assert!(binds.include_line.starts_with("dofile("), "{binds:?}");
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(text, hyprland::lua(&HotkeysConfig::default()).unwrap());
     }
 
     #[test]
-    fn modifiers_become_hyprland_names() {
-        assert_eq!(hypr_key("Ctrl+Shift+Space"), "CTRL SHIFT, Space");
-        assert_eq!(hypr_key("Super+Z"), "SUPER, Z");
-    }
-
-    #[test]
-    fn empty_binding_falls_back_to_a_usable_key() {
-        assert_eq!(hypr_key(""), ", Pause");
-    }
-
-    #[test]
-    fn snippet_binds_press_and_release_of_push_to_talk() {
+    fn a_hotkey_that_does_not_parse_writes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(hyprland::FILE_NAME);
         let config = HotkeysConfig {
-            push_to_talk: "Pause".into(),
+            toggle: "Ctrl+Telepathy".into(),
             ..HotkeysConfig::default()
         };
-        let snippet = hyprland_snippet(&config);
-        assert!(snippet.contains("bind  = , Pause, exec, molva record start"));
-        assert!(snippet.contains("bindr = , Pause, exec, molva record stop"));
-        assert!(snippet.contains("molva record cancel"));
+        assert!(write_hyprland_binds(&path, &config).is_err());
+        assert!(!path.exists());
     }
 }

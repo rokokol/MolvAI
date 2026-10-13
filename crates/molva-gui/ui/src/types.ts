@@ -91,6 +91,13 @@ export interface CommandError {
   field?: string;
 }
 
+/** The Hyprland binds file that MolvAI writes: its path, the include line, whether it exists */
+export interface HyprlandBinds {
+  path: string;
+  include_line: string;
+  written: boolean;
+}
+
 export interface StyleOption {
   id: string;
   name: string;

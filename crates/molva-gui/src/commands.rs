@@ -613,8 +613,12 @@ pub fn save_config(
     config: Config,
 ) -> Result<(), CommandError> {
     validate_config(&config)?;
+    let hotkeys_changed = state.config().hotkeys != config.hotkeys;
     state.replace_config(config)?;
     notify_config_reload();
+    if hotkeys_changed {
+        refresh_hyprland_binds(&state.config().hotkeys);
+    }
     #[cfg(not(target_os = "linux"))]
     if !state.hotkeys_paused() {
         crate::hotkeys::register(&app, &state.config().hotkeys);
@@ -661,9 +665,38 @@ pub fn ui_language() -> &'static str {
     i18n::current().code()
 }
 
+fn hyprland_path() -> Result<PathBuf, CommandError> {
+    crate::hotkeys::hyprland_path()
+        .ok_or_else(|| CommandError::new("hyprland", "neither XDG_CONFIG_HOME nor HOME is set"))
+}
+
+/// Where the Hyprland binds file is, the line that includes it, and whether it exists
 #[tauri::command]
-pub fn hyprland_snippet(state: State<'_, AppState>) -> String {
-    crate::hotkeys::hyprland_snippet(&state.config().hotkeys)
+pub fn hyprland_binds() -> Result<crate::hotkeys::HyprlandBinds, CommandError> {
+    Ok(crate::hotkeys::hyprland_binds(&hyprland_path()?))
+}
+
+/// Write the Hyprland binds from the current hotkeys, then reload Hyprland
+#[tauri::command]
+pub fn write_hyprland_binds(
+    state: State<'_, AppState>,
+) -> Result<crate::hotkeys::HyprlandBinds, CommandError> {
+    let binds = crate::hotkeys::write_hyprland_binds(&hyprland_path()?, &state.config().hotkeys)
+        .map_err(|message| CommandError::new("hyprland", message))?;
+    crate::hotkeys::reload_hyprland();
+    Ok(binds)
+}
+
+/// After a hotkey change, rewrite the binds file if the user has one: it must not keep the old
+/// keys. Without a file there is nothing to keep in step, and nothing is created
+fn refresh_hyprland_binds(hotkeys: &molva_core::config::HotkeysConfig) {
+    let Some(path) = crate::hotkeys::hyprland_path().filter(|path| path.exists()) else {
+        return;
+    };
+    match crate::hotkeys::write_hyprland_binds(&path, hotkeys) {
+        Ok(_) => crate::hotkeys::reload_hyprland(),
+        Err(err) => tracing::warn!(%err, "the Hyprland binds file was not rewritten"),
+    }
 }
 
 #[tauri::command]
