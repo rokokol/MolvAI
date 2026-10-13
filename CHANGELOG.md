@@ -10,6 +10,7 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 - The GUI tray menu, its tooltip, system notices and setting errors follow the interface language, Russian or English
 - A daemon error in the GUI starts with a title in the interface language, and the daemon's English text follows it
+- The built-in styles and command mode send the model an English prompt for a phrase in any language but Russian. A Russian phrase keeps the Russian prompt
 
 ### Changed
 
@@ -18,6 +19,7 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 - A GUI string with no translation falls back to English instead of Russian
 - The Hyprland snippet in the GUI settings has English comments
 - The documentation is in English
+- An empty "command_mode.system_prompt" now means the built-in prompt in the language of the instruction, and it is the new default. A settings file that holds the old default Russian prompt is migrated to the empty value; a prompt the user wrote stays
 
 ## [0.1.9] - 2026-10-13
 

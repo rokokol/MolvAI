@@ -12,7 +12,20 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Config schema version, for future migrations
-pub const CONFIG_VERSION: u32 = 1;
+///
+/// 2: an empty `command_mode.system_prompt` means the built-in prompt in the phrase language
+pub const CONFIG_VERSION: u32 = 2;
+
+/// The command prompt that version 1 wrote into every settings file by default
+///
+/// A frozen copy, not a reference to the current built-in prompt: migration has to recognise
+/// the value that old files hold, even after the built-in prompt changes
+const LEGACY_COMMAND_PROMPT: &str = "Ты правишь фрагмент текста по короткой инструкции \
+    пользователя. Тебе дают ИНСТРУКЦИЮ и ТЕКСТ. Примени инструкцию к тексту и верни только \
+    получившийся текст: без заголовков, без markdown, без кавычек, без пояснений и без слов \
+    вроде «вот результат». Если инструкция — перевод, верни только перевод. Не добавляй \
+    ничего, чего нет в тексте, сохраняй язык текста, если инструкция не велит его сменить. \
+    Если инструкцию выполнить нельзя, верни текст без изменений.";
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -407,6 +420,8 @@ impl Default for HotkeysConfig {
 #[serde(default)]
 pub struct CommandModeConfig {
     pub enabled: bool,
+    /// Empty: the built-in prompt in the language of the instruction. Set: this prompt for every
+    /// language
     pub system_prompt: String,
 }
 
@@ -414,14 +429,7 @@ impl Default for CommandModeConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            system_prompt: "Ты правишь фрагмент текста по короткой инструкции пользователя. \
-                            Тебе дают ИНСТРУКЦИЮ и ТЕКСТ. Примени инструкцию к тексту и верни \
-                            только получившийся текст: без заголовков, без markdown, без кавычек, \
-                            без пояснений и без слов вроде «вот результат». Если инструкция — \
-                            перевод, верни только перевод. Не добавляй ничего, чего нет в тексте, \
-                            сохраняй язык текста, если инструкция не велит его сменить. Если \
-                            инструкцию выполнить нельзя, верни текст без изменений."
-                .into(),
+            system_prompt: String::new(),
         }
     }
 }
@@ -719,6 +727,11 @@ impl Config {
         }
         // Version 0 is a file created before the field existed: some fields were missing, serde
         // has already filled in the default values, and only the schema mark remains
+        if self.version < 2 && self.command_mode.system_prompt == LEGACY_COMMAND_PROMPT {
+            // The file holds the old default, not a choice of the user: let the built-in
+            // prompt follow the language of the instruction
+            self.command_mode.system_prompt.clear();
+        }
         self.version = CONFIG_VERSION;
         true
     }
@@ -1439,6 +1452,41 @@ mod tests {
         assert_eq!(config.version, CONFIG_VERSION);
         // A repeated migration does nothing
         assert!(!config.migrate());
+    }
+
+    /// A file saved by version 1 with the command prompt it had by default
+    fn version_1_file(prompt: &str) -> Config {
+        let mut config = Config {
+            version: 1,
+            ..Config::default()
+        };
+        config.command_mode.system_prompt = prompt.into();
+        config
+    }
+
+    #[test]
+    fn the_old_default_command_prompt_gives_way_to_the_built_in_one_in_the_phrase_language() {
+        let mut config = version_1_file(LEGACY_COMMAND_PROMPT);
+        assert!(config.migrate());
+        assert_eq!(config.command_mode.system_prompt, "");
+        assert_eq!(config.version, CONFIG_VERSION);
+        // A Russian instruction gets exactly the prompt the file had: nothing changes for it
+        assert_eq!(
+            crate::app::command_mode::system_prompt(&config.command_mode.system_prompt, "ru"),
+            LEGACY_COMMAND_PROMPT
+        );
+    }
+
+    #[test]
+    fn a_command_prompt_of_the_user_survives_the_migration() {
+        let mut config = version_1_file("Answer in verse.");
+        assert!(config.migrate());
+        assert_eq!(config.command_mode.system_prompt, "Answer in verse.");
+    }
+
+    #[test]
+    fn a_new_config_uses_the_built_in_command_prompt() {
+        assert_eq!(Config::default().command_mode.system_prompt, "");
     }
 
     #[test]

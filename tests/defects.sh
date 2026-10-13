@@ -424,6 +424,31 @@ defect 'styles/explicit-choice-wins' 'crates/molva-core/src/app/styles.rs' \
   '            Some(id) if self.get(id).is_none() => id.to_string(),' \
   'the manual choice of a style is ignored in favour of the rule for the window'
 
+defect 'styles/prompt-follows-the-phrase-language' 'crates/molva-core/src/domain/text.rs' \
+  '        self.system_prompts.get(lang).unwrap_or(&self.system_prompt)' \
+  '        &self.system_prompt' \
+  'a Russian phrase is edited by the English prompt that the styles were not tuned with'
+
+defect 'pipeline/style-prompt-gets-the-phrase-language' 'crates/molva-core/src/app/pipeline.rs' \
+  '                .prompt_for(entry.language.as_deref().unwrap_or_default())' \
+  '                .prompt_for("")' \
+  'every phrase gets the English style prompt, whatever its language'
+
+defect 'command/prompt-gets-the-instruction-language' 'crates/molva-core/src/app/pipeline.rs' \
+  '        let lang = entry.language.as_deref().unwrap_or_default();' \
+  '        let lang = "";' \
+  'a Russian instruction in command mode gets the English prompt and request'
+
+defect 'command/prompt-from-the-settings-wins' 'crates/molva-core/src/app/command_mode.rs' \
+  '    if !configured.trim().is_empty() {' \
+  '    if false {' \
+  'the command prompt that the user wrote in the settings is silently ignored'
+
+defect 'config/old-command-prompt-is-migrated' 'crates/molva-core/src/config.rs' \
+  '            self.command_mode.system_prompt.clear();' \
+  '            self.command_mode.system_prompt.push_str("");' \
+  'every user who ever saved the settings keeps the Russian command prompt for English instructions'
+
 defect 'llm/auth-error-is-not-retryable' 'crates/molva-core/src/infra/llm/openai_compat.rs' \
   '        if status.as_u16() == 401 || status.as_u16() == 403 {' \
   '        if false {' \

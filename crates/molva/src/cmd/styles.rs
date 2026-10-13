@@ -48,7 +48,14 @@ pub(crate) fn run(action: StylesAction, config: &Config) -> anyhow::Result<()> {
             println!("name:    {}", style.name);
             println!("model:   {}", if style.uses_llm { "yes" } else { "no" });
             if style.uses_llm {
-                println!("prompt:\n{}", style.system_prompt);
+                for (lang, prompt) in &style.system_prompts {
+                    println!("prompt ({lang}):\n{prompt}");
+                }
+                if style.system_prompts.is_empty() {
+                    println!("prompt:\n{}", style.system_prompt);
+                } else {
+                    println!("prompt (other languages):\n{}", style.system_prompt);
+                }
             }
             Ok(())
         }

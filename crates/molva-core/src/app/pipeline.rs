@@ -18,6 +18,7 @@ use thiserror::Error;
 use tracing::warn;
 use uuid::Uuid;
 
+use crate::app::command_mode;
 use crate::config::{
     CommandModeConfig, Config, DictionaryConfig, LlmConfig, OutputConfig, PrivacyConfig,
     RulesConfig, SttConfig, StyleConfig,
@@ -477,7 +478,9 @@ impl Pipeline {
         }
         let request = ChatRequest {
             model: self.config.llm.model.clone(),
-            system: style.system_prompt.clone(),
+            system: style
+                .prompt_for(entry.language.as_deref().unwrap_or_default())
+                .to_string(),
             user: after_rules.clone(),
             temperature: self.config.llm.temperature,
             max_tokens: self.config.llm.max_tokens,
@@ -508,16 +511,11 @@ impl Pipeline {
         if !self.config.privacy.send_to_llm {
             return Err(PipelineError::CommandModeNeedsLlm(LlmError::Disabled));
         }
+        let lang = entry.language.as_deref().unwrap_or_default();
         let request = ChatRequest {
             model: self.config.llm.model.clone(),
-            system: self.config.command_mode.system_prompt.clone(),
-            // The instruction comes first, then the text, so the model does not take a fragment
-            // for the task. The reply must be text only, without headings, explanations and quotes
-            user: format!(
-                "ИНСТРУКЦИЯ: {instruction}\n\nТЕКСТ:\n{selection}\n\n\
-                 Верни только текст после применения инструкции, одной репликой, без \
-                 заголовков, пояснений, кавычек и markdown."
-            ),
+            system: command_mode::system_prompt(&self.config.command_mode.system_prompt, lang),
+            user: command_mode::request(lang, instruction, selection),
             temperature: self.config.llm.temperature,
             max_tokens: self.config.llm.max_tokens,
         };
@@ -989,11 +987,9 @@ mod tests {
     #[test]
     fn command_mode_applies_the_instruction_to_the_selection() {
         let llm = Arc::new(FakeLlm::echoing("Исправленный выделенный текст."));
-        let mut harness = build(
-            "сделай текст официальным",
-            Some(Arc::clone(&llm)),
-            with_llm(),
-        );
+        let mut config = with_llm();
+        config.stt.language = "ru".into();
+        let mut harness = build("сделай текст официальным", Some(Arc::clone(&llm)), config);
         harness.injector.lock().unwrap().selection = Some("привет как сам".into());
 
         let entry = harness
@@ -1018,6 +1014,62 @@ mod tests {
         assert_eq!(injected(&harness), vec!["Исправленный выделенный текст."]);
         assert_eq!(entry.mode, Mode::Command);
         assert!(entry.llm_used);
+    }
+
+    fn has_cyrillic(text: &str) -> bool {
+        text.chars().any(|c| ('\u{0400}'..='\u{04FF}').contains(&c))
+    }
+
+    /// What the model receives for one phrase in `lang`, in `mode`
+    fn request_for(lang: &str, mode: Mode, transcript: &str) -> ChatRequest {
+        let llm = Arc::new(FakeLlm::echoing("Result."));
+        let mut config = with_llm();
+        config.stt.language = lang.into();
+        let mut harness = build(transcript, Some(Arc::clone(&llm)), config);
+        harness.injector.lock().unwrap().selection = Some("selected text".into());
+        harness.pipeline.run(audio(8.0), mode, None, None).unwrap();
+        let request = llm.last_request.lock().unwrap().clone();
+        request.expect("the model must have been called")
+    }
+
+    const LONG_PHRASE: &str = "one two three four five six seven eight nine ten eleven twelve";
+
+    #[test]
+    fn the_style_prompt_follows_the_language_of_the_phrase() {
+        let ru = request_for("ru", Mode::Dictation, LONG_PHRASE);
+        assert!(has_cyrillic(&ru.system), "{}", ru.system);
+        let en = request_for("en", Mode::Dictation, LONG_PHRASE);
+        assert!(!has_cyrillic(&en.system), "{}", en.system);
+        assert!(en.system.contains("only the result"), "{}", en.system);
+    }
+
+    #[test]
+    fn command_mode_speaks_the_language_of_the_instruction() {
+        let ru = request_for("ru", Mode::Command, "сделай короче");
+        assert!(has_cyrillic(&ru.system), "{}", ru.system);
+        assert!(ru.user.starts_with("ИНСТРУКЦИЯ"), "{}", ru.user);
+        let en = request_for("en", Mode::Command, "make it shorter");
+        assert!(!has_cyrillic(&en.system), "{}", en.system);
+        assert!(!has_cyrillic(&en.user), "{}", en.user);
+        assert!(en.user.contains("selected text"), "{}", en.user);
+    }
+
+    #[test]
+    fn a_command_prompt_from_the_settings_is_sent_in_every_language() {
+        for lang in ["ru", "en"] {
+            let llm = Arc::new(FakeLlm::echoing("Result."));
+            let mut config = with_llm();
+            config.stt.language = lang.into();
+            config.command_mode.system_prompt = "Answer in verse.".into();
+            let mut harness = build("instruction", Some(Arc::clone(&llm)), config);
+            harness.injector.lock().unwrap().selection = Some("text".into());
+            harness
+                .pipeline
+                .run(audio(3.0), Mode::Command, None, None)
+                .unwrap();
+            let request = llm.last_request.lock().unwrap().clone().unwrap();
+            assert_eq!(request.system, "Answer in verse.", "{lang}");
+        }
     }
 
     #[test]

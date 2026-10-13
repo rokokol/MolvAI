@@ -1,15 +1,33 @@
 // SPDX-License-Identifier: MIT
 //! Text: styles, post-processing rules that need no model, word count
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 /// Post-processing profile. A style with no model (`uses_llm = false`) applies only the rules
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Style {
     pub id: String,
     pub name: String,
     pub uses_llm: bool,
+    /// The prompt for a phrase in any language that `system_prompts` does not name
     pub system_prompt: String,
+    /// Prompts for particular phrase languages, by ISO 639-1 code
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub system_prompts: BTreeMap<String, String>,
+}
+
+impl Style {
+    /// The system prompt for a phrase in `lang`, an ISO 639-1 code or an empty string when the
+    /// language is unknown
+    ///
+    /// A built-in style speaks the language of the phrase it edits: a Russian phrase keeps the
+    /// Russian instruction that the styles were tuned with, and an English one gets an English
+    /// instruction
+    pub fn prompt_for(&self, lang: &str) -> &str {
+        self.system_prompts.get(lang).unwrap_or(&self.system_prompt)
+    }
 }
 
 /// Rule that changes text with no model: punctuation by words, "new line", repeats

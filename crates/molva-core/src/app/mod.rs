@@ -8,6 +8,7 @@
 
 pub mod audio;
 pub mod bench;
+pub mod command_mode;
 pub mod daemon;
 pub mod dictionary;
 pub mod engine;

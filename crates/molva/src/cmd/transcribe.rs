@@ -149,7 +149,7 @@ impl FilePostprocessor {
         }
         let request = ChatRequest {
             model: self.llm_model.clone(),
-            system: self.style.system_prompt.clone(),
+            system: self.style.prompt_for(language).to_string(),
             user: after_rules.clone(),
             temperature: self.temperature,
             max_tokens: self.max_tokens,
@@ -894,6 +894,7 @@ mod tests {
             name: "Cleanup".into(),
             uses_llm: true,
             system_prompt: "Remove the junk".into(),
+            ..Style::default()
         }
     }
 
