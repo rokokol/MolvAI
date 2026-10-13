@@ -1,5 +1,5 @@
-# Эталонные тексты речевых фикстур для WER/CER в `molva bench` и golden-тестах.
-# Записи сделаны автором проекта 2026-09-05 (pw-record, 16 кГц, моно), лицензия CC0-1.0.
+# Reference texts of the speech fixtures for WER/CER in `molva bench` and in golden tests
+# The project author made the recordings on 2026-09-05 (pw-record, 16 kHz, mono), license CC0-1.0
 
 [[fixture]]
 file = "privet_ru.wav"
@@ -11,7 +11,7 @@ file = "hello_en.wav"
 language = "en"
 text = "What's up, guys! How is it doing? It is cold today"
 
-# Смешанная речь: русский с английскими вставками (критерии I-01, I-04)
+# Mixed speech: Russian with English inserts (criteria I-01, I-04)
 [[fixture]]
 file = "secret_ru_en.wav"
 language = "ru"

@@ -1,7 +1,7 @@
-# Пример словаря терминов MolvAI.
+# An example of the MolvAI term dictionary
 #
-# `word` — как термин должен выглядеть в тексте; `aliases` — как его слышит распознаватель,
-# включая падежные формы и многословные варианты. `case` = keep | upper | lower.
+# `word` is how the term must look in the text. `aliases` is how the recognizer hears it,
+# including case forms and multi-word variants. `case` = keep | upper | lower
 
 [[term]]
 word = "MolvAI"
