@@ -1,67 +1,54 @@
-# Архитектура MolvAI
+# MolvAI architecture
 
-## Процессы
+## Processes
 
-- **`molva daemon`** (`molvad`) — владеет микрофоном, моделью распознавания и состоянием. Один
-  экземпляр на пользователя; вторая копия завершается с сообщением.
-- **`molva`** — CLI: команды демону по IPC (`record start|stop|toggle|cancel`, `status`), работа с
-  журналом и статистикой напрямую по файлу, офлайн-транскрипция файлов без демона.
-- **`molva-gui`** — Tauri 2: трей, настройки, история, статистика. IPC-клиент демона; поднимает его,
-  если тот не запущен.
+- **`molva daemon`** (`molvad`) owns the microphone, the recognition model and the state. There is one instance per user; a second copy exits with a message
+- **`molva`** is the CLI. It sends commands to the daemon over IPC (`record start|stop|toggle|cancel`, `status`), works with the journal and the statistics directly through the file, and transcribes files offline without the daemon
+- **`molva-gui`** is Tauri 2: the tray, the settings, the history and the statistics. It is an IPC client of the daemon and starts the daemon if it is not running
 
-Бинды композитора на Wayland, evdev и плагин глобальных клавиш в GUI — три источника событий, все
-они сходятся в одном месте: IPC-командах демона.
+The compositor binds on Wayland, evdev, and the global-hotkey plugin in the GUI are three event sources. All of them meet in one place: the IPC commands of the daemon
 
-## Слои `molva-core`
+## Layers of `molva-core`
 
 ```
-domain/   типы, трейты, чистые функции — без зависимостей на железо и фреймворки
-app/      конвейер реплики, машина состояний демона, конфиг, журнал, статистика
-infra/    реализации трейтов: cpal, whisper.cpp, HTTP-клиент, вставка, evdev, файлы
-ipc/      протокол демона (JSON по строкам через локальный сокет)
+domain/   types, traits, pure functions: no dependency on hardware or frameworks
+app/      the phrase pipeline, the daemon state machine, config, journal, statistics
+infra/    trait implementations: cpal, whisper.cpp, HTTP client, paste, evdev, files
+ipc/      the daemon protocol (JSON lines over a local socket)
 ```
 
-Контракты (`domain`): `AudioSource`, `SttEngine`, `LlmClient`, `TextRule`, `TextInjector`,
-`HotkeySource`, `Journal`, `Clock`, `Notifier`. У каждого есть фейк в `domain::fakes`, поэтому
-конвейер и демон тестируются без микрофона, модели и дисплея.
+Contracts (`domain`): `AudioSource`, `SttEngine`, `LlmClient`, `TextRule`, `TextInjector`, `HotkeySource`, `Journal`, `Clock`, `Notifier`. Each has a fake in `domain::fakes`, so the pipeline and the daemon are tested without a microphone, a model or a display
 
-## Конвейер реплики
+## The phrase pipeline
 
 ```
-hotkey ──▶ RecordStart ──▶ микрофон открыт, уровень в GUI
-           каждые 250 мс ──▶ Segmenter режет поток по паузам
-                         ──▶ SttEngine.transcribe кусок      Event::Hypothesis
-       ──▶ RecordStop  ──▶ хвост → моно 16 кГц
-                       ──▶ SttEngine.transcribe хвост        t_stt
-                       ──▶ склейка с кусками
-                       ──▶ словарь терминов → правила       t_rules
-                       ──▶ LlmClient (если стиль требует и слов больше порога)  t_llm
+hotkey ──▶ RecordStart ──▶ microphone open, level shown in the GUI
+           every 250 ms ──▶ Segmenter cuts the stream at pauses
+                        ──▶ SttEngine.transcribe chunk       Event::Hypothesis
+       ──▶ RecordStop  ──▶ tail → mono 16 kHz
+                       ──▶ SttEngine.transcribe tail         t_stt
+                       ──▶ join with the chunks
+                       ──▶ term dictionary → rules           t_rules
+                       ──▶ LlmClient (if the style needs it and the word count is above the threshold)  t_llm
                        ──▶ TextInjector (auto: type / paste)                    t_inject
-                       ──▶ Journal.append — одна строка JSONL
+                       ──▶ Journal.append: one JSONL line
 ```
 
-Куски (`stt.chunked`) распознаются, пока человек говорит, поэтому после отпускания клавиши остаётся
-хвост, а не вся реплика: `latency_ms.total` считается от отпускания, `latency_ms.first_hypothesis` —
-от начала записи до первого куска. Кусков может не быть вовсе — короткая реплика, источник без
-потокового снятия звука, — и тогда путь тот же, что был всегда: вся запись одним прогоном.
+The chunks (`stt.chunked`) are recognized while the person speaks. So after the key release only the tail is left, not the whole phrase. `latency_ms.total` counts from the release, and `latency_ms.first_hypothesis` counts from the start of the recording to the first chunk. There can be no chunks at all, for example a short phrase or a source without streaming capture. Then the path is the same as it always was: the whole recording in one run
 
-Отказ модели постобработки отдаёт текст после правил; отказ вставки оставляет текст в буфере обмена и
-уведомляет пользователя. Реплика попадает в журнал в любом случае, с полем `error` при сбое.
+If the post-processing model fails, the daemon returns the text after the rules. If the paste fails, the text stays in the clipboard and the daemon notifies the user. The phrase goes to the journal in any case, with the `error` field on a failure
 
-## Состояния демона
+## Daemon states
 
-`Idle → Recording → Transcribing → PostProcessing → Injecting → Idle`. `record.start` вне `Idle`
-возвращает `busy`; `record.cancel` из `Recording` отбрасывает аудио; удержание клавиши короче
-`hotkeys.min_hold_ms` реплику не создаёт.
+`Idle → Recording → Transcribing → PostProcessing → Injecting → Idle`. `record.start` outside `Idle` returns `busy`. `record.cancel` from `Recording` discards the audio. A key hold shorter than `hotkeys.min_hold_ms` does not create a phrase
 
-## Хранилище
+## Storage
 
-Единственное хранилище — JSONL-журнал (`docs/journal-schema.md`). История, поиск, фильтры и
-статистика считаются по нему; удаление, очистка и ротация — атомарной перезаписью файла.
+The only storage is the JSONL journal (`docs/journal-schema.md`). The history, the search, the filters and the statistics are computed from it. Deletion, cleanup and rotation rewrite the file atomically
 
-## Замена компонентов настройкой
+## Replacing components through settings
 
-- распознаватель: `stt.engine`, `stt.model`, `stt.model_path`;
-- постобработка: `llm.provider`, `llm.base_url`, `llm.model`, `style.default`;
-- вставка: `output.mode`, `output.paste_backend`, `output.type_backend`;
-- горячие клавиши: `hotkeys.backend` и сами комбинации.
+- recognizer: `stt.engine`, `stt.model`, `stt.model_path`
+- post-processing: `llm.provider`, `llm.base_url`, `llm.model`, `style.default`
+- paste: `output.mode`, `output.paste_backend`, `output.type_backend`
+- hotkeys: `hotkeys.backend` and the combinations themselves

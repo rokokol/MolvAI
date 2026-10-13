@@ -1,30 +1,30 @@
-# Лицензии моделей
+# Model licenses
 
-Веса моделей распознавания и языковых моделей в репозиторий MolvAI не входят и лицензией самого проекта не покрываются. Репозиторий содержит только код, который эти веса скачивает и загружает, поэтому лицензия MIT в `LICENSE` относится к коду и ни к чему больше
+The weights of the recognition models and of the language models are not part of the MolvAI repository, and the license of the project does not cover them. The repository holds only the code that downloads and loads these weights. So the MIT license in `LICENSE` applies to the code and to nothing else
 
 > [!IMPORTANT]
-> Условия использования весов определяет их автор, а не MolvAI. Перед коммерческим применением проверьте лицензию конкретной модели по ссылкам ниже
+> The author of the weights sets the terms of use, not MolvAI. Before commercial use, check the license of the exact model with the links below
 
-## Whisper (распознавание речи)
+## Whisper (speech recognition)
 
-Модель Whisper выпущена OpenAI под лицензией MIT — и веса, и код референсной реализации. Конвертированные в формат `ggml` веса, которые использует `whisper.cpp`, распространяются под той же MIT и лежат на Hugging Face
+OpenAI released the Whisper model under the MIT license, both the weights and the code of the reference implementation. The weights converted to the `ggml` format, which `whisper.cpp` uses, have the same MIT license and are on Hugging Face
 
-| Что | Лицензия | Где взять |
+| What | License | Where to get it |
 | --- | --- | --- |
-| Веса `ggml-*.bin` для whisper.cpp | MIT | [huggingface.co/ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp) |
-| Исходные веса OpenAI Whisper | MIT | [github.com/openai/whisper](https://github.com/openai/whisper) |
-| Код движка whisper.cpp | MIT | [github.com/ggml-org/whisper.cpp](https://github.com/ggml-org/whisper.cpp) |
+| `ggml-*.bin` weights for whisper.cpp | MIT | [huggingface.co/ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp) |
+| Original OpenAI Whisper weights | MIT | [github.com/openai/whisper](https://github.com/openai/whisper) |
+| Code of the whisper.cpp engine | MIT | [github.com/ggml-org/whisper.cpp](https://github.com/ggml-org/whisper.cpp) |
 
-MolvAI по умолчанию скачивает `ggml-small.bin`; модель меняется настройкой `stt.model`, путь к файлу — настройкой `stt.model_path`
+By default MolvAI downloads `ggml-small.bin`. You change the model with the `stt.model` setting and the file path with the `stt.model_path` setting
 
-## Языковые модели постобработки
+## Post-processing language models
 
-Постобработка текста языковой моделью выключена по умолчанию и не нужна для работы: словарь и правила работают без неё. Если она включена, MolvAI обращается к OpenAI-совместимому API по адресу из настройки `llm.base_url` — по умолчанию это локальный Ollama на `http://localhost:11434/v1`
+Post-processing of the text by a language model is off by default and is not needed for operation: the dictionary and the rules work without it. When it is on, MolvAI calls an OpenAI-compatible API at the address from the `llm.base_url` setting. By default this is a local Ollama at `http://localhost:11434/v1`
 
-Лицензия модели в этом случае — дело того, кто её запускает: `qwen3.5` идёт под Apache 2.0, `llama` — под собственной лицензией Meta, облачные модели работают по договору с провайдером. MolvAI ни одну из них не поставляет и не скачивает
+In this case the license of the model is the business of the person who runs it. `qwen3.5` has Apache 2.0, `llama` has its own Meta license, and cloud models work under a contract with the provider. MolvAI ships and downloads none of them
 
-## Проверка перед выпуском
+## Check before a release
 
-Скачанные веса проверяются по SHA-256 (критерий A-08), контрольные суммы лежат рядом с описанием модели в коде загрузчика. Кеш весов переиспользуется вторым запуском, повторная загрузка не происходит
+The downloaded weights are checked against SHA-256 (criterion A-08). The checksums are next to the description of the model in the loader code. The second run reuses the weights cache, and no repeated download happens
 
-Лицензии зависимостей кода — отдельная история, они в [THIRD-PARTY.md](../THIRD-PARTY.md) и проверяются гейтом `just deny`
+The licenses of the code dependencies are a separate matter. They are in [THIRD-PARTY.md](../THIRD-PARTY.md) and the `just deny` gate checks them

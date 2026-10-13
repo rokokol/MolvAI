@@ -1,48 +1,48 @@
-# Что здесь своё, а что взято
+# What is original here and what is borrowed
 
-Отчёт об изученных аналогах и о происхождении кода MolvAI. Написан для того, чтобы вопрос «а это не форк ли?» имел проверяемый ответ, а не заверение
+A report on the analogues that we studied and on the origin of the MolvAI code. We wrote it so that the question "is this a fork?" has an answer that you can check, not an assurance
 
-## Заимствованный код
+## Borrowed code
 
-Ровно один файл в репозитории написан не для MolvAI и взят целиком:
+Exactly one file in the repository was not written for MolvAI and is taken whole:
 
-| Файл | Откуда | Лицензия |
+| File | Source | License |
 | --- | --- | --- |
 | `scripts/t.sh` | [rokokol/tests-skill](https://github.com/rokokol/tests-skill) | MIT |
 
-Это харнесс тестов: честный вердикт прогона, чтение лога даже при exit 0, `falsify`, `flaky`, `bisect`. Автор тот же, что и у MolvAI; файл перенесён без изменений вместе с каталогом `scripts/markers/`
+This is a test harness: an honest verdict of the run, reading of the log even at exit 0, `falsify`, `flaky`, `bisect`. The author is the same as for MolvAI. We moved the file without changes, together with the `scripts/markers/` directory
 
-Всё остальное в `crates/` написано в этом репозитории. Библиотеки подключены как зависимости через Cargo и перечислены в [THIRD-PARTY.md](../THIRD-PARTY.md); движок распознавания `whisper.cpp` (MIT) собирается из исходников как зависимость, а не копируется в дерево
+Everything else in `crates/` was written in this repository. The libraries are connected as dependencies through Cargo and listed in [THIRD-PARTY.md](../THIRD-PARTY.md). The recognition engine `whisper.cpp` (MIT) is built from source as a dependency and is not copied into the tree
 
-## Изученные аналоги
+## Studied analogues
 
-Перед проектированием прочитаны семь проектов той же ниши. Из каждого взято понимание задачи, ни из одного — код
+Before the design, we read seven projects of the same niche. From each we took the understanding of the task, and from none of them the code
 
-| Проект | Что там сделано | Что взято как идея | Чем MolvAI отличается |
+| Project | What it does | What we took as an idea | How MolvAI differs |
 | --- | --- | --- | --- |
-| [Wispr Flow](https://wisprflow.ai) | коммерческий закрытый продукт, задавший жанр: удержал клавишу, сказал, текст появился | сама модель взаимодействия push-to-talk и стиль вставки в активное поле | обработка на машине пользователя, открытый код, отсутствие обязательного облака |
-| [Handy](https://github.com/cjpais/Handy) | Tauri + Rust, whisper.cpp локально, три ОС | подтверждение, что связка Tauri 2 и whisper-rs жизнеспособна на трёх платформах | правила постобработки без модели, словарь терминов, журнал реплик, режим команд |
-| [voxtype](https://github.com/joelkoen/voxtype) | минималистичный CLI под Wayland, вставка через `wtype` | цепочка вставки на Wayland и её деградация к буферу обмена | цепочка вставки выбирается автоматически и её выбор пишется в журнал, а не остаётся догадкой |
-| [whisrs](https://github.com/kirjavascript/whisrs) | Rust-обёртка над whisper для потокового ввода | обращение с аудиопотоком, который открывается только на время реплики | приведение к моно 16 кГц и обрезка тишины как проверяемые функции с фикстурами |
-| [Vocalinux](https://github.com/jatinkumar-dev/Vocalinux) | голосовой ввод для Linux на Python, интеграция с рабочим столом | набор системных зависимостей, который реально нужен на Linux | один статически линкуемый бинарник вместо дерева пакетов Python |
-| [OpenWhispr](https://github.com/dictationdaddy/OpenWhispr) | Electron-приложение, локально или через облако | вариант «локально по умолчанию, облако по явной настройке» | список исходящих адресов зафиксирован документом и проверяем |
-| [whisper-overlay](https://github.com/oddlama/whisper-overlay) | оверлей поверх окон с предпросмотром распознавания на Wayland | идея показывать состояние поверх всего, не забирая фокус | состояние в трее и звуковые метки вместо оверлея, чтобы не зависеть от протокола композитора |
+| [Wispr Flow](https://wisprflow.ai) | a commercial closed product that set the genre: hold a key, speak, the text appears | the push-to-talk interaction model itself and the style of paste into the active field | processing on the machine of the user, open code, no mandatory cloud |
+| [Handy](https://github.com/cjpais/Handy) | Tauri + Rust, local whisper.cpp, three operating systems | confirmation that the combination of Tauri 2 and whisper-rs is viable on three platforms | post-processing rules without a model, a term dictionary, a phrase journal, command mode |
+| [voxtype](https://github.com/joelkoen/voxtype) | a minimal CLI for Wayland, paste through `wtype` | the paste chain on Wayland and its fallback to the clipboard | the paste chain is chosen automatically and its choice goes to the journal, so it is not a guess |
+| [whisrs](https://github.com/kirjavascript/whisrs) | a Rust wrapper over whisper for streaming input | handling of an audio stream that opens only for the time of a phrase | conversion to mono 16 kHz and silence trimming as checkable functions with fixtures |
+| [Vocalinux](https://github.com/jatinkumar-dev/Vocalinux) | voice input for Linux in Python, desktop integration | the set of system dependencies that Linux really needs | one statically linked binary instead of a tree of Python packages |
+| [OpenWhispr](https://github.com/dictationdaddy/OpenWhispr) | an Electron application, local or through the cloud | the variant "local by default, cloud by explicit setup" | the list of outgoing addresses is fixed in a document and can be checked |
+| [whisper-overlay](https://github.com/oddlama/whisper-overlay) | an overlay above the windows with a recognition preview on Wayland | the idea to show the state above everything without taking focus | state in the tray and sound marks instead of an overlay, so that it does not depend on the compositor protocol |
 
-## Что написано своё
+## What we wrote ourselves
 
-- **Постобработка без языковой модели.** Словарь терминов и набор правил — произносимая пунктуация, автопунктуация, вычистка слов-паразитов и повторов, числа цифрами. Реплика короче `rules.llm_min_words` обрабатывается только правилами: языковая модель не нужна, чтобы поставить запятую
-- **Словарь терминов.** Имена, аббревиатуры и жаргон подставляются как подсказка в whisper и правятся в готовом тексте, в том числе нечётким сравнением
-- **Журнал реплик в JSONL.** Каждая реплика — строка с временем, длительностью, языком, выбранным способом вставки и её результатом; схема зафиксирована в [journal-schema.md](journal-schema.md). Из него же считаются статистика и «сэкономленное время»
-- **Цепочка вставки.** Способ вставки выбирается по окружению и длине текста, деградирует к буферу обмена с восстановлением его прежнего содержимого, и каждый шаг цепочки виден в журнале
-- **`molva bench`.** Прогон по фикстурам с подсчётом WER, CER и времени: изменение в распознавании или в правилах меряется числом, а не ощущением
-- **Гейт с фальсификацией.** `tests/defects.sh` перечисляет гарантии, которые ломаются по одной; `just falsify` требует, чтобы сьют это заметил. Дефект, который сьют пережил, называет непроверенное место
+- **Post-processing without a language model.** A term dictionary and a set of rules: spoken punctuation, automatic punctuation, removal of filler words and repeats, numbers as digits. A phrase shorter than `rules.llm_min_words` goes through the rules only: a language model is not needed to put in a comma
+- **The term dictionary.** Names, abbreviations and jargon go into whisper as a hint and get fixed in the finished text, including by fuzzy matching
+- **The phrase journal in JSONL.** Each phrase is a line with the time, the duration, the language, the chosen paste method and its result. [journal-schema.md](journal-schema.md) fixes the schema. The statistics and the "time saved" are computed from it
+- **The paste chain.** The paste method is chosen by the environment and the text length, falls back to the clipboard and restores its previous content, and the journal shows each step of the chain
+- **`molva bench`.** A run over the fixtures with a count of WER, CER and time: a change in recognition or in the rules is measured by a number, not by a feeling
+- **A gate with falsification.** `tests/defects.sh` lists the guarantees that break one by one, and `just falsify` requires the suite to notice. A defect that the suite survived names an unchecked place
 
-## Как это перепроверить
+## How to check it again
 
 ```sh
-just falsify                          # сьют ловит каждую сломанную гарантию
-just third-party                      # список зависимостей и их лицензии
-grep -rl 'SPDX-License-Identifier' crates | wc -l   # заголовок в каждом исходнике
+just falsify                          # the suite catches each broken guarantee
+just third-party                      # the list of dependencies and their licenses
+grep -rl 'SPDX-License-Identifier' crates | wc -l   # a header in each source file
 ```
 
-История коммитов линейная и не переписывалась: в ней видно, что и когда появилось, а `git log --format='%an %s%n%b'` показывает трейлеры раскрытия ИИ по каждому коммиту
+The commit history is linear and was never rewritten. It shows what appeared and when, and `git log --format='%an %s%n%b'` shows the AI disclosure trailers of each commit

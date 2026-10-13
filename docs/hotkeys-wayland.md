@@ -1,44 +1,44 @@
-# Горячие клавиши на Wayland
+# Hotkeys on Wayland
 
-На Wayland глобальных горячих клавиш у приложения нет: клавиатурный фокус целиком принадлежит композитору, и перехватить сочетание «мимо» него нельзя — это защита, а не недоработка. Поэтому основной способ управления MolvAI — бинды композитора, которые вызывают `molva record ...`. Эти же строки печатает `molva setup <композитор>`.
+On Wayland an application has no global hotkeys: the compositor owns the keyboard focus completely, and nobody can intercept a key combination "past" it. This is a protection and not a gap. So the main way to control MolvAI is the compositor binds that call `molva record ...`. The command `molva setup <compositor>` prints the same lines
 
-Запасной путь — чтение `/dev/input/event*` через evdev (`hotkeys.backend = "evdev"`): он видит клавиши до композитора и работает даже там, где биндов нет, но требует прав на устройства ввода. На NixOS это членство в группе `input`; после изменения групп нужно перелогиниться.
+The fallback is to read `/dev/input/event*` through evdev (`hotkeys.backend = "evdev"`). It sees the keys before the compositor and works even where there are no binds, but it needs permission to read the input devices. On NixOS this means membership in the `input` group. After you change the groups, log in again
 
-## Push-to-talk, hands-free и режим команд
+## Push-to-talk, hands-free and command mode
 
-Push-to-talk требует от композитора два события: нажатие и отпускание. Их дают Hyprland (`bind`/`bindr`) и Sway (`bindsym` / `bindsym --release`). KDE Plasma и GNOME отпускание клавиши не отдают вовсе, поэтому там доступен только переключатель `molva record toggle`.
+Push-to-talk needs two events from the compositor: the press and the release. Hyprland (`bind`/`bindr`) and Sway (`bindsym` / `bindsym --release`) give both. KDE Plasma and GNOME do not report the key release at all, so only the `molva record toggle` switch is available there
 
-Демон сам различает удержание и короткое нажатие: удержание короче `hotkeys.min_hold_ms` (200 мс) реплику не создаёт, а нажатие короче `hotkeys.short_press_ms` (250 мс) при `hotkeys.tap_toggles = true` защёлкивает запись — это и есть hands-free. Повторное нажатие вне окна `hotkeys.double_tap_ms` завершает её, а внутри окна считается дребезгом и игнорируется.
+The daemon itself tells a key hold from a short press. A hold shorter than `hotkeys.min_hold_ms` (200 ms) does not create a phrase. A press shorter than `hotkeys.short_press_ms` (250 ms) latches the recording when `hotkeys.tap_toggles = true`, and this is hands-free. A second press outside the `hotkeys.double_tap_ms` window ends the recording. Inside the window the daemon counts it as a bounce and ignores it
 
 ## Hyprland
 
 ```
 # ~/.config/hypr/hyprland.conf
-# Push-to-talk: bind срабатывает на нажатие, bindr — на отпускание.
+# Push-to-talk: bind fires on the press, bindr fires on the release.
 bind  = , F9, exec, molva record start
 bindr = , F9, exec, molva record stop
 
-# Hands-free: одно нажатие включает запись, следующее — выключает.
+# Hands-free: one press starts the recording, the next press stops it.
 bind  = CTRL SHIFT, space, exec, molva record toggle
 
-# Режим команд: голосовая правка выделенного текста.
+# Command mode: voice editing of the selected text.
 bind  = CTRL SHIFT ALT, space, exec, molva record start --mode command
 bindr = CTRL SHIFT ALT, space, exec, molva record stop
 
-# Отмена текущей записи.
+# Cancel the current recording.
 bind  = CTRL SHIFT, Escape, exec, molva record cancel
 
-# Демон должен быть запущен.
+# The daemon must be running.
 exec-once = molva daemon
 ```
 
-Клавишу push-to-talk удобно брать ту, которой нет других применений: `F9`, `Pause` или `Control_R`. Правый Ctrl задаётся как `bind = , Control_R, exec, molva record start` — Hyprland принимает имена keysym из xkb.
+Choose a push-to-talk key that has no other use: `F9`, `Pause` or `Control_R`. You set the right Ctrl as `bind = , Control_R, exec, molva record start`, because Hyprland accepts the keysym names from xkb
 
 ## Sway
 
 ```
 # ~/.config/sway/config
-# --no-repeat не даёт автоповтору начинать запись заново.
+# --no-repeat stops the auto-repeat from starting the recording again.
 bindsym --no-repeat F9 exec molva record start
 bindsym --release F9 exec molva record stop
 
@@ -54,18 +54,18 @@ exec molva daemon
 
 ## KDE Plasma
 
-Plasma не сообщает приложению об отпускании клавиши, поэтому push-to-talk там не работает — рабочий режим только переключатель.
+Plasma does not tell the application about the key release, so push-to-talk does not work there. Only the toggle mode works
 
-Параметры системы → Комбинации клавиш → Добавить команду:
+System Settings → Shortcuts → Add Command:
 
-- команда `molva record toggle`, комбинация `Ctrl+Shift+space`;
-- команда `molva record cancel`, комбинация `Ctrl+Shift+Escape`.
+- command `molva record toggle`, combination `Ctrl+Shift+space`
+- command `molva record cancel`, combination `Ctrl+Shift+Escape`
 
-Автозапуск демона: Параметры системы → Автозапуск → `molva daemon`.
+To start the daemon automatically: System Settings → Autostart → `molva daemon`
 
 ## GNOME
 
-GNOME тоже отдаёт только нажатие, поэтому здесь тоже переключатель.
+GNOME also gives only the press, so here too only the toggle works
 
 ```sh
 path=/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/molva/
@@ -75,6 +75,6 @@ gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$pa
 gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$path binding '<Ctrl><Shift>space'
 ```
 
-## Если бинд не срабатывает
+## If a bind does not fire
 
-`molva doctor` печатает сессию, композитор, найденные утилиты вставки, доступность `/dev/uinput` и `/dev/input` и отвечает ли демон на сокете. Первое, что стоит проверить: демон запущен (`molva status`), а `molva` есть в `PATH` того окружения, из которого композитор запускает бинды — на NixOS это чаще всего и есть причина «бинд молчит».
+`molva doctor` prints the session, the compositor, the paste utilities it found, the availability of `/dev/uinput` and `/dev/input`, and whether the daemon answers on the socket. Check first that the daemon is running (`molva status`) and that `molva` is in the `PATH` of the environment from which the compositor starts the binds. On NixOS this is most often the reason for a "silent bind"

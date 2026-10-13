@@ -1,75 +1,65 @@
-# Схема журнала реплик
+# Phrase journal schema
 
-Журнал — единственное хранилище данных о диктовках. Файл `journal.jsonl` лежит в каталоге данных
-пользователя (`$XDG_DATA_HOME/molva/` на Linux, `~/Library/Application Support/molva/` на macOS,
-`%APPDATA%\molva\` на Windows), права только для владельца. Одна строка — одна реплика, JSON без
-переносов. Файл только дописывается; удаление записи, очистка и ротация выполняются атомарной
-перезаписью (временный файл + rename).
+The journal is the only storage of dictation data. The file `journal.jsonl` is in the data directory of the user (`$XDG_DATA_HOME/molva/` on Linux, `~/Library/Application Support/molva/` on macOS, `%APPDATA%\molva\` on Windows), with permissions for the owner only. One line is one phrase, as JSON without line breaks. The file is append-only. Deletion of an entry, cleanup and rotation rewrite the file atomically (a temporary file plus rename)
 
-Эталон типа — `crates/molva-core/src/domain/entry.rs` (`Entry`).
+The reference for the type is `crates/molva-core/src/domain/entry.rs` (`Entry`)
 
-## Поля строки
+## Line fields
 
-| Поле | Тип | Обязательное | Смысл |
+| Field | Type | Required | Meaning |
 |---|---|---|---|
-| `schema` | int | да | версия схемы строки, сейчас `1` |
-| `id` | uuid | да | уникальный идентификатор реплики |
-| `ts` | string | да | момент завершения реплики, RFC 3339, UTC (`2026-09-05T12:00:00Z`) |
-| `session_id` | uuid | да | запуск демона, к которому относится реплика |
-| `mode` | `dictation` \| `command` | да | диктовка или правка выделенного текста |
-| `source` | `mic` \| `file` | да | микрофон или загруженный аудиофайл |
-| `app` | string | нет | класс/имя активного приложения в момент вставки |
-| `language` | string | нет | язык реплики (ISO-639-1), определённый или заданный |
-| `audio_secs` | float | да | длительность аудио после обрезки тишины по краям |
-| `words` | int | да | слов в итоговом тексте (см. правило подсчёта ниже) |
-| `wpm` | float | нет | слов в минуту; отсутствует, если `audio_secs < 1` |
-| `style` | string | да | профиль постобработки |
-| `stt_engine` | string | да | движок распознавания (`whisper-cpp`, `remote-openai`, `fake`) |
-| `stt_model` | string | да | модель распознавания (`small`, `large-v3-turbo`) |
-| `llm_provider` | string | нет | провайдер модели постобработки (`ollama`, `openai`, …) |
-| `llm_model` | string | нет | модель постобработки |
-| `llm_used` | bool | да | вызывалась ли модель для этой реплики |
-| `local_llm` | bool | да | модель постобработки локальная (для критерия S-08) |
-| `dict_hits` | int | да | сколько терминов словаря подставлено |
-| `inject_method` | string | нет | фактический способ вставки (`hyprctl-paste`, `wtype-type`, `enigo-type`, `clipboard-only`) |
-| `latency_ms` | object | да | задержки стадий, см. ниже |
-| `tokens` | object | нет | `{ "prompt": int, "completion": int }` — токены модели постобработки |
-| `error` | string | нет | текст ошибки, если реплика не доставлена |
-| `text_raw` | string | нет | сырой текст распознавателя; отсутствует в режиме приватности |
-| `text_final` | string | нет | текст после словаря, правил и модели; отсутствует в режиме приватности |
-| `audio_path` | string | нет | путь к сохранённому аудио, если хранение включено |
+| `schema` | int | yes | version of the line schema, now `1` |
+| `id` | uuid | yes | unique identifier of the phrase |
+| `ts` | string | yes | the moment the phrase finished, RFC 3339, UTC (`2026-09-05T12:00:00Z`) |
+| `session_id` | uuid | yes | the daemon run that the phrase belongs to |
+| `mode` | `dictation` \| `command` | yes | dictation or editing of the selected text |
+| `source` | `mic` \| `file` | yes | microphone or a loaded audio file |
+| `app` | string | no | class or name of the active application at the moment of the paste |
+| `language` | string | no | language of the phrase (ISO-639-1), detected or set |
+| `audio_secs` | float | yes | audio duration after the silence is trimmed at the edges |
+| `words` | int | yes | words in the final text (see the counting rule below) |
+| `wpm` | float | no | words per minute; absent if `audio_secs < 1` |
+| `style` | string | yes | post-processing profile |
+| `stt_engine` | string | yes | recognition engine (`whisper-cpp`, `remote-openai`, `fake`) |
+| `stt_model` | string | yes | recognition model (`small`, `large-v3-turbo`) |
+| `llm_provider` | string | no | provider of the post-processing model (`ollama`, `openai`, …) |
+| `llm_model` | string | no | post-processing model |
+| `llm_used` | bool | yes | whether the daemon called the model for this phrase |
+| `local_llm` | bool | yes | the post-processing model is local (for criterion S-08) |
+| `dict_hits` | int | yes | how many dictionary terms were substituted |
+| `inject_method` | string | no | the actual paste method (`hyprctl-paste`, `wtype-type`, `enigo-type`, `clipboard-only`) |
+| `latency_ms` | object | yes | latencies of the stages, see below |
+| `tokens` | object | no | `{ "prompt": int, "completion": int }`: tokens of the post-processing model |
+| `error` | string | no | error text, if the phrase was not delivered |
+| `text_raw` | string | no | raw text of the recognizer; absent in privacy mode |
+| `text_final` | string | no | text after the dictionary, the rules and the model; absent in privacy mode |
+| `audio_path` | string | no | path to the saved audio, if storage is on |
 
 ### `latency_ms`
 
-| Поле | Обязательное | Смысл |
+| Field | Required | Meaning |
 |---|---|---|
-| `stt` | да | распознавание |
-| `rules` | да | словарь и правила без модели |
-| `llm` | нет | постобработка моделью (отсутствует, если модель не вызывалась) |
-| `inject` | нет | вставка в активное окно (отсутствует при ошибке до вставки) |
-| `total` | да | от остановки записи до завершения вставки |
-| `first_hypothesis` | нет | от начала речи до первой гипотезы при потоковом предпросмотре |
-| `stop_after_release` | нет | от отпускания клавиши до фактической остановки записи |
+| `stt` | yes | recognition |
+| `rules` | yes | dictionary and rules without the model |
+| `llm` | no | post-processing by the model (absent if the daemon did not call the model) |
+| `inject` | no | paste into the active window (absent if an error occurred before the paste) |
+| `total` | yes | from the stop of the recording to the end of the paste |
+| `first_hypothesis` | no | from the start of the speech to the first hypothesis with streaming preview |
+| `stop_after_release` | no | from the key release to the actual stop of the recording |
 
-## Правила расчёта
+## Calculation rules
 
-- **Слово** — последовательность непробельных символов, содержащая хотя бы одну букву или цифру.
-  Одинокие знаки препинания и тире словами не считаются.
-- **WPM** = `words / audio_secs * 60`. `audio_secs` — длительность после обрезки тишины в начале и в
-  конце; паузы внутри реплики входят в длительность. Для реплик короче одной секунды `wpm` не
-  вычисляется.
-- **Средняя скорость** за сессию, день и всё время взвешивается по времени:
-  `sum(words) / sum(audio_secs) * 60`, а не среднее арифметическое `wpm`.
-- **Личный рекорд** — максимальный `wpm` среди реплик с `audio_secs >= 3` и `words >= 5`.
-- **Сессия** — один запуск демона (`session_id`); при разрыве между репликами более 30 минут
-  статистика дополнительно делит сессию.
+- **A word** is a sequence of non-whitespace characters that contains at least one letter or digit. Lone punctuation marks and dashes do not count as words
+- **WPM** = `words / audio_secs * 60`. `audio_secs` is the duration after the silence is trimmed at the start and at the end. Pauses inside the phrase are part of the duration. For phrases shorter than one second, `wpm` is not computed
+- **The average speed** for a session, a day and all time is weighted by time: `sum(words) / sum(audio_secs) * 60`, and not the arithmetic mean of `wpm`
+- **The personal record** is the maximum `wpm` among the phrases with `audio_secs >= 3` and `words >= 5`
+- **A session** is one daemon run (`session_id`). When the gap between phrases is more than 30 minutes, the statistics also split the session
 
-## Режим приватности
+## Privacy mode
 
-При `journal.include_text = false` строка пишется без `text_raw`, `text_final` и `audio_path`;
-все метрики сохраняются. При `privacy.no_record_mode = true` журнал не пишется вовсе.
+With `journal.include_text = false` the line is written without `text_raw`, `text_final` and `audio_path`. All metrics stay. With `privacy.no_record_mode = true` the journal is not written at all
 
-## Пример
+## Example
 
 ```json
 {"schema":1,"id":"6f1c…","ts":"2026-09-05T12:00:00Z","session_id":"a1b2…","mode":"dictation","source":"mic","app":"kitty","language":"ru","audio_secs":4.0,"words":10,"wpm":150.0,"style":"cleanup","stt_engine":"whisper-cpp","stt_model":"small","llm_used":false,"local_llm":true,"dict_hits":0,"inject_method":"hyprctl-paste","latency_ms":{"stt":540,"rules":2,"inject":120,"total":700},"text_raw":"привет мир","text_final":"Привет, мир."}

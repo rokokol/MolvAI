@@ -1,87 +1,87 @@
-# Установка руками ИИ-агента
+# Installation by an AI agent
 
-Этот файл — промпт. Откройте Claude Code (или другого агента с доступом к терминалу) в каталоге репозитория и скажите: «прочитай docs/install.md и установи MolvAI по этой инструкции». Дальше агент сам разберётся, какая у вас система, и задаст только те вопросы, на которые не может ответить сам
+This file is a prompt. Open Claude Code (or another agent with terminal access) in the repository directory and say: "read docs/install.md and install MolvAI by this guide". Then the agent finds out which system you have and asks only the questions it cannot answer itself
 
-Если агента нет — тот же порядок действий описан по шагам в разделе «Установка» [README](../README.md), просто выполнять его придётся руками
+If you have no agent, the "Installation" section of the [README](../README.md) describes the same steps in order, and you do them by hand
 
 ---
 
-## Промпт для агента
+## Prompt for the agent
 
-Ты устанавливаешь MolvAI — системный голосовой ввод — на машину пользователя. Работай по шагам, не пропуская проверок. После каждого шага коротко скажи, что получилось. Ничего не устанавливай в систему без явного согласия пользователя: сначала покажи команду, дождись ответа, потом выполняй
+You install MolvAI, a system-wide voice input, on the machine of the user. Work step by step and do not skip the checks. After each step, say in a few words what the result was. Do not install anything in the system without the explicit consent of the user: first show the command, wait for the answer, then run it
 
-### Шаг 1. Определи окружение
+### Step 1. Find out the environment
 
-Собери и покажи пользователю таблицей:
+Collect the data and show it to the user as a table:
 
-- ОС и дистрибутив: `uname -srm`, `cat /etc/os-release` на Linux, `sw_vers` на macOS
-- Тип сессии: `echo "$XDG_SESSION_TYPE"` — `wayland` или `x11`
-- Композитор или окружение рабочего стола: `echo "$XDG_CURRENT_DESKTOP"`, а на Wayland ещё `hyprctl version` или `echo "$HYPRLAND_INSTANCE_SIGNATURE"` для Hyprland, `gnome-shell --version`, `plasmashell --version`
-- Звуковой сервер: `pactl info | head -n 3` — PipeWire или PulseAudio
-- Есть ли Nix: `nix --version`
+- OS and distribution: `uname -srm` and `cat /etc/os-release` on Linux, `sw_vers` on macOS
+- Session type: `echo "$XDG_SESSION_TYPE"` gives `wayland` or `x11`
+- Compositor or desktop environment: `echo "$XDG_CURRENT_DESKTOP"`. On Wayland also run `hyprctl version` or `echo "$HYPRLAND_INSTANCE_SIGNATURE"` for Hyprland, `gnome-shell --version`, `plasmashell --version`
+- Sound server: `pactl info | head -n 3` shows PipeWire or PulseAudio
+- Is Nix present: `nix --version`
 
-От типа сессии зависит способ вставки текста, от звукового сервера — способ записи, поэтому эти два ответа нужны точно, а не «наверное»
+The session type decides how to paste the text, and the sound server decides how to record. So you need these two answers exactly, not "probably"
 
-### Шаг 2. Выбери способ установки
+### Step 2. Choose the installation method
 
-Предложи пользователю один из трёх и объясни разницу в одном предложении каждый:
+Offer the user one of three methods and explain the difference in one sentence each:
 
-1. **Nix** — если `nix --version` ответил. Ничего не ставится в систему: `nix develop` даёт тулчейн и все библиотеки, `cargo build --release` собирает бинарник
-2. **`./install.sh`** — если Nix нет. Скрипт проверит зависимости, ничего не установит сам, а напечатает точные команды для вашего дистрибутива; после установки зависимостей запустите его снова
-3. **Готовый бинарник** — со страницы релизов, если сборка не нужна
+1. **Nix** if `nix --version` answered. Nothing goes into the system: `nix develop` gives the toolchain and all libraries, and `cargo build --release` builds the binary
+2. **`./install.sh`** if there is no Nix. The script checks the dependencies and installs nothing itself. It prints the exact commands for your distribution. After you install the dependencies, run the script again
+3. **A ready binary** from the releases page, if you do not need to build
 
-### Шаг 3. Поставь зависимости
+### Step 3. Install the dependencies
 
-Запусти `./install.sh --check` и покажи вывод. Скрипт печатает недостающее и команды вида `  $ sudo apt install …` — выполняй ровно их, ничего не додумывая. Ориентиры по системам:
+Run `./install.sh --check` and show the output. The script prints what is missing and commands like `  $ sudo apt install …`. Run exactly those commands and add nothing of your own. Guides for the systems:
 
 - Debian, Ubuntu: `sudo apt install build-essential cmake pkg-config libasound2-dev libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxkbcommon-dev`
 - Fedora: `sudo dnf install gcc-c++ cmake pkgconf-pkg-config alsa-lib-devel webkit2gtk4.1-devel gtk3-devel libappindicator-gtk3-devel librsvg2-devel libxkbcommon-devel`
 - Arch: `sudo pacman -S base-devel cmake pkgconf alsa-lib webkit2gtk-4.1 gtk3 libayatana-appindicator librsvg libxkbcommon`
-- macOS: `brew install cmake pkg-config`, плюс Xcode Command Line Tools
-- Windows: `winget install Rustlang.Rustup Kitware.CMake`, плюс Build Tools for Visual Studio с рабочей нагрузкой C++
+- macOS: `brew install cmake pkg-config`, and the Xcode Command Line Tools
+- Windows: `winget install Rustlang.Rustup Kitware.CMake`, and the Build Tools for Visual Studio with the C++ workload
 
-На Wayland дополнительно нужны `wtype` и `wl-clipboard`, на X11 — `xdotool` и `xclip`. Ставь только то, что соответствует определённой на шаге 1 сессии
+On Wayland you also need `wtype` and `wl-clipboard`. On X11 you need `xdotool` and `xclip`. Install only what matches the session that you found in step 1
 
-### Шаг 4. Собери и установи
+### Step 4. Build and install
 
 ```sh
 cargo build --release --bin molva
 ./install.sh
 ```
 
-`install.sh` копирует бинарник в `~/.local/bin`, пишет манифест установленных файлов и не требует прав администратора. Проверь, что `~/.local/bin` есть в `PATH`, и если нет — покажи пользователю, какую строку и в какой файл оболочки добавить (`~/.bashrc`, `~/.zshrc`, `~/.config/fish/config.fish`)
+`install.sh` copies the binary to `~/.local/bin`, writes a manifest of the installed files, and needs no administrator rights. Check that `~/.local/bin` is in `PATH`. If it is not, show the user which line to add and to which shell file (`~/.bashrc`, `~/.zshrc`, `~/.config/fish/config.fish`)
 
-Убедись, что бинарник отвечает: `molva --version`
+Make sure that the binary answers: `molva --version`
 
-### Шаг 5. Скачай модель
+### Step 5. Download the model
 
 ```sh
 molva models pull small
 ```
 
-Спроси у пользователя, какая модель нужна, и объясни выбор: `base` быстрее и хуже, `small` — разумный компромисс и значение по умолчанию, `large-v3-turbo` заметно точнее, но требует больше памяти и времени. Веса скачиваются с Hugging Face и проверяются по SHA-256; в репозиторий они не входят, их лицензии — в [model-licenses.md](model-licenses.md)
+Ask the user which model they need and explain the choice. `base` is faster and worse. `small` is a reasonable compromise and the default. `large-v3-turbo` is clearly more accurate but needs more memory and time. The weights come from Hugging Face and are checked against SHA-256. They are not part of the repository, and their licenses are in [model-licenses.md](model-licenses.md)
 
-### Шаг 6. Выбери микрофон
+### Step 6. Choose the microphone
 
 ```sh
 molva devices
 ```
 
-Покажи список пользователю, спроси, какое устройство использовать, и запиши выбор в `audio.device`. Потом проверь, что с него действительно идёт сигнал:
+Show the list to the user, ask which device to use, and write the choice to `audio.device`. Then check that a signal really comes from it:
 
 ```sh
 molva record --seconds 3
 ```
 
-Нулевой уровень при говорящем пользователе — это не «тихо», это неправильное устройство или заглушенный канал в микшере. Вернись к выбору устройства, не иди дальше
+A zero level while the user speaks does not mean "quiet". It means a wrong device or a muted channel in the mixer. Go back to the device choice and do not go further
 
-### Шаг 7. Настрой горячие клавиши
+### Step 7. Set up the hotkeys
 
-Открой `~/.config/molva/config.toml` и покажи пользователю секцию `[hotkeys]`. По умолчанию удержание `F9` — запись, `Ctrl+Alt+Z` — переключатель, `Ctrl+Alt+X` — режим команд над выделением; сочетания нарочно простые, чтобы работать на любом стенде без настройки
+Open `~/.config/molva/config.toml` and show the user the `[hotkeys]` section. By default, holding `F9` records, `Ctrl+Alt+Z` toggles, and `Ctrl+Alt+X` starts command mode on the selection. The combinations are simple on purpose, so that they work on any stand without a setup
 
-Дальше зависит от сессии, определённой на шаге 1:
+The next step depends on the session that you found in step 1:
 
-- **Hyprland** — предложи добавить в `~/.config/hypr/hyprland.conf` две строки и объясни, что `bindr` срабатывает на отпускание:
+- **Hyprland**: offer to add four lines to `~/.config/hypr/hyprland.conf` and explain that `bindr` fires on the release:
 
   ```
   bind  = , F9, exec, molva record start
@@ -90,27 +90,27 @@ molva record --seconds 3
   bind  = CTRL ALT, X, exec, molva record toggle --mode command
   ```
 
-- **GNOME, KDE** — покажи, как завести пользовательскую комбинацию в настройках клавиатуры на команды `molva start` и `molva stop`
-- **X11 без окружения** — предложи `sxhkd` или встроенный захват клавиатуры (`hotkeys.backend = "evdev"`, для него нужно членство в группе `input`)
-- **Windows, macOS** — глобальная комбинация регистрируется самим приложением, отдельной настройки в системе не нужно; на macOS предупреди, что потребуется выдать права на «Универсальный доступ» и «Мониторинг ввода» в настройках безопасности
+- **GNOME, KDE**: show how to create a custom shortcut in the keyboard settings for the commands `molva start` and `molva stop`
+- **X11 without a desktop environment**: offer `sxhkd` or the built-in keyboard capture (`hotkeys.backend = "evdev"`, which needs membership in the `input` group)
+- **Windows, macOS**: the application itself registers the global combination, so the system needs no separate setup. On macOS warn that the user must grant the "Accessibility" and "Input Monitoring" rights in the security settings
 
-### Шаг 8. Проверь вставку
+### Step 8. Check the paste
 
 ```sh
 molva test-inject
 ```
 
-Команда вставляет тестовую строку в активное поле и печатает, какой способ сработал. Попроси пользователя открыть текстовый редактор, поставить курсор в поле и запустить проверку
+The command pastes a test string into the active field and prints which method worked. Ask the user to open a text editor, put the cursor in the field and run the check
 
-Если вставка не сработала: на Wayland убедись, что установлен `wtype`; если композитор не даёт эмулировать ввод, поставь `output.mode = "clipboard"` — текст будет попадать в буфер обмена, а вставлять его пользователь будет сам. Это рабочий режим, а не поражение
+If the paste did not work: on Wayland make sure that `wtype` is installed. If the compositor does not allow input emulation, set `output.mode = "clipboard"`. The text then goes to the clipboard, and the user pastes it by hand. This is a working mode, not a defeat
 
-### Шаг 9. Автозапуск, если нужен
+### Step 9. Autostart, if needed
 
-Спроси, запускать ли MolvAI при входе в систему. Если да — `./install.sh --autostart`; это создаёт файл автозапуска, который снимается при `./install.sh --uninstall`
+Ask whether to start MolvAI at login. If yes, run `./install.sh --autostart`. It creates an autostart file, and `./install.sh --uninstall` removes it
 
-### Шаг 10. Отчитайся
+### Step 10. Report
 
-Покажи пользователю итог: где лежит бинарник, где конфиг, какая модель скачана и куда, какое устройство выбрано, какие клавиши назначены и как всё это удалить (`./install.sh --uninstall`). Напомни про `molva stats` и `molva journal` и про то, что журнал реплик лежит в его домашнем каталоге и никуда не отправляется
+Show the user the result: where the binary is, where the config is, which model was downloaded and where to, which device was chosen, which keys were assigned, and how to remove all this (`./install.sh --uninstall`). Remind the user about `molva stats` and `molva journal`, and that the phrase journal is in the home directory and goes nowhere
 
 > [!NOTE]
-> Если на каком-то шаге команда не сработала, не переходи к следующему и не придумывай обходной путь молча. Покажи вывод пользователю и объясни, какие есть варианты
+> If a command did not work in some step, do not go to the next step and do not invent a workaround silently. Show the output to the user and explain the options

@@ -1,33 +1,33 @@
-# Исходящие соединения
+# Outgoing connections
 
-Полный список адресов, к которым MolvAI обращается, и условий, при которых это происходит. Список ведётся вручную и является утверждением, которое можно опровергнуть: запустите `molva` под `strace -f -e trace=network` или посмотрите в journalctl — ничего сверх перечисленного здесь появиться не должно
+The full list of addresses that MolvAI calls, and the conditions under which it calls them. We keep the list by hand, and it is a statement that you can disprove: run `molva` under `strace -f -e trace=network` or look in journalctl. Nothing beyond the list here must appear
 
 > [!IMPORTANT]
-> Телеметрии нет. Ни счётчиков запусков, ни отчётов об ошибках, ни «анонимной статистики». Настройка `privacy.telemetry` существует только для того, чтобы это можно было заявить явно и проверить
+> There is no telemetry. There are no launch counters, no error reports and no "anonymous statistics". The `privacy.telemetry` setting exists only so that you can state this explicitly and check it
 
-## По умолчанию, без настройки
+## By default, without setup
 
-| Адрес | Когда | Что уходит | Что приходит |
+| Address | When | What goes out | What comes in |
 | --- | --- | --- | --- |
-| `huggingface.co` и `cdn-lfs*.huggingface.co` | только при первой установке модели: `molva models pull` или первый запуск без весов | HTTP GET за файлом `ggml-<модель>.bin`, без идентификаторов пользователя | файл весов, проверяется по SHA-256 |
+| `huggingface.co` and `cdn-lfs*.huggingface.co` | only at the first installation of a model: `molva models pull` or the first run without weights | HTTP GET for the file `ggml-<model>.bin`, without user identifiers | the weights file, checked against SHA-256 |
 
-Всё остальное в конфигурации по умолчанию происходит на машине: запись с микрофона, распознавание через whisper.cpp, словарь, правила, вставка текста и журнал реплик. Реплика не покидает компьютер
+Everything else in the default configuration happens on the machine: recording from the microphone, recognition through whisper.cpp, the dictionary, the rules, the text paste and the phrase journal. A phrase does not leave the computer
 
-## Только при явной настройке
+## Only with explicit setup
 
-| Адрес | Настройка, которая его включает | Что уходит |
+| Address | The setting that turns it on | What goes out |
 | --- | --- | --- |
-| `http://localhost:11434/v1` | `llm.enabled = true` при `llm.provider = "ollama"` (значение по умолчанию) | текст реплики уходит в Ollama на этой же машине, наружу не выходит |
-| `http://localhost:1234/v1` | `llm.provider = "lmstudio"` | то же, локальный LM Studio |
-| `https://api.openai.com/v1` | `llm.provider = "openai"` | текст реплики уходит стороннему провайдеру |
-| `https://openrouter.ai/api/v1` | `llm.provider = "openrouter"` | то же |
-| `https://api.groq.com/openai/v1` | `llm.provider = "groq"`, либо `stt.engine = "remote-openai"` | текст реплики, а для удалённого распознавания — сама аудиозапись |
-| произвольный адрес | `llm.provider = "custom"` вместе с `llm.base_url` | то, что настроил пользователь |
+| `http://localhost:11434/v1` | `llm.enabled = true` with `llm.provider = "ollama"` (the default value) | the text of the phrase goes to Ollama on the same machine and does not go outside |
+| `http://localhost:1234/v1` | `llm.provider = "lmstudio"` | the same, a local LM Studio |
+| `https://api.openai.com/v1` | `llm.provider = "openai"` | the text of the phrase goes to a third-party provider |
+| `https://openrouter.ai/api/v1` | `llm.provider = "openrouter"` | the same |
+| `https://api.groq.com/openai/v1` | `llm.provider = "groq"`, or `stt.engine = "remote-openai"` | the text of the phrase, and for remote recognition the audio recording itself |
+| any address | `llm.provider = "custom"` together with `llm.base_url` | what the user configured |
 
-Две настройки закрывают всю правую половину таблицы разом: `privacy.send_to_llm = false` запрещает отправку текста языковой модели независимо от провайдера, `privacy.no_record_mode = true` дополнительно выключает журнал и историю
+Two settings close the whole right half of the table at once. `privacy.send_to_llm = false` forbids sending text to a language model, whatever the provider. `privacy.no_record_mode = true` also turns off the journal and the history
 
-Ключи API в файле настроек не хранятся: в конфиге лежит только имя переменной окружения (`llm.api_key_env`) или указание брать ключ из системного keystore (`llm.api_key_source`). Поэтому конфиг можно показывать и коммитить
+The settings file does not store API keys. The config holds only the name of an environment variable (`llm.api_key_env`) or an instruction to take the key from the system keystore (`llm.api_key_source`). So you can show the config and commit it
 
-## Чего не происходит никогда
+## What never happens
 
-Проверки обновлений по сети нет: версия сравнивается только тогда, когда пользователь сам запускает `install.sh` или смотрит страницу релизов. Сборка не тянет ничего, кроме crates.io и npm-реестра во время `cargo build` и `npm ci`, и оба шага работают из lock-файлов. Автозапуск не открывает сетевых сокетов, IPC демона — unix-сокет в каталоге пользователя, а не TCP-порт
+There is no update check over the network. The version is compared only when the user runs `install.sh` or looks at the releases page. The build pulls nothing except crates.io and the npm registry during `cargo build` and `npm ci`, and both steps work from lock files. Autostart opens no network sockets. The IPC of the daemon is a unix socket in the directory of the user, not a TCP port
