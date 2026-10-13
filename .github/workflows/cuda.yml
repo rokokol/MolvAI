@@ -1,19 +1,19 @@
 name: cuda
 
-# CUDA-сборка CLI для Windows по ручному запуску: отлаживается здесь, без тега и без релиза.
-# Когда сборка стабильно зелёная, те же шаги живут в job cli-cuda в release.yml.
+# A CUDA build of the CLI for Windows by manual start: it is debugged here, without a tag and without a release
+# When the build is stably green, the same steps live in the job cli-cuda in release.yml
 #
-# Что уже выяснено на раннерах GitHub:
-# - сетевой установщик CUDA не регистрирует toolset в MSBuild → генератор Ninja;
-# - в bash из Git первым в PATH стоит coreutils link.exe → шаг сборки из PowerShell;
-# - CUDA 12.6 не знает Visual Studio 2026 с windows-latest, cudafe++ падает даже с
-#   -allow-unsupported-compiler → раннер windows-2022 с Visual Studio 2022.
+# What is already found out on the GitHub runners:
+# - the network installer of CUDA does not register the toolset in MSBuild → the Ninja generator;
+# - in the bash from Git, the coreutils link.exe is first in PATH → the build step runs from PowerShell;
+# - CUDA 12.6 does not know Visual Studio 2026 on windows-latest, and cudafe++ fails even with
+#   -allow-unsupported-compiler → the windows-2022 runner with Visual Studio 2022
 
 on:
   workflow_dispatch:
     inputs:
       cuda:
-        description: Версия CUDA Toolkit
+        description: CUDA Toolkit version
         default: "12.6.0"
         required: false
 
@@ -33,11 +33,11 @@ jobs:
           method: network
           sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "visual_studio_integration"]'
 
-      - name: Тулчейн Rust из rust-toolchain.toml
+      - name: Rust toolchain from rust-toolchain.toml
         shell: bash
         run: rustup show
 
-      - name: libclang для генерации биндингов whisper-rs
+      - name: libclang for generating the whisper-rs bindings
         shell: bash
         run: printf 'LIBCLANG_PATH=%s\n' 'C:\Program Files\LLVM\bin' >> "$GITHUB_ENV"
 
@@ -47,7 +47,7 @@ jobs:
         with:
           key: cuda-x86_64-pc-windows-msvc
 
-      - name: Сборка CLI с CUDA
+      - name: Build the CLI with CUDA
         shell: pwsh
         env:
           CMAKE_GENERATOR: Ninja
@@ -55,7 +55,7 @@ jobs:
           CUDAFLAGS: -allow-unsupported-compiler
         run: cargo build --locked --release --bin molva --features molva-core/cuda
 
-      - name: Архив CLI с CUDA и рантаймом NVIDIA
+      - name: Archive of the CLI with CUDA and the NVIDIA runtime
         shell: bash
         run: |
           mkdir -p dist
@@ -63,7 +63,7 @@ jobs:
           mkdir -p "$stage"
           cp target/release/molva.exe "$stage/"
           for dll in cudart64_12.dll cublas64_12.dll cublasLt64_12.dll; do
-            cp "$CUDA_PATH/bin/$dll" "$stage/" || echo "::warning::нет $dll в $CUDA_PATH/bin"
+            cp "$CUDA_PATH/bin/$dll" "$stage/" || echo "::warning::no $dll in $CUDA_PATH/bin"
           done
           cp README.md LICENSE NOTICE THIRD-PARTY.md "$stage/"
           tar -czf "dist/$stage.tar.gz" "$stage"

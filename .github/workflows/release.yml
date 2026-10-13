@@ -1,7 +1,7 @@
 name: release
 
-# Единственный workflow с правом писать в репозиторий: он и только он создаёт релиз.
-# Запускается по тегу vX.Y.Z, ручной запуск — для репетиции без публикации.
+# The only workflow with the right to write to the repository: it and only it creates a release
+# It runs on a tag vX.Y.Z, and a manual run is a rehearsal without publication
 on:
   push:
     tags: ["v*"]
@@ -18,13 +18,13 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Тег не выпускается, пока гейт не сошёлся: вызываем настоящий workflow,
-  # а не копию его шагов
+  # A tag is not released until the gate has passed: we call the real workflow,
+  # not a copy of its steps
   gate:
     uses: ./.github/workflows/build.yml
 
-  # Ведомость состава и отчёт по лицензиям собираются один раз и кладутся
-  # в релиз рядом с бинарниками
+  # The bill of materials and the license report are built once and put
+  # into the release next to the binaries
   provenance:
     needs: gate
     runs-on: ubuntu-24.04
@@ -32,7 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Тулчейн Rust из rust-toolchain.toml
+      - name: Rust toolchain from rust-toolchain.toml
         run: rustup show
 
       - uses: taiki-e/install-action@v2
@@ -54,7 +54,7 @@ jobs:
             NOTICE
             docs/model-licenses.md
 
-  # CLI molva на трёх ОС; бинарник заодно становится sidecar для GUI
+  # The molva CLI on three operating systems; the binary also becomes the sidecar for the GUI
   cli:
     needs: gate
     runs-on: ${{ matrix.os }}
@@ -63,11 +63,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Самая старая поддерживаемая LTS: бинарь требует glibc не новее той, на которой
-          # собран. На ubuntu-24.04 это 2.39, и каталог appimage.github.io, который проверяет
-          # AppImage на ubuntu-22.04, отверг образ с GLIBC_2.39 not found
-          # Vulkan считает whisper на видеокарте любого производителя, а без устройства
-          # Vulkan whisper.cpp сам уходит на процессор
+          # The oldest supported LTS: the binary needs a glibc no newer than the one it is
+          # built on. On ubuntu-24.04 this is 2.39, and the appimage.github.io catalog, which checks
+          # the AppImage on ubuntu-22.04, rejected an image with GLIBC_2.39 not found
+          # Vulkan runs whisper on a video card of any vendor, and without a Vulkan
+          # device whisper.cpp falls back to the processor by itself
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             features: molva-core/vulkan
@@ -80,7 +80,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Системные зависимости (Linux)
+      - name: System dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
@@ -89,34 +89,34 @@ jobs:
             librsvg2-dev libasound2-dev libxkbcommon-dev libwayland-dev \
             cmake patchelf squashfs-tools libvulkan-dev libclang-dev
 
-      # Шейдеры ggml-vulkan компилирует glslc из Vulkan SDK: в Ubuntu 22.04 пакета glslc нет
+      # The ggml-vulkan shaders are compiled by glslc from the Vulkan SDK: Ubuntu 22.04 has no glslc package
       - uses: jakoch/install-vulkan-sdk-action@v1.7.0
         if: contains(matrix.features, 'vulkan')
         with:
           vulkan_version: 1.4.363.0
 
-      - name: Тулчейн Rust из rust-toolchain.toml
+      - name: Rust toolchain from rust-toolchain.toml
         shell: bash
         run: |
           rustup show
           rustup target add ${{ matrix.target }}
 
-      # Готовые биндинги whisper-rs совпадают по ABI с macOS, но в них нет функций
-      # ggml_backend_vk_*: сборке с Vulkan биндинги генерирует libclang. На Windows раскладка
-      # структур другая, и биндинги генерируются там всегда
-      - name: Биндинги whisper-rs из крейта (macOS)
+      # The ready bindings of whisper-rs match the ABI of macOS, but they have no
+      # ggml_backend_vk_* functions: for a Vulkan build, libclang generates the bindings. On Windows the layout of
+      # structures is different, and the bindings are always generated there
+      - name: whisper-rs bindings from the crate (macOS)
         if: runner.os == 'macOS'
         shell: bash
         run: echo "WHISPER_DONT_GENERATE_BINDINGS=1" >> "$GITHUB_ENV"
 
-      - name: libclang для генерации биндингов whisper-rs (Windows)
+      - name: libclang for generating the whisper-rs bindings (Windows)
         if: runner.os == 'Windows'
         shell: bash
         run: printf 'LIBCLANG_PATH=%s\n' 'C:\Program Files\LLVM\bin' >> "$GITHUB_ENV"
 
-      # Релиз для x86_64 собирается под переносимый x86-64-v3 (AVX2/FMA/F16C), а не под
-      # процессор раннера: иначе бинарь либо падает на чужой машине, либо без SIMD медленнее в 20 раз
-      - name: SIMD whisper.cpp для x86_64
+      # The release for x86_64 is built for the portable x86-64-v3 (AVX2/FMA/F16C), not for the
+      # processor of the runner: otherwise the binary either crashes on another machine, or without SIMD is 20 times slower
+      - name: whisper.cpp SIMD for x86_64
         if: runner.arch == 'X64'
         shell: bash
         run: |
@@ -128,16 +128,16 @@ jobs:
             echo "GGML_F16C=ON"
           } >> "$GITHUB_ENV"
 
-      # Образ раннера в ключе: build-скрипты, собранные на более новом образе, на старом
-      # не запускаются из-за версии glibc
+      # The runner image is in the key: build scripts built on a newer image do not run
+      # on an older one because of the glibc version
       - uses: Swatinem/rust-cache@v2
         with:
           key: release-${{ matrix.os }}-${{ matrix.target }}
 
-      # Версия одна на всё: тег v<версия> обязан совпадать с [workspace.package] version,
-      # иначе CLI и пакеты GUI выйдут под старым номером, как случилось с v0.1.1 и v0.1.2.
-      # Ручной запуск идёт с ветки, а не с тега: сверять не с чем, и публикации не будет
-      - name: Тег совпадает с версией в Cargo.toml
+      # One version for everything: the tag v<version> must match [workspace.package] version,
+      # otherwise the CLI and the GUI packages come out under the old number, as happened with v0.1.1 and v0.1.2
+      # A manual run goes from a branch, not from a tag: there is nothing to compare with, and nothing is published
+      - name: The tag matches the version in Cargo.toml
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         env:
@@ -145,15 +145,15 @@ jobs:
         run: |
           version="$(cargo pkgid -p molva | sed 's/.*[#@]//')"
           if [ "v$version" != "$TAG" ]; then
-            echo "::error::тег $TAG не совпадает с версией $version в Cargo.toml"
+            echo "::error::tag $TAG does not match version $version in Cargo.toml"
             exit 1
           fi
 
-      # На Windows ggml-vulkan собирает генератор шейдеров вложенным проектом CMake глубоко
-      # внутри каталога сборки, и путь вылезает за 260 символов: cl.exe падает с C1083.
-      # Короткий каталог и сборка без --target (цель совпадает с хостом) дают запас.
-      # Путь к бинарю шаги ниже берут из CLI_OUT
-      - name: Сборка CLI
+      # On Windows, ggml-vulkan builds the shader generator as a nested CMake project deep
+      # inside the build directory, and the path goes over 260 characters: cl.exe fails with C1083
+      # A short directory and a build without --target (the target equals the host) give a margin
+      # The steps below take the path to the binary from CLI_OUT
+      - name: Build the CLI
         shell: bash
         env:
           FEATURES: ${{ matrix.features }}
@@ -172,8 +172,8 @@ jobs:
           cargo build "${args[@]}"
           echo "CLI_OUT=$out" >> "$GITHUB_ENV"
 
-      # Tauri ждёт sidecar с именем, оканчивающимся на target triple
-      - name: Бинарник как sidecar для GUI
+      # Tauri expects a sidecar with a name that ends with the target triple
+      - name: The binary as a sidecar for the GUI
         shell: bash
         run: |
           mkdir -p crates/molva-gui/binaries
@@ -183,7 +183,7 @@ jobs:
             cp "$CLI_OUT/molva" "crates/molva-gui/binaries/molva-${{ matrix.target }}"
           fi
 
-      - name: Архив CLI
+      - name: CLI archive
         shell: bash
         run: |
           mkdir -p dist
@@ -202,15 +202,15 @@ jobs:
           name: cli-${{ matrix.target }}
           path: dist/*
 
-      # GUI появляется в дорожке B; до появления tauri.conf.json шаг пропускается
-      - name: Есть ли конфиг Tauri
+      # The GUI appears in track B; until tauri.conf.json exists, the step is skipped
+      - name: Is there a Tauri config
         id: tauri
         shell: bash
         run: |
           if [ -f crates/molva-gui/tauri.conf.json ]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::SKIP: crates/molva-gui/tauri.conf.json ещё нет, пакеты GUI не собираются"
+            echo "::notice::SKIP: crates/molva-gui/tauri.conf.json does not exist yet, the GUI packages are not built"
             echo "present=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -221,9 +221,9 @@ jobs:
           cache: npm
           cache-dependency-path: crates/molva-gui/ui/package-lock.json
 
-      # tauri-action запускает только beforeBuildCommand (сборку фронтенда), а зависимости
-      # npm ставит не он: без этого шага TypeScript не находит react и сборка падает
-      - name: Зависимости фронтенда
+      # tauri-action runs only beforeBuildCommand (the frontend build), and it does not install
+      # the npm dependencies: without this step TypeScript does not find react and the build fails
+      - name: Frontend dependencies
         if: steps.tauri.outputs.present == 'true'
         working-directory: crates/molva-gui/ui
         run: npm ci
@@ -234,19 +234,19 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: crates/molva-gui
-          # Сайдкар объявлен отдельным конфигом только для релиза: в основном
-          # tauri.conf.json его нет, иначе гейт CI падал бы на отсутствующем файле
-          # binaries/molva-<triple>, который появляется лишь после сборки CLI выше.
-          # Без сайдкара установщик кладёт один MolvAI.exe, и GUI не находит molva.
+          # The sidecar is declared by a separate config only for the release: the main
+          # tauri.conf.json does not have it, otherwise the CI gate would fail on the missing file
+          # binaries/molva-<triple>, which appears only after the CLI build above
+          # Without the sidecar the installer puts one MolvAI.exe, and the GUI does not find molva
           args: --target ${{ matrix.target }} --config tauri.sidecar.conf.json
-          # CLI из package-lock.json интерфейса, а не из реестра: без tauriScript action не
-          # видит его в projectPath и ставит свежий @tauri-apps/cli@v2 при каждом запуске.
-          # Путь считается от projectPath, а node есть на раннерах всех трёх ОС
+          # The CLI from package-lock.json of the interface, not from the registry: without tauriScript the action does not
+          # see it in projectPath and installs a fresh @tauri-apps/cli@v2 on every run
+          # The path is counted from projectPath, and node exists on the runners of all three operating systems
           tauriScript: node ui/node_modules/@tauri-apps/cli/tauri.js
 
-      # Бандлер до 2.12 собирал AppImage, который firejail и тест appimage.github.io не могли
-      # запустить: https://github.com/tauri-apps/tauri/issues/16155
-      - name: AppImage может запустить любой пользователь
+      # The bundler before 2.12 built an AppImage that firejail and the appimage.github.io test could not
+      # run: https://github.com/tauri-apps/tauri/issues/16155
+      - name: Any user can run the AppImage
         if: steps.tauri.outputs.present == 'true' && runner.os == 'Linux'
         shell: bash
         run: scripts/check-appimage.sh target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
@@ -263,11 +263,11 @@ jobs:
             target/${{ matrix.target }}/release/bundle/**/*.dmg
           if-no-files-found: ignore
 
-  # CUDA-сборка CLI для Windows: опциональная, релиз при её сбое не падает
-  # (continue-on-error). Артефакт тянет проприетарный рантайм NVIDIA (cudart, cublas),
-  # поэтому идёт отдельным архивом с суффиксом cuda, а свободные пакеты остаются без него.
-  # Раннер windows-2022, а не windows-latest: CUDA 12.6 знает Visual Studio только до 2022,
-  # с VS 2026 cudafe++ падает даже с -allow-unsupported-compiler. Проверено в cuda.yml.
+  # A CUDA build of the CLI for Windows: optional, and the release does not fail when it fails
+  # (continue-on-error). The artifact pulls in the proprietary NVIDIA runtime (cudart, cublas),
+  # so it goes in a separate archive with the suffix cuda, and the free packages stay without it
+  # The runner is windows-2022, not windows-latest: CUDA 12.6 knows Visual Studio only up to 2022,
+  # and with VS 2026 cudafe++ fails even with -allow-unsupported-compiler. Checked in cuda.yml
   cli-cuda:
     needs: gate
     runs-on: windows-2022
@@ -282,28 +282,28 @@ jobs:
           method: network
           sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "visual_studio_integration"]'
 
-      - name: Тулчейн Rust из rust-toolchain.toml
+      - name: Rust toolchain from rust-toolchain.toml
         shell: bash
         run: rustup show
 
-      - name: libclang для генерации биндингов whisper-rs
+      - name: libclang for generating the whisper-rs bindings
         shell: bash
         run: printf 'LIBCLANG_PATH=%s\n' 'C:\Program Files\LLVM\bin' >> "$GITHUB_ENV"
 
-      # Сетевой установщик CUDA не регистрирует свой toolset в MSBuild, и генератор Visual
-      # Studio падает с «No CUDA toolset found». Ninja с cl.exe из окружения разработчика
-      # обходит MSBuild вовсе: nvcc и cl находятся по PATH.
+      # The network installer of CUDA does not register its toolset in MSBuild, and the Visual
+      # Studio generator fails with "No CUDA toolset found". Ninja with cl.exe from the developer environment
+      # bypasses MSBuild completely: nvcc and cl are found through PATH
       - uses: ilammy/msvc-dev-cmd@v1
 
       - uses: Swatinem/rust-cache@v2
         with:
           key: release-cuda-x86_64-pc-windows-msvc
 
-      # Не bash: в PATH оболочки Git первым стоит coreutils-`link.exe` из /usr/bin, и rustc
-      # линковал им вместо компоновщика MSVC. PowerShell сохраняет PATH от msvc-dev-cmd.
-      # На раннере Visual Studio новее, чем знает CUDA 12.6 (2017–2022): nvcc отказывается
-      # без флага -allow-unsupported-compiler. Он читается из NVCC_APPEND_FLAGS и CUDAFLAGS.
-      - name: Сборка CLI с CUDA
+      # Not bash: in the PATH of the Git shell, the coreutils `link.exe` from /usr/bin is first, and rustc
+      # linked with it instead of the MSVC linker. PowerShell keeps the PATH from msvc-dev-cmd
+      # The runner has a Visual Studio newer than CUDA 12.6 knows (2017–2022): nvcc refuses
+      # without the flag -allow-unsupported-compiler. It is read from NVCC_APPEND_FLAGS and CUDAFLAGS
+      - name: Build the CLI with CUDA
         shell: pwsh
         env:
           CMAKE_GENERATOR: Ninja
@@ -311,7 +311,7 @@ jobs:
           CUDAFLAGS: -allow-unsupported-compiler
         run: cargo build --locked --release --bin molva --features molva-core/cuda
 
-      - name: Архив CLI с CUDA и рантаймом NVIDIA
+      - name: Archive of the CLI with CUDA and the NVIDIA runtime
         shell: bash
         run: |
           mkdir -p dist
@@ -319,7 +319,7 @@ jobs:
           mkdir -p "$stage"
           cp target/release/molva.exe "$stage/"
           for dll in cudart64_12.dll cublas64_12.dll cublasLt64_12.dll; do
-            cp "$CUDA_PATH/bin/$dll" "$stage/" || echo "::warning::нет $dll в $CUDA_PATH/bin"
+            cp "$CUDA_PATH/bin/$dll" "$stage/" || echo "::warning::no $dll in $CUDA_PATH/bin"
           done
           cp README.md LICENSE NOTICE THIRD-PARTY.md "$stage/"
           tar -czf "dist/$stage.tar.gz" "$stage"
@@ -334,7 +334,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    # Право писать выдано ровно одному job во всём репозитории
+    # The right to write is given to exactly one job in the whole repository
     permissions:
       contents: write
     steps:
@@ -342,7 +342,7 @@ jobs:
         with:
           path: staging
 
-      - name: Разложить артефакты и посчитать суммы
+      - name: Lay out the artifacts and compute the sums
         run: |
           mkdir -p dist
           find staging -type f ! -name '*.txt' -exec cp {} dist/ \;

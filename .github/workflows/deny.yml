@@ -1,8 +1,8 @@
 name: deny
 
-# Детектор, а не гейт: красный прогон здесь обвиняет мир (новая CVE в базе RustSec,
-# сменившаяся лицензия у зависимости), а не чей-то pull request. Поэтому запускается
-# на push в main, раз в неделю и руками — но никогда на pull request.
+# A detector, not a gate: a red run here blames the world (a new CVE in the RustSec database,
+# a changed license of a dependency), not someone's pull request. So it runs
+# on a push to main, once a week and by hand, but never on a pull request
 on:
   push:
     branches: [main]
@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Лицензии зависимостей, забаненные крейты, источники — правила в deny.toml
+  # Dependency licenses, banned crates, sources: the rules are in deny.toml
   licenses:
     name: cargo-deny
     runs-on: ubuntu-24.04
@@ -29,15 +29,15 @@ jobs:
         with:
           command: check
 
-  # Уязвимости из базы RustSec: за неделю она пополняется без единого коммита в репозиторий
+  # Vulnerabilities from the RustSec database: in a week it grows without a single commit to the repository
   audit:
     name: cargo-audit
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    # На schedule действие по каждой новой находке создаёт issue (checks: write
-    # для check run, issues: write для issue); на push в main и руками — только check.
-    # Без issues: write запланированный прогон падал с «Resource not accessible
-    # by integration», едва база-RustSec пополнялась новой уязвимостью
+    # On schedule, the action creates an issue for each new finding (checks: write
+    # for the check run, issues: write for the issue). On a push to main and by hand it makes only a check.
+    # Without issues: write the scheduled run failed with "Resource not accessible
+    # by integration" as soon as the RustSec database got a new vulnerability
     permissions:
       contents: read
       checks: write

@@ -1,14 +1,14 @@
 name: ci
 
-# Гейт: всё, что зависит только от репозитория. Детекторы мира (лицензии, уязвимости)
-# живут в deny.yml и на pull request не запускаются.
+# The gate: everything that depends only on the repository. The detectors of the world (licenses,
+# vulnerabilities) live in deny.yml and do not run on a pull request
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
-  # Автоматика (бамп зависимостей, релиз) проверяет ветку, вызывая этот workflow,
-  # а не копию его команд, которая разъедется с оригиналом
+  # Automation (a dependency bump, a release) checks a branch by calling this workflow,
+  # not a copy of its commands, which would drift apart from the original
   workflow_call:
     inputs:
       ref:
@@ -28,7 +28,7 @@ env:
   RUST_BACKTRACE: "1"
 
 jobs:
-  # Быстрый статус: политика workflow-файлов, отвечает за секунды рядом с долгой сборкой
+  # A fast status: the policy of the workflow files, it answers in seconds next to the long build
   lint:
     name: lint workflows
     runs-on: ubuntu-24.04
@@ -38,23 +38,23 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
-      # Незакреплённый вызов из реестра меняет поведение job без единого изменения
-      # в репозитории. Инструменты приходят из lock-файлов и закреплённых действий
-      # Каждая вендоренная копия побайтно равна источнику: копия, поправленная здесь, а не
-      # в источнике, падает с именем файла — см. .github/vendor.lock
-      - name: Вендоренные копии совпадают с источником побайтно
+      # An unpinned call from the registry changes the behavior of the job without a single change
+      # in the repository. The tools come from lock files and pinned actions
+      # Each vendored copy is byte-equal to its source: a copy that is edited here and not
+      # at the source fails with the file name — see .github/vendor.lock
+      - name: Vendored copies match the source byte for byte
         run: ./vendor-sync.sh check
-      - name: Инструменты CI берутся из lock-файлов, а не из реестра
+      - name: CI tools come from lock files, not from the registry
         run: ./check-pins.sh
 
       - name: actionlint
         uses: raven-actions/actionlint@v2
 
-      # Гейт на трёх ОС ставит тулчейн напрямую и nix не знает, поэтому проверка
-      # форматирования Nix живёт здесь. `nix fmt` берёт форматтер из выхода флейка,
-      # то есть из того же lock-файла, а не из реестра
+      # The gate on three operating systems installs the toolchain directly and does not know nix, so the check
+      # of Nix formatting lives here. `nix fmt` takes the formatter from the output of the flake,
+      # that is, from the same lock file, and not from the registry
       - uses: cachix/install-nix-action@v31
-      - name: nix fmt --ci (Nix здесь такой, каким его пишет форматтер)
+      - name: nix fmt --ci (Nix here is as the formatter writes it)
         run: nix fmt -- --ci
 
   gate:
@@ -70,8 +70,8 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
-      # Системные библиотеки Tauri 2, трея, аудио и сборки whisper.cpp
-      - name: Системные зависимости (Linux)
+      # System libraries of Tauri 2, the tray, audio and the build of whisper.cpp
+      - name: System dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
@@ -80,32 +80,32 @@ jobs:
             librsvg2-dev libasound2-dev libxkbcommon-dev libwayland-dev \
             cmake patchelf
 
-      # Версия тулчейна живёт в rust-toolchain.toml и больше нигде: rustup читает
-      # именно этот файл, поэтому CI не может собраться другой версией, чем разработчик
-      - name: Тулчейн Rust из rust-toolchain.toml
+      # The toolchain version lives in rust-toolchain.toml and nowhere else: rustup reads
+      # exactly this file, so CI cannot build with a different version than the developer
+      - name: Rust toolchain from rust-toolchain.toml
         shell: bash
         run: |
           rustup show
           rustup component add rustfmt clippy
           cargo --version
 
-      # Готовые биндинги whisper-rs совпадают по ABI с Linux и macOS, libclang там не нужен.
-      # На Windows их раскладка структур другая (static assert падает), поэтому биндинги
-      # генерируются на месте через LLVM, предустановленный на раннере
-      - name: Биндинги whisper-rs из крейта (Linux, macOS)
+      # The ready bindings of whisper-rs match the ABI of Linux and macOS, and libclang is not needed there.
+      # On Windows the layout of their structures is different (a static assert fails), so the bindings
+      # are generated on the spot through LLVM, which is preinstalled on the runner
+      - name: whisper-rs bindings from the crate (Linux, macOS)
         if: runner.os != 'Windows'
         shell: bash
         run: echo "WHISPER_DONT_GENERATE_BINDINGS=1" >> "$GITHUB_ENV"
 
-      - name: libclang для генерации биндингов whisper-rs (Windows)
+      - name: libclang for generating the whisper-rs bindings (Windows)
         if: runner.os == 'Windows'
         shell: bash
         run: printf 'LIBCLANG_PATH=%s\n' 'C:\Program Files\LLVM\bin' >> "$GITHUB_ENV"
 
-      # whisper.cpp собирается не под процессор раннера (-march=native), а под переносимый
-      # x86-64-v3: AVX2/FMA/F16C есть у любого ноутбука новее 2013 года, а без них
-      # распознавание в 20 раз медленнее
-      - name: SIMD whisper.cpp для x86_64
+      # whisper.cpp is built not for the processor of the runner (-march=native), but for the portable
+      # x86-64-v3: AVX2/FMA/F16C exist on any laptop newer than 2013, and without them
+      # recognition is 20 times slower
+      - name: whisper.cpp SIMD for x86_64
         if: runner.arch == 'X64'
         shell: bash
         run: |
@@ -125,7 +125,7 @@ jobs:
         with:
           tool: just,cargo-machete
 
-      # Фронтенд GUI появляется в crates/molva-gui/ui; до тех пор шаг пропускается
+      # The GUI frontend appears in crates/molva-gui/ui; until then the step is skipped
       - uses: actions/setup-node@v7
         if: hashFiles('crates/molva-gui/ui/package.json') != ''
         with:
@@ -133,22 +133,22 @@ jobs:
           cache: npm
           cache-dependency-path: crates/molva-gui/ui/package-lock.json
 
-      - name: Сборка фронтенда GUI
+      - name: Build the GUI frontend
         if: hashFiles('crates/molva-gui/ui/package.json') != ''
         working-directory: crates/molva-gui/ui
         run: |
           npm ci
           npm run build
 
-      # Шаги гейта — те же рецепты just, что разработчик запускает локально.
-      # Копий команд в CI нет: одна команда разъедется с другой за неделю
-      - name: rustfmt --check (just fmt, настройки в rustfmt.toml)
+      # The steps of the gate are the same just recipes that the developer runs locally.
+      # There are no copies of the commands in CI: one command drifts from the other within a week
+      - name: rustfmt --check (just fmt, settings in rustfmt.toml)
         run: just fmt
 
-      - name: clippy -D warnings (just clippy, pedantic из Cargo.toml)
+      - name: clippy -D warnings (just clippy, pedantic from Cargo.toml)
         run: just clippy
 
-      - name: cargo machete — неиспользуемые зависимости (just lint-deps)
+      - name: cargo machete — unused dependencies (just lint-deps)
         run: just lint-deps
 
       - name: just doc
@@ -163,8 +163,8 @@ jobs:
       - name: just no-stubs
         run: just no-stubs
 
-      # Логи харнесса нужны, когда сьют упал на чужой машине
-      - name: Логи прогона тестов
+      # The logs of the harness are needed when the suite failed on someone else's machine
+      - name: Test run logs
         if: always()
         uses: actions/upload-artifact@v7
         with:
@@ -173,20 +173,20 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # Покрытие — карта, а не гейт: артефакт, по которому видно непроверенные места
+  # Coverage is a map, not a gate: an artifact that shows the unchecked places
   coverage:
     name: coverage
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      # Биндинги whisper-rs из крейта: на Linux libclang не нужен
+      # The whisper-rs bindings from the crate: on Linux libclang is not needed
       WHISPER_DONT_GENERATE_BINDINGS: "1"
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
 
-      - name: Системные зависимости (Linux)
+      - name: System dependencies (Linux)
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -194,7 +194,7 @@ jobs:
             librsvg2-dev libasound2-dev libxkbcommon-dev libwayland-dev \
             cmake patchelf
 
-      - name: Тулчейн Rust из rust-toolchain.toml
+      - name: Rust toolchain from rust-toolchain.toml
         run: |
           rustup show
           rustup component add llvm-tools-preview
