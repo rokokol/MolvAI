@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
-//! Сборка приложения Tauri: состояние, плагины, трей, подписка на события демона.
+//! Assembly of the Tauri application: state, plugins, tray, subscription to daemon events
 //!
-//! GUI — обычный клиент демона: микрофоном и моделью он не владеет и без демона
-//! честно показывает, что демон не запущен, вместо пустого окна.
+//! The GUI is a plain client of the daemon. It owns neither the microphone nor the model.
+//! Without a daemon it states plainly that the daemon is not running, instead of showing
+//! an empty window
 
-// В тестах паника — это способ сообщить о провале, а не необработанная ошибка; точное
-// сравнение чисел с плавающей точкой законно (тест сверяет вычисленное значение с константой,
-// которую сам же и задал), а печать замеров в stdout — это и есть отчёт замерочного теста.
+// In tests a panic is a way to report a failure, not an unhandled error. An exact
+// comparison of floating-point numbers is legitimate: the test compares a computed value
+// with a constant that the test itself set. Printing measurements to stdout is the report
+// of a benchmark test
 #![cfg_attr(
     test,
     allow(
@@ -37,19 +39,20 @@ use tauri::{AppHandle, Emitter, Listener, Manager, WindowEvent};
 use crate::commands::AppState;
 use crate::ipc::Message;
 
-/// Захват мьютекса, переживающий панику в чужом потоке.
+/// Mutex lock that survives a panic in another thread
 ///
-/// Под замками GUI лежат настройки, кэш устройств и ручка запущенного демона — значения,
-/// которые паника где-то ещё не делает противоречивыми. Ронять всё приложение из-за
-/// отравленного замка было бы хуже, чем продолжить с тем же содержимым.
+/// The GUI locks guard the settings, the device cache and the handle of the running daemon.
+/// A panic elsewhere does not make these values inconsistent. To crash the whole
+/// application because of a poisoned lock would be worse than to continue with the same
+/// contents
 pub fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// Пауза между попытками переподключиться к демону.
+/// Pause between attempts to reconnect to the daemon
 const RECONNECT_DELAY: Duration = Duration::from_secs(2);
 
-/// Событие «демон появился/пропал» для бейджа состояния на Dashboard.
+/// Event "daemon appeared or disappeared" for the state badge on the Dashboard
 #[derive(Debug, Clone, Serialize)]
 struct DaemonPresence {
     connected: bool,
@@ -59,7 +62,7 @@ struct DaemonPresence {
     hint: Option<String>,
 }
 
-/// Уведомление об ошибке со следующим шагом: одно и то же и в системном тосте, и в окне.
+/// Error notice with a next step: the same in the system toast and in the window
 pub fn notify_error(app: &AppHandle, message: &str, hint: Option<&str>) {
     use tauri_plugin_notification::NotificationExt;
     let body = match hint {
@@ -73,7 +76,7 @@ pub fn notify_error(app: &AppHandle, message: &str, hint: Option<&str>) {
         .body(&body)
         .show()
     {
-        tracing::warn!(%err, "уведомление не показано");
+        tracing::warn!(%err, "notification not shown");
     }
     let _ = app.emit(
         "molva://error",
@@ -81,7 +84,7 @@ pub fn notify_error(app: &AppHandle, message: &str, hint: Option<&str>) {
     );
 }
 
-/// Пересобрать трей на главном потоке: часть оконных тулкитов не терпит иного.
+/// Rebuild the tray on the main thread: some window toolkits accept nothing else
 fn refresh_tray(app: &AppHandle) {
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || tray::refresh(&handle));
@@ -122,7 +125,7 @@ fn handle_event(app: &AppHandle, event: Event) {
         Event::DevicesChanged => {
             let state = app.state::<AppState>();
             if let Err(err) = commands::fetch_devices(&state) {
-                tracing::info!(message = %err.message, "список устройств не обновлён");
+                tracing::info!(message = %err.message, "device list not refreshed");
             }
             let _ = app.emit("molva://devices", ());
             refresh_tray(app);
@@ -130,7 +133,7 @@ fn handle_event(app: &AppHandle, event: Event) {
     }
 }
 
-/// Держит подписку на события демона, переподключаясь, пока приложение живо.
+/// Keeps the subscription to daemon events and reconnects while the application lives
 fn spawn_subscription(app: AppHandle) {
     std::thread::spawn(move || loop {
         match ipc::Connection::connect() {
@@ -156,7 +159,7 @@ fn spawn_subscription(app: AppHandle) {
                             hint: None,
                         },
                     );
-                    // Список устройств спрашиваем только при появлении демона.
+                    // We ask for the device list only when the daemon appears
                     let _ = commands::fetch_devices(&app.state::<AppState>());
                     refresh_tray(&app);
                     loop {
@@ -165,7 +168,7 @@ fn spawn_subscription(app: AppHandle) {
                             Ok(Some(Message::Response(_))) => {}
                             Ok(None) => break,
                             Err(err) => {
-                                tracing::info!(%err, "подписка прервана");
+                                tracing::info!(%err, "subscription interrupted");
                                 break;
                             }
                         }
@@ -187,8 +190,8 @@ fn spawn_subscription(app: AppHandle) {
     });
 }
 
-/// Запуск приложения. Ошибка чтения настроек не молчаливая: она видна в терминале.
-// Сборка Tauri — единственный отказ, который некому вернуть: см. `expect` в конце функции.
+/// Start the application. An error while reading the settings is not silent: it shows in the terminal
+// The Tauri build is the only failure with nobody to return it to: see `expect` at the end of the function
 #[allow(clippy::expect_used)]
 pub fn run() {
     tracing_subscriber::fmt()
@@ -201,15 +204,15 @@ pub fn run() {
     let state = match AppState::load() {
         Ok(state) => state,
         Err(err) => {
-            eprintln!("не удалось прочитать настройки: {err}");
+            eprintln!("cannot read the settings: {err}");
             std::process::exit(6);
         }
     };
 
     let mut builder = tauri::Builder::default();
 
-    // Плагин одиночного запуска регистрируется первым: вторая копия должна успеть
-    // передать управление первой до создания собственного окна.
+    // The single-instance plugin registers first: a second copy must hand control
+    // to the first one before it creates its own window
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
@@ -271,15 +274,15 @@ pub fn run() {
         ])
         .setup(|app| {
             let handle = app.handle().clone();
-            // Значок в трее не должен уносить с собой окно: там, где нет
-            // libappindicator, зависимость паникует, а приложение обязано открыться.
+            // The tray icon must not take the window down with it: where libappindicator
+            // is missing, the dependency panics, but the application must still open
             let tray =
                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| tray::init(&handle)));
             match tray {
                 Ok(Ok(())) => {}
-                Ok(Err(err)) => tracing::warn!(%err, "значок в трее не создан"),
+                Ok(Err(err)) => tracing::warn!(%err, "tray icon not created"),
                 Err(_) => tracing::warn!(
-                    "значок в трее недоступен: не загрузилась libayatana-appindicator3"
+                    "tray icon unavailable: libayatana-appindicator3 did not load"
                 ),
             }
             spawn_subscription(handle.clone());
@@ -287,7 +290,7 @@ pub fn run() {
             #[cfg(not(target_os = "linux"))]
             hotkeys::register(&handle, &handle.state::<AppState>().config().hotkeys);
 
-            // Фронтенд сообщает о готовности: до этого события `emit` некому слушать.
+            // The frontend reports that it is ready: before this event, nobody listens to `emit`
             let ready = handle.clone();
             app.listen("molva://ready", move |_| {
                 if ready.state::<AppState>().first_run() {
@@ -297,14 +300,15 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Закрытие окна прячет его в трей: демон продолжает работать.
+            // Closing the window hides it in the tray: the daemon keeps running
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.hide();
             }
         })
         .run(tauri::generate_context!())
-        // Единственная точка, где вернуть ошибку некому: приложение не построилось,
-        // окна нет, показать сообщение нечем. Паника здесь и есть отчёт пользователю.
-        .expect("не удалось запустить приложение Tauri");
+        // The only place with nobody to return an error to: the application did not build,
+        // there is no window, and nothing can show a message. The panic here is the report
+        // to the user
+        .expect("cannot start the Tauri application");
 }

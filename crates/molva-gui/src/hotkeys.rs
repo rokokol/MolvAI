@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: MIT
-//! Глобальные хоткеи.
+//! Global hotkeys
 //!
-//! На Windows и macOS их регистрирует сам GUI через `tauri-plugin-global-shortcut`.
-//! На Wayland композитор не отдаёт приложению чужие нажатия, поэтому там модуль пуст,
-//! а Settings показывает готовый сниппет биндов для Hyprland — его строит
-//! [`hyprland_snippet`], доступный на всех платформах, чтобы текст был один и тот же.
+//! On Windows and macOS the GUI itself registers them through `tauri-plugin-global-shortcut`.
+//! On Wayland the compositor does not pass the key presses of other programs to the
+//! application, so the module is empty there. Settings shows a ready snippet of binds for
+//! Hyprland instead. [`hyprland_snippet`] builds it, and it exists on all platforms, so the
+//! text is the same everywhere
 
 use molva_core::config::HotkeysConfig;
 
-/// Бинды Hyprland для push-to-talk и переключателей: `bind` на нажатие, `bindr` на отпускание.
+/// Hyprland binds for push-to-talk and the toggles: `bind` for a press, `bindr` for a release
 ///
-/// Клавиша берётся из настроек как есть: имена клавиш Hyprland (`Pause`, `SUPER, Z`)
-/// пользователь пишет сам, GUI их не переводит.
+/// The key comes from the settings as it is: the user writes the Hyprland key names
+/// (`Pause`, `SUPER, Z`) and the GUI does not translate them
 pub fn hyprland_snippet(config: &HotkeysConfig) -> String {
     let ptt = hypr_key(&config.push_to_talk);
     let toggle = hypr_key(&config.toggle);
@@ -28,7 +29,7 @@ pub fn hyprland_snippet(config: &HotkeysConfig) -> String {
     )
 }
 
-/// `Ctrl+Shift+Space` → `CTRL SHIFT, Space`; одиночная клавиша → `, Pause`.
+/// `Ctrl+Shift+Space` becomes `CTRL SHIFT, Space`; a single key becomes `, Pause`
 fn hypr_key(binding: &str) -> String {
     let parts: Vec<&str> = binding
         .split('+')
@@ -64,8 +65,8 @@ mod platform {
 
     use crate::commands::AppState;
 
-    /// Зарегистрировать хоткеи из конфига. Уже занятая комбинация не роняет запуск:
-    /// она попадает в лог, а остальные регистрируются.
+    /// Register the hotkeys from the config. A combination that is already taken does not
+    /// crash the start: it goes to the log, and the others register
     pub fn register<R: Runtime>(app: &AppHandle<R>, config: &HotkeysConfig) {
         unregister(app);
         for binding in [
@@ -75,11 +76,11 @@ mod platform {
             &config.cancel,
         ] {
             let Ok(shortcut) = Shortcut::from_str(binding) else {
-                tracing::warn!(binding, "не удалось разобрать сочетание клавиш");
+                tracing::warn!(binding, "cannot parse the key combination");
                 continue;
             };
             if let Err(err) = app.global_shortcut().register(shortcut) {
-                tracing::warn!(binding, %err, "сочетание клавиш занято другим приложением");
+                tracing::warn!(binding, %err, "key combination taken by another application");
             }
         }
     }
@@ -88,7 +89,7 @@ mod platform {
         let _ = app.global_shortcut().unregister_all();
     }
 
-    /// Нажатие и отпускание: удержание — это start/stop, короткие — toggle/cancel.
+    /// Press and release: a key hold is start/stop, a short press is toggle/cancel
     pub(crate) fn on_shortcut<R: Runtime>(app: &AppHandle<R>, pressed: bool, binding: &str) {
         let state = app.state::<AppState>();
         if state.hotkeys_paused() {
@@ -123,11 +124,11 @@ mod platform {
             return;
         };
         if let Err(err) = crate::ipc::request(command) {
-            tracing::warn!(%err, "хоткей не дошёл до демона");
+            tracing::warn!(%err, "hotkey did not reach the daemon");
         }
     }
 
-    /// Плагин с обработчиком: состояние нажатия приходит в `event.state()`.
+    /// Plugin with a handler: the press state arrives in `event.state()`
     pub fn plugin<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
         tauri_plugin_global_shortcut::Builder::new()
             .with_handler(|app, shortcut, event| {

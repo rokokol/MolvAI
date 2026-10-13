@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
-//! Значок в трее: состояние демона и быстрые действия.
+//! Tray icon: daemon state and quick actions
 //!
-//! Меню пересобирается целиком при каждом изменении (состояние, стиль, устройства):
-//! так отметки радиокнопок всегда соответствуют настройкам, а не расходятся с ними.
-//! Оверлея записи нет намеренно — `gtk-layer-shell` под GPL, поэтому состояние показывает трей.
+//! The menu is rebuilt in full at every change (state, style, devices). So the radio
+//! button marks always match the settings and never drift from them.
+//! There is no recording overlay on purpose: `gtk-layer-shell` is under the GPL,
+//! so the tray shows the state
 
 use molva_core::ipc::{Command, DaemonState};
 use tauri::image::Image;
@@ -23,7 +24,7 @@ const ICON_PROCESSING: &[u8] = include_bytes!("../icons/tray-processing.png");
 /// Output modes in the Output submenu; the label of each is `settings.output.<mode>`
 const OUTPUT_MODES: [&str; 4] = ["auto", "paste", "type", "clipboard"];
 
-/// Иконка и подсказка по состоянию демона. `None` — демон не запущен.
+/// Icon and hint for the daemon state. `None` means the daemon is not running
 fn icon_bytes(state: Option<DaemonState>) -> &'static [u8] {
     match state {
         Some(DaemonState::Recording) => ICON_RECORDING,
@@ -34,9 +35,10 @@ fn icon_bytes(state: Option<DaemonState>) -> &'static [u8] {
     }
 }
 
-/// Какая из трёх картинок соответствует состоянию: покой, запись, обработка.
+/// Which of the three images matches the state: idle, recording, processing
 ///
-/// Число, а не байты: его дёшево запомнить и сравнить с тем, что уже стоит в трее.
+/// A small value, not bytes: it is cheap to store and to compare with the icon that the tray
+/// already shows
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayIcon {
     Idle,
@@ -44,7 +46,7 @@ pub enum TrayIcon {
     Processing,
 }
 
-/// Значок для состояния демона.
+/// Icon for the daemon state
 pub fn tray_icon(state: Option<DaemonState>) -> TrayIcon {
     match state {
         Some(DaemonState::Recording) => TrayIcon::Recording,
@@ -55,15 +57,16 @@ pub fn tray_icon(state: Option<DaemonState>) -> TrayIcon {
     }
 }
 
-/// Нужно ли переставлять значок в трее.
+/// Whether the tray icon needs a change
 ///
-/// Критерий AM-11: **иконка трея статична по настройке** — она меняется только когда меняется
-/// само состояние (покой → запись → обработка → покой), а не на каждое событие демона. Уровень
-/// сигнала приходит десять раз в секунду, и реакция на каждое событие превратила бы трей
-/// в мигалку. `gui.tray_animation = true` возвращает мигание тем, кому оно нужнее покоя.
+/// Criterion AM-11: **the tray icon is static by setting**. It changes only when the state
+/// itself changes (idle, recording, processing, idle), not at every daemon event. The signal
+/// level arrives ten times a second, and a reaction to each event would turn the tray into
+/// a flasher. `gui.tray_animation = true` brings the flashing back for users who need it
+/// more than calm
 pub fn should_update_icon(shown: Option<TrayIcon>, next: TrayIcon, tray_animation: bool) -> bool {
     if tray_animation && next == TrayIcon::Recording {
-        // Анимация записи: кадры сменяются, пока идёт запись, и только по явной настройке.
+        // Recording animation: the frames change during recording, and only by explicit setting
         return true;
     }
     shown != Some(next)
@@ -111,8 +114,8 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         true,
         None::<&str>,
     )?;
-    // Второй пункт — сама панель: на Wayland это единственный путь к спрятанному окну
-    // помимо левого щелчка, а его не все хосты трея передают.
+    // The second item is the panel itself: on Wayland it is the only way to a hidden window
+    // besides the left click, and not every tray host passes the left click
     let open_panel = MenuItem::with_id(
         app,
         "open:dashboard",
@@ -239,7 +242,7 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     )
 }
 
-/// Значок, который сейчас стоит в трее: 0 — ещё ни одного, дальше — по номеру картинки.
+/// The icon that the tray shows now: 0 means none yet, other values give the image number
 static SHOWN_ICON: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 
 fn shown_icon() -> Option<TrayIcon> {
@@ -260,7 +263,7 @@ fn remember_icon(icon: TrayIcon) {
     SHOWN_ICON.store(code, std::sync::atomic::Ordering::Relaxed);
 }
 
-/// Создать значок в трее при запуске приложения.
+/// Create the tray icon when the application starts
 pub fn init(app: &AppHandle) -> tauri::Result<()> {
     let menu = build_menu(app)?;
     remember_icon(TrayIcon::Idle);
@@ -271,8 +274,8 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(handle_menu_event)
         .on_tray_icon_event(|tray, event| {
-            // Левый щелчок по значку показывает окно: это единственный способ вернуть
-            // спрятанное окно на Wayland, где приложение не может поднять себя иначе.
+            // A left click on the icon shows the window. It is the only way to bring back
+            // a hidden window on Wayland, where the application cannot raise itself
             if let TrayIconEvent::Click {
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Up,
@@ -286,7 +289,7 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Обновить значок, подсказку и меню под текущее состояние.
+/// Update the icon, the hint and the menu for the current state
 pub fn refresh(app: &AppHandle) {
     let app_state = app.state::<AppState>();
     let state = app_state.last_state();
@@ -306,11 +309,11 @@ pub fn refresh(app: &AppHandle) {
         Ok(menu) => {
             let _ = tray.set_menu(Some(menu));
         }
-        Err(err) => tracing::warn!(%err, "меню трея не пересобрано"),
+        Err(err) => tracing::warn!(%err, "tray menu not rebuilt"),
     }
 }
 
-/// Показать окно и, если нужно, переключить его на вкладку.
+/// Show the window and, if needed, switch it to a tab
 pub fn show_window(app: &AppHandle, tab: Option<&str>) {
     use tauri::Emitter;
     if let Some(window) = app.get_webview_window("main") {
@@ -323,17 +326,17 @@ pub fn show_window(app: &AppHandle, tab: Option<&str>) {
     }
 }
 
-/// Вкладки окна, которые открываются из трея. Список закрыт: произвольный
-/// идентификатор `open:*` не должен уводить окно на несуществующую вкладку.
+/// Window tabs that the tray can open. The list is closed: an arbitrary `open:*`
+/// identifier must not send the window to a tab that does not exist
 const WINDOW_TABS: [&str; 4] = ["dashboard", "history", "stats", "settings"];
 
-/// Пункт меню `open:<вкладка>` → имя вкладки для окна, `None` для всех прочих пунктов.
+/// Menu item `open:<tab>` to the tab name for the window, `None` for all other items
 fn window_tab_for_menu_id(menu_id: &str) -> Option<&'static str> {
     let tab = menu_id.strip_prefix("open:")?;
     WINDOW_TABS.iter().copied().find(|known| *known == tab)
 }
 
-/// Команда демону в отдельном потоке: зависший демон не должен морозить меню.
+/// Send a command to the daemon in a separate thread: a hung daemon must not freeze the menu
 fn send_async(app: &AppHandle, command: Command) {
     let app = app.clone();
     std::thread::spawn(move || {
@@ -343,7 +346,7 @@ fn send_async(app: &AppHandle, command: Command) {
     });
 }
 
-// Сигнатуру задаёт `on_menu_event`: событие приходит по значению.
+// `on_menu_event` sets the signature: the event arrives by value
 #[allow(clippy::needless_pass_by_value)]
 fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
     let id = event.id().0.clone();
@@ -393,7 +396,7 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
     }
 }
 
-/// Изменения из трея пишутся в конфиг: иначе после перезапуска выбор пропадёт.
+/// Changes from the tray go to the config: otherwise the choice is lost after a restart
 fn update_config(app: &AppHandle, change: impl FnOnce(&mut molva_core::Config)) {
     let state = app.state::<AppState>();
     let mut config = state.config();
@@ -493,7 +496,7 @@ mod tests {
         assert_eq!(record_label(Some(DaemonState::Idle)), "tray.recordStart");
     }
 
-    /// Сколько раз трей переставит значок за перечисленные события.
+    /// How many times the tray changes the icon for the listed events
     fn icon_updates(events: &[Option<DaemonState>], tray_animation: bool) -> usize {
         let mut shown = Some(TrayIcon::Idle);
         let mut updates = 0;
@@ -509,8 +512,8 @@ mod tests {
 
     #[test]
     fn the_tray_icon_changes_at_most_twice_during_a_reply() {
-        // Критерий AM-11: за реплику значок меняется на «запись» и на «обработку» — и всё.
-        // Уровень сигнала приходит десятками событий, но состояние при этом не меняется.
+        // Criterion AM-11: during a phrase the icon changes to "recording" and to "processing", and no more.
+        // The signal level arrives in tens of events, but the state does not change
         let mut reply = vec![Some(DaemonState::Recording); 40];
         reply.extend([
             Some(DaemonState::Transcribing),
@@ -520,9 +523,9 @@ mod tests {
         assert_eq!(
             icon_updates(&reply, false),
             2,
-            "не больше двух обновлений значка на реплику"
+            "at most two icon updates per phrase"
         );
-        // Возврат в покой — третье и последнее обновление цикла.
+        // The return to idle is the third and last update of the cycle
         reply.push(Some(DaemonState::Idle));
         assert_eq!(icon_updates(&reply, false), 3);
     }
@@ -530,7 +533,7 @@ mod tests {
     #[test]
     fn repeated_events_with_the_same_state_do_not_touch_the_icon() {
         let idle = vec![Some(DaemonState::Idle); 100];
-        assert_eq!(icon_updates(&idle, false), 0, "значок не должен мигать");
+        assert_eq!(icon_updates(&idle, false), 0, "the icon must not flash");
     }
 
     #[test]
@@ -539,7 +542,7 @@ mod tests {
         assert_eq!(
             icon_updates(&recording, true),
             10,
-            "при tray_animation = true кадры записи сменяются"
+            "with tray_animation = true the recording frames change"
         );
         assert!(!molva_core::Config::default().gui.tray_animation);
     }
@@ -562,7 +565,7 @@ mod tests {
     #[test]
     fn tray_icons_are_valid_png_files() {
         for bytes in [ICON_IDLE, ICON_RECORDING, ICON_PROCESSING] {
-            assert_eq!(&bytes[1..4], b"PNG", "иконка трея не PNG");
+            assert_eq!(&bytes[1..4], b"PNG", "the tray icon is not a PNG");
         }
     }
 }

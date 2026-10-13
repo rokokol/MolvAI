@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
-//! Сводка статистики для вкладки Stats.
+//! Statistics summary for the Stats tab
 //!
-//! Форма `StatsSummary` — контракт с дорожкой D. Когда появится
-//! `molva_core::app::stats::summary(&[Entry], DateTime<Utc>, &StatsConfig, u32)`,
-//! удаляется ровно одна функция — [`summary`], а типы переезжают в ядро.
-//! Дни считаются по UTC, как и `now` в подписи ядра.
+//! The shape of `StatsSummary` is a contract with track D. When
+//! `molva_core::app::stats::summary(&[Entry], DateTime<Utc>, &StatsConfig, u32)` appears,
+//! exactly one function goes away, [`summary`], and the types move to the core.
+//! Days count in UTC, like `now` in the core signature
 
 use std::collections::BTreeMap;
 
@@ -14,7 +14,7 @@ use molva_core::domain::entry::MIN_AUDIO_SECS_FOR_WPM;
 use molva_core::domain::Entry;
 use serde::{Deserialize, Serialize};
 
-/// Приложение, которое не удалось определить, показывается одной строкой.
+/// An application that we cannot identify appears as one row
 pub const UNKNOWN_APP: &str = "unknown";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -33,7 +33,7 @@ pub struct TokenSummary {
     pub completion: u64,
 }
 
-/// Точка графика: один день.
+/// Chart point: one day
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DayPoint {
     /// `YYYY-MM-DD`.
@@ -74,9 +74,10 @@ pub struct StatsSummary {
     pub by_app: Vec<AppRow>,
 }
 
-/// Средний темп по набору реплик: суммарные слова на суммарное аудио.
+/// Average pace over a set of phrases: total words per total audio
 ///
-/// Реплики короче секунды не участвуют: доля секунды в знаменателе даёт бессмысленные числа.
+/// Phrases shorter than one second do not count: a fraction of a second in the denominator
+/// gives meaningless numbers
 fn avg_wpm<'a>(entries: impl Iterator<Item = &'a Entry>) -> Option<f32> {
     let mut words = 0u64;
     let mut secs = 0f32;
@@ -102,8 +103,9 @@ fn mean_u32(values: &[u32]) -> u32 {
     (sum / values.len() as u64) as u32
 }
 
-/// Длина серии подряд идущих дней с репликами, считая от сегодня (или от вчера,
-/// если сегодня ещё не диктовали — начатый день серию не обрывает).
+/// Length of the series of consecutive days with phrases, counted from today (or from
+/// yesterday, if nobody has dictated today yet: a day that has just started does not
+/// break the series)
 fn streak(days: &BTreeMap<NaiveDate, Vec<&Entry>>, today: NaiveDate) -> u32 {
     let mut cursor = if days.contains_key(&today) {
         today
@@ -124,9 +126,9 @@ fn streak(days: &BTreeMap<NaiveDate, Vec<&Entry>>, today: NaiveDate) -> u32 {
     count
 }
 
-/// Сводка по журналу. `range_days` задаёт длину ряда для графика (0 — только сегодня).
+/// Summary of the journal. `range_days` sets the length of the chart series (0 means today only)
 ///
-/// Заменяется на `molva_core::app::stats::summary` после слияния дорожки D.
+/// Replaced by `molva_core::app::stats::summary` after track D merges
 pub fn summary(
     entries: &[Entry],
     now: DateTime<Utc>,
@@ -191,7 +193,7 @@ pub fn summary(
         },
     );
 
-    // Ряд строится по календарю, а не по наличию записей: пустые дни — нули на графике.
+    // The series follows the calendar, not the presence of entries: empty days are zeros on the chart
     let span = range_days.max(1);
     let first_day = today
         .checked_sub_days(Days::new(u64::from(span - 1)))
@@ -253,7 +255,7 @@ pub fn summary(
     }
 }
 
-/// CSV дневного ряда: заголовок и по строке на день, разделитель — запятая.
+/// CSV of the daily series: a header and one row per day, with a comma as the separator
 pub fn series_to_csv(series: &[DayPoint]) -> String {
     let mut out = String::from("day,entries,words,audio_secs,avg_wpm,avg_latency_ms\n");
     for point in series {
@@ -328,7 +330,7 @@ mod tests {
 
     #[test]
     fn average_wpm_is_total_words_over_total_audio() {
-        // 60 слов за 60 секунд ⇒ ровно 60 WPM, независимо от разбиения по репликам.
+        // 60 words in 60 seconds give exactly 60 WPM, however the phrases split
         let entries = [
             entry("2026-09-05T10:00:00Z", 20, 20.0, None),
             entry("2026-09-05T11:00:00Z", 40, 40.0, None),
@@ -346,7 +348,7 @@ mod tests {
         ];
         let s = summary(&entries, now(), &StatsConfig::default(), 7);
         assert_eq!(s.avg_wpm_all, Some(60.0));
-        // Слова короткой реплики из общего счёта не выкидываются.
+        // The words of a short phrase stay in the total count
         assert_eq!(s.total_words, 13);
     }
 
@@ -406,7 +408,7 @@ mod tests {
 
     #[test]
     fn saved_time_compares_speech_with_the_typing_baseline() {
-        // 400 слов при базе 40 WPM — это 10 минут набора против 1 минуты речи.
+        // 400 words at a base of 40 WPM are 10 minutes of typing against 1 minute of speech
         let entries = [entry("2026-09-05T10:00:00Z", 400, 60.0, None)];
         let s = summary(&entries, now(), &StatsConfig::default(), 7);
         assert!((s.minutes_recorded - 1.0).abs() < 1e-4);
@@ -476,7 +478,7 @@ mod tests {
             "series",
             "by_app",
         ] {
-            assert!(json.get(key).is_some(), "нет поля {key}");
+            assert!(json.get(key).is_some(), "missing field {key}");
         }
         assert!(json["latency_ms"].get("stt").is_some());
         assert!(json["tokens"].get("prompt").is_some());
