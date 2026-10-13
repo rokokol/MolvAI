@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
-//! Транспорт IPC: локальный сокет, по строке JSON на сообщение.
+//! IPC transport: a local socket, one JSON line per message
 //!
-//! Формат специально примитивный: одна строка — один `Request` или один `Response`/`Event`.
-//! Так к демону можно достучаться из `socat` и из скрипта на любом языке, а не только из CLI.
+//! The format is primitive on purpose: one line is one `Request` or one `Response`/`Event`.
+//! So the daemon can be reached from `socat` and from a script in any language, not only from the CLI
 //!
-//! Путь к сокету всегда приходит параметром: демон, CLI и тесты обязаны договариваться явно,
-//! иначе тест на сокете во временном каталоге начинает зависеть от переменных окружения.
+//! The socket path always comes as a parameter: the daemon, the CLI and the tests must agree
+//! explicitly, or a socket test in a temporary directory starts to depend on environment variables
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -24,21 +24,21 @@ use crate::ipc::protocol::{Command, ErrorCode, Event, IpcError, Request, Respons
 
 #[derive(Debug, Error)]
 pub enum IpcServerError {
-    #[error("не удалось занять сокет {path}: {message}")]
+    #[error("could not take the socket {path}: {message}")]
     Bind { path: PathBuf, message: String },
-    #[error("ошибка сокета: {0}")]
+    #[error("socket error: {0}")]
     Io(String),
 }
 
 #[derive(Debug, Error)]
 pub enum IpcClientError {
-    #[error("демон недоступен ({path}): {message}")]
+    #[error("daemon is unavailable ({path}): {message}")]
     NotRunning { path: PathBuf, message: String },
-    #[error("обрыв связи с демоном: {0}")]
+    #[error("connection to the daemon lost: {0}")]
     Io(String),
-    #[error("демон ответил ошибкой: {}", .0.message)]
+    #[error("the daemon answered with an error: {}", .0.message)]
     Daemon(IpcError),
-    #[error("непонятный ответ демона: {0}")]
+    #[error("unclear answer from the daemon: {0}")]
     Protocol(String),
 }
 
@@ -51,11 +51,11 @@ impl IpcClientError {
     }
 }
 
-/// Путь к сокету по умолчанию.
+/// Default socket path
 ///
-/// На Linux это `$XDG_RUNTIME_DIR/molva.sock`: каталог чистится при выходе из сессии, поэтому
-/// мёртвых сокетов там не остаётся. Если каталога нет — `/tmp/molva-<uid>.sock`, отдельный для
-/// каждого пользователя, иначе на общей машине двое дерутся за один файл.
+/// On Linux this is `$XDG_RUNTIME_DIR/molva.sock`: the directory is cleaned at the end of the
+/// session, so no dead sockets stay there. If the directory does not exist, it is
+/// `/tmp/molva-<uid>.sock`, separate for each user, or two users on a shared machine fight for one file
 pub fn socket_path() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
@@ -88,17 +88,17 @@ fn current_uid() -> String {
     std::env::var("USER").unwrap_or_else(|_| "default".into())
 }
 
-/// Имя локального сокета по пути. Одна функция на сервер, CLI-клиент и GUI-клиент:
-/// на Windows путь вне `\\.\pipe\` превращается в имя канала, и все стороны должны
-/// сделать это одинаково, иначе они не найдут друг друга.
+/// Name of the local socket by path. One function for the server, the CLI client and the GUI
+/// client: on Windows a path outside `\\.\pipe\` becomes a pipe name, and all sides must
+/// do this the same way, or they do not find each other
 pub fn socket_name(
     path: &Path,
 ) -> Result<interprocess::local_socket::Name<'static>, std::io::Error> {
     #[cfg(windows)]
     {
-        // Windows принимает только имена каналов `\\.\pipe\…`. Любой другой путь (например,
-        // временный каталог в тестах или `--socket /tmp/x.sock` из чужой инструкции) отображается
-        // на имя канала детерминированно, чтобы клиент и сервер сошлись на одном и том же.
+        // Windows accepts only pipe names `\\.\pipe\…`. Any other path (for example a temporary
+        // directory in tests, or `--socket /tmp/x.sock` from a foreign instruction) maps
+        // to a pipe name in a deterministic way, so the client and the server agree on the same one
         let text = path.to_string_lossy();
         if !text.starts_with(r"\\.\pipe\") {
             let sanitized: String = text
@@ -112,15 +112,15 @@ pub fn socket_name(
     path.to_path_buf().to_fs_name::<GenericFilePath>()
 }
 
-/// Обработчик запросов на стороне демона.
+/// Request handler on the daemon side
 pub trait RequestHandler: Send + Sync + 'static {
-    /// Ответ на команду. `Ok` кладётся в `result`, `Err` — в `error`.
+    /// Answer to a command. `Ok` goes to `result`, `Err` goes to `error`
     fn handle(&self, cmd: Command) -> Result<Value, IpcError>;
-    /// Канал событий для подписчика; `None` — подписка не поддерживается.
+    /// Event channel for a subscriber; `None` means subscription is not supported
     fn subscribe(&self, levels: bool) -> Option<Receiver<Event>>;
 }
 
-/// Сервер локального сокета: поток на соединение.
+/// Server of the local socket: one thread per connection
 #[derive(Debug)]
 pub struct Server {
     listener: interprocess::local_socket::Listener,
@@ -129,7 +129,7 @@ pub struct Server {
 }
 
 impl Server {
-    /// Занять сокет. Мёртвый файл сокета удаляется: иначе демон не поднимется после сбоя.
+    /// Take the socket. A dead socket file is removed: otherwise the daemon does not start after a crash
     pub fn bind(path: &Path) -> Result<Self, IpcServerError> {
         if path_is_stale(path) {
             let _ = std::fs::remove_file(path);
@@ -156,7 +156,7 @@ impl Server {
         &self.path
     }
 
-    /// Флаг остановки: выставить и постучаться в сокет, чтобы `accept` разблокировался.
+    /// Stop flag: set it and knock on the socket, so `accept` unblocks
     pub fn stopper(&self) -> Stopper {
         Stopper {
             stop: self.stop.clone(),
@@ -164,7 +164,7 @@ impl Server {
         }
     }
 
-    /// Принимать соединения, пока не попросят остановиться.
+    /// Accept connections until asked to stop
     pub fn serve(self, handler: &Arc<dyn RequestHandler>) -> Result<(), IpcServerError> {
         for incoming in self.listener.incoming() {
             if self.stop.load(Ordering::SeqCst) {
@@ -173,15 +173,15 @@ impl Server {
             match incoming {
                 Ok(stream) => {
                     let handler = handler.clone();
-                    // Поток на соединение: подписчик держит своё соединение часами, и он не
-                    // должен мешать `molva status` получить ответ.
+                    // One thread per connection: a subscriber holds its connection for hours, and
+                    // it must not stop `molva status` from getting an answer
                     std::thread::spawn(move || {
                         if let Err(err) = serve_connection(stream, &handler) {
-                            tracing::debug!(%err, "соединение закрыто");
+                            tracing::debug!(%err, "connection closed");
                         }
                     });
                 }
-                Err(err) => tracing::warn!(%err, "не удалось принять соединение"),
+                Err(err) => tracing::warn!(%err, "could not accept the connection"),
             }
         }
         let _ = std::fs::remove_file(&self.path);
@@ -189,7 +189,7 @@ impl Server {
     }
 }
 
-/// Ручка остановки сервера.
+/// Handle to stop the server
 #[derive(Debug)]
 pub struct Stopper {
     stop: Arc<AtomicBool>,
@@ -199,7 +199,7 @@ pub struct Stopper {
 impl Stopper {
     pub fn stop(&self) {
         self.stop.store(true, Ordering::SeqCst);
-        // Разбудить `accept`: без соединения он будет ждать вечно.
+        // Wake `accept`: with no connection it waits forever
         if let Ok(name) = socket_name(&self.path) {
             let _ = Stream::connect(name);
         }
@@ -227,7 +227,7 @@ fn serve_connection(
         let request: Request = match serde_json::from_str(&line) {
             Ok(request) => request,
             Err(err) => {
-                // id неизвестен — отвечаем нулевым, чтобы клиент увидел причину, а не тишину.
+                // The id is unknown — we answer with zero, so the client sees the reason, not silence
                 write_line(
                     &mut send,
                     &Response::err(0, ErrorCode::BadRequest, err.to_string(), None),
@@ -240,7 +240,7 @@ fn serve_connection(
             let Some(events) = handler.subscribe(levels) else {
                 write_line(
                     &mut send,
-                    &Response::err(id, ErrorCode::BadRequest, "подписка недоступна", None),
+                    &Response::err(id, ErrorCode::BadRequest, "subscription is unavailable", None),
                 )?;
                 continue;
             };
@@ -275,7 +275,7 @@ fn write_line<T: serde::Serialize>(send: &mut SendHalf, value: &T) -> Result<(),
     send.flush().map_err(|e| IpcServerError::Io(e.to_string()))
 }
 
-/// Есть ли файл сокета, к которому уже никто не слушает.
+/// Whether there is a socket file that nobody listens on any more
 fn path_is_stale(path: &Path) -> bool {
     if !path.exists() {
         return false;
@@ -286,7 +286,7 @@ fn path_is_stale(path: &Path) -> bool {
     }
 }
 
-/// Клиент локального сокета.
+/// Client of the local socket
 pub struct Client {
     reader: BufReader<RecvHalf>,
     writer: SendHalf,
@@ -321,7 +321,7 @@ impl Client {
         })
     }
 
-    /// Отправить команду и дождаться ответа.
+    /// Send a command and wait for the answer
     pub fn call(&mut self, cmd: Command) -> Result<Response, IpcClientError> {
         let id = self.next_id;
         self.next_id += 1;
@@ -342,14 +342,14 @@ impl Client {
             .map_err(|e| IpcClientError::Io(e.to_string()))?;
         if read == 0 {
             return Err(IpcClientError::Io(format!(
-                "демон закрыл соединение ({})",
+                "the daemon closed the connection ({})",
                 self.path.display()
             )));
         }
         serde_json::from_str(&answer).map_err(|e| IpcClientError::Protocol(e.to_string()))
     }
 
-    /// Как `call`, но ошибка демона становится ошибкой Rust.
+    /// Like `call`, but a daemon error becomes a Rust error
     pub fn call_ok(&mut self, cmd: Command) -> Result<Value, IpcClientError> {
         let response = self.call(cmd)?;
         if let Some(err) = response.error {
@@ -358,7 +358,7 @@ impl Client {
         Ok(response.result.unwrap_or(Value::Null))
     }
 
-    /// Подписаться на события: соединение уходит под поток событий целиком.
+    /// Subscribe to events: the whole connection goes to the event stream
     pub fn subscribe(mut self, levels: bool) -> Result<Events, IpcClientError> {
         let response = self.call(Command::Subscribe { levels })?;
         if let Some(err) = response.error {
@@ -370,7 +370,7 @@ impl Client {
     }
 }
 
-/// Поток событий демона.
+/// Stream of daemon events
 #[derive(Debug)]
 pub struct Events {
     reader: BufReader<RecvHalf>,
@@ -392,14 +392,14 @@ impl Iterator for Events {
             }
             match serde_json::from_str(&line) {
                 Ok(event) => return Some(event),
-                // Неизвестное событие — не повод рвать подписку: протокол растёт аддитивно.
-                Err(err) => tracing::debug!(%err, "неизвестное событие пропущено"),
+                // An unknown event is no reason to break the subscription: the protocol grows additively
+                Err(err) => tracing::debug!(%err, "unknown event skipped"),
             }
         }
     }
 }
 
-/// Жив ли демон на этом сокете. Возвращает pid из ответа `ping`, если он его сообщил.
+/// Whether the daemon is alive on this socket. Returns the pid from the `ping` answer, if it gave one
 pub fn ping(path: &Path) -> Option<u32> {
     let mut client = Client::connect(path).ok()?;
     let response = client.call(Command::Ping).ok()?;
@@ -446,7 +446,7 @@ mod tests {
                     if matches!(mode, Mode::Command) {
                         return Err(IpcError {
                             code: ErrorCode::Busy,
-                            message: "занят".into(),
+                            message: "busy".into(),
                             hint: None,
                         });
                     }
@@ -461,7 +461,7 @@ mod tests {
         }
     }
 
-    /// Сокет живёт во временном каталоге: тесты не трогают ни `$XDG_RUNTIME_DIR`, ни `/tmp`.
+    /// The socket lives in a temporary directory: tests touch neither `$XDG_RUNTIME_DIR` nor `/tmp`
     fn started(handler: Arc<dyn RequestHandler>) -> (PathBuf, tempfile::TempDir, Stopper) {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("molva.sock");
@@ -470,7 +470,7 @@ mod tests {
         std::thread::spawn(move || {
             let _ = server.serve(&handler);
         });
-        // Дать серверу дойти до accept: connect до этого момента получит отказ.
+        // Let the server reach accept: a connect before that moment is refused
         for _ in 0..100 {
             if Client::connect(&path).is_ok() {
                 break;
@@ -552,7 +552,7 @@ mod tests {
         assert_eq!(events.next(), Some(Event::Level { rms: 0.25 }));
         assert_eq!(events.next(), Some(Event::ConfigReloaded));
         drop(tx);
-        assert_eq!(events.next(), None, "закрытый канал завершает подписку");
+        assert_eq!(events.next(), None, "a closed channel ends the subscription");
         stopper.stop();
     }
 
@@ -577,8 +577,8 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("molva.sock");
         std::fs::write(&path, b"").unwrap();
-        // Файл есть, слушателя нет: сервер обязан подняться, а не сказать «адрес занят».
-        let server = Server::bind(&path).expect("мёртвый сокет должен быть удалён");
+        // The file exists, no listener: the server must start, and not say "address in use"
+        let server = Server::bind(&path).expect("the dead socket must be removed");
         let stopper = server.stopper();
         let handler: Arc<dyn RequestHandler> = EchoHandler::new();
         std::thread::spawn(move || {
