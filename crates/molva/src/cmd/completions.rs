@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
-//! `molva completions <shell>` — скрипт автодополнения для оболочки.
+//! `molva completions <shell>` — the completion script for a shell
 //!
-//! Скрипт идёт в stdout, чтобы его можно было сразу перенаправить:
-//! `molva completions zsh > ~/.zsh/completions/_molva`.
+//! The script goes to stdout, so that it can be redirected at once:
+//! `molva completions zsh > ~/.zsh/completions/_molva`
 
 use std::io::Write;
 
@@ -11,7 +11,7 @@ use clap_complete::Shell;
 
 use super::CmdError;
 
-/// Сгенерировать дополнение для указанной оболочки.
+/// Generate the completion for the given shell
 pub(crate) fn run<C: CommandFactory>(
     shell: Shell,
     bin_name: &str,
@@ -53,7 +53,7 @@ mod tests {
         ] {
             let mut out = Vec::new();
             run::<Sample>(shell, "molva", &mut out).unwrap();
-            assert!(!out.is_empty(), "пустой скрипт для {shell}");
+            assert!(!out.is_empty(), "empty script for {shell}");
         }
     }
 }

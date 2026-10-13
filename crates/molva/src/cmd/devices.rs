@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
-//! `molva devices [--json]` — какие микрофоны видит система.
+//! `molva devices [--json]` — which microphones the system sees
 
 use molva_core::domain::audio::DeviceInfo;
 use molva_core::infra::audio::list_input_devices;
 
-/// Напечатать устройства ввода: таблица для человека, JSON для скриптов (Y-15 — всё в stdout).
+/// Print the input devices: a table for a person, JSON for scripts (Y-15 — everything goes to stdout)
 pub(crate) fn run(json: bool) -> anyhow::Result<()> {
     let devices = list_input_devices()?;
     if json {
@@ -15,24 +15,24 @@ pub(crate) fn run(json: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Таблица «имя / по умолчанию / частоты».
+/// The table "name / default / rates"
 fn render_table(devices: &[DeviceInfo]) -> String {
     let name_width = devices
         .iter()
         .map(|d| d.name.chars().count())
         .max()
         .unwrap_or(0)
-        .max("Устройство".chars().count());
+        .max("Device".chars().count());
 
     let mut out = format!(
         "{:<name_width$}  {:^12}  {}\n",
-        "Устройство",
-        "По умолч.",
-        "Частоты, Гц",
+        "Device",
+        "Default",
+        "Rates, Hz",
         name_width = name_width
     );
     for device in devices {
-        // Пробелы вместо ширины по символам: имена устройств содержат кириллицу.
+        // Spaces instead of a width by characters: device names can contain non-ASCII letters
         let padding = " ".repeat(name_width.saturating_sub(device.name.chars().count()));
         let rates = if device.sample_rates.is_empty() {
             "—".to_string()
@@ -48,7 +48,7 @@ fn render_table(devices: &[DeviceInfo]) -> String {
             "{}{}  {:^12}  {}\n",
             device.name,
             padding,
-            if device.is_default { "да" } else { "" },
+            if device.is_default { "yes" } else { "" },
             rates
         ));
     }
@@ -80,27 +80,27 @@ mod tests {
         let default_line = table
             .lines()
             .find(|line| line.contains("Микрофон"))
-            .expect("строка устройства по умолчанию");
-        assert!(default_line.contains("да"), "не отмечено: {default_line}");
+            .expect("the line of the default device");
+        assert!(default_line.contains("yes"), "not marked: {default_line}");
 
         let other = table
             .lines()
             .find(|line| line.contains("Yeti"))
-            .expect("строка второго устройства");
-        assert!(!other.contains("да"), "лишняя отметка: {other}");
+            .expect("the line of the second device");
+        assert!(!other.contains("yes"), "extra mark: {other}");
     }
 
     #[test]
     fn table_lists_sample_rates_and_marks_unknown_ones() {
         let table = render_table(&devices());
         assert!(table.contains("16000, 48000"));
-        assert!(table.contains('—'), "неизвестные частоты не помечены");
+        assert!(table.contains('—'), "unknown rates are not marked");
     }
 
     #[test]
     fn json_output_is_an_array_of_devices() {
-        let json = serde_json::to_string(&devices()).expect("сериализуется");
-        let back: Vec<DeviceInfo> = serde_json::from_str(&json).expect("читается обратно");
+        let json = serde_json::to_string(&devices()).expect("serializes");
+        let back: Vec<DeviceInfo> = serde_json::from_str(&json).expect("reads back");
         assert_eq!(back, devices());
     }
 }

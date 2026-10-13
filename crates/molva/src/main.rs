@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
-//! `molva` — командная строка и демон MolvAI.
+//! `molva` — the command line and the daemon of MolvAI
 //!
-//! Подкоманды живут в `cmd/`, здесь только разбор аргументов и коды выхода.
+//! The subcommands live in `cmd/`. This file has only the argument parsing and the exit codes
 
-// В тестах паника — это способ сообщить о провале, а не необработанная ошибка; точное
-// сравнение чисел с плавающей точкой законно (тест сверяет вычисленное значение с константой,
-// которую сам же и задал), а печать замеров в stdout — это и есть отчёт замерочного теста.
+// In tests a panic is the way to report a failure, not an unhandled error. An exact
+// comparison of floating-point numbers is legal (the test compares a computed value with a constant
+// that the test itself set), and printing measurements to stdout is the report of a measuring test
 #![cfg_attr(
     test,
     allow(
@@ -27,8 +27,8 @@ use molva_core::Config;
 
 mod cmd;
 
-/// Коды выхода, общие для всех подкоманд: 0 ok, 2 аргументы, 3 демон недоступен, 4 занят,
-/// 5 ошибка движка, 6 ошибка файла, 7 демон уже запущен.
+/// Exit codes shared by all subcommands: 0 ok, 2 arguments, 3 daemon unreachable, 4 busy,
+/// 5 engine error, 6 file error, 7 daemon already running
 mod exit {
     pub(crate) const OK: u8 = 0;
     pub(crate) const BAD_ARGS: u8 = 2;
@@ -36,7 +36,7 @@ mod exit {
     pub(crate) const BUSY: u8 = 4;
     pub(crate) const ENGINE: u8 = 5;
     pub(crate) const FILE: u8 = 6;
-    /// Демон уже запущен: вторая копия завершается с сообщением, а не дерётся за микрофон.
+    /// The daemon is already running: the second copy exits with a message and does not fight for the microphone
     pub(crate) const ALREADY_RUNNING: u8 = 7;
 }
 
@@ -44,14 +44,14 @@ mod exit {
 #[command(
     name = "molva",
     version,
-    about = "MolvAI — открытый системный голосовой ввод"
+    about = "MolvAI — open-source system-wide voice input"
 )]
 struct Cli {
-    /// Путь к файлу настроек (по умолчанию ~/.config/molva/config.toml или $MOLVA_CONFIG)
+    /// Path to the settings file (default ~/.config/molva/config.toml or $MOLVA_CONFIG)
     #[arg(long, global = true, env = "MOLVA_CONFIG")]
     config: Option<std::path::PathBuf>,
 
-    /// Путь к сокету демона (по умолчанию $XDG_RUNTIME_DIR/molva.sock или $MOLVA_SOCKET)
+    /// Path to the daemon socket (default $XDG_RUNTIME_DIR/molva.sock or $MOLVA_SOCKET)
     #[arg(long, global = true)]
     socket: Option<std::path::PathBuf>,
 
@@ -61,90 +61,90 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// История реплик
+    /// Phrase history
     History(cmd::history::HistoryArgs),
-    /// Статистика диктовки
+    /// Dictation statistics
     Stats(cmd::stats::StatsArgs),
-    /// Профили постобработки
+    /// Post-processing styles
     Styles {
         #[command(subcommand)]
         action: cmd::styles::StylesAction,
     },
-    /// Словарь терминов
+    /// Term dictionary
     Dictionary {
         #[command(subcommand)]
         action: cmd::dictionary::DictionaryAction,
     },
-    /// Настройки
+    /// Settings
     Config {
         #[command(subcommand)]
         action: cmd::config::ConfigAction,
     },
-    /// Запустить демон
+    /// Start the daemon
     Daemon {
-        /// Уведомления в лог вместо рабочего стола; процесс в фон не уходит в любом случае
+        /// Notifications go to the log instead of the desktop; the process does not go to the background in any case
         #[arg(long)]
         foreground: bool,
     },
-    /// Управление записью
+    /// Recording control
     Record {
         #[command(subcommand)]
         action: RecordAction,
     },
-    /// Состояние демона
+    /// Daemon state
     Status {
-        /// Вывести JSON вместо строки
+        /// Print JSON instead of a line
         #[arg(long)]
         json: bool,
-        /// Продолжать печатать события демона
+        /// Keep printing the events of the daemon
         #[arg(long)]
         watch: bool,
     },
-    /// Расшифровать аудиофайл, каталог или поток со стандартного ввода
+    /// Transcribe an audio file, a directory or a stream from standard input
     Transcribe(cmd::transcribe::Args),
-    /// Веса моделей распознавания
+    /// Speech recognition model weights
     Models {
         #[command(subcommand)]
         action: cmd::models::Action,
     },
-    /// Локальный чекер: WER/CER и задержки на наборе аудио
+    /// Local checker: WER/CER and latencies on a set of audio
     Bench(cmd::bench::Args),
-    /// Напечатать бинды для композитора
+    /// Print the binds for the compositor
     Setup {
         /// hyprland | sway | kde | gnome
         target: String,
-        /// Клавиша push-to-talk вместо той, что в настройках
+        /// Push-to-talk key instead of the one in the settings
         #[arg(long)]
         ptt: Option<String>,
-        /// Совместимость: вывод и так печатается
+        /// Compatibility: the output is printed anyway
         #[arg(long)]
         print: bool,
     },
-    /// Проверить вставку текста в активное окно
+    /// Check the text paste into the active window
     TestInject {
         /// paste | type | clipboard | auto
         #[arg(long)]
         mode: Option<String>,
-        /// Текст вместо стандартного
+        /// Text instead of the default one
         #[arg(long)]
         text: Option<String>,
-        /// Пауза перед вставкой в секундах
+        /// Pause before the paste in seconds
         #[arg(long, default_value_t = cmd::test_inject::DEFAULT_DELAY.as_secs())]
         delay: u64,
     },
-    /// Ключи в хранилище ОС или файле: значение читается из stdin
+    /// Keys in the OS store or in a file: the value is read from stdin
     Secret {
         #[command(subcommand)]
         action: cmd::secret::SecretAction,
     },
-    /// Диагностика окружения
+    /// Environment diagnostics
     Doctor,
-    /// Скрипт автодополнения для оболочки
+    /// Shell completion script
     Completions {
         /// bash, zsh, fish, powershell, elvish
         shell: clap_complete::Shell,
     },
-    /// Список устройств ввода
+    /// List of input devices
     Devices {
         #[arg(long)]
         json: bool,
@@ -168,23 +168,23 @@ impl From<ModeArg> for Mode {
 
 #[derive(Subcommand)]
 enum RecordAction {
-    /// Начать запись
+    /// Start recording
     Start {
         #[arg(long, value_enum, default_value_t = ModeArg::Dictation)]
         mode: ModeArg,
         #[arg(long)]
         style: Option<String>,
     },
-    /// Остановить запись и обработать реплику
+    /// Stop recording and process the phrase
     Stop,
-    /// Включить или выключить запись
+    /// Turn recording on or off
     Toggle {
         #[arg(long, value_enum, default_value_t = ModeArg::Dictation)]
         mode: ModeArg,
         #[arg(long)]
         style: Option<String>,
     },
-    /// Отменить запись, не создавая реплику
+    /// Cancel recording without creating a phrase
     Cancel,
 }
 
@@ -193,7 +193,7 @@ fn main() -> ExitCode {
     match run(cli) {
         Ok(()) => ExitCode::from(exit::OK),
         Err(error) => {
-            eprintln!("ошибка: {error}");
+            eprintln!("error: {error}");
             ExitCode::from(exit_code_for(&error))
         }
     }
@@ -202,7 +202,7 @@ fn main() -> ExitCode {
 fn init_logging(level: &str) {
     let filter = tracing_subscriber::EnvFilter::try_from_env("MOLVA_LOG")
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(level));
-    // Двойная инициализация случается в тестах и не должна ронять процесс.
+    // A double initialization happens in tests and must not crash the process
     let _ = tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_writer(std::io::stderr)
@@ -215,11 +215,11 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         None => Config::default_path()?,
     };
     let socket = cmd::daemon::resolve_socket(cli.socket);
-    // Настройки читаются мягко: повреждённый файл не должен мешать посмотреть историю.
+    // The settings are read leniently: a damaged file must not stop the user from viewing the history
     let config = || -> anyhow::Result<Config> {
         let (config, warning) = Config::load_lenient(&config_path)?;
         if let Some(warning) = warning {
-            eprintln!("предупреждение: {warning}");
+            eprintln!("warning: {warning}");
         }
         Ok(config)
     };
@@ -270,7 +270,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         Commands::Setup { target, ptt, .. } => {
             let config = Config::load(&config_path)?;
             let target = cmd::setup::Target::parse(&target).ok_or_else(|| {
-                anyhow::anyhow!("неизвестный композитор «{target}»: hyprland | sway | kde | gnome")
+                anyhow::anyhow!("unknown compositor \"{target}\": hyprland | sway | kde | gnome")
             })?;
             cmd::setup::run(target, &config.hotkeys, ptt.as_deref())
         }
@@ -294,7 +294,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
     }
 }
 
-/// Сопоставление ошибки с кодом выхода; неизвестные ошибки — код аргументов.
+/// Maps an error to an exit code; unknown errors get the arguments code
 fn exit_code_for(error: &anyhow::Error) -> u8 {
     if let Some(cmd_err) = error.downcast_ref::<cmd::CmdError>() {
         return cmd_err.code;
@@ -357,9 +357,9 @@ mod tests {
 
     #[test]
     fn command_error_keeps_its_code_through_anyhow() {
-        let error: anyhow::Error = cmd::CmdError::engine("движок не собрался").into();
+        let error: anyhow::Error = cmd::CmdError::engine("the engine did not build").into();
         assert_eq!(exit_code_for(&error), exit::ENGINE);
-        let error: anyhow::Error = cmd::CmdError::file("нет файла").into();
+        let error: anyhow::Error = cmd::CmdError::file("no such file").into();
         assert_eq!(exit_code_for(&error), exit::FILE);
     }
 
@@ -367,7 +367,7 @@ mod tests {
     fn a_missing_daemon_exits_with_code_three() {
         let error = anyhow::Error::from(IpcClientError::NotRunning {
             path: "/tmp/x.sock".into(),
-            message: "нет такого файла".into(),
+            message: "no such file".into(),
         });
         assert_eq!(exit_code_for(&error), exit::NO_DAEMON);
     }
@@ -376,7 +376,7 @@ mod tests {
     fn a_busy_daemon_exits_with_code_four() {
         let error = anyhow::Error::from(IpcClientError::Daemon(IpcError {
             code: ErrorCode::Busy,
-            message: "запись уже идёт".into(),
+            message: "recording is already in progress".into(),
             hint: None,
         }));
         assert_eq!(exit_code_for(&error), exit::BUSY);
@@ -386,7 +386,7 @@ mod tests {
     fn an_engine_failure_exits_with_code_five() {
         let error = anyhow::Error::from(IpcClientError::Daemon(IpcError {
             code: ErrorCode::SttFailed,
-            message: "модель не загрузилась".into(),
+            message: "the model did not load".into(),
             hint: None,
         }));
         assert_eq!(exit_code_for(&error), exit::ENGINE);
@@ -402,7 +402,7 @@ mod tests {
 
     #[test]
     fn an_unknown_error_falls_back_to_the_argument_code() {
-        let error = anyhow::anyhow!("что-то пошло не так");
+        let error = anyhow::anyhow!("something went wrong");
         assert_eq!(exit_code_for(&error), exit::BAD_ARGS);
     }
 
@@ -417,7 +417,7 @@ mod tests {
         assert!(Cli::try_parse_from(["molva", "models", "pull"]).is_err());
         assert!(Cli::try_parse_from(["molva", "models", "pull", "small"]).is_ok());
         assert!(Cli::try_parse_from(["molva", "models", "pull", "--all-small"]).is_ok());
-        // Имя и --all-small вместе — противоречие, а не «оба».
+        // A name and --all-small together are a contradiction, not "both"
         assert!(Cli::try_parse_from(["molva", "models", "pull", "small", "--all-small"]).is_err());
     }
 
@@ -429,7 +429,7 @@ mod tests {
                 assert_eq!(args.set, std::path::PathBuf::from("bench"));
                 assert_eq!(args.repeat, 1);
             }
-            _ => panic!("ожидалась подкоманда bench"),
+            _ => panic!("the bench subcommand was expected"),
         }
     }
 }

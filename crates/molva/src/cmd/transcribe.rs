@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-//! `molva transcribe` — расшифровка файлов, каталогов и stdin.
+//! `molva transcribe` — transcription of files, directories and stdin
 //!
-//! Это офлайн-путь: он ничего никуда не вставляет и не трогает микрофон, поэтому его можно
-//! гонять в скриптах и в CI. Ошибка одного файла в пакете не отменяет остальные — итог
-//! получают все, кто смог, а код выхода 6 сообщает, что не всё прошло.
+//! This is the offline path: it pastes nothing anywhere and does not touch the microphone, so it can
+//! be run in scripts and in CI. The error of one file in a batch does not cancel the others — every
+//! file that could be done gets its result, and the exit code 6 reports that not everything went through
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -30,7 +30,7 @@ use uuid::Uuid;
 
 use super::{progress_enabled, CmdError};
 
-/// След обращения к модели за один файл: в журнал попадает то же, что и при диктовке.
+/// The trace of a model call for one file: the journal gets the same as in a dictation
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct LlmTrace {
     pub provider: String,
@@ -40,7 +40,7 @@ pub(crate) struct LlmTrace {
     pub elapsed_ms: u32,
 }
 
-/// Результат конвейера текста для одного файла.
+/// The result of the text pipeline for one file
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Postprocessed {
     pub text: String,
@@ -50,7 +50,7 @@ pub(crate) struct Postprocessed {
 
 #[cfg(test)]
 impl Postprocessed {
-    /// Текст без следов словаря и модели.
+    /// The text without traces of the dictionary and the model
     pub(crate) fn plain(text: impl Into<String>) -> Self {
         Self {
             text: text.into(),
@@ -60,16 +60,16 @@ impl Postprocessed {
     }
 }
 
-/// Постобработка, которая ничего не меняет: тесты проверяют сам проход конвейера.
+/// A post-processing that changes nothing: the tests check the pipeline pass itself
 #[cfg(test)]
 pub(crate) fn identity(text: &str, _language: &str) -> Postprocessed {
     Postprocessed::plain(text)
 }
 
-/// Конвейер текста для файлов: тот же порядок, что и при диктовке — словарь, правила,
-/// модель по стилю. Модель зовётся только когда стиль её просит, она включена в настройках,
-/// `--no-llm` не задан и слов больше `rules.llm_min_words`; отказ модели возвращает текст
-/// после правил, а не ошибку.
+/// The text pipeline for files: the same order as in a dictation — dictionary, rules,
+/// the model by style. The model is called only when the style asks for it, it is enabled in the settings,
+/// `--no-llm` is not given and there are more words than `rules.llm_min_words`; a model failure returns the text
+/// after the rules and not an error
 pub(crate) struct FilePostprocessor {
     dictionary: Dictionary,
     rules: RuleSet,
@@ -84,7 +84,7 @@ pub(crate) struct FilePostprocessor {
 }
 
 impl FilePostprocessor {
-    /// Сборка по настройкам. `style_id` — стиль из `--style` или `style.default`.
+    /// Build by the settings. `style_id` is the style from `--style` or `style.default`
     pub(crate) fn from_config(
         cfg: &Config,
         config_path: &Path,
@@ -108,7 +108,7 @@ impl FilePostprocessor {
         Self::assemble(cfg, dictionary, style, llm)
     }
 
-    /// Та же сборка, но с готовыми частями: тесты подставляют поддельную модель.
+    /// The same build, but with ready parts: the tests substitute a fake model
     pub(crate) fn assemble(
         cfg: &Config,
         dictionary: Dictionary,
@@ -129,7 +129,7 @@ impl FilePostprocessor {
         }
     }
 
-    /// Словарь → правила → модель. `language` — язык реплики для правил.
+    /// Dictionary → rules → model. `language` is the language of the phrase for the rules
     pub(crate) fn apply(&self, raw: &str, language: &str) -> Postprocessed {
         let (after_dictionary, dict_hits) = self.dictionary.apply(raw);
         let after_rules = self.rules.apply(&after_dictionary, language);
@@ -159,10 +159,10 @@ impl FilePostprocessor {
             Ok(response) => {
                 let text = sanitize_llm_output(&response.text, &self.dictionary.prompt_hint());
                 if text.is_empty() {
-                    // Пустой ответ — не результат: модель, скорее всего, сожгла лимит токенов
-                    // на размышления. Текст после правил ценнее пустой строки.
+                    // An empty answer is not a result: the model most likely burned the token limit
+                    // on thinking. The text after the rules is worth more than an empty string
                     eprintln!(
-                        "предупреждение: модель вернула пустой текст, текст оставлен после правил"
+                        "warning: the model returned an empty text, the text after the rules is kept"
                     );
                     return Postprocessed {
                         text: after_rules,
@@ -188,7 +188,7 @@ impl FilePostprocessor {
             }
             Err(err) => {
                 eprintln!(
-                    "предупреждение: модель не ответила ({err}), текст оставлен после правил"
+                    "warning: the model did not answer ({err}), the text after the rules is kept"
                 );
                 Postprocessed {
                     text: after_rules,
@@ -202,56 +202,56 @@ impl FilePostprocessor {
 
 #[derive(Debug, clap::Args)]
 pub(crate) struct Args {
-    /// Аудиофайлы, каталоги или `-` для чтения потока со стандартного ввода
+    /// Audio files, directories, or `-` to read a stream from standard input
     #[arg(value_name = "PATH", required = true)]
     pub input: Vec<PathBuf>,
 
-    /// Язык записи (код ISO-639-1); по умолчанию берётся из настроек
+    /// Language of the recording (ISO-639-1 code); by default it comes from the settings
     #[arg(long, value_name = "CODE")]
     pub language: Option<String>,
 
-    /// Модель распознавания: tiny, base, small, large-v3-turbo…
+    /// Recognition model: tiny, base, small, large-v3-turbo…
     #[arg(long, value_name = "NAME")]
     pub model: Option<String>,
 
-    /// Движок распознавания; `fake` прогоняет конвейер без весов
+    /// Recognition engine; `fake` runs the pipeline without weights
     #[arg(long, value_name = "NAME", env = "MOLVA_STT")]
     pub engine: Option<String>,
 
-    /// Стиль постобработки; применяется конвейером обработки текста
+    /// Post-processing style; the text processing pipeline applies it
     #[arg(long, value_name = "ID")]
     pub style: Option<String>,
 
-    /// Не обращаться к языковой модели при постобработке
+    /// Do not call the language model in post-processing
     #[arg(long)]
     pub no_llm: bool,
 
-    /// Принимается для совместимости с диктовкой: `transcribe` никогда никуда не вставляет текст
+    /// Accepted for compatibility with dictation: `transcribe` never pastes the text anywhere
     #[arg(long)]
     pub no_inject: bool,
 
-    /// Машинный вывод: массив JSON вместо текста
+    /// Machine output: a JSON array instead of text
     #[arg(long)]
     pub json: bool,
 
-    /// Печатать сегменты с таймкодами
+    /// Print segments with timecodes
     #[arg(long)]
     pub timecodes: bool,
 
-    /// Файл или каталог для результата; без него текст идёт в stdout
+    /// File or directory for the result; without it the text goes to stdout
     #[arg(short = 'o', long, value_name = "PATH")]
     pub out: Option<PathBuf>,
 
-    /// Обходить вложенные каталоги
+    /// Walk nested directories
     #[arg(long)]
     pub recursive: bool,
 
-    /// Подсказка формата для потока на stdin: wav, mp3, ogg, flac, m4a
+    /// Format hint for a stream on stdin: wav, mp3, ogg, flac, m4a
     #[arg(long, value_name = "FORMAT")]
     pub stdin_format: Option<String>,
 }
 
-/// Что расшифровываем: файл на диске или поток на входе.
+/// What we transcribe: a file on the disk or a stream on the input
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum JobSource {
     File(PathBuf),
@@ -260,12 +260,12 @@ pub(crate) enum JobSource {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Job {
-    /// Имя для вывода и журнала.
+    /// The name for the output and the journal
     pub label: String,
     pub source: JobSource,
 }
 
-/// Результат по одному входу.
+/// The result for one input
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub(crate) struct FileResult {
     pub file: String,
@@ -278,11 +278,11 @@ pub(crate) struct FileResult {
     pub language: Option<String>,
 }
 
-/// Итог пакета: что получилось и что нет.
+/// The outcome of a batch: what worked and what did not
 #[derive(Debug, Default)]
 pub(crate) struct Outcome {
     pub results: Vec<FileResult>,
-    /// Пары «вход → причина отказа».
+    /// Pairs "input → reason of the failure"
     pub errors: Vec<(String, String)>,
 }
 
@@ -292,7 +292,7 @@ impl Outcome {
     }
 }
 
-/// Собрать список входов: файлы по порядку аргументов, содержимое каталогов — по алфавиту.
+/// Build the list of inputs: files in the order of the arguments, the contents of directories in alphabetical order
 pub(crate) fn collect_jobs(inputs: &[PathBuf], recursive: bool) -> Result<Vec<Job>, CmdError> {
     let mut jobs = Vec::new();
     for input in inputs {
@@ -316,7 +316,7 @@ pub(crate) fn collect_jobs(inputs: &[PathBuf], recursive: bool) -> Result<Vec<Jo
     }
     if jobs.is_empty() {
         return Err(CmdError::file(
-            "не найдено ни одного аудиофайла: проверьте путь или добавьте --recursive",
+            "no audio file found: check the path or add --recursive",
         ));
     }
     Ok(jobs)
@@ -328,8 +328,8 @@ fn collect_dir(directory: &Path, recursive: bool, jobs: &mut Vec<Job>) -> Result
         .filter_map(Result::ok)
         .map(|e| e.path())
         .collect();
-    // Порядок обхода каталога в файловой системе произволен; сортировка делает вывод
-    // повторяемым от запуска к запуску.
+    // The order in which a file system lists a directory is arbitrary; the sort makes the output
+    // repeatable from run to run
     entries.sort();
     for path in entries {
         if path.is_dir() {
@@ -346,10 +346,10 @@ fn collect_dir(directory: &Path, recursive: bool, jobs: &mut Vec<Job>) -> Result
     Ok(())
 }
 
-/// Прогнать список входов через движок.
+/// Run the list of inputs through the engine
 ///
-/// `postprocess` — точка подключения конвейера обработки текста; `progress` вызывается
-/// перед каждым входом и пишет только в stderr.
+/// `postprocess` is the connection point of the text processing pipeline; `progress` is called
+/// before each input and writes only to stderr
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn transcribe_jobs(
     jobs: &[Job],
@@ -383,8 +383,8 @@ pub(crate) fn transcribe_jobs(
         let ready = audio.to_16k();
 
         let started = Instant::now();
-        // Через политику, а не напрямую: язык выбирается среди разрешённых, и `auto` не заставляет
-        // whisper считать полное окно в тридцать секунд.
+        // Through the policy and not directly: the language is chosen among the allowed ones, and `auto` does not force
+        // whisper to compute a full window of thirty seconds
         let transcript = match transcribe_with_language_policy(engine, &ready, options) {
             Ok(transcript) => transcript,
             Err(e) => {
@@ -395,7 +395,7 @@ pub(crate) fn transcribe_jobs(
         let stt_ms = started.elapsed().as_millis() as u32;
 
         let raw = transcript.text.clone();
-        // Язык для правил: что определил whisper, иначе заданный явно, иначе «auto».
+        // The language for the rules: what whisper detected, else the one given explicitly, else "auto"
         let rules_language = transcript
             .detected_language
             .clone()
@@ -416,8 +416,8 @@ pub(crate) fn transcribe_jobs(
             ts: Utc::now(),
             session_id,
             mode: Mode::Dictation,
-            // Источник — файл, а не микрофон: по этому полю статистика отделяет пакетную
-            // расшифровку от живой диктовки.
+            // The source is a file and not the microphone: by this field the statistics separate a batch
+            // transcription from a live dictation
             source: Source::File,
             app: None,
             language: transcript.detected_language.clone(),
@@ -452,8 +452,8 @@ pub(crate) fn transcribe_jobs(
             audio_path: None,
         };
         if let Err(e) = journal.append(&entry) {
-            // Журнал — вспомогательная функция: его отказ не должен стоить пользователю текста.
-            eprintln!("предупреждение: запись в журнал не удалась: {e}");
+            // The journal is an auxiliary function: its failure must not cost the user the text
+            eprintln!("warning: the journal write failed: {e}");
         }
 
         outcome.results.push(FileResult {
@@ -468,7 +468,7 @@ pub(crate) fn transcribe_jobs(
     outcome
 }
 
-/// `12345` мс → `00:12.345`.
+/// `12345` ms → `00:12.345`
 pub(crate) fn format_timecode(ms: u32) -> String {
     let total_secs = ms / 1000;
     format!(
@@ -479,13 +479,13 @@ pub(crate) fn format_timecode(ms: u32) -> String {
     )
 }
 
-/// Текст одного результата: либо сплошняком, либо строками с таймкодами.
+/// The text of one result: either as a solid block or as lines with timecodes
 pub(crate) fn render_text(result: &FileResult, timecodes: bool) -> String {
     if !timecodes {
         return result.text.clone();
     }
     if result.segments.is_empty() {
-        // Движок не отдал сегменты — показываем весь текст одним отрезком, а не пустоту.
+        // The engine gave no segments — we show the whole text as one segment and not emptiness
         let end = (result.audio_secs * 1000.0) as u32;
         return format!(
             "[{} → {}] {}",
@@ -509,7 +509,7 @@ pub(crate) fn render_text(result: &FileResult, timecodes: bool) -> String {
         .join("\n")
 }
 
-/// Собрать вывод для нескольких входов: перед каждым — заголовок с именем, если входов больше одного.
+/// Build the output for several inputs: a header with the name before each one, if there is more than one input
 pub(crate) fn render_all(results: &[FileResult], timecodes: bool) -> String {
     if results.len() == 1 {
         return render_text(&results[0], timecodes);
@@ -521,10 +521,10 @@ pub(crate) fn render_all(results: &[FileResult], timecodes: bool) -> String {
         .join("\n\n")
 }
 
-/// Имена выходных файлов для каталога: `запись.wav` → `запись.txt`.
+/// The output file names for a directory: `recording.wav` → `recording.txt`
 ///
-/// Если в пакете есть `tone.mp3` и `tone.ogg`, одно имя `tone.txt` на двоих молча потеряло бы
-/// половину работы, поэтому при совпадении основы в имя добавляется исходное расширение.
+/// If the batch has `tone.mp3` and `tone.ogg`, one name `tone.txt` for both would silently lose
+/// half of the work, so when the stems match, the source extension is added to the name
 pub(crate) fn out_file_names(results: &[FileResult], json: bool) -> Vec<String> {
     let ext = if json { "json" } else { "txt" };
     let stem_of = |result: &FileResult| {
@@ -554,7 +554,7 @@ pub(crate) fn out_file_names(results: &[FileResult], json: bool) -> Vec<String> 
         .collect()
 }
 
-/// Записать результаты туда, куда просил пользователь.
+/// Write the results where the user asked
 pub(crate) fn write_output(
     outcome: &Outcome,
     args: &Args,
@@ -569,7 +569,7 @@ pub(crate) fn write_output(
     };
 
     match &args.out {
-        // Каталог: по файлу на вход, имя — от исходного файла.
+        // A directory: one file per input, the name comes from the source file
         Some(path) if path.is_dir() => {
             let names = out_file_names(&outcome.results, args.json);
             for (result, name) in outcome.results.iter().zip(names) {
@@ -605,7 +605,7 @@ pub(crate) fn write_output(
     Ok(())
 }
 
-/// Точка входа подкоманды.
+/// The entry point of the subcommand
 pub(crate) fn run(args: &Args, config: &Config, config_path: &Path) -> Result<(), CmdError> {
     let jobs = collect_jobs(&args.input, args.recursive)?;
 
@@ -631,11 +631,11 @@ pub(crate) fn run(args: &Args, config: &Config, config_path: &Path) -> Result<()
         .as_deref()
         .unwrap_or(&config.style.default)
         .to_string();
-    // Тот же конвейер текста, что и при диктовке: словарь, правила, модель по стилю.
+    // The same text pipeline as in a dictation: dictionary, rules, the model by style
     let postprocessor = FilePostprocessor::from_config(config, config_path, &style, args.no_llm);
     let postprocess = |raw: &str, language: &str| postprocessor.apply(raw, language);
-    // Файловый журнал подключает конвейер дорожки D; здесь запись собирается и уходит
-    // в приёмник, который передали.
+    // The pipeline of track D connects the file journal; here the entry is built and goes
+    // to the sink that was passed
     let mut journal = molva_core::domain::fakes::MemJournal::default();
 
     let bar = (jobs.len() > 1 && progress_enabled(args.json))
@@ -671,11 +671,11 @@ pub(crate) fn run(args: &Args, config: &Config, config_path: &Path) -> Result<()
     write_output(&outcome, args, &mut stdout)?;
 
     for (label, reason) in &outcome.errors {
-        eprintln!("ошибка: {label}: {reason}");
+        eprintln!("error: {label}: {reason}");
     }
     if !outcome.ok() {
         return Err(CmdError::file(format!(
-            "не удалось расшифровать файлов: {} из {}",
+            "files that could not be transcribed: {} of {}",
             outcome.errors.len(),
             jobs.len()
         )));
@@ -763,7 +763,7 @@ mod tests {
         let good = directory.path().join("good.wav");
         write_wav(&good, 0.3);
         let bad = directory.path().join("bad.wav");
-        std::fs::write(&bad, "не аудио").unwrap();
+        std::fs::write(&bad, "not audio").unwrap();
 
         let outcome = run_fake(&jobs_for(&[bad, good]), "текст");
         assert_eq!(outcome.results.len(), 1);
@@ -778,7 +778,7 @@ mod tests {
         for name in ["c.wav", "a.wav", "b.wav"] {
             write_wav(&directory.path().join(name), 0.1);
         }
-        std::fs::write(directory.path().join("notes.txt"), "не аудио").unwrap();
+        std::fs::write(directory.path().join("notes.txt"), "not audio").unwrap();
 
         let jobs = collect_jobs(&[directory.path().to_path_buf()], false).unwrap();
         let names: Vec<String> = jobs
@@ -797,7 +797,7 @@ mod tests {
     #[test]
     fn nested_directories_need_recursive() {
         let directory = tempfile::tempdir().unwrap();
-        let nested = directory.path().join("вложенный");
+        let nested = directory.path().join("nested");
         std::fs::create_dir(&nested).unwrap();
         write_wav(&nested.join("a.wav"), 0.1);
         write_wav(&directory.path().join("b.wav"), 0.1);
@@ -832,8 +832,8 @@ mod tests {
 
     #[test]
     fn missing_input_is_reported_with_path() {
-        let err = collect_jobs(&[PathBuf::from("/нет/такого.wav")], false).unwrap_err();
-        assert!(err.message.contains("/нет/такого.wav"), "{}", err.message);
+        let err = collect_jobs(&[PathBuf::from("/no/such.wav")], false).unwrap_err();
+        assert!(err.message.contains("/no/such.wav"), "{}", err.message);
         assert_eq!(err.code, CmdError::FILE);
     }
 
@@ -883,7 +883,7 @@ mod tests {
             &mut |_, _| {},
         );
         assert_eq!(outcome.results[0].text, "привет!");
-        // В журнал попадает и сырой текст, и итоговый: видно, что сделала постобработка.
+        // The journal gets both the raw text and the final one: it shows what the post-processing did
         assert_eq!(journal.entries[0].text_raw.as_deref(), Some("привет"));
         assert_eq!(journal.entries[0].text_final.as_deref(), Some("привет!"));
     }
@@ -891,9 +891,9 @@ mod tests {
     fn llm_style() -> Style {
         Style {
             id: "cleanup".into(),
-            name: "Чистка".into(),
+            name: "Cleanup".into(),
             uses_llm: true,
-            system_prompt: "Убери мусор".into(),
+            system_prompt: "Remove the junk".into(),
         }
     }
 
@@ -901,7 +901,7 @@ mod tests {
     fn short_text_stays_with_the_rules_and_never_reaches_the_model() {
         let mut cfg = Config::default();
         cfg.rules.llm_min_words = 10;
-        let llm = molva_core::domain::fakes::FakeLlm::echoing("ОТВЕТ МОДЕЛИ");
+        let llm = molva_core::domain::fakes::FakeLlm::echoing("MODEL ANSWER");
         let postprocessor = FilePostprocessor::assemble(
             &cfg,
             Dictionary::empty(),
@@ -912,7 +912,7 @@ mod tests {
         let processed = postprocessor.apply("привет как дела", "ru");
 
         assert!(processed.llm.is_none(), "{processed:?}");
-        assert!(!processed.text.contains("ОТВЕТ МОДЕЛИ"));
+        assert!(!processed.text.contains("MODEL ANSWER"));
     }
 
     #[test]
@@ -932,10 +932,10 @@ mod tests {
         let processed = postprocessor.apply("ну это самое текст", "ru");
 
         assert_eq!(processed.text, "чистый текст");
-        let trace = processed.llm.expect("модель звалась");
+        let trace = processed.llm.expect("the model was called");
         assert_eq!(trace.provider, "ollama");
         assert_eq!(trace.model, "qwen3.5:4b");
-        assert!(trace.local, "ollama — локальный провайдер");
+        assert!(trace.local, "ollama is a local provider");
         assert_eq!(
             trace.tokens,
             Some(Tokens {
@@ -961,7 +961,7 @@ mod tests {
 
         let processed = postprocessor.apply("текст который должен уцелеть", "ru");
 
-        // Правила отработали (заглавная буква), модель — нет.
+        // The rules worked (a capital letter), the model did not
         assert_eq!(processed.text, "Текст который должен уцелеть");
         assert!(processed.llm.is_none());
     }
@@ -970,8 +970,8 @@ mod tests {
     fn an_empty_model_answer_keeps_the_text_after_the_rules() {
         let mut cfg = Config::default();
         cfg.rules.llm_min_words = 0;
-        // Ответ из одних размышлений: после чистки от него ничего не остаётся.
-        let llm = molva_core::domain::fakes::FakeLlm::echoing("<think>долго думаю</think>");
+        // An answer made only of thinking: after the cleanup nothing is left of it
+        let llm = molva_core::domain::fakes::FakeLlm::echoing("<think>thinking for long</think>");
         let postprocessor = FilePostprocessor::assemble(
             &cfg,
             Dictionary::empty(),
@@ -984,7 +984,7 @@ mod tests {
         assert_eq!(processed.text, "Текст который должен уцелеть");
         assert!(
             processed.llm.is_none(),
-            "пустой ответ не считается работой модели"
+            "an empty answer does not count as the work of the model"
         );
     }
 
@@ -992,7 +992,7 @@ mod tests {
     fn a_style_without_a_model_never_calls_it() {
         let mut cfg = Config::default();
         cfg.rules.llm_min_words = 0;
-        let llm = molva_core::domain::fakes::FakeLlm::echoing("ОТВЕТ МОДЕЛИ");
+        let llm = molva_core::domain::fakes::FakeLlm::echoing("MODEL ANSWER");
         let style = Style {
             uses_llm: false,
             ..llm_style()
@@ -1150,9 +1150,9 @@ mod tests {
             "\"latency_ms\"",
             "\"language\"",
         ] {
-            assert!(json.contains(field), "нет {field} в {json}");
+            assert!(json.contains(field), "no {field} in {json}");
         }
-        // Пустой список сегментов не засоряет вывод.
+        // An empty list of segments does not clutter the output
         assert!(!json.contains("\"segments\""), "{json}");
     }
 
@@ -1258,7 +1258,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "привет\n");
         assert!(
             stdout.is_empty(),
-            "данные должны уйти в файл, а не в stdout"
+            "the data must go to the file and not to stdout"
         );
     }
 
@@ -1300,7 +1300,7 @@ mod tests {
         let path = directory.path().join("a.wav");
         write_wav(&path, 0.2);
         let mut stt = FakeStt::with_responses(vec![Err(
-            molva_core::domain::stt::SttError::Inference("сломалось".into()),
+            molva_core::domain::stt::SttError::Inference("it broke".into()),
         )]);
         let mut journal = MemJournal::default();
         let outcome = transcribe_jobs(
@@ -1314,7 +1314,7 @@ mod tests {
             &mut |_, _| {},
         );
         assert!(outcome.results.is_empty());
-        assert!(outcome.errors[0].1.contains("сломалось"));
+        assert!(outcome.errors[0].1.contains("it broke"));
         assert!(journal.entries.is_empty());
     }
 

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-//! `molva setup` — готовые бинды для композитора.
+//! `molva setup` — ready binds for the compositor
 //!
-//! На Wayland глобальные хоткеи выдаёт композитор, а не приложение, поэтому «настройка» — это
-//! строки в конфиге пользователя. Команда печатает их, а не правит чужие файлы: конфиг
-//! композитора — не наша территория.
+//! On Wayland the compositor gives out the global hotkeys, not the application, so the "setup" is
+//! lines in the config of the user. The command prints them and does not edit foreign files: the config
+//! of the compositor is not our territory
 
 use molva_core::config::HotkeysConfig;
 
@@ -27,7 +27,7 @@ impl Target {
     }
 }
 
-/// Комбинация, разобранная на модификаторы и клавишу.
+/// A combination parsed into modifiers and a key
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Combo {
     pub mods: Vec<String>,
@@ -35,7 +35,7 @@ pub(crate) struct Combo {
 }
 
 impl Combo {
-    /// Разбор `Ctrl+Shift+Space`; последняя часть — клавиша, остальные — модификаторы.
+    /// Parse `Ctrl+Shift+Space`; the last part is the key, the others are modifiers
     pub(crate) fn parse(spec: &str) -> Combo {
         let parts: Vec<&str> = spec
             .split(['+', '-'])
@@ -51,7 +51,7 @@ impl Combo {
         }
     }
 
-    /// `CTRL SHIFT` для Hyprland; пустая строка, если модификаторов нет.
+    /// `CTRL SHIFT` for Hyprland; an empty string if there are no modifiers
     fn hyprland_mods(&self) -> String {
         self.mods
             .iter()
@@ -60,7 +60,7 @@ impl Combo {
             .join(" ")
     }
 
-    /// `Ctrl+Shift+space` для Sway.
+    /// `Ctrl+Shift+space` for Sway
     fn sway_combo(&self) -> String {
         let mut parts = self.mods.clone();
         parts.push(keysym(&self.key));
@@ -78,7 +78,7 @@ fn normalize_mod(name: &str) -> String {
     }
 }
 
-/// Имя клавиши в терминах xkb: композиторы понимают именно их.
+/// The key name in xkb terms: the compositors understand exactly these
 fn keysym(key: &str) -> String {
     let key = key.trim();
     if key.len() == 1 {
@@ -104,7 +104,7 @@ fn keysym(key: &str) -> String {
     }
 }
 
-/// Сниппет для композитора. `ptt` переопределяет клавишу push-to-talk из конфига.
+/// The snippet for a compositor. `ptt` overrides the push-to-talk key from the config
 pub(crate) fn snippet(target: Target, hotkeys: &HotkeysConfig, ptt: Option<&str>) -> String {
     let ptt = Combo::parse(ptt.unwrap_or(&hotkeys.push_to_talk));
     let toggle = Combo::parse(&hotkeys.toggle);
@@ -120,21 +120,21 @@ pub(crate) fn snippet(target: Target, hotkeys: &HotkeysConfig, ptt: Option<&str>
 fn hyprland(ptt: &Combo, toggle: &Combo, command: &Combo) -> String {
     format!(
         "# MolvAI — ~/.config/hypr/hyprland.conf\n\
-         # Push-to-talk: bind срабатывает на нажатие, bindr — на отпускание.\n\
+         # Push-to-talk: bind fires on press, bindr fires on release\n\
          bind  = {ptt_mods}, {ptt_key}, exec, molva record start\n\
          bindr = {ptt_mods}, {ptt_key}, exec, molva record stop\n\
          \n\
-         # Hands-free: одно нажатие включает запись, следующее — выключает.\n\
+         # Hands-free: one press starts the recording, the next one stops it\n\
          bind  = {toggle_mods}, {toggle_key}, exec, molva record toggle\n\
          \n\
-         # Режим команд: голосовая правка выделенного текста.\n\
+         # Command mode: voice editing of the selected text\n\
          bind  = {command_mods}, {command_key}, exec, molva record start --mode command\n\
          bindr = {command_mods}, {command_key}, exec, molva record stop\n\
          \n\
-         # Отмена текущей записи.\n\
+         # Cancel the current recording\n\
          bind  = CTRL SHIFT, Escape, exec, molva record cancel\n\
          \n\
-         # Демон должен быть запущен: molva daemon\n\
+         # The daemon must be running: molva daemon\n\
          exec-once = molva daemon\n",
         ptt_mods = ptt.hyprland_mods(),
         ptt_key = keysym(&ptt.key),
@@ -148,7 +148,7 @@ fn hyprland(ptt: &Combo, toggle: &Combo, command: &Combo) -> String {
 fn sway(ptt: &Combo, toggle: &Combo, command: &Combo) -> String {
     format!(
         "# MolvAI — ~/.config/sway/config\n\
-         # --no-repeat не даёт автоповтору начинать запись заново.\n\
+         # --no-repeat stops the auto-repeat from starting the recording again\n\
          bindsym --no-repeat {ptt} exec molva record start\n\
          bindsym --release {ptt} exec molva record stop\n\
          \n\
@@ -169,18 +169,18 @@ fn sway(ptt: &Combo, toggle: &Combo, command: &Combo) -> String {
 fn kde(toggle: &Combo) -> String {
     format!(
         "# MolvAI — KDE Plasma\n\
-         # Plasma не отдаёт отпускание клавиши, поэтому push-to-talk там недоступен:\n\
-         # рабочий режим — переключатель.\n\
+         # Plasma does not give out the key release, so push-to-talk is unavailable there:\n\
+         # the working mode is the toggle\n\
          #\n\
-         # Параметры системы → Комбинации клавиш → Добавить команду:\n\
-         #   команда:     molva record toggle\n\
-         #   комбинация:  {toggle}\n\
+         # System Settings → Shortcuts → Add Command:\n\
+         #   command:     molva record toggle\n\
+         #   shortcut:    {toggle}\n\
          #\n\
-         # Отмена:\n\
-         #   команда:     molva record cancel\n\
-         #   комбинация:  Ctrl+Shift+Escape\n\
+         # Cancel:\n\
+         #   command:     molva record cancel\n\
+         #   shortcut:    Ctrl+Shift+Escape\n\
          #\n\
-         # Автозапуск демона: Параметры системы → Автозапуск → molva daemon\n",
+         # Autostart of the daemon: System Settings → Autostart → molva daemon\n",
         toggle = toggle.sway_combo(),
     )
 }
@@ -189,7 +189,7 @@ fn gnome(toggle: &Combo) -> String {
     let path = "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/molva/";
     format!(
         "# MolvAI — GNOME\n\
-         # GNOME тоже не отдаёт отпускание клавиши: только переключатель.\n\
+         # GNOME does not give out the key release either: only the toggle\n\
          gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings \\\n\
          \x20   \"['{path}']\"\n\
          gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:{path} \\\n\
@@ -203,7 +203,7 @@ fn gnome(toggle: &Combo) -> String {
     )
 }
 
-// Общая для всех подкоманд сигнатура: диспетчер в `main` вызывает их одинаково.
+// A signature shared by all subcommands: the dispatcher in `main` calls them all the same way
 #[allow(clippy::unnecessary_wraps)]
 pub(crate) fn run(
     target: Target,
@@ -279,7 +279,7 @@ mod tests {
         assert!(kde.contains("molva record toggle"), "{kde}");
         assert!(
             !kde.contains("record start"),
-            "push-to-talk там не работает: {kde}"
+            "push-to-talk does not work there: {kde}"
         );
         let gnome = snippet(Target::Gnome, &HotkeysConfig::default(), None);
         assert!(gnome.contains("gsettings set"), "{gnome}");
@@ -290,7 +290,7 @@ mod tests {
     fn the_ptt_flag_overrides_the_config() {
         let text = snippet(Target::Hyprland, &HotkeysConfig::default(), Some("Pause"));
         assert!(text.contains(", Pause, exec, molva record start"), "{text}");
-        // Умолчание — F9: нарочно простая клавиша, которая свободна на любом стенде.
+        // The default is F9: a deliberately simple key that is free on any test bench
         let default = snippet(Target::Hyprland, &HotkeysConfig::default(), None);
         assert!(
             default.contains(", F9, exec, molva record start"),

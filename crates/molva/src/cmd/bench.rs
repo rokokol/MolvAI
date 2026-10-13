@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-//! `molva bench` — собственный чекер качества и скорости.
+//! `molva bench` — our own checker of quality and speed
 //!
-//! Одна команда прогоняет весь набор и печатает сводку: WER/CER по кейсам и в среднем,
-//! задержки p50/p95/p99 и отношение p99/p50. Плохой WER — не ошибка запуска: это отчёт,
-//! поэтому код выхода 0. Ошибка — только отсутствующий набор.
+//! One command runs the whole set and prints a summary: WER/CER per case and on average,
+//! the latencies p50/p95/p99 and the ratio p99/p50. A bad WER is not a start error: it is a report,
+//! so the exit code is 0. The only error is a missing set
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -16,41 +16,41 @@ use super::CmdError;
 
 #[derive(Debug, clap::Args)]
 pub(crate) struct Args {
-    /// Каталог набора с manifest.toml
+    /// Directory of the set with manifest.toml
     #[arg(long, value_name = "DIR", default_value = "bench")]
     pub set: PathBuf,
 
-    /// Машинный вывод: полный отчёт в JSON
+    /// Machine output: the full report in JSON
     #[arg(long)]
     pub json: bool,
 
-    /// Печатать сводную таблицу (поведение по умолчанию)
+    /// Print the summary table (the default behavior)
     #[arg(long)]
     pub summary: bool,
 
-    /// Сколько раз прогнать каждый кейс
+    /// How many times to run each case
     #[arg(long, value_name = "N", default_value_t = 1)]
     pub repeat: usize,
 
-    /// Движок распознавания; `fake` проверяет сам конвейер без весов
+    /// Recognition engine; `fake` checks the pipeline itself without weights
     #[arg(long, value_name = "NAME", env = "MOLVA_STT")]
     pub engine: Option<String>,
 
-    /// Модель распознавания
+    /// Recognition model
     #[arg(long, value_name = "NAME")]
     pub model: Option<String>,
 }
 
 pub(crate) fn run(args: &Args, config: &Config, stdout: &mut dyn Write) -> Result<(), CmdError> {
     if args.repeat == 0 {
-        return Err(CmdError::args("--repeat должен быть не меньше 1"));
+        return Err(CmdError::args("--repeat must be at least 1"));
     }
     let choice = EngineChoice {
         engine: args.engine.clone(),
         model: args.model.clone(),
-        // Фейковый движок в бенче отвечает эталоном первого кейса? Нет: он отвечает
-        // фиксированной строкой, и это осознанно — так видно, что метрика реально считается,
-        // а не подгоняется под ответ.
+        // Does the fake engine in the bench answer with the reference of the first case? No: it answers
+        // with a fixed string, and this is on purpose — it shows that the metric is really
+        // computed and is not fitted to the answer
         fake_text: None,
     };
     let mut engine =
@@ -184,7 +184,7 @@ mod tests {
     fn missing_set_is_a_file_error() {
         let directory = tempfile::tempdir().unwrap();
         let error = run(
-            &args_for(&directory.path().join("нет"), false),
+            &args_for(&directory.path().join("missing"), false),
             &Config::default(),
             &mut Vec::new(),
         )

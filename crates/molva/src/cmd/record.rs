@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
-//! `molva record start|stop|toggle|cancel` — тонкий клиент демона.
+//! `molva record start|stop|toggle|cancel` — a thin client of the daemon
 //!
-//! Именно эти вызовы стоят в биндах композитора, поэтому команда обязана быть быстрой и
-//! возвращать честный код: бинд не покажет пользователю текст ошибки, но код увидит скрипт.
+//! These exact calls stand in the binds of the compositor, so the command must be fast and
+//! return an honest code: a bind does not show the error text to the user, but a script sees the code
 
 use std::path::Path;
 
@@ -18,7 +18,7 @@ pub(crate) enum Action {
     Cancel,
 }
 
-/// Команда протокола для действия CLI.
+/// The protocol command for a CLI action
 pub(crate) fn command_for(action: Action, mode: Mode, style: Option<String>) -> Command {
     match action {
         Action::Start => Command::RecordStart { mode, style },
@@ -71,7 +71,7 @@ mod tests {
 
     #[test]
     fn stop_and_cancel_ignore_mode_and_style() {
-        // Режим и стиль запомнены при старте: передавать их снова — значит уметь их разойтись.
+        // The mode and the style are remembered at the start: to pass them again means to let them diverge
         assert_eq!(
             command_for(Action::Stop, Mode::Command, Some("x".into())),
             Command::RecordStop

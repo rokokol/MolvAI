@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! `molva daemon` — фоновый процесс, который держит микрофон, модель и сокет.
+//! `molva daemon` — the background process that holds the microphone, the model and the socket
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -29,10 +29,10 @@ use molva_core::infra::platform;
 use molva_core::infra::sound;
 use uuid::Uuid;
 
-/// Путь к сокету: флаг важнее переменной окружения, переменная — умолчания.
+/// The socket path: the flag wins over the environment variable, and the variable wins over the default
 ///
-/// Ядро про окружение не знает специально: тест на сокете во временном каталоге не должен
-/// зависеть от того, что кто-то экспортировал `MOLVA_SOCKET`.
+/// The core does not know about the environment on purpose: a test on a socket in a temporary directory must not
+/// depend on whether someone exported `MOLVA_SOCKET`
 pub(crate) fn resolve_socket(flag: Option<PathBuf>) -> PathBuf {
     if let Some(path) = flag {
         return path;
@@ -46,16 +46,16 @@ pub(crate) fn resolve_socket(flag: Option<PathBuf>) -> PathBuf {
     ipc::socket_path()
 }
 
-/// Движок распознавания по настройкам: единая фабрика ядра, та же, что у `transcribe` и `bench`.
+/// The recognition engine by the settings: the single factory of the core, the same as in `transcribe` and `bench`
 pub(crate) fn build_stt(config: &Config) -> anyhow::Result<Box<dyn SttEngine>> {
     ensure_model_present(config)?;
     engine::build_stt(config, None).map_err(|err| anyhow!("{err}"))
 }
 
-/// Докачать веса, если их нет (`stt.auto_pull`): демон на чистой машине должен подняться
-/// одной командой, а не отправлять человека читать про `molva models pull`. Прогресс идёт в
-/// stderr полоской, как у `molva models pull`; с выключенной настройкой поведение прежнее —
-/// понятная ошибка с командой для скачивания.
+/// Download the weights if they are missing (`stt.auto_pull`): the daemon on a clean machine must start
+/// with one command and not send the person to read about `molva models pull`. The progress goes to
+/// stderr as a bar, like in `molva models pull`; with the setting off, the behavior is as before:
+/// a clear error with the command for the download
 fn ensure_model_present(config: &Config) -> anyhow::Result<()> {
     if config.stt.engine.trim() != "whisper-cpp" || !config.stt.auto_pull {
         return Ok(());
@@ -67,7 +67,7 @@ fn ensure_model_present(config: &Config) -> anyhow::Result<()> {
         Err(err) => return Err(anyhow!("{err}")),
     }
     let directory = models::models_dir(config)?;
-    tracing::info!(model = name, directory = %directory.display(), "весов нет, скачиваю");
+    tracing::info!(model = name, directory = %directory.display(), "no weights, downloading");
     let report = super::models::pull(
         name,
         &directory,
@@ -76,12 +76,12 @@ fn ensure_model_present(config: &Config) -> anyhow::Result<()> {
         !super::progress_enabled(false),
     )
     .map_err(|err| anyhow!("{err}"))?;
-    tracing::info!(path = %report.path.display(), "веса на месте, контрольная сумма совпала");
+    tracing::info!(path = %report.path.display(), "weights in place, checksum matches");
     Ok(())
 }
 
-/// Источник звука: микрофон через cpal, а для фейкового движка — две секунды тишины,
-/// чтобы сквозной путь проверялся без оборудования.
+/// The audio source: the microphone through cpal, and for the fake engine two seconds of silence,
+/// so that the end-to-end path is checked without hardware
 fn build_audio(config: &Config) -> Box<dyn AudioSource> {
     if config.stt.engine == engine::FAKE_ENGINE {
         return Box::new(FakeAudioSource::silence(2.0));
@@ -93,19 +93,19 @@ fn build_audio(config: &Config) -> Box<dyn AudioSource> {
     ))
 }
 
-/// Журнал реплик: файл JSONL или «никуда» в режиме без записи.
+/// The phrase journal: a JSONL file, or "nowhere" in the no-record mode
 fn build_journal(config: &Config) -> anyhow::Result<Box<dyn Journal>> {
     if config.privacy.no_record_mode || !config.journal.enabled {
         return Ok(Box::new(NullJournal));
     }
     let path = config.journal_path()?;
-    // Путь, приватность и шифр решает ядро: CLI и GUI открывают журнал той же функцией.
+    // The core decides the path, the privacy and the cipher: the CLI and the GUI open the journal with the same function
     let journal =
-        FileJournal::open_for(config).with_context(|| format!("журнал {}", path.display()))?;
+        FileJournal::open_for(config).with_context(|| format!("journal {}", path.display()))?;
     Ok(Box::new(journal))
 }
 
-/// Модель постобработки, если она включена; ключ берётся из окружения по имени из настроек.
+/// The post-processing model, if it is enabled; the key is taken from the environment by the name from the settings
 fn build_llm(config: &Config) -> Option<Arc<dyn LlmClient>> {
     if !config.llm.enabled || !config.privacy.send_to_llm {
         return None;
@@ -113,37 +113,37 @@ fn build_llm(config: &Config) -> Option<Arc<dyn LlmClient>> {
     match OpenAiCompatClient::from_config(&config.llm, secrets::api_key(&config.llm)) {
         Ok(client) => Some(Arc::new(client)),
         Err(err) => {
-            tracing::warn!(error = %err, "модель постобработки недоступна, работаем без неё");
+            tracing::warn!(error = %err, "post-processing model unavailable, working without it");
             None
         }
     }
 }
 
-/// Словарь терминов; отсутствующий файл — пустой словарь, а не ошибка.
+/// The term dictionary; a missing file gives an empty dictionary, not an error
 fn build_dictionary(config: &Config, config_path: &Path) -> Dictionary {
     let path = match config.dictionary_path_near(config_path) {
         Ok(path) => path,
         Err(err) => {
-            tracing::warn!(error = %err, "путь к словарю не определён, словарь пустой");
+            tracing::warn!(error = %err, "dictionary path undefined, dictionary is empty");
             return Dictionary::empty();
         }
     };
     match Dictionary::load(&path, config.dictionary.fuzzy) {
         Ok(dictionary) => dictionary,
         Err(err) => {
-            tracing::warn!(error = %err, path = %path.display(), "словарь не прочитан, словарь пустой");
+            tracing::warn!(error = %err, path = %path.display(), "dictionary not read, dictionary is empty");
             Dictionary::empty()
         }
     }
 }
 
-/// Один экземпляр на пользователя: вторая копия завершается с сообщением.
+/// One instance per user: the second copy exits with a message
 ///
-/// Признак `single_instance` (критерий O-14): если по сокету отвечает живой демон, второй
-/// запуск не стартует вовсе — две копии подрались бы за микрофон и за вставку. Проверка идёт
-/// через пинг сокета, а не через pid-файл: файл переживает падение процесса, а ответ по сокету —
-/// нет. Код выхода отдельный, `7` (`exit::ALREADY_RUNNING`), чтобы автозапуск отличал
-/// «уже работает» от настоящей ошибки.
+/// The `single_instance` feature (criterion O-14): if a live daemon answers on the socket, the second
+/// start does not begin at all, because two copies would fight for the microphone and for the paste. The check goes
+/// through a ping of the socket and not through a pid file: a file survives the crash of a process, and an answer on the socket
+/// does not. The exit code is separate, `7` (`exit::ALREADY_RUNNING`), so that the autostart tells
+/// "already running" from a real error
 pub(crate) fn single_instance_guard(
     socket: &Path,
     ping: impl Fn(&Path) -> Option<u32>,
@@ -152,7 +152,7 @@ pub(crate) fn single_instance_guard(
         return Ok(());
     };
     Err(crate::cmd::CmdError::already_running(format!(
-        "демон уже запущен (pid {pid}), сокет {}",
+        "the daemon is already running (pid {pid}), socket {}",
         socket.display()
     )))
 }
@@ -164,7 +164,7 @@ pub(crate) struct Options {
 
 pub(crate) fn run(config_path: &Path, options: &Options) -> anyhow::Result<()> {
     let config = Config::load_or_create(config_path)
-        .with_context(|| format!("настройки {}", config_path.display()))?;
+        .with_context(|| format!("settings {}", config_path.display()))?;
 
     single_instance_guard(&options.socket, ipc::ping)?;
 
@@ -181,12 +181,12 @@ pub(crate) fn run(config_path: &Path, options: &Options) -> anyhow::Result<()> {
         socket = %options.socket.display(),
         engine = %config.stt.engine,
         model = %config.stt.model,
-        "демон запускается"
+        "daemon starting"
     );
 
     let injector = ChainInjector::for_platform(&config.output, &detected, notifier.clone());
-    // Второй экземпляр — для повтора реплик из истории по `inject.text`: он не должен ждать,
-    // пока конвейер закончит свою реплику.
+    // The second instance is for repeating phrases from the history by `inject.text`: it must not wait
+    // until the pipeline finishes its phrase
     let repeat_injector = ChainInjector::for_platform(&config.output, &detected, notifier.clone());
     let mut pipeline = Pipeline::new(
         build_stt(&config)?,
@@ -203,19 +203,19 @@ pub(crate) fn run(config_path: &Path, options: &Options) -> anyhow::Result<()> {
         audio: build_audio(&config),
         processor: Box::new(pipeline),
         notifier,
-        // Звук начала и конца записи; `audio.sounds = false` даёт молчаливую реализацию.
+        // The sound of the start and the end of the recording; `audio.sounds = false` gives a silent implementation
         sound: sound::build_sound_cue(&config.audio),
         injector: Some(Box::new(repeat_injector)),
         clock,
         config: config.clone(),
     });
     let handle = daemon.handle();
-    // `config.reload` и `style.set` перечитывают тот же файл, с которым демон запущен.
+    // `config.reload` and `style.set` reread the same file the daemon was started with
     handle.set_config_path(config_path.to_path_buf());
 
     let server = Server::bind(&options.socket)
-        .with_context(|| format!("сокет {}", options.socket.display()))?;
-    println!("MolvAI: демон слушает {}", options.socket.display());
+        .with_context(|| format!("socket {}", options.socket.display()))?;
+    println!("MolvAI: the daemon listens on {}", options.socket.display());
     let handler: Arc<dyn RequestHandler> = Arc::new(handle);
     server.serve(&handler)?;
     daemon.join();
@@ -234,17 +234,17 @@ mod tests {
 
     #[test]
     fn without_a_flag_the_default_path_is_used() {
-        // Значение переменной окружения тест не подменяет: результат либо она, либо умолчание.
+        // The test does not override the environment variable: the result is either it or the default
         let path = resolve_socket(None);
         assert!(path.to_string_lossy().contains("molva"), "{path:?}");
     }
 
     #[test]
     fn a_second_instance_refuses_to_start_and_says_which_one_is_running() {
-        // Критерий O-14: вторая копия завершается с сообщением, а не молча и не дракой за микрофон.
+        // Criterion O-14: the second copy exits with a message, not silently and not by fighting for the microphone
         let socket = PathBuf::from("/tmp/molva-test.sock");
         let err = single_instance_guard(&socket, |_| Some(4242)).unwrap_err();
-        assert_eq!(err.code, 7, "код выхода «демон уже запущен»");
+        assert_eq!(err.code, 7, "exit code \"the daemon is already running\"");
         assert!(err.message.contains("4242"), "{}", err.message);
         assert!(err.message.contains("molva-test.sock"), "{}", err.message);
     }
@@ -261,12 +261,12 @@ mod tests {
         let mut config = Config::default();
         config.stt.model_path = directory.path().display().to_string();
 
-        // Поддельный движок весов не требует: сеть не трогается.
+        // The fake engine does not need weights: the network is not touched
         config.stt.engine = "fake".into();
         ensure_model_present(&config).unwrap();
 
-        // Выключенная докачка при отсутствующих весах ничего не качает и не падает здесь:
-        // ошибку с командой pull даст сборка движка, как и раньше.
+        // A switched-off download with missing weights downloads nothing and does not fail here:
+        // the engine build gives the error with the pull command, as before
         config.stt.engine = "whisper-cpp".into();
         config.stt.auto_pull = false;
         ensure_model_present(&config).unwrap();
@@ -275,7 +275,7 @@ mod tests {
                 .unwrap()
                 .next()
                 .is_none(),
-            "в каталог моделей ничего не скачано"
+            "nothing was downloaded into the models directory"
         );
         let err = build_stt(&config).unwrap_err().to_string();
         assert!(err.contains("molva models pull"), "{err}");
@@ -288,15 +288,15 @@ mod tests {
         config.stt.engine = "fake".into();
         match build_stt(&config) {
             Ok(engine) => assert_eq!(engine.id(), "fake"),
-            Err(err) => panic!("движок fake обязан собираться: {err}"),
+            Err(err) => panic!("the fake engine must build: {err}"),
         }
         config.stt.engine = "whisper-cpp".into();
         config.stt.model_path = directory.path().display().to_string();
-        // Тесты не ходят в сеть: без этого демон честно скачал бы веса во временный каталог.
+        // Tests do not go to the network: without this the daemon would honestly download the weights into a temporary directory
         config.stt.auto_pull = false;
         let err = match build_stt(&config) {
             Err(err) => err.to_string(),
-            Ok(_) => panic!("без файла весов движок собираться не должен"),
+            Ok(_) => panic!("the engine must not build without the weights file"),
         };
         assert!(err.contains("molva models pull"), "{err}");
     }

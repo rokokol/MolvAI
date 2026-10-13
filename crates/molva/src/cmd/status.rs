@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! `molva status` — состояние демона одной строкой, JSON-ом или потоком событий.
+//! `molva status` — the daemon state as one line, as JSON, or as a stream of events
 
 use std::path::Path;
 
@@ -7,29 +7,29 @@ use molva_core::infra::ipc::{Client, IpcClientError};
 use molva_core::ipc::protocol::{Command, Event};
 use serde_json::Value;
 
-/// Человекочитаемая строка состояния.
+/// A status line for a person
 pub(crate) fn describe(status: &Value) -> String {
     let state = status
         .get("state")
         .and_then(Value::as_str)
-        .unwrap_or("неизвестно");
+        .unwrap_or("unknown");
     let pid = status.get("pid").and_then(Value::as_u64).unwrap_or(0);
-    format!("состояние: {} (pid {pid})", human_state(state))
+    format!("state: {} (pid {pid})", human_state(state))
 }
 
-/// Состояния протокола по-русски: их видит пользователь, а не разработчик.
+/// The protocol states in plain words: the user sees them, not the developer
 pub(crate) fn human_state(state: &str) -> &str {
     match state {
-        "idle" => "готов",
-        "recording" => "идёт запись",
-        "transcribing" => "распознаю",
-        "post_processing" => "обрабатываю",
-        "injecting" => "вставляю",
+        "idle" => "ready",
+        "recording" => "recording",
+        "transcribing" => "transcribing",
+        "post_processing" => "post-processing",
+        "injecting" => "injecting",
         other => other,
     }
 }
 
-/// Короткая строка про событие для `--watch`.
+/// A short line about an event for `--watch`
 pub(crate) fn describe_event(event: &Event) -> Option<String> {
     match event {
         Event::State { state, .. } => {
@@ -40,16 +40,16 @@ pub(crate) fn describe_event(event: &Event) -> Option<String> {
             Some(human_state(&name).to_string())
         }
         Event::Entry { entry } => Some(format!(
-            "реплика: {} ({} слов, {} мс)",
-            entry.text_final.as_deref().unwrap_or("<без текста>"),
+            "phrase: {} ({} words, {} ms)",
+            entry.text_final.as_deref().unwrap_or("<no text>"),
             entry.words,
             entry.latency_ms.total
         )),
-        Event::Error { message, .. } => Some(format!("ошибка: {message}")),
-        // Уровень сигнала идёт десятками раз в секунду: в текстовый вывод он не помещается.
+        Event::Error { message, .. } => Some(format!("error: {message}")),
+        // The signal level comes dozens of times per second: it does not fit into a text output
         Event::Level { .. } | Event::Hypothesis { .. } => None,
-        Event::ConfigReloaded => Some("настройки перечитаны".into()),
-        Event::DevicesChanged => Some("список устройств изменился".into()),
+        Event::ConfigReloaded => Some("settings reloaded".into()),
+        Event::DevicesChanged => Some("the device list changed".into()),
     }
 }
 
@@ -85,7 +85,7 @@ mod tests {
     #[test]
     fn status_is_rendered_with_state_and_pid() {
         let status = serde_json::json!({ "state": "recording", "pid": 17 });
-        assert_eq!(describe(&status), "состояние: идёт запись (pid 17)");
+        assert_eq!(describe(&status), "state: recording (pid 17)");
     }
 
     #[test]
@@ -102,15 +102,15 @@ mod tests {
                 state: DaemonState::Injecting,
                 mode: None
             }),
-            Some("вставляю".to_string())
+            Some("injecting".to_string())
         );
         assert_eq!(
             describe_event(&Event::Error {
                 code: molva_core::ipc::protocol::ErrorCode::InjectFailed,
-                message: "нет окна".into(),
+                message: "no window".into(),
                 hint: None
             }),
-            Some("ошибка: нет окна".to_string())
+            Some("error: no window".to_string())
         );
     }
 }

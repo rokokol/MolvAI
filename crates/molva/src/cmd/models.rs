@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
-//! `molva models` — что за веса есть, где они лежат и как их получить.
+//! `molva models` — which weights exist, where they lie and how to get them
 //!
-//! Прогресс загрузки идёт в stderr, данные (список, путь) — в stdout, чтобы
-//! `molva models path small` можно было подставить в другую команду.
+//! The download progress goes to stderr, and the data (the list, the path) goes to stdout, so that
+//! `molva models path small` can be substituted into another command
 
 use std::io::Write;
 use std::path::Path;
@@ -14,36 +14,36 @@ use super::{progress_enabled, CmdError};
 
 #[derive(Debug, clap::Subcommand)]
 pub(crate) enum Action {
-    /// Показать каталог моделей и что из него скачано
+    /// Show the model catalog and which of it is downloaded
     List {
-        /// Машинный вывод
+        /// Machine output
         #[arg(long)]
         json: bool,
     },
-    /// Скачать модель по HTTPS с проверкой SHA-256
+    /// Download a model over HTTPS with a SHA-256 check
     Pull {
-        /// Имя модели: tiny, base, small, large-v3-turbo…
+        /// Model name: tiny, base, small, large-v3-turbo…
         #[arg(required_unless_present = "all_small")]
         name: Option<String>,
-        /// Скачать все модели легче 500 МБ — набор для слабой машины и для демо
+        /// Download all models lighter than 500 MB — a set for a weak machine and for a demo
         #[arg(long, conflicts_with = "name")]
         all_small: bool,
-        /// Скачать заново, даже если файл уже на месте
+        /// Download again, even if the file is already in place
         #[arg(long)]
         force: bool,
     },
-    /// Проверить контрольную сумму установленной модели
+    /// Check the checksum of an installed model
     Verify { name: String },
-    /// Удалить установленную модель
+    /// Remove an installed model
     Remove { name: String },
-    /// Напечатать путь к файлу модели
+    /// Print the path to the model file
     Path { name: String },
 }
 
-/// Граница «лёгкой» модели для `--all-small`: столько весит небольшая или квантованная модель.
+/// The border of a "light" model for `--all-small`: this is how much a small or quantized model weighs
 pub(crate) const SMALL_MODEL_LIMIT_BYTES: u64 = 500 * 1_048_576;
 
-/// Модели, которые скачивает `--all-small`, в порядке возрастания размера.
+/// The models that `--all-small` downloads, in order of growing size
 pub(crate) fn small_models() -> Vec<&'static models::ModelInfo> {
     let mut small: Vec<_> = models::CATALOG
         .iter()
@@ -53,18 +53,18 @@ pub(crate) fn small_models() -> Vec<&'static models::ModelInfo> {
     small
 }
 
-/// Человекочитаемый размер: гигабайты для весов, мегабайты для мелочи.
+/// A size for a person: gigabytes for weights, megabytes for small things
 pub(crate) fn human_size(bytes: u64) -> String {
     const MB: f64 = 1_048_576.0;
     const GB: f64 = 1_073_741_824.0;
     if bytes >= 1_073_741_824 {
-        format!("{:.1} ГБ", bytes as f64 / GB)
+        format!("{:.1} GB", bytes as f64 / GB)
     } else {
-        format!("{:.0} МБ", bytes as f64 / MB)
+        format!("{:.0} MB", bytes as f64 / MB)
     }
 }
 
-/// Таблица `models list`.
+/// The table of `models list`
 pub(crate) fn render_list(statuses: &[ModelStatus]) -> String {
     let width = statuses
         .iter()
@@ -94,17 +94,17 @@ fn dir_for(config: &Config) -> Result<std::path::PathBuf, CmdError> {
     models::models_dir(config).map_err(|e| CmdError::file(e.to_string()))
 }
 
-/// Что сделал `pull`: скачал или обошёлся тем, что уже лежит на диске.
+/// What `pull` did: downloaded, or made do with what already lies on the disk
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PullReport {
     pub path: std::path::PathBuf,
-    /// `false` — модель уже была на месте и прошла проверку, сеть не понадобилась (A-09).
+    /// `false` — the model was already in place and passed the check, so the network was not needed (A-09)
     pub downloaded: bool,
 }
 
-/// Нужно ли вообще качать: `false`, если файл уже на месте и хеш сходится.
+/// Whether to download at all: `false` if the file is already in place and the hash matches
 ///
-/// `--force` удаляет то, что лежит, и всегда возвращает `true`.
+/// `--force` deletes what lies there and always returns `true`
 pub(crate) fn needs_download(target: &Path, sha256: &str, force: bool) -> Result<bool, CmdError> {
     if force {
         if target.exists() {
@@ -117,8 +117,8 @@ pub(crate) fn needs_download(target: &Path, sha256: &str, force: bool) -> Result
     Ok(!ok)
 }
 
-/// Скачать модель с полоской прогресса в stderr. Тем же путём демон докачивает веса сам,
-/// когда их нет (`stt.auto_pull`).
+/// Download a model with a progress bar in stderr. The daemon downloads the weights by itself
+/// the same way when they are missing (`stt.auto_pull`)
 pub(crate) fn pull(
     name: &str,
     directory: &Path,
@@ -129,8 +129,8 @@ pub(crate) fn pull(
     let info = models::find(name).map_err(|e| CmdError::args(e.to_string()))?;
     let target = directory.join(info.file_name);
     if !needs_download(&target, info.sha256, force)? {
-        // Ничего не качаем и честно об этом говорим: «скачиваю» на уже готовый файл вводит
-        // в заблуждение, особенно когда моделей несколько гигабайт.
+        // We download nothing and say so honestly: "downloading" for a file that is already ready misleads
+        // the user, especially when the model is several gigabytes
         return Ok(PullReport {
             path: target,
             downloaded: false,
@@ -146,7 +146,7 @@ pub(crate) fn pull(
         }
         bar
     });
-    eprintln!("скачиваю {name} ({})", human_size(info.size_bytes));
+    eprintln!("downloading {name} ({})", human_size(info.size_bytes));
 
     let result = models::pull(name, directory, mirror, &mut |downloaded, total| {
         if let Some(bar) = &bar {
@@ -185,7 +185,7 @@ pub(crate) fn run(
                     .map_err(|e| CmdError::file(e.to_string()))?;
                 write(stdout, &text)?;
             } else {
-                eprintln!("каталог моделей: {}", directory.display());
+                eprintln!("model directory: {}", directory.display());
                 write(stdout, render_list(&statuses).trim_end())?;
             }
         }
@@ -197,7 +197,7 @@ pub(crate) fn run(
             let names: Vec<String> = if *all_small {
                 small_models().iter().map(|m| m.name.to_string()).collect()
             } else {
-                // clap не пропустит вызов без имени и без --all-small.
+                // clap does not let a call pass without a name and without --all-small
                 name.iter().cloned().collect()
             };
             for name in &names {
@@ -209,9 +209,9 @@ pub(crate) fn run(
                     !progress_enabled(false),
                 )?;
                 if report.downloaded {
-                    eprintln!("готово: контрольная сумма {name} совпала");
+                    eprintln!("done: the checksum of {name} matches");
                 } else {
-                    eprintln!("{name} уже установлена, контрольная сумма совпадает");
+                    eprintln!("{name} is already installed, the checksum matches");
                 }
                 write(stdout, &report.path.display().to_string())?;
             }
@@ -221,23 +221,23 @@ pub(crate) fn run(
             let path = directory.join(info.file_name);
             if !path.is_file() {
                 return Err(CmdError::file(format!(
-                    "модель {name} не установлена. Скачайте: molva models pull {name}"
+                    "the model {name} is not installed. Download it: molva models pull {name}"
                 )));
             }
             let ok =
                 models::verify(&path, info.sha256).map_err(|e| CmdError::file(e.to_string()))?;
             if !ok {
                 return Err(CmdError::file(format!(
-                    "контрольная сумма {name} не совпала: файл повреждён, \
-                     переустановите его командой molva models pull {name} --force"
+                    "the checksum of {name} does not match: the file is damaged, \
+                     install it again with the command molva models pull {name} --force"
                 )));
             }
-            write(stdout, &format!("{name}: SHA-256 совпадает"))?;
+            write(stdout, &format!("{name}: SHA-256 matches"))?;
         }
         Action::Remove { name } => {
             let path =
                 models::remove(name, &directory).map_err(|e| CmdError::file(e.to_string()))?;
-            write(stdout, &format!("удалено: {}", path.display()))?;
+            write(stdout, &format!("removed: {}", path.display()))?;
         }
         Action::Path { name } => {
             let path =
@@ -260,8 +260,8 @@ mod tests {
 
     #[test]
     fn size_is_shown_in_megabytes_and_gigabytes() {
-        assert_eq!(human_size(487_601_967), "465 МБ");
-        assert_eq!(human_size(3_095_033_483), "2.9 ГБ");
+        assert_eq!(human_size(487_601_967), "465 MB");
+        assert_eq!(human_size(3_095_033_483), "2.9 GB");
     }
 
     #[test]
@@ -311,7 +311,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let error = run(
             &Action::Path {
-                name: "нетакой".into(),
+                name: "nosuchmodel".into(),
             },
             &cfg_in(directory.path()),
             &mut Vec::new(),
@@ -342,7 +342,7 @@ mod tests {
     #[test]
     fn verify_of_corrupted_model_tells_how_to_fix_it() {
         let directory = tempfile::tempdir().unwrap();
-        std::fs::write(directory.path().join("ggml-tiny.bin"), "подделка").unwrap();
+        std::fs::write(directory.path().join("ggml-tiny.bin"), "forgery").unwrap();
         let error = run(
             &Action::Verify {
                 name: "tiny".into(),
@@ -358,24 +358,24 @@ mod tests {
     fn installed_and_valid_model_is_not_downloaded_again() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("ggml-tiny.bin");
-        std::fs::write(&path, "содержимое").unwrap();
+        std::fs::write(&path, "contents").unwrap();
         let sha = models::sha256_file(&path).unwrap();
 
         assert!(!needs_download(&path, &sha, false).unwrap());
-        // Испорченный файл качается заново.
+        // A damaged file is downloaded again
         assert!(needs_download(&path, &"0".repeat(64), false).unwrap());
-        assert!(path.exists(), "проверка не должна ничего удалять");
+        assert!(path.exists(), "the check must not delete anything");
     }
 
     #[test]
     fn force_removes_the_file_and_demands_a_download() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("ggml-tiny.bin");
-        std::fs::write(&path, "содержимое").unwrap();
+        std::fs::write(&path, "contents").unwrap();
         let sha = models::sha256_file(&path).unwrap();
 
         assert!(needs_download(&path, &sha, true).unwrap());
-        assert!(!path.exists(), "--force должен убрать старый файл");
+        assert!(!path.exists(), "--force must remove the old file");
     }
 
     #[test]
@@ -390,15 +390,9 @@ mod tests {
     fn all_small_covers_only_light_models_smallest_first() {
         let names: Vec<&str> = small_models().iter().map(|m| m.name).collect();
         assert_eq!(names, vec!["tiny", "base", "small-q5_1", "small"]);
-        assert!(
-            !names.contains(&"large-v3"),
-            "тяжёлые модели сюда не попадают"
-        );
+        assert!(!names.contains(&"large-v3"), "heavy models do not get here");
         for pair in small_models().windows(2) {
-            assert!(
-                pair[0].size_bytes <= pair[1].size_bytes,
-                "порядок по размеру"
-            );
+            assert!(pair[0].size_bytes <= pair[1].size_bytes, "order by size");
         }
     }
 

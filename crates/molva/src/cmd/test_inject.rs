@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
-//! `molva test-inject` — проверить вставку, не поднимая демон и не говоря ни слова.
+//! `molva test-inject` — check the paste without starting the daemon and without saying a word
 //!
-//! Пауза перед вставкой обязательна: команду запускают из терминала, а проверять надо окно, в
-//! которое пользователь успеет переключиться.
+//! The pause before the paste is required: the command is started from a terminal, but the window to check
+//! is the one the user has time to switch to
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -14,7 +14,7 @@ use molva_core::infra::inject::{parse_output_mode, ChainInjector};
 use molva_core::infra::notify::LogNotifier;
 use molva_core::infra::platform;
 
-pub(crate) const DEFAULT_TEXT: &str = "MolvAI: проверка вставки";
+pub(crate) const DEFAULT_TEXT: &str = "MolvAI: paste test";
 pub(crate) const DEFAULT_DELAY: Duration = Duration::from_secs(3);
 
 pub(crate) fn run(
@@ -30,7 +30,7 @@ pub(crate) fn run(
     let mut injector = ChainInjector::for_platform(&config.output, &platform, notifier);
 
     println!(
-        "сессия: {}; через {} с текст уйдёт в активное окно — переключитесь туда",
+        "session: {}; in {} s the text goes to the active window — switch to it",
         platform.label(),
         delay.as_secs()
     );
@@ -40,17 +40,17 @@ pub(crate) fn run(
     injector.apply_window(window.as_deref());
     let report = injector.inject(text, resolved)?;
     println!(
-        "окно: {}; способ: {}",
-        window.as_deref().unwrap_or("неизвестно"),
+        "window: {}; method: {}",
+        window.as_deref().unwrap_or("unknown"),
         report.method
     );
     for attempt in &report.attempts {
-        println!("  не сработало — {attempt}");
+        println!("  did not work — {attempt}");
     }
     Ok(())
 }
 
-/// Режим вставки для проверки: аргумент важнее конфига, `auto` разрешается по длине текста.
+/// The paste mode for the check: the argument wins over the config, and `auto` is resolved by the length of the text
 pub(crate) fn resolve_mode(config: &Config, mode: Option<&str>, text: &str) -> OutputMode {
     let requested = mode.map_or_else(|| parse_output_mode(&config.output.mode), parse_output_mode);
     requested.resolve(text, config.output.auto_type_max_chars as usize)
@@ -65,16 +65,16 @@ mod tests {
         let mut config = Config::default();
         config.output.mode = "clipboard".into();
         assert_eq!(
-            resolve_mode(&config, Some("paste"), "текст"),
+            resolve_mode(&config, Some("paste"), "text"),
             OutputMode::Paste
         );
-        assert_eq!(resolve_mode(&config, None, "текст"), OutputMode::Clipboard);
+        assert_eq!(resolve_mode(&config, None, "text"), OutputMode::Clipboard);
     }
 
     #[test]
     fn auto_from_the_config_is_resolved_by_the_length_of_the_text() {
         let config = Config::default();
-        assert_eq!(resolve_mode(&config, None, "коротко"), OutputMode::Type);
+        assert_eq!(resolve_mode(&config, None, "short"), OutputMode::Type);
         let long = "а".repeat(config.output.auto_type_max_chars as usize + 1);
         assert_eq!(resolve_mode(&config, None, &long), OutputMode::Paste);
     }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! `molva history` — просмотр, поиск, фильтрация и выгрузка истории реплик.
+//! `molva history` — viewing, search, filtering and export of the phrase history
 
 use std::path::PathBuf;
 
@@ -22,31 +22,31 @@ use super::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub(crate) enum Format {
-    /// Таблица для человека.
+    /// A table for a person
     Table,
-    /// Массив записей журнала как есть.
+    /// An array of journal entries as they are
     Json,
-    /// Одна строка на реплику.
+    /// One line per phrase
     Plain,
-    /// То же, что plain: формат рассчитан на rofi и dmenu.
+    /// The same as plain: the format is made for rofi and dmenu
     Rofi,
 }
 
 #[derive(Debug, Args)]
 pub(crate) struct HistoryArgs {
-    /// Сколько последних записей показать
+    /// How many of the latest entries to show
     #[arg(long, default_value_t = 20)]
     pub limit: usize,
-    /// Искать подстроку в тексте реплики
+    /// Search for a substring in the text of the phrase
     #[arg(long)]
     pub search: Option<String>,
-    /// Только реплики из этого приложения
+    /// Only phrases from this application
     #[arg(long)]
     pub app: Option<String>,
-    /// С какого момента: 7d, 24h, 2026-09-01
+    /// From which moment: 7d, 24h, 2026-09-01
     #[arg(long)]
     pub since: Option<String>,
-    /// По какой момент: 2026-09-05
+    /// Up to which moment: 2026-09-05
     #[arg(long)]
     pub until: Option<String>,
     #[arg(long, value_enum, default_value_t = Format::Table)]
@@ -57,27 +57,27 @@ pub(crate) struct HistoryArgs {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum HistoryAction {
-    /// Показать одну запись целиком
+    /// Show one entry in full
     Show {
-        /// Идентификатор или его начало
+        /// The identifier or its beginning
         id: String,
     },
-    /// Вставить реплику из истории заново, не диктуя её ещё раз
+    /// Paste a phrase from the history again, without dictating it once more
     Paste {
-        /// Идентификатор или его начало
+        /// The identifier or its beginning
         id: Option<String>,
-        /// Взять последнюю реплику
+        /// Take the last phrase
         #[arg(long)]
         last: bool,
     },
-    /// Удалить одну запись
+    /// Delete one entry
     Delete { id: String },
-    /// Очистить историю целиком
+    /// Clear the whole history
     Clear {
         #[arg(long)]
         yes: bool,
     },
-    /// Выгрузить историю в .jsonl или .csv
+    /// Export the history to .jsonl or .csv
     Export { file: PathBuf },
 }
 
@@ -97,7 +97,7 @@ pub(crate) fn run(
     }
 }
 
-/// Отобрать записи по фильтрам и вернуть последние `limit` в хронологическом порядке.
+/// Select entries by the filters and return the last `limit` in chronological order
 pub(crate) fn select(entries: &[Entry], args: &HistoryArgs) -> anyhow::Result<Vec<Entry>> {
     let now = Utc::now();
     let mut selected = entries.to_vec();
@@ -130,9 +130,12 @@ fn list(journal: &FileJournal, args: &HistoryArgs, config: &Config) -> anyhow::R
     let entries = select(&journal.load_all()?, args)?;
     if entries.is_empty() {
         if matches!(args.format, Format::Table) {
-            println!("История пуста. Журнал: {}", journal.path().display());
+            println!(
+                "The history is empty. Journal: {}",
+                journal.path().display()
+            );
             if !config.journal.enabled {
-                println!("Журнал выключен настройкой journal.enabled = false.");
+                println!("The journal is switched off by the setting journal.enabled = false.");
             }
         }
         return Ok(());
@@ -141,7 +144,7 @@ fn list(journal: &FileJournal, args: &HistoryArgs, config: &Config) -> anyhow::R
     Ok(())
 }
 
-/// Отрисовать записи в выбранном формате.
+/// Render the entries in the chosen format
 pub(crate) fn render(entries: &[Entry], format: Format) -> anyhow::Result<String> {
     Ok(match format {
         Format::Json => format!("{}\n", serde_json::to_string_pretty(entries)?),
@@ -152,7 +155,7 @@ pub(crate) fn render(entries: &[Entry], format: Format) -> anyhow::Result<String
     })
 }
 
-/// Строка формата `plain`/`rofi`: время, скорость, текст и идентификатор в хвосте.
+/// A line of the `plain`/`rofi` format: time, speed, text and the identifier at the tail
 pub(crate) fn line(entry: &Entry) -> String {
     let text = one_line(entry.text_final.as_deref().unwrap_or(""));
     format!(
@@ -174,10 +177,10 @@ fn wpm_cell(entry: &Entry) -> String {
 fn table(entries: &[Entry]) -> String {
     let mut out = format!(
         "{:<16}  {:>9}  {:>5}  {:<12}  {:<10}  {}\n",
-        "ВРЕМЯ (UTC)", "СКОРОСТЬ", "СЛОВ", "ПРИЛОЖЕНИЕ", "СТИЛЬ", "ТЕКСТ"
+        "TIME (UTC)", "SPEED", "WORDS", "APP", "STYLE", "TEXT"
     );
     for entry in entries {
-        let text = one_line(entry.text_final.as_deref().unwrap_or("(текст не сохранён)"));
+        let text = one_line(entry.text_final.as_deref().unwrap_or("(text not saved)"));
         out.push_str(&format!(
             "{:<16}  {:>9}  {:>5}  {:<12}  {:<10}  {}\n",
             entry.ts.format("%Y-%m-%d %H:%M"),
@@ -191,7 +194,7 @@ fn table(entries: &[Entry]) -> String {
     out
 }
 
-/// Найти запись по идентификатору или его началу.
+/// Find an entry by the identifier or its beginning
 pub(crate) fn find<'a>(entries: &'a [Entry], id: &str) -> anyhow::Result<&'a Entry> {
     let id = id.trim_start_matches(ID_SEPARATOR);
     let matches: Vec<&Entry> = entries
@@ -199,9 +202,9 @@ pub(crate) fn find<'a>(entries: &'a [Entry], id: &str) -> anyhow::Result<&'a Ent
         .filter(|entry| entry.id.to_string().starts_with(id))
         .collect();
     match matches.len() {
-        0 => anyhow::bail!("записи {id} в истории нет"),
+        0 => anyhow::bail!("there is no entry {id} in the history"),
         1 => Ok(matches[0]),
-        many => anyhow::bail!("под {id} подходит {many} записей, уточните идентификатор"),
+        many => anyhow::bail!("{many} entries match {id}, make the identifier longer"),
     }
 }
 
@@ -212,9 +215,9 @@ fn show(journal: &FileJournal, id: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Выбрать реплику для повтора: по идентификатору или последнюю.
+/// Pick a phrase to repeat: by the identifier, or the last one
 ///
-/// Чистая функция: правило выбора проверяется без журнала и без демона.
+/// A pure function: the rule of the choice is checked without a journal and without a daemon
 pub(crate) fn pick_for_paste<'a>(
     entries: &'a [Entry],
     id: Option<&str>,
@@ -224,14 +227,14 @@ pub(crate) fn pick_for_paste<'a>(
         return find(entries, id);
     }
     if !last {
-        anyhow::bail!("укажите идентификатор реплики или --last");
+        anyhow::bail!("give the identifier of the phrase or --last");
     }
     entries
         .last()
-        .ok_or_else(|| anyhow::anyhow!("история пуста: повторять нечего"))
+        .ok_or_else(|| anyhow::anyhow!("the history is empty: nothing to repeat"))
 }
 
-/// Текст реплики для повтора; запись без текста повторить нельзя, и это не «пустая вставка».
+/// The text of the phrase to repeat; an entry without text cannot be repeated, and this is not an "empty paste"
 pub(crate) fn text_to_paste(entry: &Entry) -> anyhow::Result<&str> {
     let text = entry
         .text_final
@@ -240,23 +243,23 @@ pub(crate) fn text_to_paste(entry: &Entry) -> anyhow::Result<&str> {
         .filter(|text| !text.is_empty());
     text.ok_or_else(|| {
         anyhow::anyhow!(
-            "в записи {} нет текста: журнал вёлся с journal.include_text = false",
+            "entry {} has no text: the journal was kept with journal.include_text = false",
             entry.id
         )
     })
 }
 
-/// Что сказать, когда демона нет: текст уже в буфере обмена, повторять диктовку не нужно.
+/// What to say when there is no daemon: the text is already in the clipboard, and there is no need to dictate again
 fn daemon_is_down(err: &IpcClientError) -> CmdError {
     CmdError::no_daemon(format!(
-        "демон не запущен ({err}); текст реплики скопирован в буфер обмена, нажмите Ctrl+V"
+        "the daemon is not running ({err}); the text of the phrase is copied to the clipboard, press Ctrl+V"
     ))
 }
 
-/// Повторить реплику из истории: вставка идёт тем же способом, что и у обычной диктовки.
+/// Repeat a phrase from the history: the paste goes the same way as in an ordinary dictation
 ///
-/// Критерий AM-17: повтор доступен из истории, а когда демон недоступен — текст остаётся
-/// в буфере обмена, и команда честно сообщает об этом кодом выхода 3, а не молчаливым успехом.
+/// Criterion AM-17: the repeat is available from the history, and when the daemon is unavailable the text stays
+/// in the clipboard, and the command reports this honestly with the exit code 3 and not with a silent success
 fn paste(
     journal: &FileJournal,
     id: Option<&str>,
@@ -282,26 +285,26 @@ fn paste(
             let method = result
                 .get("method")
                 .and_then(|m| m.as_str())
-                .unwrap_or("вставка");
-            println!("Реплика {} вставлена заново ({method}).", entry.id);
+                .unwrap_or("paste");
+            println!("Phrase {} pasted again ({method}).", entry.id);
             Ok(())
         }
         Err(err) => {
             copy_to_clipboard(&text)?;
             Err(CmdError::no_daemon(format!(
-                "демон не вставил текст ({err}); он скопирован в буфер обмена, нажмите Ctrl+V"
+                "the daemon did not paste the text ({err}); it is copied to the clipboard, press Ctrl+V"
             ))
             .into())
         }
     }
 }
 
-/// Положить текст в буфер обмена: последний рубеж, когда вставить некуда.
+/// Put the text into the clipboard: the last resort when there is nowhere to paste
 fn copy_to_clipboard(text: &str) -> anyhow::Result<()> {
     let notifier: std::sync::Arc<dyn Notifier> = std::sync::Arc::new(LogNotifier);
     ClipboardOnlyInjector::system(notifier)
         .inject(text, OutputMode::Clipboard)
-        .map_err(|err| CmdError::file(format!("буфер обмена недоступен: {err}")))?;
+        .map_err(|err| CmdError::file(format!("the clipboard is unavailable: {err}")))?;
     Ok(())
 }
 
@@ -310,9 +313,9 @@ fn delete(journal: &FileJournal, id: &str) -> anyhow::Result<()> {
     let entry = find(&entries, id)?;
     let entry_id = entry.id;
     if journal.delete(entry_id)? {
-        println!("Запись {entry_id} удалена.");
+        println!("Entry {entry_id} deleted.");
     } else {
-        anyhow::bail!("запись {entry_id} не удалось удалить");
+        anyhow::bail!("entry {entry_id} could not be deleted");
     }
     Ok(())
 }
@@ -320,15 +323,15 @@ fn delete(journal: &FileJournal, id: &str) -> anyhow::Result<()> {
 fn clear(journal: &FileJournal, yes: bool) -> anyhow::Result<()> {
     let count = journal.load_all()?.len();
     if count == 0 {
-        println!("История уже пуста.");
+        println!("The history is already empty.");
         return Ok(());
     }
-    if !confirm(&format!("Удалить все записи ({count})?"), yes)? {
-        println!("Отменено.");
+    if !confirm(&format!("Delete all entries ({count})?"), yes)? {
+        println!("Cancelled.");
         return Ok(());
     }
     journal.clear()?;
-    println!("История очищена: удалено записей — {count}.");
+    println!("History cleared: entries deleted — {count}.");
     Ok(())
 }
 
@@ -341,7 +344,7 @@ fn export(journal: &FileJournal, file: &std::path::Path) -> anyhow::Result<()> {
     } else {
         journal.export_jsonl(file)?
     };
-    println!("Выгружено записей: {count} → {}", file.display());
+    println!("Entries exported: {count} → {}", file.display());
     Ok(())
 }
 
@@ -451,7 +454,7 @@ mod tests {
     #[test]
     fn a_bad_date_is_an_error_not_an_empty_list() {
         let mut args = args();
-        args.since = Some("позавчера".into());
+        args.since = Some("the day before yesterday".into());
         assert!(select(&[], &args).is_err());
     }
 
@@ -502,7 +505,7 @@ mod tests {
         ];
         let table = render(&entries, Format::Table).unwrap();
         assert_eq!(table.lines().count(), 3);
-        assert!(table.starts_with("ВРЕМЯ (UTC)"), "{table}");
+        assert!(table.starts_with("TIME (UTC)"), "{table}");
         assert!(table.contains("kitty"), "{table}");
     }
 
@@ -531,7 +534,7 @@ mod tests {
             .to_string();
         assert!(err.contains("--last"), "{err}");
         let err = pick_for_paste(&[], None, true).unwrap_err().to_string();
-        assert!(err.contains("пуста"), "{err}");
+        assert!(err.contains("empty"), "{err}");
     }
 
     #[test]
@@ -549,10 +552,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let err = daemon_is_down(&IpcClientError::NotRunning {
             path: dir.path().join("absent.sock"),
-            message: "сокета нет".into(),
+            message: "no socket".into(),
         });
-        assert_eq!(err.code, 3, "код выхода «демон недоступен»");
-        assert!(err.message.contains("буфер обмена"), "{}", err.message);
+        assert_eq!(err.code, 3, "exit code \"the daemon is unavailable\"");
+        assert!(err.message.contains("clipboard"), "{}", err.message);
     }
 
     #[test]
@@ -560,7 +563,7 @@ mod tests {
         let entries = vec![entry("2026-09-05T10:00:00Z", "kitty", "текст")];
         let id = entries[0].id.to_string();
         assert_eq!(find(&entries, &id[..8]).unwrap().id, entries[0].id);
-        // Разделитель из формата rofi можно не отрезать вручную.
+        // The separator from the rofi format need not be cut off by hand
         assert_eq!(
             find(&entries, &format!("{ID_SEPARATOR}{id}")).unwrap().id,
             entries[0].id

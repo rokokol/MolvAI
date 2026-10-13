@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
-//! `molva doctor` — что в этой системе работает, а что нет и почему.
+//! `molva doctor` — what works on this system, what does not, and why
 //!
-//! Диагностика печатает не «ок/не ок», а причину и следующий шаг: пользователь на NixOS без
-//! правила udev должен из вывода понять, что именно ему добавить.
+//! The diagnostics print not "ok/not ok" but the reason and the next step: a user on NixOS without
+//! a udev rule must understand from the output what exactly to add
 
 use std::path::Path;
 use std::time::Duration;
@@ -16,10 +16,10 @@ use molva_core::infra::llm::openai_compat::{OpenAiCompatClient, Provider};
 use molva_core::infra::platform::{self, Platform, Tools};
 use molva_core::Config;
 
-/// Сколько диагностика ждёт провайдера модели: дольше — это уже «не отвечает».
+/// How long the diagnostics wait for the model provider: longer than this is already "does not answer"
 const LLM_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 
-/// Одна строка отчёта.
+/// One line of the report
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Check {
     pub name: String,
@@ -37,28 +37,28 @@ impl Check {
     }
 
     pub(crate) fn line(&self) -> String {
-        let mark = if self.ok { "да" } else { "нет" };
+        let mark = if self.ok { "yes" } else { "no" };
         format!("{:<24} {:<4} {}", self.name, mark, self.detail)
     }
 }
 
-/// Доступность `/dev/uinput` на запись: файл может существовать и быть закрытым.
+/// Whether `/dev/uinput` is writable: the file can exist and be closed
 pub(crate) fn uinput_check() -> Check {
     let path = Path::new("/dev/uinput");
     if !path.exists() {
-        return Check::new("/dev/uinput", false, "нет модуля uinput в ядре");
+        return Check::new("/dev/uinput", false, "no uinput module in the kernel");
     }
     match std::fs::OpenOptions::new().write(true).open(path) {
-        Ok(_) => Check::new("/dev/uinput", true, "открывается на запись"),
+        Ok(_) => Check::new("/dev/uinput", true, "opens for writing"),
         Err(error) => Check::new(
             "/dev/uinput",
             false,
-            format!("{error}; нужно правило udev на группу input"),
+            format!("{error}; a udev rule for the input group is needed"),
         ),
     }
 }
 
-/// Клавиатуры в `/dev/input`, которые нам разрешено читать.
+/// Keyboards in `/dev/input` that we are allowed to read
 pub(crate) fn input_devices_check() -> Check {
     #[cfg(target_os = "linux")]
     {
@@ -68,53 +68,53 @@ pub(crate) fn input_devices_check() -> Check {
             return Check::new(
                 "/dev/input",
                 false,
-                "клавиатуры не читаются: добавьте пользователя в группу input",
+                "keyboards are not readable: add the user to the input group",
             );
         }
-        Check::new("/dev/input", true, format!("клавиатур: {}", devices.len()))
+        Check::new("/dev/input", true, format!("keyboards: {}", devices.len()))
     }
     #[cfg(not(target_os = "linux"))]
     {
-        Check::new("/dev/input", false, "только Linux")
+        Check::new("/dev/input", false, "Linux only")
     }
 }
 
-/// Веса whisper: настроенная модель найдена на диске и её SHA-256 совпадает с каталогом.
+/// The whisper weights: the configured model is found on the disk and its SHA-256 matches the catalog
 pub(crate) fn whisper_model_check(config: &Config) -> Check {
     let name = config.stt.model.trim();
     let info = match models::find(name) {
         Ok(info) => info,
-        Err(error) => return Check::new("модель whisper", false, error.to_string()),
+        Err(error) => return Check::new("whisper model", false, error.to_string()),
     };
     let path = match models::installed_path(config, name) {
         Ok(path) => path,
-        Err(error) => return Check::new("модель whisper", false, error.to_string()),
+        Err(error) => return Check::new("whisper model", false, error.to_string()),
     };
     match models::verify(&path, info.sha256) {
         Ok(true) => Check::new(
-            "модель whisper",
+            "whisper model",
             true,
-            format!("{name}: {}, sha256 совпадает", path.display()),
+            format!("{name}: {}, sha256 matches", path.display()),
         ),
         Ok(false) => Check::new(
-            "модель whisper",
+            "whisper model",
             false,
             format!(
-                "{}: sha256 не совпадает с каталогом; скачайте заново: molva models pull {name} --force",
+                "{}: sha256 does not match the catalog; download again: molva models pull {name} --force",
                 path.display()
             ),
         ),
-        Err(error) => Check::new("модель whisper", false, error.to_string()),
+        Err(error) => Check::new("whisper model", false, error.to_string()),
     }
 }
 
-/// Языковая модель: выключена в настройках, либо провайдер отвечает и знает настроенную модель.
+/// The language model: switched off in the settings, or the provider answers and knows the configured model
 pub(crate) fn llm_check(config: &Config) -> Check {
     if !config.llm.enabled {
         return Check::new(
             "LLM",
             true,
-            "выключена в настройках (llm.enabled = false), текст правят словарь и правила",
+            "switched off in the settings (llm.enabled = false), the dictionary and the rules edit the text",
         );
     }
     let provider = Provider::parse(&config.llm.provider);
@@ -139,7 +139,7 @@ pub(crate) fn llm_check(config: &Config) -> Check {
             "LLM",
             true,
             format!(
-                "{} отвечает на {base_url}, модель {} на месте",
+                "{} answers at {base_url}, the model {} is in place",
                 provider.id(),
                 config.llm.model
             ),
@@ -148,11 +148,11 @@ pub(crate) fn llm_check(config: &Config) -> Check {
             "LLM",
             false,
             format!(
-                "{} отвечает, но модели {} нет (есть: {}); для Ollama: ollama pull {}",
+                "{} answers, but the model {} is missing (available: {}); for Ollama: ollama pull {}",
                 provider.id(),
                 config.llm.model,
                 if names.is_empty() {
-                    "ничего".to_string()
+                    "nothing".to_string()
                 } else {
                     names.join(", ")
                 },
@@ -163,37 +163,37 @@ pub(crate) fn llm_check(config: &Config) -> Check {
             "LLM",
             false,
             format!(
-                "{base_url}: ключ не принят; проверьте llm.api_key_source и переменную {}",
+                "{base_url}: the key was not accepted; check llm.api_key_source and the variable {}",
                 config.llm.api_key_env
             ),
         ),
         Err(error) => Check::new(
             "LLM",
             false,
-            format!("{error}; запустите провайдера или выключите llm.enabled"),
+            format!("{error}; start the provider or switch off llm.enabled"),
         ),
     }
 }
 
-/// HTTP-клиент не собрался: до провайдера запрос не дошёл, поэтому совет — про окружение
-/// этой машины, а не про запуск модели.
+/// The HTTP client was not built: the request did not reach the provider, so the advice is about the environment
+/// of this machine and not about starting the model
 pub(crate) fn client_not_built(error: &LlmError) -> Check {
     Check::new(
         "LLM",
         false,
         format!(
-            "{error}; HTTP-клиент не создан: проверьте системные сертификаты (SSL_CERT_FILE) \
-             и переменные прокси или выключите llm.enabled"
+            "{error}; the HTTP client was not created: check the system certificates (SSL_CERT_FILE) \
+             and the proxy variables, or switch off llm.enabled"
         ),
     )
 }
 
-/// Полный отчёт: строки в том порядке, в котором их читают.
-/// Хранилище ключей ОС: запись, чтение и удаление пробной записи. Недоступное хранилище —
-/// это «нет» с объяснением, а не падение: без него ключи читаются из переменных окружения.
+/// The full report: lines in the order in which they are read
+/// The OS key store: write, read and delete of a probe entry. An unavailable store is
+/// a "no" with an explanation, not a crash: without it the keys are read from environment variables
 pub(crate) fn keyring_check(store: &dyn SecretStore) -> Check {
-    const NAME: &str = "хранилище ключей";
-    const HINT: &str = "запустите gnome-keyring/kwallet или используйте api_key_source = env";
+    const NAME: &str = "key store";
+    const HINT: &str = "start gnome-keyring/kwallet or use api_key_source = env";
     let probe = "molva-doctor-probe";
     let value = format!("probe-{}", std::process::id());
     let round_trip = store
@@ -201,11 +201,11 @@ pub(crate) fn keyring_check(store: &dyn SecretStore) -> Check {
         .and_then(|()| store.get(probe))
         .and_then(|read| store.delete(probe).map(|()| read));
     match round_trip {
-        Ok(Some(read)) if read == value => Check::new(NAME, true, "запись, чтение и удаление"),
+        Ok(Some(read)) if read == value => Check::new(NAME, true, "write, read and delete"),
         Ok(_) => Check::new(
             NAME,
             false,
-            format!("пробная запись прочиталась не той; {HINT}"),
+            format!("the probe entry was read back wrong; {HINT}"),
         ),
         Err(error) => Check::new(NAME, false, format!("{error}; {HINT}")),
     }
@@ -215,36 +215,36 @@ pub(crate) fn checks(socket: &Path, config: &Config) -> Vec<Check> {
     checks_with(socket, config, &OsKeyring)
 }
 
-/// То же с явным хранилищем: тесты не трогают хранилище ОС.
+/// The same with an explicit store: tests do not touch the OS store
 pub(crate) fn checks_with(socket: &Path, config: &Config, store: &dyn SecretStore) -> Vec<Check> {
     let platform = platform::detect();
     let tools = Tools::detect();
     let mut checks = vec![
-        Check::new("сессия", platform != Platform::Headless, platform.label()),
+        Check::new("session", platform != Platform::Headless, platform.label()),
         Check::new(
-            "окно",
+            "window",
             true,
-            platform::active_window_class().unwrap_or_else(|| "класс неизвестен".into()),
+            platform::active_window_class().unwrap_or_else(|| "class unknown".into()),
         ),
         Check::new("hyprctl", tools.hyprctl, tool_detail(tools.hyprctl)),
         Check::new("wtype", tools.wtype, tool_detail(tools.wtype)),
         Check::new("ydotool", tools.ydotool, tool_detail(tools.ydotool)),
         Check::new("wl-copy", tools.wl_copy, tool_detail(tools.wl_copy)),
         Check::new(
-            "буфер обмена",
+            "clipboard",
             SystemClipboard::available(),
-            "arboard или wl-copy",
+            "arboard or wl-copy",
         ),
         uinput_check(),
         input_devices_check(),
     ];
     checks.push(match ipc::ping(socket) {
-        Some(pid) => Check::new("демон", true, format!("pid {pid}, {}", socket.display())),
+        Some(pid) => Check::new("daemon", true, format!("pid {pid}, {}", socket.display())),
         None => Check::new(
-            "демон",
+            "daemon",
             false,
             format!(
-                "не отвечает на {}; запустите molva daemon",
+                "does not answer on {}; start molva daemon",
                 socket.display()
             ),
         ),
@@ -257,13 +257,13 @@ pub(crate) fn checks_with(socket: &Path, config: &Config, store: &dyn SecretStor
 
 fn tool_detail(found: bool) -> &'static str {
     if found {
-        "найден в PATH"
+        "found in PATH"
     } else {
-        "не найден в PATH"
+        "not found in PATH"
     }
 }
 
-// Общая для всех подкоманд сигнатура: диспетчер в `main` вызывает их одинаково.
+// A signature shared by all subcommands: the dispatcher in `main` calls them all the same way
 #[allow(clippy::unnecessary_wraps)]
 pub(crate) fn run(socket: &Path, config: &Config) -> anyhow::Result<()> {
     for check in checks(socket, config) {
@@ -280,15 +280,15 @@ mod tests {
 
     #[test]
     fn a_report_line_shows_the_name_the_verdict_and_the_reason() {
-        let check = Check::new("wtype", false, "не найден в PATH");
+        let check = Check::new("wtype", false, "not found in PATH");
         let line = check.line();
         assert!(line.starts_with("wtype"), "{line}");
-        assert!(line.contains("нет"), "{line}");
-        assert!(line.contains("не найден"), "{line}");
+        assert!(line.contains(" no "), "{line}");
+        assert!(line.contains("not found"), "{line}");
     }
 
-    /// Настройки, у которых модели лежат во временном каталоге, а LLM выключена:
-    /// диагностика не должна лезть ни в домашний каталог, ни в сеть.
+    /// Settings with the models in a temporary directory and the LLM switched off:
+    /// the diagnostics must reach neither into the home directory nor into the network
     fn offline_config(directory: &Path) -> Config {
         let mut config = Config::default();
         config.stt.model_path = directory.display().to_string();
@@ -306,14 +306,14 @@ mod tests {
         );
         let names: Vec<&str> = checks.iter().map(|c| c.name.as_str()).collect();
         for expected in [
-            "сессия",
+            "session",
             "hyprctl",
             "wtype",
             "/dev/uinput",
-            "демон",
-            "модель whisper",
+            "daemon",
+            "whisper model",
             "LLM",
-            "хранилище ключей",
+            "key store",
         ] {
             assert!(names.contains(&expected), "{names:?}");
         }
@@ -329,10 +329,10 @@ mod tests {
 
     #[test]
     fn an_unavailable_keyring_names_the_next_step_instead_of_failing() {
-        let check = keyring_check(&MemoryStore::failing("нет Secret Service"));
+        let check = keyring_check(&MemoryStore::failing("no Secret Service"));
         assert!(!check.ok);
         assert!(
-            check.detail.contains("нет Secret Service"),
+            check.detail.contains("no Secret Service"),
             "{}",
             check.detail
         );
@@ -397,7 +397,7 @@ mod tests {
             "{}",
             check.detail
         );
-        assert!(check.detail.contains("сертификат"), "{}", check.detail);
+        assert!(check.detail.contains("certificates"), "{}", check.detail);
         assert!(check.detail.contains("llm.enabled"), "{}", check.detail);
     }
 
@@ -406,7 +406,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let socket = directory.path().join("absent.sock");
         let checks = checks(&socket, &offline_config(directory.path()));
-        let daemon = checks.iter().find(|c| c.name == "демон").unwrap();
+        let daemon = checks.iter().find(|c| c.name == "daemon").unwrap();
         assert!(!daemon.ok);
         assert!(daemon.detail.contains("molva daemon"), "{}", daemon.detail);
         assert!(

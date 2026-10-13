@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! `molva dictionary` — термины, которые распознаватель слышит неверно.
+//! `molva dictionary` — terms that the recognizer hears wrong
 
 use clap::Subcommand;
 use molva_core::app::dictionary::{Dictionary, Term};
@@ -9,23 +9,23 @@ use super::{open_journal, truncate};
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum DictionaryAction {
-    /// Показать термины и их алиасы
+    /// Show the terms and their aliases
     List,
-    /// Добавить термин
+    /// Add a term
     Add {
-        /// Как термин должен выглядеть в тексте
+        /// How the term must look in the text
         term: String,
-        /// Как его слышит распознаватель; флаг можно повторять
+        /// How the recognizer hears it; the flag can be repeated
         #[arg(long = "alias")]
         aliases: Vec<String>,
     },
-    /// Перечитать файл словаря и показать, что получилось
+    /// Reread the dictionary file and show the result
     Reload,
-    /// Размер словаря и сколько подстановок он сделал
+    /// The size of the dictionary and how many replacements it made
     Stats,
 }
 
-/// Словарь лежит рядом с тем файлом настроек, с которым запущена команда.
+/// The dictionary lies next to the settings file that the command was started with
 pub(crate) fn run(
     action: DictionaryAction,
     config: &Config,
@@ -36,10 +36,10 @@ pub(crate) fn run(
         DictionaryAction::List => {
             let dictionary = Dictionary::load(&path, config.dictionary.fuzzy)?;
             if dictionary.is_empty() {
-                println!("Словарь пуст. Файл: {}", path.display());
+                println!("The dictionary is empty. File: {}", path.display());
                 return Ok(());
             }
-            println!("{:<24}  {:<7}  АЛИАСЫ", "ТЕРМИН", "РЕГИСТР");
+            println!("{:<24}  {:<7}  ALIASES", "TERM", "CASE");
             for term in dictionary.terms() {
                 println!(
                     "{:<24}  {:<7}  {}",
@@ -55,17 +55,17 @@ pub(crate) fn run(
             let refs: Vec<&str> = aliases.iter().map(String::as_str).collect();
             dictionary.add(Term::new(&term, &refs))?;
             println!(
-                "Добавлено: {term} ({} алиасов) → {}",
+                "Added: {term} ({} aliases) → {}",
                 aliases.len(),
                 path.display()
             );
-            println!("Демон подхватит словарь сам: он перечитывает файл по времени изменения.");
+            println!("The daemon picks up the dictionary by itself: it rereads the file by its modification time.");
             Ok(())
         }
         DictionaryAction::Reload => {
             let dictionary = Dictionary::load(&path, config.dictionary.fuzzy)?;
             println!(
-                "Словарь перечитан: терминов — {}, файл {}",
+                "Dictionary reread: terms — {}, file {}",
                 dictionary.len(),
                 path.display()
             );
@@ -74,23 +74,19 @@ pub(crate) fn run(
         DictionaryAction::Stats => {
             let dictionary = Dictionary::load(&path, config.dictionary.fuzzy)?;
             let aliases: usize = dictionary.terms().iter().map(|t| t.aliases.len()).sum();
-            println!("Файл:              {}", path.display());
-            println!("Терминов:          {}", dictionary.len());
-            println!("Алиасов:           {aliases}");
+            println!("File:              {}", path.display());
+            println!("Terms:             {}", dictionary.len());
+            println!("Aliases:           {aliases}");
             println!(
-                "Нечёткий поиск:    {}",
-                if config.dictionary.fuzzy {
-                    "включён"
-                } else {
-                    "выключен"
-                }
+                "Fuzzy search:      {}",
+                if config.dictionary.fuzzy { "on" } else { "off" }
             );
             println!(
-                "В подсказке STT:   {}",
+                "In the STT prompt: {}",
                 if config.dictionary.in_prompt {
-                    "да"
+                    "yes"
                 } else {
-                    "нет"
+                    "no"
                 }
             );
 
@@ -99,11 +95,11 @@ pub(crate) fn run(
                     let hits: u64 = entries.iter().map(|e| u64::from(e.dict_hits)).sum();
                     let touched = entries.iter().filter(|e| e.dict_hits > 0).count();
                     println!(
-                        "Подстановок всего: {hits} в {touched} репликах из {}",
+                        "Replacements:      {hits} in {touched} of {} phrases",
                         entries.len()
                     );
                 }
-                Err(error) => println!("История недоступна: {error}"),
+                Err(error) => println!("History unavailable: {error}"),
             }
             Ok(())
         }

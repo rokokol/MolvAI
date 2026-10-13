@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
-//! `molva secret` — ключи в хранилище, а не в файле настроек и не в истории оболочки.
+//! `molva secret` — keys in a store, not in the settings file and not in the shell history
 //!
-//! Значение читается только из stdin: `printf '%s' "$KEY" | molva secret set llm`. В argv ключ
-//! попал бы в историю оболочки и в `ps`. Где именно лежит запись, решают настройки:
-//! `llm.api_key_source` для ключа модели и `journal.key_source` для ключа журнала; `status`
-//! показывает только наличие записи, никогда — значение.
+//! The value is read only from stdin: `printf '%s' "$KEY" | molva secret set llm`. In argv the key
+//! would get into the shell history and into `ps`. The settings decide where the entry lies:
+//! `llm.api_key_source` for the model key and `journal.key_source` for the journal key; `status`
+//! shows only whether the entry exists, never the value
 
 use std::io::Read as _;
 
@@ -17,12 +17,12 @@ use molva_core::Config;
 
 use super::CmdError;
 
-/// Какой секрет: имя записи и хранилище выводятся из настроек.
+/// Which secret: the entry name and the store are derived from the settings
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub(crate) enum SecretName {
-    /// Ключ облачного провайдера модели (`llm.api_key_source`)
+    /// The key of the cloud model provider (`llm.api_key_source`)
     Llm,
-    /// Ключ шифрования журнала (`journal.key_source`)
+    /// The encryption key of the journal (`journal.key_source`)
     Journal,
 }
 
@@ -39,31 +39,31 @@ impl SecretName {
 
 #[derive(Debug, Clone, Copy, Subcommand)]
 pub(crate) enum SecretAction {
-    /// Записать значение из stdin
+    /// Write the value from stdin
     Set {
-        /// Какой секрет: llm или journal
+        /// Which secret: llm or journal
         name: SecretName,
     },
-    /// Удалить запись
+    /// Delete the entry
     Delete {
-        /// Какой секрет: llm или journal
+        /// Which secret: llm or journal
         name: SecretName,
     },
-    /// Есть ли записи; значения не печатаются
+    /// Whether the entries exist; the values are not printed
     Status,
 }
 
-/// Куда настройки отправляют секрет.
+/// Where the settings send the secret
 pub(crate) enum Backend {
-    /// Запись `entry` в хранилище; `place` — где оно, для отчёта.
+    /// The entry `entry` in a store; `place` is where the store is, for the report
     Store {
         store: Box<dyn SecretStore>,
         entry: String,
         place: String,
     },
-    /// Только переменная окружения: записывать нечего.
+    /// Only an environment variable: there is nothing to write
     Env { variable: String },
-    /// Источник `none`: ключа нет по замыслу.
+    /// The source `none`: there is no key by design
     None,
 }
 
@@ -84,7 +84,7 @@ impl std::fmt::Debug for Backend {
     }
 }
 
-/// Имя записи для секрета: `llm-api-key-<provider>` или `journal-key`.
+/// The entry name for a secret: `llm-api-key-<provider>` or `journal-key`
 pub(crate) fn entry_name(name: SecretName, provider: &str) -> String {
     match name {
         SecretName::Llm => llm_key_entry(provider),
@@ -92,9 +92,9 @@ pub(crate) fn entry_name(name: SecretName, provider: &str) -> String {
     }
 }
 
-/// Хранилище и имя записи по настройкам. Для журнала с `key_source = "file"` файловое
-/// хранилище строится над каталогом `journal.key_path`, чтобы `molva secret` и демон читали
-/// один и тот же файл.
+/// The store and the entry name by the settings. For the journal with `key_source = "file"`, the file
+/// store is built over the directory of `journal.key_path`, so that `molva secret` and the daemon read
+/// the same file
 pub(crate) fn resolve(name: SecretName, config: &Config) -> Result<Backend, CmdError> {
     let source = match name {
         SecretName::Llm => config.llm.api_key_source.trim().to_lowercase(),
@@ -105,7 +105,7 @@ pub(crate) fn resolve(name: SecretName, config: &Config) -> Result<Backend, CmdE
         (_, "keyring") => Ok(Backend::Store {
             store: Box::new(OsKeyring),
             entry,
-            place: "хранилище ОС".into(),
+            place: "OS store".into(),
         }),
         (SecretName::Llm, "file") => {
             let directory =
@@ -123,7 +123,7 @@ pub(crate) fn resolve(name: SecretName, config: &Config) -> Result<Backend, CmdE
             let file_name = path
                 .file_name()
                 .map(|name| name.to_string_lossy().into_owned())
-                .ok_or_else(|| CmdError::file(format!("{}: не файл", path.display())))?;
+                .ok_or_else(|| CmdError::file(format!("{}: not a file", path.display())))?;
             let directory = path
                 .parent()
                 .map(std::path::Path::to_path_buf)
@@ -139,20 +139,20 @@ pub(crate) fn resolve(name: SecretName, config: &Config) -> Result<Backend, CmdE
         }),
         (SecretName::Llm, "none") => Ok(Backend::None),
         (_, other) => Err(CmdError::args(format!(
-            "источник {other:?} для секрета {} не поддерживается",
+            "the source {other:?} is not supported for the secret {}",
             name.label()
         ))),
     }
 }
 
-/// Ключ журнала обязан быть 64 hex-символами: иначе демон откажется открывать журнал.
+/// The journal key must be 64 hex characters: otherwise the daemon refuses to open the journal
 fn validate(name: SecretName, value: &str) -> Result<(), CmdError> {
     if name == SecretName::Journal
         && (value.len() != KEY_LEN * 2 || !value.chars().all(|c| c.is_ascii_hexdigit()))
     {
         return Err(CmdError::args(format!(
-            "ключ журнала — это {} hex-символов; пустая запись создастся сама при первом \
-             открытии журнала",
+            "the journal key is {} hex characters; an empty entry is created by itself at the first \
+             opening of the journal",
             KEY_LEN * 2
         )));
     }
@@ -167,7 +167,7 @@ fn read_value_from_stdin() -> Result<String, CmdError> {
     let value = text.trim_end_matches(['\r', '\n']).to_string();
     if value.trim().is_empty() {
         return Err(CmdError::args(
-            "значение не задано: printf '%s' \"$KEY\" | molva secret set llm",
+            "no value given: printf '%s' \"$KEY\" | molva secret set llm",
         ));
     }
     Ok(value)
@@ -190,7 +190,7 @@ pub(crate) fn run(action: SecretAction, config: &Config) -> anyhow::Result<()> {
             store
                 .set(&entry, &value)
                 .map_err(|e| CmdError::file(e.to_string()))?;
-            eprintln!("записано: {entry} ({place})");
+            eprintln!("written: {entry} ({place})");
             Ok(())
         }
         SecretAction::Delete { name } => {
@@ -201,7 +201,7 @@ pub(crate) fn run(action: SecretAction, config: &Config) -> anyhow::Result<()> {
             store
                 .delete(&entry)
                 .map_err(|e| CmdError::file(e.to_string()))?;
-            eprintln!("удалено: {entry}");
+            eprintln!("removed: {entry}");
             Ok(())
         }
         SecretAction::Status => {
@@ -216,18 +216,18 @@ pub(crate) fn run(action: SecretAction, config: &Config) -> anyhow::Result<()> {
 fn refuse_env(name: SecretName, backend: &Backend) -> CmdError {
     match backend {
         Backend::Env { variable } => CmdError::args(format!(
-            "источник {} — переменная окружения: задайте её сами, export {variable}=…, \
-             или переключите источник на keyring/file",
+            "the source of {} is an environment variable: set it yourself, export {variable}=…, \
+             or switch the source to keyring/file",
             name.label()
         )),
         _ => CmdError::args(format!(
-            "источник {} — none: ключ отключён настройками",
+            "the source of {} is none: the key is switched off by the settings",
             name.label()
         )),
     }
 }
 
-/// Строка отчёта: имя, где хранится и есть ли запись. Значение не печатается.
+/// A report line: the name, where it is stored and whether the entry exists. The value is not printed
 fn status_line(name: SecretName, config: &Config) -> String {
     match resolve(name, config) {
         Ok(Backend::Store {
@@ -235,24 +235,20 @@ fn status_line(name: SecretName, config: &Config) -> String {
             entry,
             place,
         }) => match store.get(&entry) {
-            Ok(Some(_)) => format!("{:<8} {entry:<24} есть    {place}", name.label()),
-            Ok(None) => format!("{:<8} {entry:<24} нет     {place}", name.label()),
-            Err(error) => format!("{:<8} {entry:<24} ошибка  {error}", name.label()),
+            Ok(Some(_)) => format!("{:<8} {entry:<24} present  {place}", name.label()),
+            Ok(None) => format!("{:<8} {entry:<24} absent   {place}", name.label()),
+            Err(error) => format!("{:<8} {entry:<24} error    {error}", name.label()),
         },
         Ok(Backend::Env { variable }) => {
             let set = std::env::var(&variable).is_ok_and(|v| !v.trim().is_empty());
-            let state = if set {
-                "задана"
-            } else {
-                "не задана"
-            };
+            let state = if set { "set" } else { "not set" };
             format!(
-                "{:<8} {variable:<24} {state}  переменная окружения",
+                "{:<8} {variable:<24} {state}  environment variable",
                 name.label()
             )
         }
-        Ok(Backend::None) => format!("{:<8} {:<24} выключен", name.label(), "-"),
-        Err(error) => format!("{:<8} {:<24} ошибка  {error}", name.label(), "-"),
+        Ok(Backend::None) => format!("{:<8} {:<24} off", name.label(), "-"),
+        Err(error) => format!("{:<8} {:<24} error    {error}", name.label(), "-"),
     }
 }
 
@@ -278,7 +274,7 @@ mod tests {
         match resolve(SecretName::Llm, &config).unwrap() {
             Backend::Store { entry, place, .. } => {
                 assert_eq!(entry, "llm-api-key-groq");
-                assert_eq!(place, "хранилище ОС");
+                assert_eq!(place, "OS store");
             }
             other => panic!("{other:?}"),
         }
@@ -303,7 +299,7 @@ mod tests {
     #[test]
     fn the_journal_key_must_be_hex_of_the_right_length() {
         assert!(validate(SecretName::Journal, &"ab".repeat(KEY_LEN)).is_ok());
-        assert!(validate(SecretName::Journal, "не ключ").is_err());
+        assert!(validate(SecretName::Journal, "not a key").is_err());
         assert!(validate(SecretName::Journal, &"zz".repeat(KEY_LEN)).is_err());
         assert!(validate(SecretName::Llm, "sk-anything").is_ok());
     }

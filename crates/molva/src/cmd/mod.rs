@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
-//! Подкоманды `molva`. Каждая — отдельный файл, чтобы дорожки не дрались за один модуль.
+//! Subcommands of `molva`. Each one is a separate file, so that the tracks do not fight for one module
 //!
-//! Общее правило вывода: данные — в stdout, всё остальное (прогресс, предупреждения,
-//! сообщения об ошибках) — в stderr. Поэтому `molva transcribe ... | wc -w` считает слова,
-//! а не полоску прогресса. Общие мелочи — открытие журнала, разбор дат, подтверждение опасных
-//! действий, ошибка с кодом выхода — живут здесь.
+//! The general output rule: data goes to stdout, everything else (progress, warnings,
+//! error messages) goes to stderr. So `molva transcribe ... | wc -w` counts words,
+//! not the progress bar. The common small things live here: opening the journal, parsing dates,
+//! confirming dangerous actions, an error with an exit code
 //!
-//! Объявления по одному на строку: файл общий для нескольких дорожек, так меньше конфликтов.
+//! Declarations go one per line: the file is shared by several tracks, and this gives fewer conflicts
 
-// Печать в stdout — это работа слоя команд: сюда идут данные, ради которых `molva` и запускают.
-// Правило `print_stdout` остаётся в силе для ядра и GUI, где stdout принадлежит не им.
+// Printing to stdout is the job of the command layer: the data for which `molva` is started goes here
+// The `print_stdout` rule stays in force for the core and the GUI, where stdout does not belong to them
 #![allow(clippy::print_stdout)]
 
 pub(crate) mod bench;
@@ -38,13 +38,13 @@ use molva_core::app::journal::FileJournal;
 use molva_core::Config;
 use thiserror::Error;
 
-/// Разделитель идентификатора в форматах `plain` и `rofi`: печатный знак разделителя записей.
+/// The separator of the identifier in the `plain` and `rofi` formats: the printable record separator sign
 pub(crate) const ID_SEPARATOR: char = '␟';
 
-/// Сколько символов текста показывать в однострочных форматах.
+/// How many characters of the text to show in the one-line formats
 pub(crate) const LINE_TEXT_LIMIT: usize = 120;
 
-/// Ошибка подкоманды вместе с кодом выхода, который она должна дать.
+/// An error of a subcommand together with the exit code that it must give
 #[derive(Debug, Error)]
 #[error("{message}")]
 pub(crate) struct CmdError {
@@ -53,15 +53,15 @@ pub(crate) struct CmdError {
 }
 
 impl CmdError {
-    /// Неверные аргументы или неизвестное имя.
+    /// Wrong arguments or an unknown name
     pub(crate) const BAD_ARGS: u8 = crate::exit::BAD_ARGS;
-    /// Движок распознавания не собрался или упал.
+    /// The recognition engine did not build or crashed
     pub(crate) const ENGINE: u8 = crate::exit::ENGINE;
-    /// Не удалось прочитать или записать файл.
+    /// A file could not be read or written
     pub(crate) const FILE: u8 = crate::exit::FILE;
-    /// Демон не запущен или не отвечает.
+    /// The daemon is not running or does not answer
     pub(crate) const NO_DAEMON: u8 = crate::exit::NO_DAEMON;
-    /// Демон уже запущен: вторая копия не нужна.
+    /// The daemon is already running: a second copy is not needed
     pub(crate) const ALREADY_RUNNING: u8 = crate::exit::ALREADY_RUNNING;
 
     pub(crate) fn args(message: impl Into<String>) -> Self {
@@ -85,7 +85,7 @@ impl CmdError {
         }
     }
 
-    /// Демон недоступен: команда сделала, что смогла, и честно об этом сообщает.
+    /// The daemon is unreachable: the command did what it could and reports this honestly
     pub(crate) fn no_daemon(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
@@ -93,7 +93,7 @@ impl CmdError {
         }
     }
 
-    /// Демон уже запущен: вторая копия завершается с сообщением и своим кодом.
+    /// The daemon is already running: the second copy exits with a message and its own code
     pub(crate) fn already_running(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
@@ -102,27 +102,27 @@ impl CmdError {
     }
 }
 
-/// Показывать ли полоску прогресса: только живому терминалу и только при человеческом выводе.
+/// Whether to show the progress bar: only to a live terminal and only with human output
 ///
-/// В пайпе и при `--json` прогресс молчит, иначе он попадёт в лог прогона и в глаза жюри.
+/// In a pipe and with `--json` the progress stays silent, otherwise it lands in the run log and in front of the jury
 pub(crate) fn progress_enabled(machine_output: bool) -> bool {
     !machine_output && std::io::stderr().is_terminal()
 }
 
-/// Открыть журнал по настройкам, создав его при необходимости.
+/// Open the journal by the settings, and create it if needed
 pub(crate) fn open_journal(config: &Config) -> anyhow::Result<FileJournal> {
     let path = config.journal_path()?;
     let journal =
-        FileJournal::open_for(config).with_context(|| format!("журнал {}", path.display()))?;
+        FileJournal::open_for(config).with_context(|| format!("journal {}", path.display()))?;
     Ok(journal)
 }
 
-/// Текст в одну строку: переводы строк становятся пробелами.
+/// The text in one line: line breaks become spaces
 pub(crate) fn one_line(text: &str) -> String {
     text.split_whitespace().collect::<Vec<&str>>().join(" ")
 }
 
-/// Обрезать до `max` символов, добавив многоточие.
+/// Cut to `max` characters and add an ellipsis
 pub(crate) fn truncate(text: &str, max: usize) -> String {
     if text.chars().count() <= max {
         return text.to_string();
@@ -131,9 +131,9 @@ pub(crate) fn truncate(text: &str, max: usize) -> String {
     format!("{head}…")
 }
 
-/// Разбор границы периода: `7d`, `24h`, `30m`, `2026-09-01` или полная метка RFC 3339.
+/// Parse the border of a period: `7d`, `24h`, `30m`, `2026-09-01` or a full RFC 3339 timestamp
 ///
-/// Для голой даты `end_of_day` решает, брать начало дня или его конец.
+/// For a bare date, `end_of_day` decides whether to take the start of the day or its end
 pub(crate) fn parse_moment(
     value: &str,
     now: DateTime<Utc>,
@@ -168,10 +168,12 @@ pub(crate) fn parse_moment(
     if let Ok(moment) = DateTime::parse_from_rfc3339(value) {
         return Ok(moment.with_timezone(&Utc));
     }
-    anyhow::bail!("не понимаю дату {value:?}: ожидается 7d, 24h, 2026-09-01 или метка RFC 3339")
+    anyhow::bail!(
+        "cannot parse the date {value:?}: expected 7d, 24h, 2026-09-01 or an RFC 3339 timestamp"
+    )
 }
 
-/// Спросить подтверждение, если его не дали флагом `--yes`.
+/// Ask for confirmation if it was not given with the `--yes` flag
 pub(crate) fn confirm(question: &str, yes: bool) -> anyhow::Result<bool> {
     if yes {
         return Ok(true);
@@ -193,7 +195,7 @@ mod tests {
         assert_eq!(CmdError::args("x").code, 2);
         assert_eq!(CmdError::engine("x").code, 5);
         assert_eq!(CmdError::file("x").code, 6);
-        assert_eq!(CmdError::file("нет файла").to_string(), "нет файла");
+        assert_eq!(CmdError::file("no such file").to_string(), "no such file");
     }
 
     #[test]
@@ -241,8 +243,10 @@ mod tests {
             parse_moment("2026-09-01T08:30:00Z", now(), false).unwrap(),
             DateTime::parse_from_rfc3339("2026-09-01T08:30:00Z").unwrap()
         );
-        let err = parse_moment("вчера", now(), false).unwrap_err().to_string();
-        assert!(err.contains("вчера"), "{err}");
+        let err = parse_moment("yesterday", now(), false)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("yesterday"), "{err}");
         assert!(err.contains("2026-09-01"), "{err}");
     }
 

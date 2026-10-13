@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! `molva config` — чтение, правка, проверка и перенос настроек.
+//! `molva config` — reading, editing, checking and moving the settings
 
 use std::path::{Path, PathBuf};
 
@@ -10,26 +10,26 @@ use super::confirm;
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum ConfigAction {
-    /// Показать путь к файлу настроек
+    /// Show the path to the settings file
     Path,
-    /// Показать значение по пути `stt.model`; без пути — все настройки
+    /// Show the value at a path like `stt.model`; without a path, all settings
     Get { key: Option<String> },
-    /// Записать значение: `molva config set output.mode paste`
+    /// Write a value: `molva config set output.mode paste`
     Set { key: String, value: String },
-    /// Открыть файл настроек в $EDITOR и проверить после правки
+    /// Open the settings file in $EDITOR and check it after the edit
     Edit,
-    /// Проверить файл настроек
+    /// Check the settings file
     Validate,
-    /// Вернуть значения по умолчанию
+    /// Restore the default values
     Reset {
         #[arg(long)]
         yes: bool,
     },
-    /// Выгрузить профиль настроек в файл
+    /// Export the settings profile to a file
     Export { file: PathBuf },
-    /// Загрузить профиль настроек из файла
+    /// Load the settings profile from a file
     Import { file: PathBuf },
-    /// Попросить работающий демон перечитать файл настроек
+    /// Ask the running daemon to reread the settings file
     Reload,
 }
 
@@ -42,7 +42,7 @@ pub(crate) fn run(action: ConfigAction, config_path: &Path, socket: &Path) -> an
         ConfigAction::Reload => {
             let mut client = molva_core::infra::ipc::Client::connect(socket)?;
             client.call_ok(molva_core::ipc::protocol::Command::ConfigReload)?;
-            println!("демон перечитал настройки");
+            println!("the daemon reread the settings");
             Ok(())
         }
         ConfigAction::Get { key } => {
@@ -62,49 +62,46 @@ pub(crate) fn run(action: ConfigAction, config_path: &Path, socket: &Path) -> an
             config.set_by_path(&key, &value)?;
             config.save(config_path)?;
             println!("{key} = {}", config.get_by_path(&key)?);
-            println!("Демон применит настройки без пересборки: `molva config reload`.");
+            println!("The daemon applies the settings without a rebuild: `molva config reload`.");
             Ok(())
         }
         ConfigAction::Edit => {
             let editor = std::env::var("VISUAL")
                 .or_else(|_| std::env::var("EDITOR"))
                 .unwrap_or_else(|_| "vi".to_string());
-            // Файл должен существовать, иначе редактор откроет пустоту вместо настроек.
+            // The file must exist, otherwise the editor opens emptiness instead of the settings
             Config::load_or_create(config_path)?;
             let status = std::process::Command::new(&editor)
                 .arg(config_path)
                 .status()?;
             if !status.success() {
-                anyhow::bail!("редактор {editor} завершился с ошибкой");
+                anyhow::bail!("the editor {editor} exited with an error");
             }
             validate(config_path)
         }
         ConfigAction::Validate => validate(config_path),
         ConfigAction::Reset { yes } => {
             if !confirm(
-                &format!(
-                    "Вернуть настройки по умолчанию ({})?",
-                    config_path.display()
-                ),
+                &format!("Restore the default settings ({})?", config_path.display()),
                 yes,
             )? {
-                println!("Отменено.");
+                println!("Cancelled.");
                 return Ok(());
             }
             Config::default().save(config_path)?;
-            println!("Настройки сброшены: {}", config_path.display());
+            println!("Settings reset: {}", config_path.display());
             Ok(())
         }
         ConfigAction::Export { file } => {
             load(config_path)?.export(&file)?;
-            println!("Профиль сохранён: {}", file.display());
+            println!("Profile saved: {}", file.display());
             Ok(())
         }
         ConfigAction::Import { file } => {
             let config = Config::import(&file)?;
             config.save(config_path)?;
             println!(
-                "Профиль применён: {} → {}",
+                "Profile applied: {} → {}",
                 file.display(),
                 config_path.display()
             );
@@ -113,11 +110,11 @@ pub(crate) fn run(action: ConfigAction, config_path: &Path, socket: &Path) -> an
     }
 }
 
-/// Прочитать настройки, заменив повреждённый файл умолчаниями и сказав об этом.
+/// Read the settings; replace a damaged file with the defaults and say so
 fn load(path: &Path) -> anyhow::Result<Config> {
     let (config, warning) = Config::load_lenient(path)?;
     if let Some(warning) = warning {
-        eprintln!("предупреждение: {warning}");
+        eprintln!("warning: {warning}");
     }
     Ok(config)
 }
@@ -126,15 +123,15 @@ fn validate(path: &Path) -> anyhow::Result<()> {
     let config = load(path)?;
     match config.validate() {
         Ok(()) => {
-            println!("Настройки в порядке: {}", path.display());
+            println!("Settings are fine: {}", path.display());
             Ok(())
         }
         Err(issues) => {
-            eprintln!("Проблемы в {}:", path.display());
+            eprintln!("Problems in {}:", path.display());
             for issue in &issues {
                 eprintln!("  - {issue}");
             }
-            anyhow::bail!("настроек с ошибками: {}", issues.len());
+            anyhow::bail!("settings with errors: {}", issues.len());
         }
     }
 }

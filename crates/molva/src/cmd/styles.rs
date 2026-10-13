@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! `molva styles` — какие профили постобработки есть и что они говорят модели.
+//! `molva styles` — which post-processing styles exist and what they tell the model
 
 use clap::Subcommand;
 use molva_core::app::styles::Styles;
@@ -7,9 +7,9 @@ use molva_core::Config;
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum StylesAction {
-    /// Показать все стили
+    /// Show all styles
     List,
-    /// Показать системный промпт одного стиля
+    /// Show the system prompt of one style
     Show { id: String },
 }
 
@@ -17,10 +17,10 @@ pub(crate) fn run(action: StylesAction, config: &Config) -> anyhow::Result<()> {
     let styles = Styles::from_config(&config.style);
     match action {
         StylesAction::List => {
-            println!("{:<12}  {:<14}  МОДЕЛЬ", "ID", "НАЗВАНИЕ");
+            println!("{:<12}  {:<14}  MODEL", "ID", "NAME");
             for style in styles.all() {
                 let current = if style.id == config.style.default {
-                    "по умолчанию"
+                    "default"
                 } else {
                     ""
                 };
@@ -28,12 +28,12 @@ pub(crate) fn run(action: StylesAction, config: &Config) -> anyhow::Result<()> {
                     "{:<12}  {:<14}  {:<7}  {}",
                     style.id,
                     style.name,
-                    if style.uses_llm { "да" } else { "нет" },
+                    if style.uses_llm { "yes" } else { "no" },
                     current
                 );
             }
             if !config.style.by_app.is_empty() {
-                println!("\nПо приложениям:");
+                println!("\nBy application:");
                 for (app, style) in &config.style.by_app {
                     println!("  {app} → {style}");
                 }
@@ -41,14 +41,14 @@ pub(crate) fn run(action: StylesAction, config: &Config) -> anyhow::Result<()> {
             Ok(())
         }
         StylesAction::Show { id } => {
-            let style = styles
-                .get(&id)
-                .ok_or_else(|| anyhow::anyhow!("стиля {id} нет: посмотрите `molva styles list`"))?;
+            let style = styles.get(&id).ok_or_else(|| {
+                anyhow::anyhow!("there is no style {id}: see `molva styles list`")
+            })?;
             println!("id:      {}", style.id);
-            println!("имя:     {}", style.name);
-            println!("модель:  {}", if style.uses_llm { "да" } else { "нет" });
+            println!("name:    {}", style.name);
+            println!("model:   {}", if style.uses_llm { "yes" } else { "no" });
             if style.uses_llm {
-                println!("промпт:\n{}", style.system_prompt);
+                println!("prompt:\n{}", style.system_prompt);
             }
             Ok(())
         }

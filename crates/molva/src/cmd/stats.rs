@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! `molva stats` — сводка, ряды по дням, разбивка по приложениям и сессиям.
+//! `molva stats` — a summary, series by day, and a breakdown by application and by session
 
 use std::path::PathBuf;
 
@@ -20,7 +20,7 @@ pub(crate) enum Period {
 }
 
 impl Period {
-    /// Ширина окна в днях; `0` — всё время.
+    /// The width of the window in days; `0` means all time
     pub(crate) fn range_days(self) -> u32 {
         match self {
             Period::Today => 1,
@@ -32,10 +32,10 @@ impl Period {
 
     pub(crate) fn title(self) -> &'static str {
         match self {
-            Period::Today => "сегодня",
-            Period::Week => "за неделю",
-            Period::Month => "за месяц",
-            Period::All => "за всё время",
+            Period::Today => "for today",
+            Period::Week => "for the week",
+            Period::Month => "for the month",
+            Period::All => "for all time",
         }
     }
 }
@@ -51,13 +51,13 @@ pub(crate) enum Series {
 pub(crate) struct StatsArgs {
     #[arg(long, value_enum, default_value_t = Period::Week)]
     pub period: Period,
-    /// Что показать разбивкой: по дням, по сессиям или по приложениям
+    /// What to show as a breakdown: by day, by session or by application
     #[arg(long, value_enum, default_value_t = Series::Day)]
     pub series: Series,
-    /// Выдать сводку как JSON — ровно ту форму, что читает GUI
+    /// Print the summary as JSON — exactly the form that the GUI reads
     #[arg(long)]
     pub json: bool,
-    /// Сколько строк разбивки показать
+    /// How many rows of the breakdown to show
     #[arg(long)]
     pub last: Option<usize>,
     #[command(subcommand)]
@@ -66,9 +66,9 @@ pub(crate) struct StatsArgs {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum StatsAction {
-    /// Выгрузить реплики в CSV
+    /// Export the phrases to CSV
     Export { file: PathBuf },
-    /// Начать статистику заново; история при этом сохраняется
+    /// Start the statistics over; the history is kept
     Reset {
         #[arg(long)]
         yes: bool,
@@ -85,22 +85,22 @@ pub(crate) fn run(args: StatsArgs, config: &Config) -> anyhow::Result<()> {
     match args.action {
         Some(StatsAction::Export { file }) => {
             std::fs::write(&file, stats::export_csv(&entries))?;
-            println!("Выгружено реплик: {} → {}", entries.len(), file.display());
+            println!("Phrases exported: {} → {}", entries.len(), file.display());
             Ok(())
         }
         Some(StatsAction::Reset { yes }) => {
             if !confirm(
                 &format!(
-                    "Обнулить статистику ({} реплик)? История останется.",
+                    "Reset the statistics ({} phrases)? The history stays.",
                     entries.len()
                 ),
                 yes,
             )? {
-                println!("Отменено.");
+                println!("Cancelled.");
                 return Ok(());
             }
             stats::write_reset_marker(&journal_path, Utc::now())?;
-            println!("Статистика обнулена. История реплик на месте.");
+            println!("Statistics reset. The phrase history is in place.");
             Ok(())
         }
         None => {
@@ -127,47 +127,47 @@ fn optional_wpm(value: Option<f32>) -> String {
     }
 }
 
-/// Человекочитаемый отчёт: сводка, спарклайн и выбранная разбивка.
+/// A report for a person: the summary, a sparkline and the chosen breakdown
 pub(crate) fn report(summary: &StatsSummary, entries: &[Entry], args: &StatsArgs) -> String {
     let mut out = String::new();
-    out.push_str(&format!("Статистика {}\n\n", args.period.title()));
-    out.push_str(&format!("  Слов сегодня      {}\n", summary.words_today));
-    out.push_str(&format!("  Слов всего        {}\n", summary.total_words));
+    out.push_str(&format!("Statistics {}\n\n", args.period.title()));
+    out.push_str(&format!("  Words today       {}\n", summary.words_today));
+    out.push_str(&format!("  Words total       {}\n", summary.total_words));
     out.push_str(&format!(
-        "  Скорость сегодня  {}\n",
+        "  Speed today       {}\n",
         optional_wpm(summary.avg_wpm_today)
     ));
     out.push_str(&format!(
-        "  Скорость 7 дней   {}\n",
+        "  Speed 7 days      {}\n",
         optional_wpm(summary.avg_wpm_7d)
     ));
     out.push_str(&format!(
-        "  Скорость всего    {}\n",
+        "  Speed overall     {}\n",
         optional_wpm(summary.avg_wpm_all)
     ));
     out.push_str(&format!(
-        "  Личный рекорд     {}{}\n",
+        "  Personal record   {}{}\n",
         optional_wpm(summary.record_wpm),
         summary
             .record_at
             .map(|at| format!(" ({})", at.format("%Y-%m-%d")))
             .unwrap_or_default()
     ));
-    out.push_str(&format!("  Дней подряд       {}\n", summary.streak_days));
+    out.push_str(&format!("  Days in a row     {}\n", summary.streak_days));
     out.push_str(&format!(
-        "  Наговорено        {:.1} мин\n",
+        "  Dictated          {:.1} min\n",
         summary.minutes_recorded
     ));
     out.push_str(&format!(
-        "  Сэкономлено       {:.1} мин\n",
+        "  Time saved        {:.1} min\n",
         summary.saved_minutes
     ));
     out.push_str(&format!(
-        "  Задержка          stt {} мс, всего {} мс\n",
+        "  Latency           stt {} ms, total {} ms\n",
         summary.latency_ms.stt, summary.latency_ms.total
     ));
     out.push_str(&format!(
-        "  Токены            prompt {}, completion {}\n",
+        "  Tokens            prompt {}, completion {}\n",
         summary.tokens.prompt, summary.tokens.completion
     ));
 
@@ -178,7 +178,7 @@ pub(crate) fn report(summary: &StatsSummary, entries: &[Entry], args: &StatsArgs
         .collect();
     if !speeds.is_empty() {
         out.push_str(&format!(
-            "\n  Скорость по дням  {}\n",
+            "\n  Speed by day      {}\n",
             stats::sparkline(&speeds)
         ));
     }
@@ -187,12 +187,12 @@ pub(crate) fn report(summary: &StatsSummary, entries: &[Entry], args: &StatsArgs
     match args.series {
         Series::Day => {
             out.push_str(&format!(
-                "{:<12}  {:>6}  {:>6}  {:>9}  {:>10}\n",
-                "ДЕНЬ", "РЕПЛИК", "СЛОВ", "СКОРОСТЬ", "ЗАДЕРЖКА"
+                "{:<12}  {:>7}  {:>6}  {:>9}  {:>10}\n",
+                "DAY", "PHRASES", "WORDS", "SPEED", "LATENCY"
             ));
             for day in tail(&summary.series, args.last) {
                 out.push_str(&format!(
-                    "{:<12}  {:>6}  {:>6}  {:>9}  {:>7} мс\n",
+                    "{:<12}  {:>7}  {:>6}  {:>9}  {:>7} ms\n",
                     day.day,
                     day.entries,
                     day.words,
@@ -203,12 +203,12 @@ pub(crate) fn report(summary: &StatsSummary, entries: &[Entry], args: &StatsArgs
         }
         Series::App => {
             out.push_str(&format!(
-                "{:<20}  {:>6}  {:>6}  {:>9}\n",
-                "ПРИЛОЖЕНИЕ", "РЕПЛИК", "СЛОВ", "СКОРОСТЬ"
+                "{:<20}  {:>7}  {:>6}  {:>9}\n",
+                "APP", "PHRASES", "WORDS", "SPEED"
             ));
             for app in tail(&summary.by_app, args.last) {
                 out.push_str(&format!(
-                    "{:<20}  {:>6}  {:>6}  {:>9}\n",
+                    "{:<20}  {:>7}  {:>6}  {:>9}\n",
                     truncate(&app.app, 20),
                     app.entries,
                     app.words,
@@ -219,12 +219,12 @@ pub(crate) fn report(summary: &StatsSummary, entries: &[Entry], args: &StatsArgs
         Series::Session => {
             let sessions = stats::sessions(entries);
             out.push_str(&format!(
-                "{:<17}  {:<17}  {:>6}  {:>6}  {:>9}\n",
-                "НАЧАЛО", "КОНЕЦ", "РЕПЛИК", "СЛОВ", "СКОРОСТЬ"
+                "{:<17}  {:<17}  {:>7}  {:>6}  {:>9}\n",
+                "START", "END", "PHRASES", "WORDS", "SPEED"
             ));
             for session in tail(&sessions, args.last) {
                 out.push_str(&format!(
-                    "{:<17}  {:<17}  {:>6}  {:>6}  {:>9}\n",
+                    "{:<17}  {:<17}  {:>7}  {:>6}  {:>9}\n",
                     session.started.format("%Y-%m-%d %H:%M"),
                     session.ended.format("%Y-%m-%d %H:%M"),
                     session.entries,
@@ -237,7 +237,7 @@ pub(crate) fn report(summary: &StatsSummary, entries: &[Entry], args: &StatsArgs
     out
 }
 
-/// Последние `last` элементов; без ограничения — все.
+/// The last `last` items; without a limit, all of them
 fn tail<T>(items: &[T], last: Option<usize>) -> &[T] {
     match last {
         Some(count) if count < items.len() => &items[items.len() - count..],
@@ -322,11 +322,11 @@ mod tests {
         ];
         let summary = stats::summary(&entries, now(), &StatsConfig::default(), 7);
         let report = report(&summary, &entries, &args(Series::Day));
-        assert!(report.contains("Слов сегодня      20"), "{report}");
-        assert!(report.contains("Слов всего        30"), "{report}");
-        assert!(report.contains("Скорость по дням"), "{report}");
+        assert!(report.contains("Words today       20"), "{report}");
+        assert!(report.contains("Words total       30"), "{report}");
+        assert!(report.contains("Speed by day"), "{report}");
         assert!(report.contains("2026-09-05"), "{report}");
-        assert!(report.contains("ДЕНЬ"), "{report}");
+        assert!(report.contains("DAY"), "{report}");
     }
 
     #[test]
@@ -337,7 +337,7 @@ mod tests {
         ];
         let summary = stats::summary(&entries, now(), &StatsConfig::default(), 7);
         let report = report(&summary, &entries, &args(Series::App));
-        assert!(report.contains("ПРИЛОЖЕНИЕ"), "{report}");
+        assert!(report.contains("APP"), "{report}");
         assert!(report.contains("firefox"), "{report}");
         assert!(report.contains("kitty"), "{report}");
     }
@@ -350,11 +350,11 @@ mod tests {
         ];
         let summary = stats::summary(&entries, now(), &StatsConfig::default(), 7);
         let report = report(&summary, &entries, &args(Series::Session));
-        assert!(report.contains("НАЧАЛО"), "{report}");
+        assert!(report.contains("START"), "{report}");
         assert_eq!(
             report.matches("2026-09-05 1").count(),
             4,
-            "две сессии по два столбца времени:\n{report}"
+            "two sessions with two time columns each:\n{report}"
         );
     }
 
@@ -376,7 +376,7 @@ mod tests {
     fn an_empty_history_still_prints_a_report() {
         let summary = stats::summary(&[], now(), &StatsConfig::default(), 7);
         let report = report(&summary, &[], &args(Series::Day));
-        assert!(report.contains("Слов всего        0"), "{report}");
-        assert!(report.contains("Личный рекорд     —"), "{report}");
+        assert!(report.contains("Words total       0"), "{report}");
+        assert!(report.contains("Personal record   —"), "{report}");
     }
 }
