@@ -1,40 +1,40 @@
 // SPDX-License-Identifier: MIT
-//! Наблюдение за уровнем сигнала во время записи.
+//! Watch of the signal level during a recording
 //!
-//! Самая обидная потеря реплики — выключенный или замьюченный микрофон: запись идёт, индикатор
-//! горит, а в буфере цифровой ноль. Здесь это замечается за секунду и сообщается один раз за
-//! молчание, чтобы не превращать уведомления в шум.
+//! The most annoying loss of a phrase is a switched-off or muted microphone: the recording runs,
+//! the indicator is on, and the buffer holds a digital zero. This module notices it within a
+//! second and reports it once per silence, so notifications do not turn into noise
 
 use std::time::{Duration, Instant};
 
-/// Ниже этого RMS сигнала фактически нет: −80 дБFS — это тишина цифрового нуля, а не тихая речь.
+/// Below this RMS there is effectively no signal: −80 dBFS is the silence of a digital zero, not quiet speech
 pub const ZERO_LEVEL_RMS: f32 = 1e-4;
 
-/// Сколько ждать, прежде чем считать нулевой уровень проблемой, а не паузой перед словом.
+/// How long to wait before a zero level counts as a problem and not as a pause before a word
 pub const ZERO_LEVEL_WINDOW: Duration = Duration::from_secs(1);
 
-/// Перерыв в замерах, после которого начинается новая запись. Внутри записи замеры идут
-/// с шагом `LEVEL_INTERVAL` из `cpal_source`, а между записями их нет вовсе: тишина конца
-/// прошлой записи не должна засчитываться следующей.
+/// A break in the measurements after which a new recording starts. Inside a recording the
+/// measurements come at the `LEVEL_INTERVAL` step from `cpal_source`, and between recordings
+/// there are none: the silence at the end of the previous recording must not count for the next one
 pub const RECORDING_GAP: Duration = Duration::from_secs(2);
 
-/// Что показать пользователю при нулевом уровне.
+/// What to show to the user at a zero level
 pub const ZERO_LEVEL_MESSAGE: &str =
-    "Микрофон не даёт сигнала. Проверьте, что он не выключен и выбран нужный вход \
-     (`molva devices`)";
+    "The microphone gives no signal. Check that it is not switched off and that the right input \
+     is selected (`molva devices`)";
 
-/// Следит за уровнем и говорит, когда пора предупредить о нулевом входе.
+/// Watches the level and says when it is time to warn about a zero input
 ///
-/// Время передаётся снаружи: тест не спит, а демон берёт его из своих часов.
+/// The time comes from outside: the test does not sleep, and the daemon takes it from its clock
 #[derive(Debug)]
 pub struct ZeroLevelWatch {
     threshold: f32,
     window: Duration,
-    /// Когда начался текущий отрезок тишины.
+    /// When the current stretch of silence began
     silent_since: Option<Instant>,
-    /// Предупреждение за этот отрезок уже выдано.
+    /// The warning for this stretch is already given
     warned: bool,
-    /// Время прошлого замера: перерыв дольше `RECORDING_GAP` — граница между записями.
+    /// Time of the previous measurement: a break longer than `RECORDING_GAP` is the border between recordings
     last_seen: Option<Instant>,
 }
 
@@ -49,15 +49,15 @@ impl ZeroLevelWatch {
         }
     }
 
-    /// Значения по умолчанию: −80 дБFS дольше секунды.
+    /// Default values: −80 dBFS for longer than a second
     pub fn with_defaults() -> Self {
         Self::new(ZERO_LEVEL_RMS, ZERO_LEVEL_WINDOW)
     }
 
-    /// Учесть очередной замер уровня; вернуть текст предупреждения, если его пора показать.
+    /// Take the next level measurement; return the warning text if it is time to show it
     ///
-    /// Предупреждение выдаётся один раз за непрерывный отрезок тишины: сигнал появился —
-    /// счётчик сбрасывается, и следующее пропадание снова будет замечено.
+    /// The warning is given once per continuous stretch of silence: when a signal appears, the
+    /// counter resets, and the next loss is noticed again
     pub fn observe(&mut self, rms: f32, now: Instant) -> Option<&'static str> {
         if self
             .last_seen
@@ -79,7 +79,7 @@ impl ZeroLevelWatch {
         Some(ZERO_LEVEL_MESSAGE)
     }
 
-    /// Забыть накопленное: новая запись начинается с чистого листа.
+    /// Forget what was accumulated: a new recording starts from a clean slate
     pub fn reset(&mut self) {
         self.silent_since = None;
         self.warned = false;
@@ -104,7 +104,7 @@ mod tests {
         assert_eq!(
             watch.observe(0.0, t0 + Duration::from_millis(900)),
             None,
-            "пауза перед первым словом не повод пугать пользователя"
+            "a pause before the first word is no reason to alarm the user"
         );
     }
 
@@ -121,14 +121,15 @@ mod tests {
         assert_eq!(
             watch.observe(0.0, t0 + Duration::from_millis(1200)),
             None,
-            "повторные предупреждения об одной и той же тишине"
+            "repeated warnings about the same silence"
         );
     }
 
     #[test]
     fn a_pause_between_recordings_does_not_carry_silence_into_the_next_one() {
-        // Демон наблюдает уровни всех записей одним наблюдателем: между записями замеров нет,
-        // и тишина конца прошлой записи не должна засчитываться началу следующей.
+        // The daemon watches the levels of all recordings with one watcher: there are no
+        // measurements between recordings, and the silence at the end of the previous recording
+        // must not count for the start of the next one
         let mut watch = ZeroLevelWatch::with_defaults();
         let t0 = Instant::now();
         watch.observe(0.0, t0);
@@ -139,7 +140,7 @@ mod tests {
         assert_eq!(
             watch.observe(0.0, next + Duration::from_millis(500)),
             None,
-            "полсекунды тишины новой записи — ещё не повод предупреждать"
+            "half a second of silence in a new recording is not yet a reason to warn"
         );
         assert_eq!(
             watch.observe(0.0, next + Duration::from_millis(1100)),
@@ -160,7 +161,7 @@ mod tests {
         assert_eq!(
             watch.observe(0.0, t0 + Duration::from_millis(2400)),
             Some(ZERO_LEVEL_MESSAGE),
-            "пропавший во второй раз сигнал должен быть замечен снова"
+            "a signal lost a second time must be noticed again"
         );
     }
 
@@ -168,7 +169,7 @@ mod tests {
     fn quiet_speech_is_not_zero_level() {
         let mut watch = ZeroLevelWatch::with_defaults();
         let t0 = Instant::now();
-        // −60 дБFS: тихо, но это сигнал, а не выключенный микрофон.
+        // −60 dBFS: quiet, but this is a signal, not a switched-off microphone
         watch.observe(0.001, t0);
         assert_eq!(watch.observe(0.001, t0 + Duration::from_secs(5)), None);
     }

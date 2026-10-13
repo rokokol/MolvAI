@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
-//! Декодирование аудиофайлов через symphonia.
+//! Decoding of audio files through symphonia
 //!
-//! Любой поддерживаемый контейнер сводится к моно `f32` с *родной* частотой дискретизации:
-//! приводить к 16 кГц — дело вызывающего (`PcmAudio::to_16k`), потому что бенчу и статистике
-//! нужна исходная длительность.
+//! Any supported container becomes mono `f32` with the *native* sample rate: converting to
+//! 16 kHz is the job of the caller (`PcmAudio::to_16k`), because the benchmark and the
+//! statistics need the original duration
 //!
-//! Все отказы — одна ошибка `AudioError::Decode { path, reason }` с человеческой причиной:
-//! пользователь по тексту понимает, что не так с файлом, а не читает трейс библиотеки.
+//! All failures are one error, `AudioError::Decode { path, reason }`, with a human reason: from
+//! the text the user understands what is wrong with the file, and does not read a library trace
 
 use std::fs::File;
 use std::io::{Cursor, Read};
@@ -21,18 +21,18 @@ use symphonia::core::meta::MetadataOptions;
 
 use crate::domain::audio::{downmix_to_mono, AudioError, PcmAudio};
 
-/// Расширения, которые CLI считает аудиофайлами при обходе каталога.
+/// Extensions that the CLI treats as audio files when it walks a directory
 ///
-/// Список сознательно шире набора кодеков: если контейнер знаком, а кодек внутри неизвестен,
-/// пользователь получит внятную ошибку вместо молчаливого пропуска файла.
+/// The list is wider than the set of codecs on purpose: if the container is known but the codec
+/// inside is unknown, the user gets a clear error instead of a silent skip of the file
 pub const SUPPORTED_EXTENSIONS: &[&str] = &[
     "wav", "wave", "mp3", "ogg", "oga", "flac", "m4a", "mp4", "aac", "m4b",
 ];
 
-/// Псевдоним пути для stdin в сообщениях об ошибках.
+/// Alias of the path for stdin in error messages
 pub const STDIN_LABEL: &str = "<stdin>";
 
-/// Похоже ли имя файла на аудио из поддерживаемого списка.
+/// Whether the file name looks like audio from the supported list
 pub fn is_supported_audio(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
@@ -47,19 +47,19 @@ fn decode_error(label: &str, reason: impl Into<String>) -> AudioError {
     }
 }
 
-/// Прочитать файл целиком и вернуть моно-сигнал с родной частотой.
+/// Read a whole file and return a mono signal with the native sample rate
 pub fn decode_file(path: &Path) -> Result<PcmAudio, AudioError> {
     let label = path.display().to_string();
     let meta = std::fs::metadata(path)
-        .map_err(|e| decode_error(&label, format!("не удалось открыть файл: {e}")))?;
+        .map_err(|e| decode_error(&label, format!("could not open the file: {e}")))?;
     if meta.is_dir() {
-        return Err(decode_error(&label, "это каталог, а не аудиофайл"));
+        return Err(decode_error(&label, "this is a directory, not an audio file"));
     }
     if meta.len() == 0 {
-        return Err(decode_error(&label, "файл пуст (0 байт)"));
+        return Err(decode_error(&label, "the file is empty (0 bytes)"));
     }
     let file = File::open(path)
-        .map_err(|e| decode_error(&label, format!("не удалось открыть файл: {e}")))?;
+        .map_err(|e| decode_error(&label, format!("could not open the file: {e}")))?;
 
     let mut hint = Hint::new();
     if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
@@ -68,10 +68,10 @@ pub fn decode_file(path: &Path) -> Result<PcmAudio, AudioError> {
     decode_source(Box::new(file), &hint, &label)
 }
 
-/// Декодировать произвольный источник: используется для stdin и тестов.
+/// Decode any source: used for stdin and tests
 ///
-/// `extension` — подсказка формата, если она известна (`Some("wav")`); без неё symphonia
-/// определяет формат по сигнатуре в начале потока.
+/// `extension` is a format hint, if it is known (`Some("wav")`); without it symphonia detects
+/// the format by the signature at the start of the stream
 pub fn decode_reader(
     source: Box<dyn MediaSource>,
     extension: Option<&str>,
@@ -84,18 +84,18 @@ pub fn decode_reader(
     decode_source(source, &hint, label)
 }
 
-/// Прочитать stdin целиком в память и декодировать.
+/// Read the whole stdin into memory and decode it
 ///
-/// Поток нельзя перемотать, а symphonia при определении формата ходит по буферу назад,
-/// поэтому байты сначала собираются в `Cursor`.
+/// The stream cannot be rewound, and symphonia moves back in the buffer when it detects the
+/// format, so the bytes are first collected in a `Cursor`
 pub fn decode_stdin(extension: Option<&str>) -> Result<PcmAudio, AudioError> {
     let mut bytes = Vec::new();
     std::io::stdin()
         .lock()
         .read_to_end(&mut bytes)
-        .map_err(|e| decode_error(STDIN_LABEL, format!("не удалось прочитать поток: {e}")))?;
+        .map_err(|e| decode_error(STDIN_LABEL, format!("could not read the stream: {e}")))?;
     if bytes.is_empty() {
-        return Err(decode_error(STDIN_LABEL, "на входе нет данных (0 байт)"));
+        return Err(decode_error(STDIN_LABEL, "no data on the input (0 bytes)"));
     }
     decode_reader(Box::new(Cursor::new(bytes)), extension, STDIN_LABEL)
 }
@@ -113,17 +113,17 @@ fn decode_source(
             FormatOptions::default(),
             MetadataOptions::default(),
         )
-        .map_err(|e| decode_error(label, format!("формат не распознан: {e}")))?;
+        .map_err(|e| decode_error(label, format!("format not recognized: {e}")))?;
 
     let (track_id, params) = format
         .default_track(TrackType::Audio)
         .and_then(|track| Some((track.id, track.codec_params.as_ref()?.audio()?.clone())))
-        .ok_or_else(|| decode_error(label, "в файле нет звуковой дорожки"))?;
-    // gapless убирает служебные отсчёты кодировщика (задержка mp3 и priming AAC),
-    // иначе длительность файла заметно расходится с исходной.
+        .ok_or_else(|| decode_error(label, "the file has no audio track"))?;
+    // gapless removes the service samples of the encoder (mp3 delay and AAC priming),
+    // or the duration of the file differs visibly from the original
     let mut decoder = symphonia::default::get_codecs()
         .make_audio_decoder(&params, &AudioDecoderOptions::default().gapless(true))
-        .map_err(|e| decode_error(label, format!("кодек не поддерживается: {e}")))?;
+        .map_err(|e| decode_error(label, format!("codec is not supported: {e}")))?;
 
     let mut mono: Vec<f32> = Vec::new();
     let mut sample_rate = params.sample_rate.unwrap_or(0);
@@ -133,18 +133,18 @@ fn decode_source(
         let packet = match format.next_packet() {
             Ok(Some(packet)) => packet,
             Ok(None) => break,
-            // Обрезанный файл обрывается io-ошибкой UnexpectedEof: всё, что успело
-            // декодироваться до обрыва, остаётся в результате.
+            // A truncated file ends with the io error UnexpectedEof: everything that was
+            // decoded before the break stays in the result
             Err(SymphoniaError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                 break
             }
             Err(SymphoniaError::ResetRequired) => {
                 return Err(decode_error(
                     label,
-                    "поток меняет параметры на ходу — такой файл не поддерживается",
+                    "the stream changes parameters on the fly — such a file is not supported",
                 ))
             }
-            Err(e) => return Err(decode_error(label, format!("файл повреждён: {e}"))),
+            Err(e) => return Err(decode_error(label, format!("the file is damaged: {e}"))),
         };
         if packet.track_id != track_id {
             continue;
@@ -157,20 +157,20 @@ fn decode_source(
                 frames.copy_to_vec_interleaved(&mut interleaved);
                 mono.extend_from_slice(&downmix_to_mono(&interleaved, channels));
             }
-            // Битый пакет посреди файла — пропускаем: остальная запись всё ещё полезна.
+            // A bad packet in the middle of the file is skipped: the rest of the recording is still useful
             Err(SymphoniaError::DecodeError(_)) => {}
             Err(SymphoniaError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                 break
             }
-            Err(e) => return Err(decode_error(label, format!("ошибка декодирования: {e}"))),
+            Err(e) => return Err(decode_error(label, format!("decoding error: {e}"))),
         }
     }
 
     if mono.is_empty() {
-        return Err(decode_error(label, "в файле нет звука"));
+        return Err(decode_error(label, "the file has no audio"));
     }
     if sample_rate == 0 {
-        return Err(decode_error(label, "неизвестная частота дискретизации"));
+        return Err(decode_error(label, "unknown sample rate"));
     }
     Ok(PcmAudio::new(mono, sample_rate))
 }
@@ -185,7 +185,7 @@ mod tests {
             .join(name)
     }
 
-    /// Стерео-WAV: левый канал — единицы, правый — минус единицы, чтобы моно вышло нулём.
+    /// Stereo WAV: the left channel is positive, the right channel is negative, so the mono result is zero
     fn write_stereo_wav(path: &Path, rate: u32, secs: f32) {
         let spec = hound::WavSpec {
             channels: 2,
@@ -212,7 +212,7 @@ mod tests {
         assert_eq!(audio.sample_rate, 44_100);
         assert_eq!(audio.samples.len(), 22_050);
         assert!((audio.duration_secs() - 0.5).abs() < 0.01);
-        // Каналы противофазны: усреднение даёт тишину, значит сведение действительно было.
+        // The channels are in antiphase: averaging gives silence, so the downmix really happened
         assert!(audio.rms() < 1e-3, "rms = {}", audio.rms());
     }
 
@@ -246,7 +246,7 @@ mod tests {
 
         let error = decode_file(&path).unwrap_err();
         let text = error.to_string();
-        assert!(text.contains("0 байт"), "{text}");
+        assert!(text.contains("0 bytes"), "{text}");
         assert!(text.contains("empty.wav"), "{text}");
     }
 
@@ -264,7 +264,7 @@ mod tests {
     fn missing_file_is_rejected() {
         let error = decode_file(Path::new("/nonexistent/molva/none.wav")).unwrap_err();
         assert!(
-            error.to_string().contains("не удалось открыть файл"),
+            error.to_string().contains("could not open the file"),
             "{error}"
         );
     }
@@ -273,21 +273,21 @@ mod tests {
     fn directory_is_not_an_audio_file() {
         let directory = tempfile::tempdir().unwrap();
         let error = decode_file(directory.path()).unwrap_err();
-        assert!(error.to_string().contains("каталог"), "{error}");
+        assert!(error.to_string().contains("directory"), "{error}");
     }
 
-    /// Фикстуры — тон 440 Гц длительностью ровно 1 с (см. `tests/fixtures/README.md`).
+    /// The fixtures are a 440 Hz tone of exactly 1 s (see `tests/fixtures/README.md`)
     fn assert_fixture_is_one_second(name: &str) {
         let audio = decode_file(&fixture(name)).unwrap();
         let secs = audio.duration_secs();
         assert!(
             (secs - 1.0).abs() <= 0.05,
-            "{name}: длительность {secs} с вместо 1.0 ±5 %"
+            "{name}: duration {secs} s instead of 1.0 ±5 %"
         );
-        // Тон записан примерно на −18 dBFS; порог отделяет сигнал от нулевого буфера.
+        // The tone is recorded at about −18 dBFS; the threshold separates the signal from a zero buffer
         assert!(
             audio.rms() > 0.01,
-            "{name}: тон декодировался как тишина (rms {})",
+            "{name}: the tone decoded as silence (rms {})",
             audio.rms()
         );
     }
@@ -314,7 +314,7 @@ mod tests {
 
     #[test]
     fn stereo_fixture_is_downmixed_to_single_channel() {
-        // mp3-фикстура записана в два канала; на выходе один поток отсчётов с частотой файла.
+        // The mp3 fixture is recorded in two channels; the output is one stream of samples at the file sample rate
         let audio = decode_file(&fixture("tone.mp3")).unwrap();
         assert_eq!(audio.sample_rate, 44_100);
         assert!(audio.samples.len() as f32 / 44_100.0 > 0.9);
@@ -328,11 +328,11 @@ mod tests {
             let secs = audio.duration_secs();
             assert!(
                 (secs - expected).abs() <= expected * 0.05,
-                "{name}: длительность {secs} с вместо {expected} ±5 %"
+                "{name}: duration {secs} s instead of {expected} ±5 %"
             );
             assert!(
                 audio.rms() > 0.001,
-                "{name}: запись декодировалась как тишина"
+                "{name}: the recording decoded as silence"
             );
         }
     }
@@ -340,14 +340,14 @@ mod tests {
     #[test]
     fn reader_without_extension_hint_is_probed_by_signature() {
         let bytes = std::fs::read(fixture("tone.flac")).unwrap();
-        let audio = decode_reader(Box::new(Cursor::new(bytes)), None, "поток").unwrap();
+        let audio = decode_reader(Box::new(Cursor::new(bytes)), None, "stream").unwrap();
         assert!((audio.duration_secs() - 1.0).abs() <= 0.05);
     }
 
     #[test]
     fn reader_reports_label_in_error() {
-        let error = decode_reader(Box::new(Cursor::new(vec![0u8; 64])), None, "поток").unwrap_err();
-        assert!(error.to_string().contains("поток"), "{error}");
+        let error = decode_reader(Box::new(Cursor::new(vec![0u8; 64])), None, "stream").unwrap_err();
+        assert!(error.to_string().contains("stream"), "{error}");
     }
 
     #[test]

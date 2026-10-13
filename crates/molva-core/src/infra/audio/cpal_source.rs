@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
-//! Захват с микрофона через cpal.
+//! Microphone capture through cpal
 //!
-//! Поток открывается в [`CpalSource::start`] и закрывается в [`CpalSource::stop`]: вне записи
-//! микрофон свободен, индикатор в системе гаснет, приватность соблюдена (AG-01/03).
+//! The stream opens in [`CpalSource::start`] and closes in [`CpalSource::stop`]: outside a
+//! recording the microphone is free, the system indicator goes off, and privacy is kept (AG-01/03)
 //!
-//! `cpal::Stream` не `Send`, а `AudioSource` обязан быть `Send`, поэтому потоком владеет
-//! отдельный нить-хозяин: она строит поток, играет его и закрывает по команде `stop`.
+//! `cpal::Stream` is not `Send`, but `AudioSource` must be `Send`, so a separate owner thread
+//! owns the stream: it builds the stream, plays it and closes it on the `stop` command
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -20,19 +20,19 @@ use tracing::{debug, info, warn};
 use crate::config::AudioConfig;
 use crate::domain::audio::{downmix_to_mono, AudioError, AudioSource, DeviceInfo, PcmAudio};
 
-/// Имя устройства, означающее «системное по умолчанию».
+/// Device name that means "the system default"
 pub const DEFAULT_DEVICE: &str = "default";
 
-/// Частоты, которые показываем пользователю, если устройство сообщает диапазон.
+/// Sample rates that we show to the user if the device reports a range
 const COMMON_RATES: [u32; 5] = [16_000, 22_050, 32_000, 44_100, 48_000];
 
-/// Не чаще 10 раз в секунду: индикатор уровня в GUI большего не требует, а канал не забивается.
+/// At most 10 times per second: the level indicator in the GUI needs no more, and the channel does not clog
 const LEVEL_INTERVAL: Duration = Duration::from_millis(100);
 
-/// Список устройств ввода: имя, признак «по умолчанию», поддерживаемые частоты.
+/// List of input devices: the name, the "default" flag, the supported sample rates
 ///
-/// Список пересоставляется при каждом вызове, поэтому подключённый на ходу микрофон виден без
-/// перезапуска демона (hot-plug).
+/// The list is rebuilt on each call, so a microphone connected on the fly is visible without
+/// a restart of the daemon (hot-plug)
 pub fn list_input_devices() -> Result<Vec<DeviceInfo>, AudioError> {
     let host = cpal::default_host();
     let default_name = host.default_input_device().map(|d| d.to_string());
@@ -49,7 +49,7 @@ pub fn list_input_devices() -> Result<Vec<DeviceInfo>, AudioError> {
                 configs.map(|c| (c.min_sample_rate(), c.max_sample_rate())),
             ),
             Err(e) => {
-                debug!(device = %name, error = %e, "не удалось прочитать конфигурации устройства");
+                debug!(device = %name, error = %e, "could not read the device configurations");
                 Vec::new()
             }
         };
@@ -63,8 +63,8 @@ pub fn list_input_devices() -> Result<Vec<DeviceInfo>, AudioError> {
         );
     }
 
-    // ALSA отдаёт устройство по умолчанию отдельной записью, которой нет в общем списке:
-    // без неё пользователь не увидит, куда на самом деле идёт запись.
+    // ALSA returns the default device as a separate entry that is not in the general list:
+    // without it the user cannot see where the recording really goes
     if let Some(default_name) = default_name {
         if !out.iter().any(|d| d.name == default_name) {
             out.insert(
@@ -84,10 +84,10 @@ pub fn list_input_devices() -> Result<Vec<DeviceInfo>, AudioError> {
     Ok(out)
 }
 
-/// Добавить устройство, объединив частоты с уже найденным одноимённым.
+/// Add a device, merging the sample rates with an already found device of the same name
 ///
-/// ALSA показывает одно физическое устройство несколько раз (hw, plughw, разные форматы):
-/// пользователю нужен один пункт списка, иначе выбирать не из чего.
+/// ALSA shows one physical device several times (hw, plughw, different formats): the user needs
+/// one list item, otherwise there is nothing to choose from
 fn merge_device(devices: &mut Vec<DeviceInfo>, incoming: DeviceInfo) {
     if let Some(existing) = devices.iter_mut().find(|d| d.name == incoming.name) {
         existing.is_default |= incoming.is_default;
@@ -99,44 +99,44 @@ fn merge_device(devices: &mut Vec<DeviceInfo>, incoming: DeviceInfo) {
     devices.push(incoming);
 }
 
-/// Микрофон как источник записи.
+/// Microphone as a recording source
 #[derive(Debug)]
 pub struct CpalSource {
     device: String,
     gain: f32,
     max_duration_secs: u32,
     active: Option<Active>,
-    /// Упёрлась ли в лимит последняя завершённая запись; читается уже после `stop`.
+    /// Whether the last finished recording hit the limit; read after `stop`
     truncated: bool,
-    /// Записанное освобождённой записи: микрофон отпускается раньше, чем звук у него забирают.
+    /// What a released recording captured: the microphone is released before its audio is collected
     released: Option<Result<PcmAudio, AudioError>>,
 }
 
-/// Состояние идущей записи: нить-хозяин потока и общий буфер.
+/// State of a running recording: the owner thread of the stream and the shared buffer
 #[derive(Debug)]
 struct Active {
     stop_tx: Sender<()>,
     thread: JoinHandle<()>,
     shared: Arc<Shared>,
     sample_rate: u32,
-    /// Сколько отсчётов уже забрала потоковая обработка: позиция чтения, а не удаление.
+    /// How many samples the streaming processing has already taken: a read position, not a removal
     drained: usize,
 }
 
-/// То, что callback пишет, а `stop` читает.
+/// What the callback writes and `stop` reads
 #[derive(Debug)]
 struct Shared {
     samples: Mutex<Vec<f32>>,
-    /// Сколько отсчётов моно помещается в `max_duration_secs`.
+    /// How many mono samples fit in `max_duration_secs`
     max_samples: usize,
-    /// Запись упёрлась в лимит длительности.
+    /// The recording hit the duration limit
     truncated: AtomicBool,
-    /// Поток сообщил об ошибке: устройство отключили или конфигурация протухла.
+    /// The stream reported an error: the device was disconnected or the configuration went stale
     lost: AtomicBool,
 }
 
 impl CpalSource {
-    /// `device` — имя из [`list_input_devices`] или `"default"`.
+    /// `device` is a name from [`list_input_devices`] or `"default"`
     pub fn new(device: &str, gain: f32, max_duration_secs: u32) -> Self {
         Self {
             device: device.to_string(),
@@ -148,14 +148,14 @@ impl CpalSource {
         }
     }
 
-    /// Источник по настройкам пользователя.
+    /// Source from the user settings
     pub fn from_config(cfg: &AudioConfig) -> Self {
         Self::new(&cfg.device, cfg.gain, cfg.max_duration_secs)
     }
 
-    /// Упёрлась ли запись в `max_duration_secs` — во время записи и после её остановки.
+    /// Whether the recording hit `max_duration_secs` — during the recording and after it stops
     ///
-    /// Демону это нужно уже после `stop`, чтобы сказать пользователю, что хвост не сохранён.
+    /// The daemon needs this after `stop`, to tell the user that the tail was not saved
     pub fn was_truncated(&self) -> bool {
         match &self.active {
             Some(active) => active.shared.truncated.load(Ordering::Relaxed),
@@ -171,10 +171,10 @@ impl AudioSource for CpalSource {
         }
         self.truncated = false;
 
-        // Список устройств пересоставляется на каждый старт: микрофон могли переподключить.
-        // Но только когда выбрано конкретное имя: перебор с опросом каждого устройства
-        // занимает до 300 мс (USB-карты отвечают «занято»), а для `default` он не нужен —
-        // это время уходило из начала реплики и превращало короткий тап в удержание.
+        // The device list is rebuilt on each start: the microphone may have been reconnected.
+        // But only when a specific name is chosen: a scan that polls each device takes up to
+        // 300 ms (USB cards answer "busy"), and `default` does not need it —
+        // this time was taken from the start of the phrase and turned a short tap into a key hold
         let requested = self.device.trim();
         let selected = if requested.is_empty() || requested.eq_ignore_ascii_case(DEFAULT_DEVICE) {
             None
@@ -200,11 +200,11 @@ impl AudioSource for CpalSource {
                     stop_rx,
                 );
             })
-            .map_err(|e| AudioError::Backend(format!("не удалось запустить поток записи: {e}")))?;
+            .map_err(|e| AudioError::Backend(format!("could not start the recording thread: {e}")))?;
 
         match ready_rx.recv() {
             Ok(Ok((sample_rate, shared))) => {
-                info!(device = %self.device, sample_rate, "запись начата");
+                info!(device = %self.device, sample_rate, "recording started");
                 self.active = Some(Active {
                     stop_tx,
                     thread,
@@ -221,7 +221,7 @@ impl AudioSource for CpalSource {
             Err(_) => {
                 let _ = thread.join();
                 Err(AudioError::Backend(
-                    "нить захвата завершилась, не открыв поток".into(),
+                    "the capture thread ended without opening a stream".into(),
                 ))
             }
         }
@@ -247,8 +247,8 @@ impl AudioSource for CpalSource {
         if buffer.len() <= active.drained {
             return None;
         }
-        // Копия, а не изъятие: `stop` обязан вернуть запись целиком, иначе пропадёт и файл, и
-        // длительность реплики. Усиление применяется к копии, поэтому дважды оно не наложится.
+        // A copy, not a removal: `stop` must return the whole recording, or both the file and the
+        // duration of the phrase are lost. The gain applies to the copy, so it cannot apply twice
         let mut samples = buffer[active.drained..].to_vec();
         active.drained = buffer.len();
         drop(buffer);
@@ -258,33 +258,34 @@ impl AudioSource for CpalSource {
 }
 
 impl CpalSource {
-    /// Закрыть поток захвата и отпустить микрофон.
+    /// Close the capture stream and release the microphone
     ///
-    /// Гарантия AG-01/AG-03: между репликами устройство свободно, индикатор записи в системе
-    /// погашен. Метод зовётся и из [`AudioSource::stop`], и из `Drop`, поэтому аварийное
-    /// завершение реплики микрофон открытым не оставляет. Записанное складывается в `released`
-    /// и достаётся `stop`, чтобы освобождение устройства не зависело от того, забрали ли звук.
+    /// Guarantee AG-01/AG-03: between phrases the device is free and the system recording
+    /// indicator is off. The method is called from [`AudioSource::stop`] and from `Drop`, so an
+    /// abnormal end of a phrase does not leave the microphone open. The recorded audio goes to
+    /// `released` and `stop` takes it, so the release of the device does not depend on whether
+    /// anyone collected the audio
     ///
-    /// Возвращает `false`, если записи и не было.
+    /// Returns `false` if there was no recording
     pub fn release_microphone(&mut self) -> bool {
         let Some(active) = self.active.take() else {
             return false;
         };
-        // Ошибка отправки означает, что нить уже завершилась сама (например, потеряв устройство).
+        // A send error means the thread already ended by itself (for example, after losing the device)
         let _ = active.stop_tx.send(());
         let joined = active.thread.join().is_ok();
-        info!(device = %self.device, "микрофон освобождён");
+        info!(device = %self.device, "microphone released");
         self.released = Some(if joined {
             self.collect(&active.shared, active.sample_rate)
         } else {
             Err(AudioError::Backend(
-                "нить захвата аварийно завершилась".into(),
+                "the capture thread ended abnormally".into(),
             ))
         });
         true
     }
 
-    /// Забрать накопленные отсчёты закончившейся записи.
+    /// Take the accumulated samples of a finished recording
     fn collect(&mut self, shared: &Arc<Shared>, sample_rate: u32) -> Result<PcmAudio, AudioError> {
         let lost = shared.lost.load(Ordering::Relaxed);
         let truncated = shared.truncated.load(Ordering::Relaxed);
@@ -300,38 +301,38 @@ impl CpalSource {
         if lost {
             warn!(
                 secs = samples.len() as f32 / sample_rate as f32,
-                "устройство пропало во время записи, сохранено то, что успели записать"
+                "device lost during the recording, what was already recorded is saved"
             );
         }
         if truncated {
             warn!(
                 max_duration_secs = self.max_duration_secs,
-                "достигнут лимит длительности записи, хвост не сохранён"
+                "recording duration limit reached, the tail is not saved"
             );
         }
 
         apply_gain(&mut samples, self.gain);
         info!(
             secs = samples.len() as f32 / sample_rate as f32,
-            sample_rate, "запись остановлена"
+            sample_rate, "recording stopped"
         );
-        // Частота остаётся родной: приведение к 16 кГц делает вызывающий через `to_16k()`,
-        // чтобы сохранить исходник для отладки и не ресемплить дважды.
+        // The sample rate stays native: the caller converts to 16 kHz with `to_16k()`,
+        // to keep the original for debugging and not to resample twice
         Ok(PcmAudio::new(samples, sample_rate))
     }
 }
 
 impl Drop for CpalSource {
     fn drop(&mut self) {
-        // Микрофон не должен остаться открытым, если источник уронили без stop().
+        // The microphone must not stay open if the source was dropped without stop()
         self.release_microphone();
     }
 }
 
-/// Тело нити-хозяина потока: строит поток, отвечает на `ready`, ждёт команды остановки.
+/// Body of the owner thread of the stream: it builds the stream, answers on `ready` and waits for the stop command
 ///
-/// Концы каналов и имя устройства приходят по значению намеренно: нить обязана ими владеть,
-/// иначе они не закроются вместе с ней и владелец не узнает, что запись кончилась.
+/// The channel ends and the device name arrive by value on purpose: the thread must own them,
+/// or they do not close with it and the owner does not learn that the recording ended
 #[allow(clippy::needless_pass_by_value)]
 fn run_stream(
     selected: Option<String>,
@@ -346,7 +347,7 @@ fn run_stream(
             if ready_tx.send(Ok((sample_rate, shared))).is_err() {
                 return;
             }
-            // Ошибка recv означает, что владелец исчез: поток всё равно пора закрывать.
+            // A recv error means the owner is gone: it is time to close the stream anyway
             let _ = stop_rx.recv();
             drop(stream);
         }
@@ -356,8 +357,8 @@ fn run_stream(
     }
 }
 
-/// Открыть поток на выбранном устройстве и начать накопление отсчётов.
-// `level_tx` уходит внутрь колбэка cpal и живёт там: владение обязательно.
+/// Open a stream on the chosen device and start to accumulate samples
+// `level_tx` goes into the cpal callback and lives there: ownership is required
 #[allow(clippy::needless_pass_by_value)]
 fn open_stream(
     selected: Option<String>,
@@ -367,8 +368,8 @@ fn open_stream(
 ) -> Result<(cpal::Stream, u32, Arc<Shared>), AudioError> {
     let host = cpal::default_host();
     let device = match &selected {
-        // Устройство по умолчанию может не встречаться в общем списке (так делает ALSA), поэтому
-        // имя сверяется и с ним: иначе выбранный в GUI пункт списка не открылся бы.
+        // The default device may be absent from the general list (ALSA does this), so the name
+        // is compared with it too: otherwise the list item chosen in the GUI would not open
         Some(name) => host
             .input_devices()
             .map_err(|e| map_cpal_error(&e, requested))?
@@ -398,7 +399,7 @@ fn open_stream(
         %sample_rate,
         channels,
         format = ?sample_format,
-        "открываю поток записи"
+        "opening the recording stream"
     );
 
     let stream = match sample_format {
@@ -410,7 +411,7 @@ fn open_stream(
         SampleFormat::U16 => build_stream::<u16>(&device, &config, channels, &shared, level_tx),
         SampleFormat::F64 => build_stream::<f64>(&device, &config, channels, &shared, level_tx),
         other => Err(AudioError::Backend(format!(
-            "устройство отдаёт неподдерживаемый формат отсчётов: {other:?}"
+            "the device returns an unsupported sample format: {other:?}"
         ))),
     }?;
 
@@ -418,7 +419,7 @@ fn open_stream(
     Ok((stream, sample_rate, shared))
 }
 
-/// Построить поток для конкретного типа отсчётов; всё сводится к моно `f32`.
+/// Build a stream for a given sample type; everything is converted to mono `f32`
 fn build_stream<T>(
     device: &cpal::Device,
     config: &StreamConfig,
@@ -432,7 +433,7 @@ where
 {
     let data_shared = Arc::clone(shared);
     let error_shared = Arc::clone(shared);
-    // `None` — замера уровня ещё не было: первый же блок данных отдаёт уровень сразу.
+    // `None` means no level measurement yet: the very first data block returns a level at once
     let mut last_level: Option<Instant> = None;
 
     device
@@ -446,9 +447,9 @@ where
                 if last_level.is_none_or(|last| now.duration_since(last) >= LEVEL_INTERVAL) {
                     last_level = Some(now);
                     let level = rms(&mono);
-                    // Немой микрофон замечает слушатель уровней, см. ZeroLevelWatch.
+                    // The level listener notices a mute microphone, see ZeroLevelWatch
                     if let Some(tx) = &level_tx {
-                        // Слушателя может уже не быть — для записи это не сбой.
+                        // The listener may be gone — for the recording this is not a failure
                         let _ = tx.send(level);
                     }
                 }
@@ -469,7 +470,7 @@ where
                 }
             },
             move |err| {
-                warn!(error = %err, "ошибка потока записи");
+                warn!(error = %err, "recording stream error");
                 error_shared.lost.store(true, Ordering::Relaxed);
             },
             None,
@@ -477,10 +478,10 @@ where
         .map_err(|e| map_cpal_error(&e, &device.to_string()))
 }
 
-/// Какое устройство открывать: `None` — системное по умолчанию.
+/// Which device to open: `None` means the system default
 ///
-/// Имя сверяется без учёта регистра; если такого нет, ошибка перечисляет доступные, чтобы
-/// пользователю не пришлось отдельно звать `molva devices`.
+/// The name is compared without case; if there is no such device, the error lists the available
+/// ones, so the user does not need to call `molva devices` separately
 pub fn pick_device_name(
     requested: &str,
     available: &[DeviceInfo],
@@ -500,12 +501,12 @@ pub fn pick_device_name(
     }
     let names: Vec<&str> = available.iter().map(|d| d.name.as_str()).collect();
     Err(AudioError::DeviceNotFound(format!(
-        "{requested}. Доступны: {}",
+        "{requested}. Available: {}",
         names.join(", ")
     )))
 }
 
-/// Усиление входа с ограничением: перегруженный сигнал ломает распознавание сильнее тихого.
+/// Input gain with a limit: an overloaded signal breaks recognition more than a quiet one
 pub fn apply_gain(samples: &mut [f32], gain: f32) {
     if !gain.is_finite() || (gain - 1.0).abs() < f32::EPSILON {
         return;
@@ -516,15 +517,15 @@ pub fn apply_gain(samples: &mut [f32], gain: f32) {
     }
 }
 
-/// Похожа ли частота на реальный режим устройства.
+/// Whether the sample rate looks like a real mode of the device
 ///
-/// ALSA сообщает границы «любой частоты» как 1 Гц и 4294967295 Гц: показывать их пользователю
-/// бессмысленно, выбрать их нельзя.
+/// ALSA reports the bounds of "any sample rate" as 1 Hz and 4294967295 Hz: it makes no sense to
+/// show them to the user, and the user cannot choose them
 fn is_plausible_rate(rate: u32) -> bool {
     (4_000..=768_000).contains(&rate)
 }
 
-/// Частоты для показа пользователю: границы диапазонов плюс общеупотребимые значения внутри них.
+/// Sample rates to show to the user: the range bounds plus the common values inside them
 fn sample_rates_from_ranges(ranges: impl Iterator<Item = (u32, u32)>) -> Vec<u32> {
     let mut rates = Vec::new();
     for (min, max) in ranges {
@@ -553,21 +554,21 @@ fn rms(samples: &[f32]) -> f32 {
     (sum / samples.len() as f32).sqrt()
 }
 
-/// Ошибка cpal в термины домена: пользователю нужен следующий шаг, а не код бэкенда.
+/// Convert a cpal error to domain terms: the user needs the next step, not a backend code
 fn map_cpal_error(err: &cpal::Error, device: &str) -> AudioError {
     match err.kind() {
         cpal::ErrorKind::PermissionDenied => AudioError::PermissionDenied(format!(
-            "{device}: {err}. Проверьте права доступа к микрофону"
+            "{device}: {err}. Check the microphone access permissions"
         )),
         cpal::ErrorKind::DeviceNotAvailable => AudioError::DeviceNotFound(device.to_string()),
         cpal::ErrorKind::DeviceBusy => {
-            AudioError::Backend(format!("{device} занято другим приложением: {err}"))
+            AudioError::Backend(format!("{device} is in use by another application: {err}"))
         }
         cpal::ErrorKind::HostUnavailable => AudioError::Backend(format!(
-            "аудиоподсистема недоступна: {err}. Проверьте, что PipeWire или ALSA запущены"
+            "audio subsystem is unavailable: {err}. Check that PipeWire or ALSA is running"
         )),
         cpal::ErrorKind::UnsupportedConfig | cpal::ErrorKind::UnsupportedOperation => {
-            AudioError::Backend(format!("{device} не поддерживает запись: {err}"))
+            AudioError::Backend(format!("{device} does not support recording: {err}"))
         }
         cpal::ErrorKind::DeviceChanged | cpal::ErrorKind::StreamInvalidated => {
             AudioError::DeviceLost
@@ -611,21 +612,21 @@ mod tests {
 
     #[test]
     fn unknown_device_error_lists_available_ones() {
-        let err = pick_device_name("Blue Snowball", &devices()).expect_err("такого нет");
+        let err = pick_device_name("Blue Snowball", &devices()).expect_err("no such device");
         let AudioError::DeviceNotFound(message) = err else {
-            panic!("ожидалась DeviceNotFound, получено {err:?}");
+            panic!("expected DeviceNotFound, got {err:?}");
         };
-        assert!(message.contains("Blue Snowball"), "нет имени запрошенного");
+        assert!(message.contains("Blue Snowball"), "no name of the requested device");
         assert!(
             message.contains("Yeti Stereo Microphone"),
-            "перечень доступных устройств не подсказан: {message}"
+            "the list of available devices is not suggested: {message}"
         );
     }
 
     #[test]
     fn empty_device_list_is_reported_as_no_devices() {
         assert_eq!(
-            pick_device_name("default", &[]).expect_err("нет устройств"),
+            pick_device_name("default", &[]).expect_err("no devices"),
             AudioError::NoDevices
         );
     }
@@ -634,7 +635,7 @@ mod tests {
     fn gain_scales_and_clamps() {
         let mut samples = vec![0.25, -0.25, 0.9];
         apply_gain(&mut samples, 2.0);
-        assert_eq!(samples, vec![0.5, -0.5, 1.0], "пик обязан быть ограничен");
+        assert_eq!(samples, vec![0.5, -0.5, 1.0], "the peak must be limited");
     }
 
     #[test]
@@ -655,7 +656,7 @@ mod tests {
         assert_eq!(
             samples,
             vec![0.0, 0.0],
-            "отрицательное усиление трактуется как 0"
+            "a negative gain counts as 0"
         );
     }
 
@@ -667,7 +668,7 @@ mod tests {
 
     #[test]
     fn absurd_alsa_bounds_are_not_shown_as_sample_rates() {
-        // ALSA отдаёт «любую частоту» как 1 … 4294967295: в списке остаются только реальные.
+        // ALSA returns "any sample rate" as 1 … 4294967295: only the real rates stay in the list
         let rates = sample_rates_from_ranges([(1, u32::MAX)].into_iter());
         assert_eq!(rates, COMMON_RATES.to_vec());
     }
@@ -692,9 +693,9 @@ mod tests {
             },
         );
 
-        assert_eq!(devices.len(), 1, "одно устройство — один пункт списка");
+        assert_eq!(devices.len(), 1, "one device is one list item");
         assert_eq!(devices[0].sample_rates, vec![16_000, 44_100]);
-        assert!(devices[0].is_default, "признак «по умолчанию» потерян");
+        assert!(devices[0].is_default, "the \"default\" flag is lost");
     }
 
     #[test]
@@ -707,7 +708,7 @@ mod tests {
     fn permission_error_keeps_the_hint() {
         let err = map_cpal_error(&cpal::Error::new(cpal::ErrorKind::PermissionDenied), "Yeti");
         let AudioError::PermissionDenied(message) = err else {
-            panic!("ожидалась PermissionDenied, получено {err:?}");
+            panic!("expected PermissionDenied, got {err:?}");
         };
         assert!(message.contains("Yeti"));
     }
@@ -755,7 +756,7 @@ mod tests {
         let mut source = CpalSource::new(DEFAULT_DEVICE, 1.0, 600);
         assert!(!source.is_recording());
         assert_eq!(
-            source.stop().expect_err("записи не было"),
+            source.stop().expect_err("there was no recording"),
             AudioError::NotRecording
         );
     }

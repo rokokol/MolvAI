@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
-//! Горячие клавиши поверх `/dev/input/event*`.
+//! Hotkeys on top of `/dev/input/event*`
 //!
-//! Это запасной бэкенд: он видит клавиши до композитора, поэтому работает и там, где глобальных
-//! биндов нет, но требует прав на устройства ввода (обычно группа `input`). Модификаторы
-//! отслеживаются по физическим кодам, а не по символам, поэтому раскладка ни на что не влияет.
+//! This is a fallback backend: it sees the keys before the compositor, so it works where there
+//! are no global binds, but it needs permission to read input devices (usually the `input`
+//! group). Modifiers are tracked by physical codes, not by characters, so the keyboard layout
+//! does not matter
 
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
@@ -15,7 +16,7 @@ use evdev::{Device, EventType, KeyCode};
 use crate::app::hotkeys::spec::{HotkeySpec, Modifier};
 use crate::domain::hotkeys::{HotkeyAction, HotkeyError, HotkeyEvent, HotkeySource, KeyState};
 
-/// Значения поля `value` события клавиши в ядре.
+/// Values of the `value` field of a key event in the kernel
 const VALUE_RELEASE: i32 = 0;
 const VALUE_PRESS: i32 = 1;
 
@@ -29,12 +30,12 @@ impl EvdevHotkeys {
         Self { specs }
     }
 
-    /// Есть ли хоть одна клавиатура, которую мы вправе читать.
+    /// Whether there is at least one keyboard that we may read
     pub fn available() -> bool {
         !keyboards().is_empty()
     }
 
-    /// Пути к клавиатурам, которые удалось открыть: для `molva doctor`.
+    /// Paths to the keyboards that could be opened: for `molva doctor`
     pub fn devices() -> Vec<String> {
         keyboards()
             .into_iter()
@@ -42,14 +43,14 @@ impl EvdevHotkeys {
                 format!(
                     "{} — {}",
                     path.display(),
-                    device.name().unwrap_or("без имени")
+                    device.name().unwrap_or("unnamed")
                 )
             })
             .collect()
     }
 }
 
-/// Клавиатура — это устройство, которое умеет буквы: так отсеиваются мыши и кнопки питания.
+/// A keyboard is a device that has letters: this filters out mice and power buttons
 fn keyboards() -> Vec<(PathBuf, Device)> {
     evdev::enumerate()
         .filter(|(_, device)| {
@@ -65,11 +66,11 @@ impl HotkeySource for EvdevHotkeys {
         let devices = keyboards();
         if devices.is_empty() {
             return Err(HotkeyError::Permission(
-                "нет доступных клавиатур в /dev/input: добавьте пользователя в группу input".into(),
+                "no keyboards available in /dev/input: add the user to the input group".into(),
             ));
         }
-        // Модификаторы общие для всех устройств: Ctrl на встроенной клавиатуре и Space на
-        // внешней — это одна комбинация с точки зрения пользователя.
+        // Modifiers are shared by all devices: Ctrl on the built-in keyboard and Space on an
+        // external one are one combination from the point of view of the user
         let modifiers = Arc::new(Mutex::new(BTreeSet::<Modifier>::new()));
         let specs = Arc::new(self.specs);
         let mut threads = Vec::new();
@@ -79,7 +80,7 @@ impl HotkeySource for EvdevHotkeys {
             let specs = specs.clone();
             threads.push(std::thread::spawn(move || {
                 if let Err(error) = pump(device, &tx, &modifiers, &specs) {
-                    tracing::warn!(device = %path.display(), %error, "чтение устройства прекращено");
+                    tracing::warn!(device = %path.display(), %error, "reading of the device stopped");
                 }
             }));
         }
@@ -108,15 +109,15 @@ fn pump(
             let state = match event.value() {
                 VALUE_PRESS => KeyState::Pressed,
                 VALUE_RELEASE => KeyState::Released,
-                // Автоповтор клавиши не создаёт новых нажатий.
+                // The key auto-repeat does not create new presses
                 _ => continue,
             };
-            // Снимок модификаторов берётся до обновления: при нажатии самой клавиши-модификатора
-            // комбинация `RightCtrl` должна видеть его уже нажатым, а `Ctrl+Space` — нет.
+            // The snapshot of the modifiers is taken before the update: when the modifier key
+            // itself is pressed, the combination `RightCtrl` must see it already pressed, and `Ctrl+Space` must not
             let mut active = {
                 let mut guard = modifiers
                     .lock()
-                    .map_err(|_| HotkeyError::Backend("состояние модификаторов потеряно".into()))?;
+                    .map_err(|_| HotkeyError::Backend("modifier state lost".into()))?;
                 if let Some(modifier) = Modifier::from_code(code) {
                     match state {
                         KeyState::Pressed => guard.insert(modifier),
@@ -161,14 +162,14 @@ mod tests {
 
     #[test]
     fn key_values_map_to_press_and_release() {
-        // Значения ядра зафиксированы в linux/input.h и меняться не могут.
+        // The kernel values are fixed in linux/input.h and cannot change
         assert_eq!(VALUE_PRESS, 1);
         assert_eq!(VALUE_RELEASE, 0);
     }
 
     #[test]
     fn enumerating_devices_never_panics_even_without_permissions() {
-        // В CI и в контейнере /dev/input пуст или закрыт: список просто пустой.
+        // In CI and in a container /dev/input is empty or closed: the list is just empty
         let _ = EvdevHotkeys::devices();
         let _ = EvdevHotkeys::available();
     }
