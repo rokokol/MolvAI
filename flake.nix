@@ -51,6 +51,18 @@
                 "--bin"
                 "molva"
               ];
+              # checkPhase по умолчанию тестирует весь workspace, а molva-gui требует GTK и
+              # webkit, которых в buildInputs CLI нет и быть не должно. Исключение, а не
+              # список: новый крейт без графического стека попадает в тесты сам
+              cargoTestFlags = [
+                "--workspace"
+                "--exclude"
+                "molva-gui"
+              ];
+              # В песочнице нет системных корней TLS, и HTTP-клиент не собирается вовсе:
+              # тест недоступного провайдера тогда проверял бы сломанный TLS, а не сеть.
+              # Хук cacert выставляет SSL_CERT_FILE, его читает rustls-platform-verifier
+              nativeCheckInputs = [ pkgs.cacert ];
 
               nativeBuildInputs = with pkgs; [
                 cmake
