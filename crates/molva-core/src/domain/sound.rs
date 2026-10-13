@@ -1,27 +1,29 @@
 // SPDX-License-Identifier: MIT
-//! Звуковые метки записи: короткий сигнал в начале и в конце реплики.
+//! Sound cues of the recording: a short signal at the start and at the end of a phrase
 //!
-//! Критерий: пользователь слышит **сигнал начала записи и сигнал конца записи** — ровно два
-//! звука на одну реплику, и ни одного лишнего. Звук — единственная обратная связь, когда окно
-//! MolvAI не видно, поэтому он привязан к переходам машины состояний, а не к событиям ввода.
+//! Criterion: the user hears a **start-of-recording signal and an end-of-recording signal** —
+//! exactly two sounds for one phrase, and no extra one. Sound is the only feedback when the
+//! MolvAI window is not visible, so it is tied to the transitions of the state machine, not to
+//! input events
 //!
-//! Второй критерий: **сигналы отключаются настройкой** `audio.sounds = false`. Отключение живёт
-//! не в вызывающем коде, а в реализации: демон всегда зовёт [`SoundCue::play`], а тишину делает
-//! `NullSoundCue` из `infra::sound`. Так «выключено» нельзя забыть проверить в одной из веток.
+//! Second criterion: **the signals can be turned off by a setting**, `audio.sounds = false`. The
+//! switch-off lives in the implementation, not in the calling code: the daemon always calls
+//! [`SoundCue::play`], and `NullSoundCue` from `infra::sound` makes the silence. So no branch can
+//! forget to check "turned off"
 
-/// Какой именно сигнал играть.
+/// Which signal to play
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CueKind {
-    /// Запись началась: микрофон открыт, можно говорить.
+    /// Recording started: the microphone is open, you can speak
     RecordStart,
-    /// Запись закончилась: микрофон закрыт, реплика ушла в обработку.
+    /// Recording ended: the microphone is closed, the phrase went to processing
     RecordStop,
-    /// Что-то не получилось: микрофон не открылся, запись отброшена.
+    /// Something failed: the microphone did not open, the recording was dropped
     Error,
 }
 
 impl CueKind {
-    /// Частота тона в герцах: старт выше конца, ошибка заметно ниже обоих.
+    /// Tone frequency in hertz: the start is higher than the end, the error is much lower than both
     pub fn frequency_hz(self) -> f32 {
         match self {
             CueKind::RecordStart => 880.0,
@@ -30,7 +32,7 @@ impl CueKind {
         }
     }
 
-    /// Длительность сигнала в миллисекундах: короче щелчка мыши, чтобы не мешать речи.
+    /// Signal duration in milliseconds: shorter than a mouse click, so it does not disturb speech
     pub fn duration_ms(self) -> u32 {
         match self {
             CueKind::RecordStart | CueKind::RecordStop => 80,
@@ -38,22 +40,22 @@ impl CueKind {
         }
     }
 
-    /// Имя для логов.
+    /// Name for the logs
     pub fn label(self) -> &'static str {
         match self {
-            CueKind::RecordStart => "начало записи",
-            CueKind::RecordStop => "конец записи",
-            CueKind::Error => "ошибка",
+            CueKind::RecordStart => "recording start",
+            CueKind::RecordStop => "recording end",
+            CueKind::Error => "error",
         }
     }
 }
 
-/// Проигрыватель звуковых меток.
+/// Player of sound cues
 ///
-/// Реализация обязана возвращать управление сразу: демон зовёт `play` из управляющего потока,
-/// и ожидание звука задержало бы открытие микрофона.
+/// An implementation must return at once: the daemon calls `play` from the control thread,
+/// and a wait for the sound would delay the opening of the microphone
 pub trait SoundCue: std::fmt::Debug + Send + Sync {
-    /// Имя реализации: по нему видно, звучит ли что-нибудь вообще (`null` — выключено настройкой).
+    /// Name of the implementation: it shows whether anything sounds at all (`null` — turned off by a setting)
     fn id(&self) -> &'static str;
     fn play(&self, kind: CueKind);
 }
@@ -67,7 +69,7 @@ mod tests {
         assert_ne!(
             CueKind::RecordStart.frequency_hz(),
             CueKind::RecordStop.frequency_hz(),
-            "начало и конец записи должны различаться на слух"
+            "the start and the end of the recording must sound different"
         );
         assert!(CueKind::Error.frequency_hz() < CueKind::RecordStop.frequency_hz());
     }

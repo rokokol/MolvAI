@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-//! Фейки контрактов для тестов всех крейтов.
+//! Fakes of the contracts for the tests of all crates
 //!
-//! Каждый фейк записывает, как его вызывали: тест ассертит наблюдаемый эффект, а не факт запуска.
+//! Each fake records how it was called: a test asserts an observable effect, not the fact of a call
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -21,20 +21,21 @@ use super::notify::Notifier;
 use super::sound::{CueKind, SoundCue};
 use super::stt::{SttEngine, SttError, SttOptions, Transcript};
 
-/// Источник, отдающий заранее заданный буфер.
+/// Source that returns a preset buffer
 ///
-/// В режиме порций (`paced`) он ведёт себя как микрофон: во время записи звук снимается частями,
-/// а `stop` всё равно отдаёт запись целиком. Так проверяется потоковая обработка без железа.
+/// In the portion mode (`paced`) it behaves like a microphone: during the recording the audio is
+/// taken in parts, and `stop` still returns the whole recording. This tests streaming
+/// processing with no hardware
 #[derive(Debug, Clone)]
 pub struct FakeAudioSource {
     audio: PcmAudio,
     recording: bool,
     pub start_calls: usize,
-    /// Сколько отсчётов отдавать за один `drain_new_samples`; `None` — не отдавать вовсе.
+    /// How many samples to return per `drain_new_samples`; `None` — return none at all
     portion: Option<usize>,
-    /// Позиция чтения потоковой обработки.
+    /// Read position of the streaming processing
     drained: usize,
-    /// Канал уровней текущей записи: тест шлёт по нему замеры, как это делает колбэк cpal.
+    /// Level channel of the current recording: the test sends measurements through it, as the cpal callback does
     level_tx: Option<Sender<f32>>,
 }
 
@@ -50,21 +51,21 @@ impl FakeAudioSource {
         }
     }
 
-    /// Отдать замер уровня слушателю текущей записи, как это делает колбэк cpal.
+    /// Send a level measurement to the listener of the current recording, as the cpal callback does
     pub fn send_level(&self, rms: f32) {
         if let Some(tx) = &self.level_tx {
-            // Слушателя может уже не быть; для фейка это не сбой.
+            // The listener may be gone; for a fake this is not a failure
             let _ = tx.send(rms);
         }
     }
 
-    /// Секунда тишины на 16 кГц.
+    /// Silence of `secs` seconds at 16 kHz
     pub fn silence(secs: f32) -> Self {
         let n = (secs * 16_000.0) as usize;
         Self::from_pcm(PcmAudio::new(vec![0.0; n], 16_000))
     }
 
-    /// Тот же буфер, но во время записи он снимается порциями по `portion_ms`.
+    /// The same buffer, but during the recording it is taken in portions of `portion_ms`
     pub fn paced(audio: PcmAudio, portion_ms: u32) -> Self {
         let portion = (u64::from(audio.sample_rate) * u64::from(portion_ms) / 1000).max(1) as usize;
         Self {
@@ -83,7 +84,7 @@ impl AudioSource for FakeAudioSource {
         self.start_calls += 1;
         self.drained = 0;
         if let Some(tx) = &level_tx {
-            // Ошибка отправки означает, что слушателя уже нет; для фейка это не сбой.
+            // A send error means the listener is gone; for a fake this is not a failure
             let _ = tx.send(self.audio.rms());
         }
         self.level_tx = level_tx;
@@ -115,7 +116,7 @@ impl AudioSource for FakeAudioSource {
     }
 }
 
-/// Распознаватель с очередью заранее заданных ответов; запоминает параметры каждого вызова.
+/// Recognizer with a queue of preset answers; it remembers the options of each call
 #[derive(Debug)]
 pub struct FakeStt {
     responses: VecDeque<Result<Transcript, SttError>>,
@@ -124,7 +125,7 @@ pub struct FakeStt {
 }
 
 impl FakeStt {
-    /// Всегда возвращает один и тот же текст.
+    /// Always returns the same text
     pub fn returning(text: &str) -> Self {
         let mut fake = Self::with_responses(vec![]);
         fake.responses
@@ -132,7 +133,7 @@ impl FakeStt {
         fake
     }
 
-    /// Ответы выдаются по очереди; когда очередь пуста, повторяется последний.
+    /// The answers go out in turn; when the queue is empty, the last one repeats
     pub fn with_responses(responses: Vec<Result<Transcript, SttError>>) -> Self {
         Self {
             responses: responses.into(),
@@ -161,7 +162,7 @@ impl SttEngine for FakeStt {
             return Err(SttError::EmptyAudio);
         }
         match self.responses.len() {
-            0 => Err(SttError::Inference("у фейка нет ответов".into())),
+            0 => Err(SttError::Inference("the fake has no answers".into())),
             1 => self.responses[0].clone(),
             _ => self
                 .responses
@@ -175,17 +176,17 @@ impl SttEngine for FakeStt {
     }
 }
 
-/// Обработчик запроса к фейковой модели.
+/// Handler of a request to the fake model
 type LlmHandler = Box<dyn Fn(&ChatRequest) -> Result<ChatResponse, LlmError> + Send + Sync>;
 
-/// Модель с настраиваемым ответом и счётчиком вызовов.
+/// Model with a configurable answer and a call counter
 pub struct FakeLlm {
     handler: LlmHandler,
     calls: AtomicUsize,
     pub last_request: Mutex<Option<ChatRequest>>,
 }
 
-// У замыкания-обработчика нет `Debug`, поэтому в отчёт идёт то, что тесту и нужно видеть.
+// The handler closure has no `Debug`, so the report shows what the test needs to see
 impl std::fmt::Debug for FakeLlm {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FakeLlm")
@@ -206,7 +207,7 @@ impl FakeLlm {
         }
     }
 
-    /// Всегда отвечает одним и тем же текстом.
+    /// Always answers with the same text
     pub fn echoing(text: &str) -> Self {
         let text = text.to_string();
         Self::new(move |_| {
@@ -218,7 +219,7 @@ impl FakeLlm {
         })
     }
 
-    /// Всегда падает — для проверки fallback на сырой текст.
+    /// Always fails — to test the fallback to the raw text
     pub fn failing(error: LlmError) -> Self {
         Self::new(move |_| Err(error.clone()))
     }
@@ -246,7 +247,7 @@ impl LlmClient for FakeLlm {
     }
 }
 
-/// Записывает, что просили вставить; может имитировать отказ.
+/// Records what it was asked to paste; it can simulate a refusal
 #[derive(Debug, Default)]
 pub struct RecordingInjector {
     pub injected: Vec<(String, OutputMode)>,
@@ -288,13 +289,13 @@ impl TextInjector for RecordingInjector {
     }
 }
 
-/// Часы, которыми управляет тест.
+/// Clock that the test controls
 #[derive(Debug)]
 pub struct FakeClock {
     now: Mutex<DateTime<Utc>>,
     base: Instant,
     offset: Mutex<Duration>,
-    /// Каждая пауза, о которой попросил код продукта: тест проверяет её, не ожидая по-настоящему.
+    /// Each pause that product code asked for: the test checks it without a real wait
     slept: Mutex<Vec<Duration>>,
 }
 
@@ -308,7 +309,7 @@ impl FakeClock {
         }
     }
 
-    /// Паузы в порядке запроса.
+    /// The pauses in the order of the requests
     pub fn slept(&self) -> Vec<Duration> {
         self.slept.lock().map(|s| s.clone()).unwrap_or_default()
     }
@@ -333,7 +334,7 @@ impl Clock for FakeClock {
         self.base + offset
     }
 
-    /// Пауза в тесте не ждёт: она записывается и двигает часы вперёд.
+    /// A pause in a test does not wait: it is recorded and moves the clock forward
     fn sleep(&self, duration: Duration) {
         if let Ok(mut slept) = self.slept.lock() {
             slept.push(duration);
@@ -342,7 +343,7 @@ impl Clock for FakeClock {
     }
 }
 
-/// Собирает уведомления в память.
+/// Collects notifications in memory
 #[derive(Debug, Default)]
 pub struct RecordingNotifier {
     pub messages: Mutex<Vec<(String, String)>>,
@@ -356,14 +357,14 @@ impl Notifier for RecordingNotifier {
     }
 }
 
-/// Запоминает сыгранные сигналы: тест считает, сколько их было на реплику.
+/// Remembers the cues played: the test counts how many there were per phrase
 #[derive(Debug, Default)]
 pub struct RecordingSoundCue {
     played: Mutex<Vec<CueKind>>,
 }
 
 impl RecordingSoundCue {
-    /// Сигналы в порядке воспроизведения.
+    /// The cues in the order of playback
     pub fn played(&self) -> Vec<CueKind> {
         self.played.lock().map(|p| p.clone()).unwrap_or_default()
     }
@@ -381,7 +382,7 @@ impl SoundCue for RecordingSoundCue {
     }
 }
 
-/// Журнал в памяти.
+/// Journal in memory
 #[derive(Debug, Default)]
 pub struct MemJournal {
     pub entries: Vec<Entry>,
@@ -416,22 +417,22 @@ mod tests {
         let mut source = FakeAudioSource::paced(audio.clone(), 50);
         source.start(None).unwrap();
 
-        let first = source.drain_new_samples().expect("первая порция");
-        let second = source.drain_new_samples().expect("вторая порция");
+        let first = source.drain_new_samples().expect("first portion");
+        let second = source.drain_new_samples().expect("second portion");
 
-        assert_eq!(first.samples.len(), 800, "50 мс при 16 кГц — 800 отсчётов");
+        assert_eq!(first.samples.len(), 800, "50 ms at 16 kHz is 800 samples");
         assert_eq!(
             second.samples[0], 800.0,
-            "порции идут подряд, без пропусков"
+            "portions follow one another with no gaps"
         );
         assert!(
             source.drain_new_samples().is_none(),
-            "буфер кончился, отдавать нечего"
+            "the buffer is used up, nothing to return"
         );
         assert_eq!(
             source.stop().unwrap(),
             audio,
-            "stop обязан вернуть запись целиком, а не хвост после снятых порций"
+            "stop must return the whole recording, not the tail after the portions taken"
         );
     }
 
@@ -490,7 +491,7 @@ mod tests {
             injector.injected,
             vec![("текст".to_string(), OutputMode::Type)]
         );
-        injector.fail_with = Some(InjectError::Failed("нет окна".into()));
+        injector.fail_with = Some(InjectError::Failed("no window".into()));
         assert!(injector.inject("ещё", OutputMode::Paste).is_err());
         assert_eq!(injector.injected.len(), 1);
     }

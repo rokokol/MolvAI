@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-//! Предметная область: контракты, замороженные на час 0 хакатона.
+//! Domain: the contracts frozen at hour 0 of the hackathon
 //!
-//! Изменения здесь только аддитивные и только через координатора.
+//! Changes here are additive only, and only through the coordinator
 
 pub mod audio;
 pub mod clock;

@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: MIT
-//! Запись журнала реплики — единственное хранилище данных о диктовках.
+//! Journal entry of a phrase — the only store of data about dictations
 //!
-//! Схема описана в `docs/journal-schema.md`; поле `schema` версионирует строку.
+//! The schema is in `docs/journal-schema.md`; the `schema` field sets the version of the line
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// Текущая версия схемы строки журнала.
+/// Current schema version of a journal line
 pub const SCHEMA_VERSION: u32 = 1;
 
-/// Реплика короче этого не получает WPM: деление на долю секунды даёт бессмысленные числа.
+/// A phrase shorter than this gets no WPM: division by a fraction of a second gives nonsense numbers
 pub const MIN_AUDIO_SECS_FOR_WPM: f32 = 1.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,7 +27,7 @@ pub enum Source {
     File,
 }
 
-/// Задержки стадий в миллисекундах. Отсутствующая стадия — `None`, а не 0.
+/// Stage latencies in milliseconds. A missing stage is `None`, not 0
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct LatencyMs {
     pub stt: u32,
@@ -37,10 +37,10 @@ pub struct LatencyMs {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inject: Option<u32>,
     pub total: u32,
-    /// Время до первой гипотезы при потоковом предпросмотре.
+    /// Time to the first hypothesis in the streaming preview
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub first_hypothesis: Option<u32>,
-    /// От отпускания клавиши до фактической остановки записи.
+    /// From the key release to the actual stop of the recording
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stop_after_release: Option<u32>,
 }
@@ -55,12 +55,12 @@ pub struct Tokens {
 pub struct Entry {
     pub schema: u32,
     pub id: Uuid,
-    /// UTC, RFC 3339.
+    /// UTC, RFC 3339
     pub ts: DateTime<Utc>,
     pub session_id: Uuid,
     pub mode: Mode,
     pub source: Source,
-    /// Класс/имя активного приложения, если удалось определить.
+    /// Class or name of the active application, if it could be found
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub app: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -86,7 +86,7 @@ pub struct Entry {
     pub tokens: Option<Tokens>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
-    /// Отсутствуют в режиме приватности.
+    /// Absent in privacy mode
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text_raw: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -96,7 +96,7 @@ pub struct Entry {
 }
 
 impl Entry {
-    /// Слов в минуту по длительности аудио; `None` для реплик короче секунды.
+    /// Words per minute of audio; `None` for a phrase shorter than a second
     pub fn wpm_for(words: u32, audio_secs: f32) -> Option<f32> {
         if audio_secs < MIN_AUDIO_SECS_FOR_WPM {
             return None;
@@ -104,7 +104,7 @@ impl Entry {
         Some(words as f32 / audio_secs * 60.0)
     }
 
-    /// Копия без текстов и пути к аудио — для журнала в режиме приватности.
+    /// Copy with no texts and no audio path — for the journal in privacy mode
     #[must_use]
     pub fn without_text(mut self) -> Self {
         self.text_raw = None;

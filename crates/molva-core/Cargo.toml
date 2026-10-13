@@ -1,6 +1,6 @@
 [package]
 name = "molva-core"
-description = "Ядро MolvAI: контракты, конвейер диктовки, журнал, статистика"
+description = "MolvAI core: contracts, dictation pipeline, journal, statistics"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,7 +10,7 @@ authors.workspace = true
 
 [features]
 default = []
-# Ускорители whisper.cpp: включаются на стороне пользователя, код одинаковый.
+# whisper.cpp accelerators: the user turns them on, the code is the same
 cuda = ["whisper-rs/cuda"]
 vulkan = ["whisper-rs/vulkan"]
 metal = ["whisper-rs/metal"]
@@ -26,24 +26,24 @@ toml = { workspace = true }
 directories = { workspace = true }
 strsim = { workspace = true }
 tracing = { workspace = true }
-# Захват и распознавание. tracing_backend уводит логи whisper.cpp из stderr в tracing:
-# в stdout только данные (Y-15).
+# Capture and recognition. tracing_backend moves the whisper.cpp logs from stderr to tracing:
+# stdout carries only data (Y-15)
 whisper-rs = { version = "0.16", features = ["tracing_backend"] }
 cpal = "0.18"
 hound = { workspace = true }
-# Декодирование файлов, загрузка весов
+# File decoding, model weight download
 symphonia = { workspace = true }
 reqwest = { workspace = true }
 sha2 = { workspace = true }
 chacha20poly1305 = { workspace = true }
 keyring = { workspace = true }
-# IPC, вставка, инструменты
+# IPC, paste, tools
 interprocess = { workspace = true }
 which = { workspace = true }
 arboard = { workspace = true }
 enigo = { workspace = true }
 
-# На Linux буфер обмена и синтез ввода умеют Wayland, плюс evdev и уведомления.
+# On Linux the clipboard and input synthesis support Wayland, plus evdev and notifications
 [target.'cfg(target_os = "linux")'.dependencies]
 arboard = { workspace = true, features = ["wayland-data-control"] }
 enigo = { workspace = true, features = ["wayland"] }

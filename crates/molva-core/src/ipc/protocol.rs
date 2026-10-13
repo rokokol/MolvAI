@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-//! Протокол IPC: JSON, одна строка — одно сообщение.
+//! IPC protocol: JSON, one line is one message
 //!
-//! Запрос: `{"v":1,"id":7,"cmd":"record.start","args":{"mode":"dictation"}}`.
-//! Ответ: `{"id":7,"ok":true,"result":{...}}` или `{"id":7,"ok":false,"error":{...}}`.
-//! События на подписанных соединениях: `{"event":"level","rms":0.08}`.
+//! Request: `{"v":1,"id":7,"cmd":"record.start","args":{"mode":"dictation"}}`
+//! Response: `{"id":7,"ok":true,"result":{...}}` or `{"id":7,"ok":false,"error":{...}}`
+//! Events on subscribed connections: `{"event":"level","rms":0.08}`
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -12,7 +12,7 @@ use crate::domain::entry::{Entry, Mode};
 
 pub const PROTOCOL_VERSION: u32 = 1;
 
-/// Состояние демона, видимое клиентам.
+/// Daemon state that the clients can see
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DaemonState {
@@ -23,7 +23,7 @@ pub enum DaemonState {
     Injecting,
 }
 
-/// Команды клиента. Имена с точкой — это пространства имён, как в CLI.
+/// Client commands. Names with a dot are namespaces, as in the CLI
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "cmd", content = "args")]
 pub enum Command {
@@ -107,7 +107,7 @@ pub enum ErrorCode {
 pub struct IpcError {
     pub code: ErrorCode,
     pub message: String,
-    /// Что сделать дальше — попадает в уведомление пользователю.
+    /// What to do next — it goes to the notification for the user
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
 }
@@ -146,7 +146,7 @@ impl Response {
     }
 }
 
-/// События для подписчиков.
+/// Events for subscribers
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum Event {
@@ -158,11 +158,11 @@ pub enum Event {
     Level {
         rms: f32,
     },
-    /// Черновик текста во время записи (потоковый предпросмотр).
+    /// Draft of the text during the recording (streaming preview)
     Hypothesis {
         text: String,
     },
-    /// Запись в коробке: она на порядок больше остальных событий.
+    /// The entry is boxed: it is an order of magnitude larger than the other events
     Entry {
         entry: Box<Entry>,
     },
@@ -184,7 +184,7 @@ mod tests {
         let request = Request::new(1, cmd.clone());
         let json = serde_json::to_string(&request).unwrap();
         let back: Request = serde_json::from_str(&json).unwrap();
-        assert_eq!(&back.cmd, cmd, "не совпало после round-trip: {json}");
+        assert_eq!(&back.cmd, cmd, "mismatch after round-trip: {json}");
     }
 
     #[test]
@@ -245,8 +245,8 @@ mod tests {
         let response = Response::err(
             3,
             ErrorCode::Busy,
-            "запись уже идёт",
-            Some("нажмите клавишу ещё раз, чтобы остановить".into()),
+            "recording is already running",
+            Some("press the key again to stop".into()),
         );
         let json = serde_json::to_value(&response).unwrap();
         assert_eq!(json["ok"], false);

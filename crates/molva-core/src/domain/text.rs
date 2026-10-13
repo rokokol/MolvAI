@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-//! Текст: стили, правила постобработки без модели, подсчёт слов.
+//! Text: styles, post-processing rules that need no model, word count
 
 use serde::{Deserialize, Serialize};
 
-/// Профиль постобработки. Стиль без модели (`uses_llm = false`) применяет только правила.
+/// Post-processing profile. A style with no model (`uses_llm = false`) applies only the rules
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Style {
     pub id: String,
@@ -12,15 +12,15 @@ pub struct Style {
     pub system_prompt: String,
 }
 
-/// Правило преобразования текста без модели: пунктуация словами, «с новой строки», повторы.
+/// Rule that changes text with no model: punctuation by words, "new line", repeats
 pub trait TextRule: std::fmt::Debug + Send + Sync {
     fn id(&self) -> &'static str;
-    /// `lang` — код языка реплики (`ru`, `en`), чтобы правило выбирало свой словарь команд.
+    /// `lang` is the language code of the phrase (`ru`, `en`), so the rule picks its own command table
     fn apply(&self, text: &str, lang: &str) -> String;
 }
 
-/// Слово — последовательность непробельных символов, содержащая хотя бы одну букву или цифру.
-/// Так «—» и одинокие знаки препинания не считаются словами, а «e-mail» и «2026» считаются.
+/// A word is a sequence of non-whitespace characters with at least one letter or digit.
+/// So "—" and lone punctuation marks are not words, but "e-mail" and "2026" are
 pub fn word_count(text: &str) -> u32 {
     text.split_whitespace()
         .filter(|token| token.chars().any(char::is_alphanumeric))

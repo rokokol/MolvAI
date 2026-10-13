@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! Постобработка языковой моделью: контракт клиента.
+//! Post-processing by a language model: the client contract
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -22,23 +22,23 @@ pub struct ChatResponse {
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum LlmError {
-    #[error("постобработка отключена")]
+    #[error("post-processing is disabled")]
     Disabled,
-    #[error("таймаут запроса к модели ({0} с)")]
+    #[error("model request timed out ({0} s)")]
     Timeout(u64),
-    #[error("модель недоступна: {0}")]
+    #[error("model is unavailable: {0}")]
     Unavailable(String),
-    #[error("ошибка авторизации у провайдера")]
+    #[error("provider authorization error")]
     Auth,
-    #[error("некорректный ответ модели: {0}")]
+    #[error("invalid model response: {0}")]
     BadResponse(String),
 }
 
-/// Клиент языковой модели. Ошибка клиента никогда не теряет реплику: конвейер отдаёт сырой текст.
+/// Client of a language model. A client error never loses a phrase: the pipeline returns the raw text
 pub trait LlmClient: std::fmt::Debug + Send + Sync {
-    /// Идентификатор провайдера для журнала, например `ollama`.
+    /// Provider identifier for the journal, for example `ollama`
     fn id(&self) -> &str;
-    /// Локальная ли модель: попадает в журнал полем `local_llm`.
+    /// Whether the model is local: it goes to the journal in the `local_llm` field
     fn is_local(&self) -> bool;
     fn complete(&self, request: &ChatRequest) -> Result<ChatResponse, LlmError>;
 }

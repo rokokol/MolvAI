@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: MIT
-//! Распознавание речи: параметры, результат и контракт движка.
+//! Speech recognition: the options, the result and the engine contract
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use super::audio::PcmAudio;
 
-/// Подсказка языка для распознавателя.
+/// Language hint for the recognizer
 ///
-/// `Fixed` отключает автоопределение; `Auto` отдаёт выбор модели, а приложение затем сверяет
-/// результат со списком разрешённых языков и при необходимости делает один повтор.
+/// `Fixed` turns off the auto-detection; `Auto` leaves the choice to the model, and the
+/// application then checks the result against the list of allowed languages and, if needed,
+/// makes one retry
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LanguageHint {
@@ -18,7 +19,7 @@ pub enum LanguageHint {
 }
 
 impl LanguageHint {
-    /// Разбор значения из конфига: `"auto"` или код ISO-639-1.
+    /// Parse the value from the config: `"auto"` or an ISO-639-1 code
     pub fn parse(value: &str) -> Self {
         let value = value.trim();
         if value.is_empty() || value.eq_ignore_ascii_case("auto") {
@@ -32,13 +33,13 @@ impl LanguageHint {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SttOptions {
     pub language: LanguageHint,
-    /// Языки, которые пользователь реально использует; при `Auto` детект вне списка → повтор.
+    /// Languages that the user really uses; with `Auto`, a detection outside the list → retry
     pub allowed_languages: Vec<String>,
-    /// Подсказка модели: термины, имена, топонимы.
+    /// Hint for the model: terms, names, place names
     pub initial_prompt: Option<String>,
-    /// 0 = все логические ядра.
+    /// 0 = all logical cores
     pub threads: usize,
-    /// Нужны ли сегменты с таймкодами.
+    /// Whether segments with timestamps are needed
     pub timestamps: bool,
 }
 
@@ -54,7 +55,7 @@ impl Default for SttOptions {
     }
 }
 
-/// Фрагмент распознанного текста с таймкодами относительно начала аудио.
+/// Fragment of recognized text with timestamps relative to the start of the audio
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Segment {
     pub start_ms: u32,
@@ -66,9 +67,9 @@ pub struct Segment {
 pub struct Transcript {
     pub text: String,
     pub segments: Vec<Segment>,
-    /// Определённый моделью язык (ISO-639-1), если движок его сообщает.
+    /// Language that the model detected (ISO-639-1), if the engine reports it
     pub detected_language: Option<String>,
-    /// Вероятность того, что речи не было: используется против галлюцинаций на тишине.
+    /// Probability that there was no speech: used against hallucinations on silence
     pub no_speech_prob: Option<f32>,
 }
 
@@ -83,38 +84,38 @@ impl Transcript {
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum SttError {
-    #[error("файл модели не найден: {path}. Скачайте: molva models pull {model}")]
+    #[error("model file not found: {path}. Download it with: molva models pull {model}")]
     ModelMissing { path: String, model: String },
-    #[error("не удалось загрузить модель: {0}")]
+    #[error("could not load the model: {0}")]
     ModelLoad(String),
-    #[error("ошибка распознавания: {0}")]
+    #[error("recognition error: {0}")]
     Inference(String),
-    #[error("пустое аудио")]
+    #[error("empty audio")]
     EmptyAudio,
-    #[error("движок не поддерживает: {0}")]
+    #[error("the engine does not support: {0}")]
     Unsupported(String),
 }
 
-/// Движок распознавания: whisper.cpp в проде, `FakeStt` в тестах.
+/// Recognition engine: whisper.cpp in production, `FakeStt` in tests
 pub trait SttEngine: std::fmt::Debug + Send {
-    /// Идентификатор движка для журнала, например `whisper-cpp`.
+    /// Engine identifier for the journal, for example `whisper-cpp`
     fn id(&self) -> &str;
-    /// Имя модели для журнала, например `small`.
+    /// Model name for the journal, for example `small`
     fn model_name(&self) -> &str;
-    /// Распознать моно 16 кГц.
+    /// Recognize mono 16 kHz audio
     fn transcribe(
         &mut self,
         audio: &PcmAudio,
         options: &SttOptions,
     ) -> Result<Transcript, SttError>;
-    /// Освободить память модели; следующий вызов `transcribe` загрузит её заново.
+    /// Free the model memory; the next `transcribe` call loads it again
     fn unload(&mut self);
 
-    /// Определить язык по первым секундам записи, выбирая только среди `opts.allowed_languages`.
+    /// Detect the language from the first seconds of the recording, choosing only among `opts.allowed_languages`
     ///
-    /// Это отдельный дешёвый шаг, а не режим `auto` у самого распознавания: `auto` заставляет
-    /// whisper.cpp считать полное тридцатисекундное окно на каждой реплике. `None` означает, что
-    /// движок так не умеет — тогда язык выбирает сама модель во время распознавания.
+    /// This is a separate cheap step, not the `auto` mode of the recognition itself: `auto` makes
+    /// whisper.cpp compute the full thirty-second window on each phrase. `None` means the
+    /// engine cannot do this — then the model chooses the language during recognition
     fn detect_language(&mut self, _audio: &PcmAudio, _opts: &SttOptions) -> Option<String> {
         None
     }

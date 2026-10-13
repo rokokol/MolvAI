@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! Журнал реплик: контракт записи. Файловая реализация (JSONL) живёт в `app`.
+//! Journal of phrases: the write contract. The file implementation (JSONL) lives in `app`
 
 use thiserror::Error;
 
@@ -7,15 +7,15 @@ use super::entry::Entry;
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum JournalError {
-    #[error("ошибка ввода-вывода журнала: {0}")]
+    #[error("journal I/O error: {0}")]
     Io(String),
-    #[error("не удалось сериализовать запись: {0}")]
+    #[error("could not serialize the entry: {0}")]
     Serialize(String),
-    #[error("повреждена строка {line} журнала")]
+    #[error("journal line {line} is corrupt")]
     Corrupt { line: usize },
 }
 
-/// Приёмник записей. Одна запись — одна реплика; журнал только дописывается.
+/// Sink of entries. One entry is one phrase; the journal is append-only
 pub trait Journal: std::fmt::Debug + Send {
     fn append(&mut self, entry: &Entry) -> Result<(), JournalError>;
 }

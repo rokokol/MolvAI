@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! Уведомления пользователю: каждое сообщение об ошибке называет следующий шаг.
+//! Notifications to the user: each error message names the next step
 
 pub trait Notifier: std::fmt::Debug + Send + Sync {
     fn notify(&self, title: &str, body: &str);

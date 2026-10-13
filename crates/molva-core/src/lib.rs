@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: MIT
-//! Ядро MolvAI.
+//! MolvAI core
 //!
-//! Слои:
-//! - `domain` — типы, трейты и чистые функции без зависимостей на фреймворки и железо;
-//! - `app` — конвейер, демон, конфиг, журнал (появляются по мере реализации дорожек);
-//! - `infra` — реальные реализации трейтов: cpal, whisper.cpp, HTTP, вставка, evdev;
-//! - `ipc` — протокол между демоном, CLI и GUI.
+//! Layers:
+//! - `domain` — types, traits and pure functions with no dependency on frameworks or hardware
+//! - `app` — pipeline, daemon, config, journal (they appear as the tracks are implemented)
+//! - `infra` — real implementations of the traits: cpal, whisper.cpp, HTTP, paste, evdev
+//! - `ipc` — the protocol between the daemon, the CLI and the GUI
 //!
-//! Железо тестируется через фейки трейтов из `domain::fakes`, а не через feature flags.
+//! Tests reach the hardware through the trait fakes in `domain::fakes`, not through feature flags.
 
-// В тестах паника — это способ сообщить о провале, а не необработанная ошибка; точное
-// сравнение чисел с плавающей точкой законно (тест сверяет вычисленное значение с константой,
-// которую сам же и задал), а печать замеров в stdout — это и есть отчёт замерочного теста.
+// In tests a panic is the way to report a failure, not an unhandled error. An exact comparison
+// of floating-point numbers is valid (the test compares a computed value with a constant that
+// the test itself set). Printing measurements to stdout is the report of a benchmark test.
 #![cfg_attr(
     test,
     allow(

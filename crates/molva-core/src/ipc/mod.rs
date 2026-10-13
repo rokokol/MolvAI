@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! Межпроцессное взаимодействие демона с CLI и GUI.
+//! Inter-process communication of the daemon with the CLI and the GUI
 
 pub mod protocol;
 

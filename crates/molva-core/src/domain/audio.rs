@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: MIT
-//! Аудио: PCM-буфер, источник захвата и чистые преобразования.
+//! Audio: the PCM buffer, the capture source and the pure conversions
 //!
-//! Распознаватель принимает моно 16 кГц `f32`, поэтому всё, что приходит с микрофона или из
-//! файла, приводится к этому виду здесь, независимо от бэкенда.
+//! The recognizer takes mono 16 kHz `f32`, so everything that comes from the microphone or from
+//! a file is converted to this form here, whatever the backend
 
 use std::sync::mpsc::Sender;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// Частота, которую ждёт whisper.
+/// Sample rate that whisper expects
 pub const TARGET_SAMPLE_RATE: u32 = 16_000;
 
-/// Моно-сигнал с известной частотой дискретизации.
+/// Mono signal with a known sample rate
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct PcmAudio {
     pub samples: Vec<f32>,
@@ -27,7 +27,7 @@ impl PcmAudio {
         }
     }
 
-    /// Длительность в секундах; для пустого буфера или нулевой частоты — 0.
+    /// Duration in seconds; 0 for an empty buffer or a zero sample rate
     pub fn duration_secs(&self) -> f32 {
         if self.sample_rate == 0 {
             return 0.0;
@@ -35,7 +35,7 @@ impl PcmAudio {
         self.samples.len() as f32 / self.sample_rate as f32
     }
 
-    /// Среднеквадратичный уровень сигнала, 0.0 для пустого буфера.
+    /// Root-mean-square level of the signal, 0.0 for an empty buffer
     pub fn rms(&self) -> f32 {
         if self.samples.is_empty() {
             return 0.0;
@@ -44,16 +44,16 @@ impl PcmAudio {
         (sum / self.samples.len() as f32).sqrt()
     }
 
-    /// Приведение к 16 кГц; если частота уже целевая — копия без изменений.
+    /// Convert to 16 kHz; if the sample rate is already the target, a copy with no change
     #[must_use]
     pub fn to_16k(&self) -> PcmAudio {
         resample_linear(self, TARGET_SAMPLE_RATE)
     }
 }
 
-/// Сведение чередующихся каналов в моно усреднением.
+/// Mix interleaved channels down to mono by averaging
 ///
-/// `channels == 0` трактуется как моно, чтобы битые заголовки не роняли конвейер.
+/// `channels == 0` counts as mono, so broken headers do not crash the pipeline
 pub fn downmix_to_mono(interleaved: &[f32], channels: u16) -> Vec<f32> {
     let channels = channels.max(1) as usize;
     if channels == 1 {
@@ -68,10 +68,10 @@ pub fn downmix_to_mono(interleaved: &[f32], channels: u16) -> Vec<f32> {
         .collect()
 }
 
-/// Линейная интерполяция между соседними отсчётами.
+/// Linear interpolation between neighbouring samples
 ///
-/// Для речи под whisper этого достаточно; качественный полифазный ресемплер (rubato) можно
-/// подключить позже за той же сигнатурой.
+/// This is enough for speech that goes to whisper. A high-quality polyphase resampler (rubato)
+/// can be added later behind the same signature
 pub fn resample_linear(audio: &PcmAudio, target_rate: u32) -> PcmAudio {
     if audio.sample_rate == target_rate || audio.samples.is_empty() || audio.sample_rate == 0 {
         return PcmAudio::new(audio.samples.clone(), target_rate);
@@ -91,7 +91,7 @@ pub fn resample_linear(audio: &PcmAudio, target_rate: u32) -> PcmAudio {
     PcmAudio::new(samples, target_rate)
 }
 
-/// Устройство ввода, как его видит пользователь в CLI и GUI.
+/// Input device as the user sees it in the CLI and the GUI
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeviceInfo {
     pub name: String,
@@ -101,51 +101,54 @@ pub struct DeviceInfo {
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum AudioError {
-    #[error("устройство ввода не найдено: {0}")]
+    #[error("input device not found: {0}")]
     DeviceNotFound(String),
-    #[error("устройства ввода отсутствуют")]
+    #[error("no input devices")]
     NoDevices,
-    #[error("устройство отключено во время записи")]
+    #[error("device disconnected during recording")]
     DeviceLost,
-    #[error("доступ к микрофону запрещён: {0}")]
+    #[error("microphone access denied: {0}")]
     PermissionDenied(String),
-    #[error("запись не запущена")]
+    #[error("recording is not running")]
     NotRecording,
-    #[error("запись уже идёт")]
+    #[error("recording is already running")]
     AlreadyRecording,
-    #[error("не удалось декодировать {path}: {reason}")]
+    #[error("could not decode {path}: {reason}")]
     Decode { path: String, reason: String },
-    #[error("ошибка аудиоподсистемы: {0}")]
+    #[error("audio subsystem error: {0}")]
     Backend(String),
 }
 
-/// Источник аудио: микрофон в проде, WAV-фикстура в тестах.
+/// Audio source: the microphone in production, a WAV fixture in tests
 ///
-/// Приватность микрофона — гарантия контракта, а не свойство конкретной реализации:
+/// Microphone privacy is a guarantee of the contract, not a property of one implementation:
 ///
-/// - **вне записи микрофон выключен**: поток открывается только в `start` и закрывается в `stop`,
-///   между репликами MolvAI не слушает ничего и индикатор записи в системе погашен;
-/// - **включается по клавише быстро**: `start` открывает поток синхронно и возвращает управление,
-///   когда захват уже идёт — от нажатия до записи меньше 200 мс;
-/// - **освобождается сразу после реплики**: `stop` закрывает поток и отдаёт записанное, а не
-///   оставляет его открытым «на всякий случай» — от отпускания клавиши до закрытия меньше 500 мс.
+/// - **outside a recording the microphone is off**: the stream opens only in `start` and closes
+///   in `stop`, so between phrases MolvAI listens to nothing and the system recording
+///   indicator is off
+/// - **it turns on fast at the key press**: `start` opens the stream synchronously and returns
+///   when the capture already runs — less than 200 ms from the key press to the recording
+/// - **it is released right after the phrase**: `stop` closes the stream and returns the
+///   recorded audio, and does not keep the stream open "just in case" — less than 500 ms from
+///   the key release to the close
 ///
-/// Реализация обязана освобождать устройство и при уничтожении: реплика могла закончиться
-/// аварийно, но микрофон после этого всё равно свободен.
+/// An implementation must release the device on drop too: a phrase can end abnormally, but the
+/// microphone is still free after that
 pub trait AudioSource: std::fmt::Debug + Send {
-    /// Начать захват. `level_tx` получает RMS-уровень не чаще ~10 раз в секунду.
+    /// Start the capture. `level_tx` gets the RMS level at most about 10 times per second
     fn start(&mut self, level_tx: Option<Sender<f32>>) -> Result<(), AudioError>;
-    /// Остановить захват, освободить микрофон и вернуть всё записанное.
+    /// Stop the capture, release the microphone and return everything recorded
     fn stop(&mut self) -> Result<PcmAudio, AudioError>;
-    /// Идёт ли захват прямо сейчас. `false` означает, что микрофон свободен.
+    /// Whether the capture runs right now. `false` means the microphone is free
     fn is_recording(&self) -> bool;
 
-    /// Отсчёты, появившиеся после прошлого такого вызова, — не прерывая запись.
+    /// The samples that appeared after the previous such call, without stopping the recording
     ///
-    /// Этим живёт потоковая обработка: демон снимает свежий звук во время речи и отдаёт его
-    /// сегментатору. Это позиция чтения, а не изъятие: [`AudioSource::stop`] по-прежнему возвращает
-    /// запись целиком, поэтому вызывающий сам считает, сколько уже успел обработать. Источник,
-    /// который так не умеет, возвращает `None` — тогда реплика обрабатывается целиком, как раньше.
+    /// Streaming processing depends on this: the daemon takes the fresh audio during speech and
+    /// gives it to the segmenter. This is a read position, not a removal: [`AudioSource::stop`]
+    /// still returns the whole recording, so the caller counts how much it has already
+    /// processed. A source that cannot do this returns `None` — then the phrase is processed as a
+    /// whole, as before
     fn drain_new_samples(&mut self) -> Option<PcmAudio> {
         None
     }
@@ -197,7 +200,7 @@ mod tests {
 
     #[test]
     fn resample_interpolates_between_neighbours() {
-        // 2 → 4 отсчёта: середина между 0.0 и 1.0 должна стать 0.5
+        // 2 → 4 samples: the middle between 0.0 and 1.0 must become 0.5
         let audio = PcmAudio::new(vec![0.0, 1.0], 2);
         let out = resample_linear(&audio, 4);
         assert_eq!(out.samples.len(), 4);

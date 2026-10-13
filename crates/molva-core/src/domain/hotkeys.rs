@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! Горячие клавиши: события и контракт источника.
+//! Hotkeys: the events and the source contract
 
 use std::sync::mpsc::Sender;
 use std::time::Instant;
@@ -10,15 +10,15 @@ use thiserror::Error;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HotkeyAction {
-    /// Удержание: нажатие начинает запись, отпускание запускает обработку.
+    /// Key hold: pressing starts the recording, releasing starts the processing
     PushToTalk,
-    /// Одно нажатие — старт, второе — стоп.
+    /// One press starts, the second press stops
     Toggle,
-    /// Режим правки выделенного текста голосом.
+    /// Mode that edits the selected text by voice
     Command,
-    /// Отмена текущей реплики.
+    /// Cancel the current phrase
     Cancel,
-    /// Переключение профиля стиля.
+    /// Switch the style profile
     StyleNext,
 }
 
@@ -38,22 +38,22 @@ pub struct HotkeyEvent {
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum HotkeyError {
-    #[error("комбинация не распознана: {0}")]
+    #[error("key combination not recognized: {0}")]
     BadSpec(String),
-    #[error("комбинация занята системой: {0}")]
+    #[error("key combination is taken by the system: {0}")]
     Conflict(String),
-    #[error("нет прав на чтение устройств ввода: {0}")]
+    #[error("no permission to read input devices: {0}")]
     Permission(String),
-    #[error("горячие клавиши недоступны в этом окружении: {0}")]
+    #[error("hotkeys are not available in this environment: {0}")]
     Unsupported(String),
-    #[error("ошибка бэкенда горячих клавиш: {0}")]
+    #[error("hotkey backend error: {0}")]
     Backend(String),
 }
 
-/// Источник событий клавиш: evdev на Linux, плагин Tauri на Windows/macOS.
+/// Source of key events: evdev on Linux, a Tauri plugin on Windows/macOS
 ///
-/// Бинды композитора на Wayland не реализуют этот трейт: они вызывают CLI, а тот шлёт IPC.
+/// Compositor binds on Wayland do not implement this trait: they call the CLI, and the CLI sends IPC
 pub trait HotkeySource: std::fmt::Debug + Send {
-    /// Блокирующий цикл, шлёт события в `tx` до закрытия канала или ошибки.
+    /// Blocking loop. It sends events to `tx` until the channel closes or an error occurs
     fn run(self: Box<Self>, tx: Sender<HotkeyEvent>) -> Result<(), HotkeyError>;
 }

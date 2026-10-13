@@ -1,25 +1,25 @@
 // SPDX-License-Identifier: MIT
-//! Вставка текста в активное поле: режимы, отчёт и контракт.
+//! Paste text into the active field: the modes, the report and the contract
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// Как доставить текст в активное окно.
+/// How to deliver text to the active window
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OutputMode {
-    /// `Type` для коротких реплик, `Paste` для длинных — порог в конфиге.
+    /// `Type` for short phrases, `Paste` for long ones — the threshold is in the config
     Auto,
-    /// Буфер обмена → Ctrl+V / Cmd+V → восстановление буфера.
+    /// Clipboard → Ctrl+V / Cmd+V → restore the clipboard
     Paste,
-    /// Посимвольный набор эмуляцией клавиатуры.
+    /// Type character by character with keyboard emulation
     Type,
-    /// Только положить в буфер, ничего не нажимать.
+    /// Only put the text in the clipboard, press no keys
     Clipboard,
 }
 
 impl OutputMode {
-    /// Разрешение `Auto` по длине текста в символах.
+    /// Resolve `Auto` by the length of the text in characters
     #[must_use]
     pub fn resolve(self, text: &str, auto_type_max_chars: usize) -> OutputMode {
         match self {
@@ -30,44 +30,44 @@ impl OutputMode {
     }
 }
 
-/// Что реально произошло при вставке: метод попадает в журнал реплики.
+/// What really happened during the paste: the method goes to the journal entry of the phrase
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct InjectReport {
-    /// Например `hyprctl-paste`, `wtype-type`, `enigo-type`, `clipboard-only`.
+    /// For example `hyprctl-paste`, `wtype-type`, `enigo-type`, `clipboard-only`
     pub method: String,
-    /// Что пробовали до успеха, для диагностики.
+    /// What was tried before the success, for diagnostics
     pub attempts: Vec<String>,
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum InjectError {
-    #[error("способ вставки недоступен: {0}")]
+    #[error("paste method is unavailable: {0}")]
     Unavailable(String),
-    #[error("вставка не удалась: {0}")]
+    #[error("paste failed: {0}")]
     Failed(String),
-    #[error("операция не поддерживается этим способом вставки")]
+    #[error("this paste method does not support the operation")]
     Unsupported,
-    #[error("нет доступа к буферу обмена: {0}")]
+    #[error("no access to the clipboard: {0}")]
     ClipboardDenied(String),
-    #[error("в тексте есть символы, которые нельзя набрать этим способом")]
+    #[error("the text has characters that this method cannot type")]
     UnsupportedCharacters,
 }
 
-/// Доставка текста в активное окно.
+/// Delivery of text to the active window
 pub trait TextInjector: std::fmt::Debug + Send {
     fn id(&self) -> &'static str;
-    /// Доступен ли способ в текущем окружении (есть ли утилита, права, сессия).
+    /// Whether the method is available in the current environment (utility, permissions, session)
     fn available(&self) -> bool;
-    /// `mode` уже разрешён из `Auto` вызывающей стороной.
+    /// The caller has already resolved `mode` from `Auto`
     fn inject(&mut self, text: &str, mode: OutputMode) -> Result<InjectReport, InjectError>;
-    /// Скопировать текущее выделение (Command Mode). По умолчанию не поддерживается.
+    /// Copy the current selection (Command Mode). Not supported by default
     fn copy_selection(&mut self) -> Result<String, InjectError> {
         Err(InjectError::Unsupported)
     }
-    /// Класс окна, в которое пойдёт следующая вставка.
+    /// Class of the window that gets the next paste
     ///
-    /// Нужен там, где способ вставки зависит от приложения: в терминале Ctrl+V ничего не
-    /// вставляет, ему нужен Ctrl+Shift+V. Реализации, которым окно безразлично, ничего не делают.
+    /// It is needed where the paste method depends on the application: Ctrl+V pastes nothing in a
+    /// terminal, which needs Ctrl+Shift+V. Implementations that do not care about the window do nothing
     fn set_window(&mut self, _class: Option<&str>) {}
 }
 
@@ -84,7 +84,7 @@ mod tests {
 
     #[test]
     fn auto_threshold_counts_characters_not_bytes() {
-        // 200 кириллических букв = 400 байт, но ровно 200 символов → ещё `Type`
+        // 200 Cyrillic letters = 400 bytes, but exactly 200 characters → still `Type`
         let exactly = "я".repeat(200);
         assert_eq!(OutputMode::Auto.resolve(&exactly, 200), OutputMode::Type);
     }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! Часы как зависимость: статистика по дням и таймауты тестируются без ожидания.
+//! The clock as a dependency: daily statistics and timeouts are tested without waiting
 
 use std::time::{Duration, Instant};
 
@@ -8,8 +8,8 @@ use chrono::{DateTime, Utc};
 pub trait Clock: std::fmt::Debug + Send + Sync {
     fn now_utc(&self) -> DateTime<Utc>;
     fn instant(&self) -> Instant;
-    /// Подождать. Единственный способ сделать паузу в коде продукта: `std::thread::sleep`
-    /// напрямую делает тест на паузу либо медленным, либо недоказуемым.
+    /// Wait. This is the only way to pause in product code: a direct `std::thread::sleep`
+    /// makes a test of the pause either slow or unprovable
     fn sleep(&self, duration: Duration) {
         std::thread::sleep(duration);
     }
