@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
-//! Клиент `/chat/completions` в диалекте OpenAI: Ollama, LM Studio, OpenRouter, Groq, OpenAI.
+//! Client of `/chat/completions` in the OpenAI dialect: Ollama, LM Studio, OpenRouter, Groq, OpenAI
 //!
-//! Запрос синхронный (`reqwest::blocking`): в ядре нет асинхронной среды, а реплика всё равно
-//! ждёт ответа модели. Ретраи живут в конвейере, здесь одна попытка — так таймаут означает
-//! ровно то, что настроено, а не «таймаут, умноженный на число попыток».
+//! The request is synchronous (`reqwest::blocking`): the core has no async runtime, and the
+//! phrase waits for the model answer anyway. Retries live in the pipeline, and here is one
+//! attempt — so the timeout means exactly what is configured, not "the timeout times the number of attempts"
 //!
-//! Ключ хранится в [`ApiKey`], поэтому `Debug` клиента печатает маску, а не секрет.
+//! The key is stored in [`ApiKey`], so the `Debug` of the client prints a mask, not the secret
 
 use std::fmt;
 use std::time::Duration;
@@ -18,7 +18,7 @@ use crate::app::secrets::ApiKey;
 use crate::config::LlmConfig;
 use crate::domain::llm::{ChatRequest, ChatResponse, LlmClient, LlmError};
 
-/// Известные провайдеры: пресеты базового адреса и признака локальности.
+/// Known providers: presets of the base URL and of the local flag
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Provider {
     Ollama,
@@ -30,7 +30,7 @@ pub enum Provider {
 }
 
 impl Provider {
-    /// Разбор значения `llm.provider`; неизвестное имя — `Custom`, а не ошибка.
+    /// Parse the value of `llm.provider`; an unknown name is `Custom`, not an error
     pub fn parse(value: &str) -> Self {
         match value
             .trim()
@@ -58,7 +58,7 @@ impl Provider {
         }
     }
 
-    /// Адрес по умолчанию; для `Custom` пусто — его обязан задать пользователь.
+    /// Default URL; for `Custom` it is empty — the user must set it
     pub fn default_base_url(&self) -> &'static str {
         match self {
             Provider::Ollama => "http://localhost:11434/v1",
@@ -70,13 +70,13 @@ impl Provider {
         }
     }
 
-    /// Локальная ли модель: попадает в журнал полем `local_llm` (критерий S-08).
+    /// Whether the model is local: it goes to the journal in the `local_llm` field (criterion S-08)
     pub fn is_local(&self) -> bool {
         matches!(self, Provider::Ollama | Provider::LmStudio)
     }
 }
 
-/// Клиент одного провайдера.
+/// Client of one provider
 pub struct OpenAiCompatClient {
     base_url: String,
     model: String,
@@ -84,14 +84,14 @@ pub struct OpenAiCompatClient {
     provider_id: String,
     is_local: bool,
     timeout: Duration,
-    /// Поле `reasoning_effort` запроса; `None` — не слать (см. `LlmConfig::reasoning_effort`).
+    /// The `reasoning_effort` field of the request; `None` means do not send (see `LlmConfig::reasoning_effort`)
     reasoning_effort: Option<String>,
     http: reqwest::blocking::Client,
 }
 
-/// Что слать в `reasoning_effort` по настройке и типу провайдера. `auto` выключает
-/// размышления у локальных моделей (`none`), облачным поле не отправляет — там оно
-/// допустимо не у всех моделей. Пустая строка — не слать, остальное — как есть.
+/// What to send in `reasoning_effort` by the setting and the provider type. `auto` turns off
+/// reasoning in local models (`none`) and does not send the field to cloud ones — it is
+/// not valid for all of their models. An empty string means do not send, and anything else goes as it is
 pub fn effective_reasoning_effort(setting: &str, is_local: bool) -> Option<String> {
     match setting.trim() {
         "" => None,
@@ -137,14 +137,14 @@ impl OpenAiCompatClient {
         })
     }
 
-    /// Задать `reasoning_effort` запроса; `None` — поле не отправляется.
+    /// Set `reasoning_effort` of the request; `None` means the field is not sent
     #[must_use]
     pub fn with_reasoning_effort(mut self, effort: Option<String>) -> Self {
         self.reasoning_effort = effort;
         self
     }
 
-    /// Клиент по настройкам: пустой `base_url` берётся из пресета провайдера.
+    /// Client from the settings: an empty `base_url` comes from the provider preset
     pub fn from_config(cfg: &LlmConfig, api_key: Option<String>) -> Result<Self, LlmError> {
         let provider = Provider::parse(&cfg.provider);
         let base_url = if cfg.base_url.trim().is_empty() {
@@ -154,7 +154,7 @@ impl OpenAiCompatClient {
         };
         if base_url.is_empty() {
             return Err(LlmError::Unavailable(
-                "не задан адрес модели: заполните llm.base_url".into(),
+                "the model URL is not set: fill in llm.base_url".into(),
             ));
         }
         Self::new(
@@ -185,9 +185,9 @@ impl OpenAiCompatClient {
         format!("{}/chat/completions", self.base_url)
     }
 
-    /// Отправить запрос с ключом в заголовке. Одно место для обоих вызовов: ключ уходит
-    /// только в `Authorization`, таймаут отличим от отказа сервера, в сообщение об ошибке
-    /// попадает адрес, но не ключ.
+    /// Send a request with the key in the header. One place for both calls: the key goes
+    /// only into `Authorization`, a timeout is told apart from a server refusal, and the error
+    /// message gets the URL but not the key
     fn send(
         &self,
         mut request: reqwest::blocking::RequestBuilder,
@@ -198,7 +198,7 @@ impl OpenAiCompatClient {
         }
         request.send().map_err(|err| {
             if err.is_timeout() {
-                // Таймаут короче секунды в сообщении округляется вверх, а не до нуля.
+                // A timeout shorter than a second is rounded up in the message, not down to zero
                 LlmError::Timeout(self.timeout.as_secs().max(1))
             } else {
                 LlmError::Unavailable(format!("{url}: {}", with_causes(&err)))
@@ -206,8 +206,8 @@ impl OpenAiCompatClient {
         })
     }
 
-    /// Имена моделей, которые сервер отдаёт на `GET /models`. Нужно диагностике: отвечает ли
-    /// провайдер вообще и скачана ли настроенная модель. Ошибки те же, что у `complete`.
+    /// Names of the models that the server returns on `GET /models`. Diagnostics need it: does
+    /// the provider answer at all, and is the configured model downloaded. The errors are the same as in `complete`
     pub fn list_models(&self) -> Result<Vec<String>, LlmError> {
         let url = format!("{}/models", self.base_url);
         let response = self.send(self.http.get(&url), &url)?;
@@ -234,13 +234,13 @@ impl OpenAiCompatClient {
                     .collect()
             })
             .ok_or_else(|| {
-                LlmError::BadResponse(format!("в ответе нет списка data: {}", snippet(&text)))
+                LlmError::BadResponse(format!("the answer has no data list: {}", snippet(&text)))
             })?;
         Ok(names)
     }
 }
 
-/// Ответ провайдера: разбираем только то, что нужно журналу и вставке.
+/// Provider answer: we parse only what the journal and the paste need
 #[derive(Debug, Deserialize)]
 struct Completion {
     #[serde(default)]
@@ -277,16 +277,16 @@ struct ApiErrorBody {
     message: Option<String>,
 }
 
-/// Сколько символов чужого ответа попадает в сообщение об ошибке.
+/// How many characters of a foreign answer go into the error message
 const ERROR_SNIPPET: usize = 200;
 
 fn snippet(text: &str) -> String {
     text.chars().take(ERROR_SNIPPET).collect()
 }
 
-/// Текст ошибки вместе с цепочкой `source()`. reqwest пишет наверху только «builder error»
-/// или «error sending request», а причину, по которой пользователь что-то исправит, —
-/// нет сертификатов, отказ в соединении — держит в источнике.
+/// Error text together with the `source()` chain. reqwest writes only "builder error"
+/// or "error sending request" at the top, and keeps the reason that lets the user fix something —
+/// no certificates, connection refused — in the source
 fn with_causes(error: &dyn std::error::Error) -> String {
     let mut text = error.to_string();
     let mut cause = error.source();
@@ -331,7 +331,7 @@ impl LlmClient for OpenAiCompatClient {
             .map_err(|err| LlmError::BadResponse(with_causes(&err)))?;
 
         if status.as_u16() == 401 || status.as_u16() == 403 {
-            warn!(provider = %self.provider_id, status = status.as_u16(), "провайдер отверг ключ");
+            warn!(provider = %self.provider_id, status = status.as_u16(), "the provider rejected the key");
             return Err(LlmError::Auth);
         }
         if !status.is_success() {
@@ -350,7 +350,7 @@ impl LlmClient for OpenAiCompatClient {
             .into_iter()
             .find_map(|choice| choice.message.and_then(|message| message.content))
             .ok_or_else(|| {
-                LlmError::BadResponse(format!("в ответе нет текста: {}", snippet(&text)))
+                LlmError::BadResponse(format!("the answer has no text: {}", snippet(&text)))
             })?;
 
         let (prompt_tokens, completion_tokens) = match parsed.usage {
@@ -372,16 +372,16 @@ mod tests {
     use std::net::{SocketAddr, TcpListener, TcpStream};
     use std::sync::{Arc, Mutex};
 
-    /// Локальный HTTP-сервер на заранее заготовленных ответах. Сети наружу нет.
+    /// Local HTTP server with preset answers. There is no outside network
     struct MockServer {
         addr: SocketAddr,
         requests: Arc<Mutex<Vec<String>>>,
     }
 
     impl MockServer {
-        /// `None` вместо ответа означает «молчим»: клиент должен упереться в таймаут.
+        /// `None` instead of an answer means "stay silent": the client must hit the timeout
         fn spawn(responses: Vec<Option<String>>) -> Self {
-            let listener = TcpListener::bind("127.0.0.1:0").expect("порт для мока нашёлся");
+            let listener = TcpListener::bind("127.0.0.1:0").expect("a port for the mock was found");
             let addr = listener.local_addr().unwrap();
             let requests = Arc::new(Mutex::new(Vec::new()));
             let sink = Arc::clone(&requests);
@@ -504,7 +504,7 @@ mod tests {
         client(&server, None).complete(&request()).unwrap();
         assert!(
             !server.last_request().contains("reasoning_effort"),
-            "без настройки поле не шлётся: {}",
+            "without the setting the field is not sent: {}",
             server.last_request()
         );
 
@@ -591,7 +591,7 @@ mod tests {
         let secret = "sk-proj-0123456789abcdef";
         let server = MockServer::spawn(vec![Some(ok_body())]);
         let client = client(&server, Some(secret));
-        // В логах и отладочном выводе ключа нет.
+        // The key is not in the logs and not in the debug output
         let printed = format!("{client:?}");
         assert!(!printed.contains(secret), "{printed}");
         assert!(printed.contains("sk-…cdef"), "{printed}");
@@ -657,7 +657,7 @@ mod tests {
                 assert!(message.contains("500"), "{message}");
                 assert!(message.contains("model is loading"), "{message}");
             }
-            other => panic!("ожидали Unavailable, получили {other:?}"),
+            other => panic!("expected Unavailable, got {other:?}"),
         }
     }
 
@@ -667,7 +667,7 @@ mod tests {
         let err = client(&server, None).complete(&request()).unwrap_err();
         assert!(matches!(err, LlmError::BadResponse(_)), "{err:?}");
 
-        let server = MockServer::spawn(vec![Some(http("200 OK", "это не json"))]);
+        let server = MockServer::spawn(vec![Some(http("200 OK", "this is not json"))]);
         let err = client(&server, None).complete(&request()).unwrap_err();
         assert!(matches!(err, LlmError::BadResponse(_)), "{err:?}");
     }
@@ -685,19 +685,19 @@ mod tests {
         )
         .unwrap();
         let err = client.complete(&request()).unwrap_err();
-        // Таймаут в 150 мс в сообщении округляется вверх до секунды, а не до нуля.
+        // A timeout of 150 ms is rounded up to a second in the message, not down to zero
         assert_eq!(err, LlmError::Timeout(1), "{err:?}");
     }
 
     #[test]
     fn a_closed_port_becomes_unavailable_not_a_panic() {
-        // Порт занимаем и сразу освобождаем: адрес заведомо никем не слушается.
+        // We take the port and release it at once: nobody listens on the address for sure
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         drop(listener);
-        // Windows отвечает на закрытый порт не сразу, а после нескольких повторов SYN
-        // (около секунды), поэтому таймаут должен быть заметно больше, иначе вместо
-        // «недоступен» тест получает «таймаут».
+        // Windows does not answer a closed port at once, but after several SYN retries
+        // (about a second), so the timeout must be clearly larger, or the test gets
+        // "timeout" instead of "unavailable"
         let client = OpenAiCompatClient::new(
             format!("http://{addr}/v1"),
             "m",
@@ -715,7 +715,7 @@ mod tests {
     fn provider_presets_know_their_address_and_locality() {
         assert_eq!(Provider::parse("ollama"), Provider::Ollama);
         assert_eq!(Provider::parse("LM-Studio"), Provider::LmStudio);
-        assert_eq!(Provider::parse("что-то своё"), Provider::Custom);
+        assert_eq!(Provider::parse("something custom"), Provider::Custom);
         assert!(Provider::Ollama.is_local());
         assert!(Provider::LmStudio.is_local());
         assert!(!Provider::Groq.is_local());
