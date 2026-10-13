@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
-// Растеризация иконки MolvAI без внешних зависимостей: только zlib из стандартной
-// библиотеки Node. Рисуем ту же форму, что в molva.svg (микрофон на скруглённом
-// квадрате), со сглаживанием 3x3 суперсэмплингом.
+// Rasterization of the MolvAI icon without external dependencies: only zlib from the
+// Node standard library. It draws the same shape as molva.svg (a microphone on a
+// rounded square), with 3x3 supersampling for smoothing
 //
-// Запуск: node crates/molva-gui/icons/gen-icons.mjs
-// Результат: icon.png (1024, исходник для `cargo tauri icon`) и три иконки трея.
+// Run: node crates/molva-gui/icons/gen-icons.mjs
+// Result: icon.png (1024, the source for `cargo tauri icon`) and three tray icons
 
 import { deflateSync } from "node:zlib";
 import { writeFileSync } from "node:fs";
@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-/** CRC32 для чанков PNG. */
+/** CRC32 for the PNG chunks */
 const crcTable = (() => {
   const table = new Int32Array(256);
   for (let n = 0; n < 256; n += 1) {
@@ -39,18 +39,18 @@ function chunk(type, data) {
   return Buffer.concat([head, data, crc]);
 }
 
-/** RGBA-пиксели (Uint8Array размера size*size*4) в буфер PNG. */
+/** RGBA pixels (a Uint8Array of size*size*4) to a PNG buffer */
 function encodePng(size, rgba) {
   const stride = size * 4;
   const raw = Buffer.alloc((stride + 1) * size);
   for (let y = 0; y < size; y += 1) {
-    raw[y * (stride + 1)] = 0; // фильтр None
+    raw[y * (stride + 1)] = 0; // filter None
     Buffer.from(rgba.buffer, y * stride, stride).copy(raw, y * (stride + 1) + 1);
   }
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(size, 0);
   ihdr.writeUInt32BE(size, 4);
-  ihdr[8] = 8; // бит на канал
+  ihdr[8] = 8; // bits per channel
   ihdr[9] = 6; // RGBA
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
@@ -60,7 +60,7 @@ function encodePng(size, rgba) {
   ]);
 }
 
-// --- Геометрия в единичных координатах (0..1), совпадает с molva.svg ---
+// --- Geometry in unit coordinates (0..1), the same as molva.svg ---
 
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
 
@@ -73,7 +73,7 @@ function insideRoundedRect(x, y, x0, y0, x1, y1, r) {
   return dx * dx + dy * dy <= r * r;
 }
 
-/** Микрофон: капсула, дуга-подставка, ножка и основание. */
+/** Microphone: capsule, support arc, stem and base */
 function insideMic(x, y) {
   if (insideRoundedRect(x, y, 0.4, 0.2, 0.6, 0.6, 0.1)) return true;
   if (y >= 0.5) {
@@ -88,9 +88,9 @@ function insideMic(x, y) {
 }
 
 /**
- * Рисует иконку.
- * `bg` — цвет подложки [r,g,b] или null (прозрачный фон, для трея),
- * `fg` — цвет микрофона.
+ * Draws the icon.
+ * `bg` is the backing color [r,g,b] or null (a transparent background, for the tray),
+ * `fg` is the microphone color
  */
 function render(size, bg, fg) {
   const rgba = new Uint8Array(size * size * 4);
@@ -110,7 +110,7 @@ function render(size, bg, fg) {
       const total = samples * samples;
       const bgA = bgHits / total;
       const fgA = fgHits / total;
-      // Микрофон поверх подложки: сначала подложка, потом передний план.
+      // The microphone goes over the backing: first the backing, then the foreground
       let r = 0;
       let g = 0;
       let b = 0;
@@ -142,7 +142,7 @@ const brand = [59, 91, 219];
 const white = [255, 255, 255];
 const outputs = [
   ["icon.png", 1024, brand, white],
-  // Трей: прозрачный фон, цвет микрофона кодирует состояние демона.
+  // Tray: a transparent background, and the microphone color encodes the daemon state
   ["tray-idle.png", 64, null, [170, 178, 195]],
   ["tray-recording.png", 64, null, [230, 70, 70]],
   ["tray-processing.png", 64, null, [240, 170, 40]],
@@ -151,5 +151,5 @@ const outputs = [
 for (const [name, size, bg, fg] of outputs) {
   const png = encodePng(size, render(size, bg, fg));
   writeFileSync(join(here, name), png);
-  console.log(`${name}: ${size}x${size}, ${png.length} байт`);
+  console.log(`${name}: ${size}x${size}, ${png.length} bytes`);
 }

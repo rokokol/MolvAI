@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
-// Чистые функции представления и геометрия графика.
-// Всё, что можно посчитать в ядре, считается в Rust; здесь только форматирование.
+// Pure presentation functions and chart geometry.
+// The core in Rust computes everything it can compute. Here we only format
 
 import type { DayPoint, DownloadProgress } from "./types";
 
-/** Темп с одним знаком после запятой; отсутствующее значение — прочерк. */
+/** Pace with one decimal digit; a missing value becomes a dash */
 export function formatWpm(value: number | null | undefined, dash = "—"): string {
   if (value === null || value === undefined || !Number.isFinite(value)) {
     return dash;
@@ -13,20 +13,20 @@ export function formatWpm(value: number | null | undefined, dash = "—"): strin
 }
 
 /**
- * Разделитель разрядов — узкий неразрывный пробел U+202F: число не рвётся переносом
- * строки. Вынесен в константу, потому что на глаз он неотличим от обычного пробела,
- * и сравнивать с ним нужно именно эту константу, а не пробел из клавиатуры.
+ * The digit separator is a narrow no-break space U+202F: a line break does not split
+ * the number. It is a constant, because by eye it looks the same as a normal space.
+ * Compare with this constant, not with a space from the keyboard
  */
 export const GROUP_SEPARATOR = " ";
 
-/** Целое с разделителями разрядов: 12345 → «12 345». */
+/** Integer with digit separators: 12345 becomes "12 345" */
 export function formatCount(value: number): string {
   return Math.round(value)
     .toString()
     .replace(/\B(?=(\d{3})+(?!\d))/g, GROUP_SEPARATOR);
 }
 
-/** Доля скачанных весов в процентах; 100 — только когда скачано всё. */
+/** Share of the downloaded weights in percent; 100 only when the download is complete */
 export function downloadPercent(download: DownloadProgress): number {
   if (download.total <= 0) {
     return 0;
@@ -34,12 +34,12 @@ export function downloadPercent(download: DownloadProgress): number {
   return Math.min(100, Math.floor((download.downloaded / download.total) * 100));
 }
 
-/** Байты в целых мегабайтах (MiB): 487 601 967 → «465». */
+/** Bytes in whole megabytes (MiB): 487 601 967 becomes "465" */
 export function formatMegabytes(bytes: number): string {
   return formatCount(bytes / (1024 * 1024));
 }
 
-/** Минуты: до часа — числом, дальше «2:05»; меньше минуты — «<1». */
+/** Minutes: below one hour as a number, above as "2:05"; below one minute as "<1" */
 export function formatMinutes(value: number): string {
   if (!Number.isFinite(value) || value <= 0) {
     return "0";
@@ -56,7 +56,7 @@ export function formatMinutes(value: number): string {
   return `${hours}:${String(minutes).padStart(2, "0")}`;
 }
 
-/** Задержка: до секунды в миллисекундах, дальше в секундах. */
+/** Latency: milliseconds below one second, seconds above */
 export function formatLatency(ms: number | null | undefined, dash = "—"): string {
   if (ms === null || ms === undefined || !Number.isFinite(ms)) {
     return dash;
@@ -67,7 +67,7 @@ export function formatLatency(ms: number | null | undefined, dash = "—"): stri
   return `${(ms / 1000).toFixed(1)} s`;
 }
 
-/** Дата и время реплики в локальном формате пользователя. */
+/** Date and time of a phrase in the local format of the user */
 export function formatTimestamp(iso: string, lang: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) {
@@ -79,7 +79,7 @@ export function formatTimestamp(iso: string, lang: string): string {
   });
 }
 
-/** Короткая подпись дня для оси графика: «05.09» из «2026-09-05». */
+/** Short label of a day for the chart axis: "05.09" from "2026-09-05" */
 export function formatDayTick(day: string): string {
   const parts = day.split("-");
   if (parts.length !== 3) {
@@ -88,18 +88,18 @@ export function formatDayTick(day: string): string {
   return `${parts[2]}.${parts[1]}`;
 }
 
-/** Точка графика в координатах SVG. */
+/** Chart point in SVG coordinates */
 export interface ChartPoint {
   day: string;
   words: number;
   wpm: number | null;
-  /** Левый край столбика и его ширина. */
+  /** Left edge of the bar and its width */
   x: number;
   width: number;
-  /** Верх столбика и его высота: ось слов растёт вверх. */
+  /** Top of the bar and its height: the word axis grows upward */
   y: number;
   height: number;
-  /** Координата точки линии темпа; null — в этот день темпа не было. */
+  /** Coordinate of the pace line point; null means the day had no pace */
   wpmY: number | null;
 }
 
@@ -107,15 +107,16 @@ export interface ChartGeometry {
   points: ChartPoint[];
   maxWords: number;
   maxWpm: number;
-  /** Ломаная линии темпа; дни без темпа разрывают её новой командой `M`. */
+  /** Polyline of the pace line; days without a pace break it with a new `M` command */
   wpmPath: string;
 }
 
 /**
- * Геометрия графика: столбики слов по дням и линия среднего темпа.
+ * Chart geometry: bars of words per day and a line of the average pace.
  *
- * Обе шкалы независимы и начинаются от нуля, иначе столбики и линия визуально
- * спорят друг с другом. Пустой ряд даёт пустую геометрию, а не деление на ноль.
+ * The two scales are independent and start at zero. Otherwise the bars and the line
+ * visually disagree with each other. An empty series gives empty geometry, not a
+ * division by zero
  */
 export function chartGeometry(
   series: DayPoint[],
@@ -149,7 +150,7 @@ export function chartGeometry(
   let started = false;
   for (const point of points) {
     if (point.wpmY === null) {
-      // Разрыв в данных не соединяем прямой: следующая точка начнёт линию заново.
+      // We do not join a gap in the data with a straight line: the next point starts the line again
       started = false;
       continue;
     }
@@ -161,7 +162,7 @@ export function chartGeometry(
   return { points, maxWords, maxWpm, wpmPath: segments.join(" ") };
 }
 
-/** Ровные подписи оси: ноль, середина и максимум. */
+/** Round axis labels: zero, the middle and the maximum */
 export function axisTicks(max: number): number[] {
   return [0, Math.round(max / 2), Math.round(max)];
 }
