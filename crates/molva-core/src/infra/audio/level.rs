@@ -13,6 +13,11 @@ pub const ZERO_LEVEL_RMS: f32 = 1e-4;
 /// Сколько ждать, прежде чем считать нулевой уровень проблемой, а не паузой перед словом.
 pub const ZERO_LEVEL_WINDOW: Duration = Duration::from_secs(1);
 
+/// Перерыв в замерах, после которого начинается новая запись. Внутри записи замеры идут
+/// с шагом `LEVEL_INTERVAL` из `cpal_source`, а между записями их нет вовсе: тишина конца
+/// прошлой записи не должна засчитываться следующей.
+pub const RECORDING_GAP: Duration = Duration::from_secs(2);
+
 /// Что показать пользователю при нулевом уровне.
 pub const ZERO_LEVEL_MESSAGE: &str =
     "Микрофон не даёт сигнала. Проверьте, что он не выключен и выбран нужный вход \
@@ -20,7 +25,7 @@ pub const ZERO_LEVEL_MESSAGE: &str =
 
 /// Следит за уровнем и говорит, когда пора предупредить о нулевом входе.
 ///
-/// Время передаётся снаружи: тест не спит, а конвейер берёт его из callback'ов cpal.
+/// Время передаётся снаружи: тест не спит, а демон берёт его из своих часов.
 #[derive(Debug)]
 pub struct ZeroLevelWatch {
     threshold: f32,
@@ -29,6 +34,8 @@ pub struct ZeroLevelWatch {
     silent_since: Option<Instant>,
     /// Предупреждение за этот отрезок уже выдано.
     warned: bool,
+    /// Время прошлого замера: перерыв дольше `RECORDING_GAP` — граница между записями.
+    last_seen: Option<Instant>,
 }
 
 impl ZeroLevelWatch {
@@ -38,6 +45,7 @@ impl ZeroLevelWatch {
             window,
             silent_since: None,
             warned: false,
+            last_seen: None,
         }
     }
 
@@ -51,6 +59,13 @@ impl ZeroLevelWatch {
     /// Предупреждение выдаётся один раз за непрерывный отрезок тишины: сигнал появился —
     /// счётчик сбрасывается, и следующее пропадание снова будет замечено.
     pub fn observe(&mut self, rms: f32, now: Instant) -> Option<&'static str> {
+        if self
+            .last_seen
+            .is_some_and(|last| now.duration_since(last) >= RECORDING_GAP)
+        {
+            self.reset();
+        }
+        self.last_seen = Some(now);
         if rms > self.threshold {
             self.silent_since = None;
             self.warned = false;
@@ -107,6 +122,28 @@ mod tests {
             watch.observe(0.0, t0 + Duration::from_millis(1200)),
             None,
             "повторные предупреждения об одной и той же тишине"
+        );
+    }
+
+    #[test]
+    fn a_pause_between_recordings_does_not_carry_silence_into_the_next_one() {
+        // Демон наблюдает уровни всех записей одним наблюдателем: между записями замеров нет,
+        // и тишина конца прошлой записи не должна засчитываться началу следующей.
+        let mut watch = ZeroLevelWatch::with_defaults();
+        let t0 = Instant::now();
+        watch.observe(0.0, t0);
+        watch.observe(0.0, t0 + Duration::from_millis(500));
+
+        let next = t0 + Duration::from_secs(10);
+        assert_eq!(watch.observe(0.0, next), None);
+        assert_eq!(
+            watch.observe(0.0, next + Duration::from_millis(500)),
+            None,
+            "полсекунды тишины новой записи — ещё не повод предупреждать"
+        );
+        assert_eq!(
+            watch.observe(0.0, next + Duration::from_millis(1100)),
+            Some(ZERO_LEVEL_MESSAGE)
         );
     }
 

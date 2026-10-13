@@ -34,6 +34,8 @@ pub struct FakeAudioSource {
     portion: Option<usize>,
     /// Позиция чтения потоковой обработки.
     drained: usize,
+    /// Канал уровней текущей записи: тест шлёт по нему замеры, как это делает колбэк cpal.
+    level_tx: Option<Sender<f32>>,
 }
 
 impl FakeAudioSource {
@@ -44,6 +46,15 @@ impl FakeAudioSource {
             start_calls: 0,
             portion: None,
             drained: 0,
+            level_tx: None,
+        }
+    }
+
+    /// Отдать замер уровня слушателю текущей записи, как это делает колбэк cpal.
+    pub fn send_level(&self, rms: f32) {
+        if let Some(tx) = &self.level_tx {
+            // Слушателя может уже не быть; для фейка это не сбой.
+            let _ = tx.send(rms);
         }
     }
 
@@ -71,10 +82,11 @@ impl AudioSource for FakeAudioSource {
         self.recording = true;
         self.start_calls += 1;
         self.drained = 0;
-        if let Some(tx) = level_tx {
+        if let Some(tx) = &level_tx {
             // Ошибка отправки означает, что слушателя уже нет; для фейка это не сбой.
             let _ = tx.send(self.audio.rms());
         }
+        self.level_tx = level_tx;
         Ok(())
     }
 
@@ -83,6 +95,7 @@ impl AudioSource for FakeAudioSource {
             return Err(AudioError::NotRecording);
         }
         self.recording = false;
+        self.level_tx = None;
         Ok(self.audio.clone())
     }
 

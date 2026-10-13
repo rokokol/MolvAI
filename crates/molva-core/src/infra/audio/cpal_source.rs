@@ -19,7 +19,6 @@ use tracing::{debug, info, warn};
 
 use crate::config::AudioConfig;
 use crate::domain::audio::{downmix_to_mono, AudioError, AudioSource, DeviceInfo, PcmAudio};
-use crate::infra::audio::level::ZeroLevelWatch;
 
 /// Имя устройства, означающее «системное по умолчанию».
 pub const DEFAULT_DEVICE: &str = "default";
@@ -435,7 +434,6 @@ where
     let error_shared = Arc::clone(shared);
     // `None` — замера уровня ещё не было: первый же блок данных отдаёт уровень сразу.
     let mut last_level: Option<Instant> = None;
-    let mut zero_level = ZeroLevelWatch::with_defaults();
 
     device
         .build_input_stream::<T, _, _>(
@@ -448,9 +446,7 @@ where
                 if last_level.is_none_or(|last| now.duration_since(last) >= LEVEL_INTERVAL) {
                     last_level = Some(now);
                     let level = rms(&mono);
-                    if let Some(message) = zero_level.observe(level, now) {
-                        warn!("{message}");
-                    }
+                    // Немой микрофон замечает слушатель уровней, см. ZeroLevelWatch.
                     if let Some(tx) = &level_tx {
                         // Слушателя может уже не быть — для записи это не сбой.
                         let _ = tx.send(level);

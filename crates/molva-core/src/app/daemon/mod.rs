@@ -26,9 +26,18 @@ use crate::domain::entry::Mode;
 use crate::domain::inject::{OutputMode, TextInjector};
 use crate::domain::notify::Notifier;
 use crate::domain::sound::{CueKind, SoundCue};
+use crate::infra::audio::level::ZeroLevelWatch;
 use crate::infra::ipc::RequestHandler;
 use crate::infra::platform;
 use crate::ipc::protocol::{Command, DaemonState, ErrorCode, Event, IpcError};
+
+/// Что делать, когда микрофон даёт цифровой ноль. На macOS частая причина — запрет доступа:
+/// система отдаёт тишину, а не ошибку.
+#[cfg(target_os = "macos")]
+const SILENT_MICROPHONE_HINT: &str =
+    "проверьте доступ: Системные настройки → Конфиденциальность и безопасность → Микрофон";
+#[cfg(not(target_os = "macos"))]
+const SILENT_MICROPHONE_HINT: &str = "проверьте устройство: molva devices";
 
 pub use chunked::{ChunkAccumulator, ChunkContext, ChunkFeeder, ChunkPrefix, ChunkText};
 pub use processor::{ProcessError, Processor, ProcessorConfig, SimpleProcessor};
@@ -456,11 +465,25 @@ impl Daemon {
             }));
         }
 
-        // Поток уровней: индикатор в GUI и предупреждение о немом микрофоне.
+        // Поток уровней: индикатор в GUI и предупреждение о немом микрофоне. Наблюдатель
+        // живёт здесь, а не в колбэке cpal: из колбэка реального времени не показать
+        // уведомление, а отсюда оно уходит тем же путём, что и ошибка записи.
         {
             let shared = shared.clone();
+            let notifier = notifier.clone();
+            let clock = clock.clone();
             threads.push(std::thread::spawn(move || {
+                let mut silence = ZeroLevelWatch::with_defaults();
                 while let Ok(rms) = level_rx.recv() {
+                    if let Some(message) = silence.observe(rms, clock.instant()) {
+                        tracing::warn!("{message}");
+                        notifier.notify("MolvAI", message);
+                        shared.publish(&Event::Error {
+                            code: ErrorCode::NoDevice,
+                            message: message.to_string(),
+                            hint: Some(SILENT_MICROPHONE_HINT.into()),
+                        });
+                    }
                     shared.publish(&Event::Level { rms });
                 }
             }));
@@ -770,6 +793,7 @@ mod tests {
         FakeAudioSource, FakeClock, FakeStt, MemJournal, RecordingNotifier, RecordingSoundCue,
     };
     use crate::domain::inject::{InjectError, InjectReport, OutputMode, TextInjector};
+    use crate::infra::audio::level::ZERO_LEVEL_MESSAGE;
     use std::time::Duration;
 
     /// Инжектор, чей результат виден тесту после того, как он уехал в демон.
@@ -928,6 +952,69 @@ mod tests {
             "текст должен дойти до инжектора"
         );
         assert_eq!(entry.words, 2);
+        drop(h.daemon);
+    }
+
+    /// Дождаться очередного замера уровня; всё, что пришло до него, остаётся в `seen`.
+    fn wait_for_level(events: &Receiver<Event>, seen: &mut Vec<Event>) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            if let Ok(event) = events.recv_timeout(Duration::from_millis(200)) {
+                let is_level = matches!(event, Event::Level { .. });
+                seen.push(event);
+                if is_level {
+                    return;
+                }
+            }
+        }
+        panic!("замер уровня так и не пришёл");
+    }
+
+    #[test]
+    fn a_silent_microphone_is_reported_to_the_user_once_per_silence() {
+        let h = harness("тестовая реплика");
+        let events = h.handle.subscribe();
+        h.handle
+            .send(Input::RecordStart {
+                mode: Mode::Dictation,
+                style: None,
+            })
+            .unwrap();
+        // Поток уровней читает часы, когда берёт замер, поэтому часы двигаются только
+        // после того, как предыдущий замер уже учтён. Замеры на 0, 0.6, 1.2 и 1.8 с:
+        // предупреждение на третьем, четвёртый его не повторяет.
+        let mut seen = Vec::new();
+        wait_for_level(&events, &mut seen);
+        for _ in 0..3 {
+            h.clock.advance(Duration::from_millis(600));
+            h.audio.0.lock().unwrap().send_level(0.0);
+            wait_for_level(&events, &mut seen);
+        }
+
+        let errors: Vec<(ErrorCode, String)> = seen
+            .iter()
+            .filter_map(|event| match event {
+                Event::Error { code, message, .. } => Some((*code, message.clone())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            errors,
+            vec![(ErrorCode::NoDevice, ZERO_LEVEL_MESSAGE.to_string())]
+        );
+        let notified: Vec<String> = h
+            .notifier
+            .messages
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(_, body)| body.clone())
+            .collect();
+        assert_eq!(
+            notified,
+            vec![ZERO_LEVEL_MESSAGE.to_string()],
+            "одно уведомление на один отрезок тишины"
+        );
         drop(h.daemon);
     }
 
