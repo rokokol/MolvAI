@@ -12,8 +12,8 @@
 use std::io::Write as _;
 use std::path::Path;
 
-use chacha20poly1305::aead::{Aead, AeadCore, KeyInit, OsRng};
-use chacha20poly1305::{XChaCha20Poly1305, XNonce};
+use chacha20poly1305::aead::{Aead, Generate, KeyInit};
+use chacha20poly1305::{Key, XChaCha20Poly1305, XNonce};
 
 use super::secrets::{SecretError, SecretStore};
 
@@ -74,7 +74,7 @@ impl JournalCipher {
 
     /// Зашифровать поле: `enc1:<hex nonce><hex шифротекст>`.
     pub fn encrypt(&self, plaintext: &str) -> String {
-        let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
+        let nonce = XNonce::generate();
         // Шифрование в памяти не может не удаться: ключ и nonce правильной длины по типам.
         let ciphertext = self
             .cipher
@@ -91,8 +91,8 @@ impl JournalCipher {
             return None;
         }
         let (nonce, ciphertext) = bytes.split_at(NONCE_LEN);
-        let nonce = XNonce::from_slice(nonce);
-        let plaintext = self.cipher.decrypt(nonce, ciphertext).ok()?;
+        let nonce = XNonce::try_from(nonce).ok()?;
+        let plaintext = self.cipher.decrypt(&nonce, ciphertext).ok()?;
         String::from_utf8(plaintext).ok()
     }
 }
@@ -117,7 +117,7 @@ pub fn load_or_create_key(path: &Path) -> Result<[u8; KEY_LEN], KeyError> {
             std::fs::create_dir_all(parent).map_err(|e| io(&e))?;
         }
     }
-    let key: [u8; KEY_LEN] = XChaCha20Poly1305::generate_key(&mut OsRng).into();
+    let key: [u8; KEY_LEN] = Key::generate().into();
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
@@ -145,7 +145,7 @@ pub fn load_or_create_key_in(
     if let Some(text) = store.get(name).map_err(store_error)? {
         return parse_key(text.trim(), name);
     }
-    let key: [u8; KEY_LEN] = XChaCha20Poly1305::generate_key(&mut OsRng).into();
+    let key: [u8; KEY_LEN] = Key::generate().into();
     store.set(name, &hex(&key)).map_err(store_error)?;
     Ok(key)
 }
