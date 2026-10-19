@@ -31,6 +31,10 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 - The flake no longer offers packages for x86_64-darwin: Nixpkgs 26.05 is its last release, and the macOS release build is for Apple silicon only
 
+### Security
+
+- rustls 0.23.46 in place of 0.23.45 fixes RUSTSEC-2026-0346, RUSTSEC-2026-0347, RUSTSEC-2026-0348 and RUSTSEC-2026-0349
+
 ## [0.1.9] - 2026-10-13
 
 ### Added
