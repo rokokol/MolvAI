@@ -39,11 +39,6 @@ yanked = "deny"
 # declared unmaintained. We cannot replace them, so the unmaintained status is checked
 # only for the direct dependencies of the workspace. A vulnerability stays an error at any depth.
 unmaintained = "workspace"
-ignore = [
-    # glib 0.18 (through Tauri 2 / GTK3): unsound in VariantStrIter, which we do not call;
-    # fixed in glib >= 0.20, which Tauri will move to together with GTK4
-    { id = "RUSTSEC-2024-0429", reason = "glib 0.18 comes transitively from Tauri 2; VariantStrIter is not used" },
-]
 
 [sources]
 unknown-registry = "deny"

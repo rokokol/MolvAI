@@ -18,7 +18,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Dependency licenses, banned crates, sources: the rules are in deny.toml
+  # Advisories from the RustSec database, dependency licenses, banned crates, sources: the
+  # rules are in deny.toml. The database grows without a single commit to the repository
   licenses:
     name: cargo-deny
     runs-on: ubuntu-24.04
@@ -28,22 +29,3 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
-
-  # Vulnerabilities from the RustSec database: in a week it grows without a single commit to the repository
-  audit:
-    name: cargo-audit
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    # On schedule, the action creates an issue for each new finding (checks: write
-    # for the check run, issues: write for the issue). On a push to main and by hand it makes only a check.
-    # Without issues: write the scheduled run failed with "Resource not accessible
-    # by integration" as soon as the RustSec database got a new vulnerability
-    permissions:
-      contents: read
-      checks: write
-      issues: write
-    steps:
-      - uses: actions/checkout@v7
-      - uses: rustsec/audit-check@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
