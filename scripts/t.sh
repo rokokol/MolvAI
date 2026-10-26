@@ -490,20 +490,23 @@ cmd_bisect_probe() {
   done
   [[ "${1:-}" == "--" ]] || die "bisect-probe: the command must follow --"
 
-  if [[ -n "$build" ]]; then
-    if ! sh -c "$build" >&2; then
-      echo "t.sh: this commit does not build — skipping it rather than blaming it" >&2
-      return 125
-    fi
-  fi
-
   # The log path is chosen here so the sidecar can be found afterwards; bisect sets
-  # T_LOGDIR to a directory outside the working tree it is checking commits out into
+  # T_LOGDIR to a directory outside the working tree it is checking commits out into.
+  # Before the build, which compiles into the same bytecode cache as the run
   local log="${T_LOGFILE:-}"
   if [[ -z "$log" ]]; then
     local dir="${T_LOGDIR:-.test-logs}"
     own_dir "$dir" || fatal "bisect-probe: cannot create $dir"
     log="$dir/probe-$(date +%Y%m%d-%H%M%S)-$$.log"
+  fi
+  fresh_pycache "$log"
+
+  if [[ -n "$build" ]]; then
+    if ! PYTHONPYCACHEPREFIX="$PYCACHE" sh -c "$build" >&2; then
+      rm -rf -- "$PYCACHE"
+      echo "t.sh: this commit does not build — skipping it rather than blaming it" >&2
+      return 125
+    fi
   fi
 
   # A short tail by default: a bisect prints one verdict per commit, and forty lines each
@@ -511,7 +514,8 @@ cmd_bisect_probe() {
   # subshell, so a refusal inside run reaches the case below as "no verdict" instead of
   # ending the probe with a status git would take for an answer.
   local status=0 kind=""
-  (T_LOGFILE="$log" cmd_run -t 5 "${pass[@]+"${pass[@]}"}" "$@") || status=$?
+  (PYTHONPYCACHEPREFIX="$PYCACHE" T_LOGFILE="$log" cmd_run -t 5 "${pass[@]+"${pass[@]}"}" "$@") || status=$?
+  rm -rf -- "$PYCACHE"
   [[ ! -r "$log.verdict" ]] || kind=$(cat "$log.verdict")
 
   case "$kind" in
@@ -1153,19 +1157,43 @@ looks_like_test_file() {
 VERDICT=""
 MUTANT_PGID=""
 WATCHDOG_PGID=""
+
+# An empty bytecode cache for one judged run, at LOG.pycache, named by PYCACHE. Python
+# trusts a cached .pyc while the source keeps its size and its mtime in whole seconds, and
+# pytest caches its rewritten tests the same way. A defect of the same length, planted and
+# restored within one second, leaves the mutant's bytecode where the next run imports it:
+# a caught defect reads as a survivor, or the baseline goes red on clean code. A checkout
+# between two commits in a bisect is the same edit, and `python -m compileall` as the
+# build skips a file whose cache looks current, so a mutant that breaks the syntax builds.
+# PYTHONPYCACHEPREFIX moves every read and write of that cache into this directory, for
+# the build and the run alike, so neither sees another run's bytecode nor a stale
+# __pycache__ beside the source. The price is that each run compiles what it imports,
+# the standard library included. Absolute, because the suite may change
+# directory. Beside the log rather than in TMPDIR, so an interrupted run leaves it where
+# the next one clears it
+PYCACHE=""
+fresh_pycache() { # fresh_pycache LOG
+  PYCACHE="$(cd -- "$(dirname -- "$1")" && pwd)/$(basename -- "$1").pycache" ||
+    fatal "cannot resolve the directory of $1 for a bytecode cache"
+  rm -rf -- "$PYCACHE"
+  mkdir -- "$PYCACHE" || fatal "cannot create the bytecode cache $PYCACHE"
+}
+
 suite_verdict() { # suite_verdict LOG CMD...
   local log="$1" kind="" pid
   shift
   VERDICT=none
+  fresh_pycache "$log"
   if [[ -n "$build" ]]; then
-    if ! sh -c "$build" >"$log" 2>&1; then
+    if ! PYTHONPYCACHEPREFIX="$PYCACHE" sh -c "$build" >"$log" 2>&1; then
+      rm -rf -- "$PYCACHE"
       VERDICT=unusable
       return
     fi
   fi
   rm -f "$log.timedout"
   set -m
-  (T_LOGFILE="$log" cmd_run -t 0 "${pass[@]+"${pass[@]}"}" "$@") >/dev/null 2>&1 &
+  (PYTHONPYCACHEPREFIX="$PYCACHE" T_LOGFILE="$log" cmd_run -t 0 "${pass[@]+"${pass[@]}"}" "$@") >/dev/null 2>&1 &
   pid=$!
   MUTANT_PGID="$pid"
   if [[ -n "$deadline" ]]; then
@@ -1195,6 +1223,7 @@ suite_verdict() { # suite_verdict LOG CMD...
     wait "$WATCHDOG_PGID" 2>/dev/null || :
     WATCHDOG_PGID=""
   fi
+  rm -rf -- "$PYCACHE"
   if [[ -e "$log.timedout" ]]; then
     rm -f "$log.timedout"
     VERDICT=timedout
