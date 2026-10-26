@@ -30,10 +30,12 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 ### Removed
 
 - The flake no longer offers packages for x86_64-darwin: Nixpkgs 26.05 is its last release, and the macOS release build is for Apple silicon only
+- clipboard-win 5.4.3 in place of the yanked 5.4.1
 
 ### Security
 
 - rustls 0.23.46 in place of 0.23.45 fixes RUSTSEC-2026-0346, RUSTSEC-2026-0347, RUSTSEC-2026-0348 and RUSTSEC-2026-0349
+- ctutils 0.4.6, rustls-webpki 0.103.16, webpki-root-certs 1.0.11 and webpki-roots 1.0.11 fix RUSTSEC-2026-0385, RUSTSEC-2026-0382, RUSTSEC-2026-0383 and RUSTSEC-2026-0381
 
 ## [0.1.9] - 2026-10-13
 
