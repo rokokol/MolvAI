@@ -15,9 +15,8 @@ use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 
 use interprocess::local_socket::traits::{ListenerExt as _, Stream as _};
-use interprocess::local_socket::{
-    GenericFilePath, ListenerOptions, RecvHalf, SendHalf, Stream, ToFsName,
-};
+use interprocess::local_socket::{GenericFilePath, ListenerOptions, Stream, ToFsName};
+use interprocess::TryClone as _;
 use serde_json::Value;
 use thiserror::Error;
 
@@ -213,8 +212,12 @@ fn serve_connection(
     stream: Stream,
     handler: &Arc<dyn RequestHandler>,
 ) -> Result<(), IpcServerError> {
-    let (recv, mut send) = stream.split();
-    let mut reader = BufReader::new(recv);
+    // A second handle on the same socket, not a split half: `Stream::split` is deprecated from
+    // interprocess 2.4.7, where a half no longer closes the socket when dropped
+    let mut send = stream
+        .try_clone()
+        .map_err(|e| IpcServerError::Io(e.to_string()))?;
+    let mut reader = BufReader::new(stream);
     let mut line = String::new();
     loop {
         line.clear();
@@ -269,14 +272,14 @@ fn serve_connection(
     }
 }
 
-fn stream_events(send: &mut SendHalf, events: Receiver<Event>) -> Result<(), IpcServerError> {
+fn stream_events(send: &mut Stream, events: Receiver<Event>) -> Result<(), IpcServerError> {
     for event in events {
         write_line(send, &event)?;
     }
     Ok(())
 }
 
-fn write_line<T: serde::Serialize>(send: &mut SendHalf, value: &T) -> Result<(), IpcServerError> {
+fn write_line<T: serde::Serialize>(send: &mut Stream, value: &T) -> Result<(), IpcServerError> {
     let mut line = serde_json::to_string(value).map_err(|e| IpcServerError::Io(e.to_string()))?;
     line.push('\n');
     send.write_all(line.as_bytes())
@@ -297,8 +300,8 @@ fn path_is_stale(path: &Path) -> bool {
 
 /// Client of the local socket
 pub struct Client {
-    reader: BufReader<RecvHalf>,
-    writer: SendHalf,
+    reader: BufReader<Stream>,
+    writer: Stream,
     next_id: u64,
     path: PathBuf,
 }
@@ -321,9 +324,11 @@ impl Client {
             path: path.to_path_buf(),
             message: e.to_string(),
         })?;
-        let (recv, writer) = stream.split();
+        let writer = stream
+            .try_clone()
+            .map_err(|e| IpcClientError::Io(e.to_string()))?;
         Ok(Self {
-            reader: BufReader::new(recv),
+            reader: BufReader::new(stream),
             writer,
             next_id: 1,
             path: path.to_path_buf(),
@@ -382,7 +387,7 @@ impl Client {
 /// Stream of daemon events
 #[derive(Debug)]
 pub struct Events {
-    reader: BufReader<RecvHalf>,
+    reader: BufReader<Stream>,
 }
 
 impl Iterator for Events {
@@ -538,12 +543,12 @@ mod tests {
         let (path, _dir, stopper) = started(EchoHandler::new());
         let name = socket_name(&path).unwrap();
         let stream = Stream::connect(name).unwrap();
-        let (recv, mut send) = stream.split();
+        let mut send = stream.try_clone().unwrap();
         send.write_all(b"{\"v\":1,\"id\":9,\"cmd\":\"fly\"}\n")
             .unwrap();
         send.flush().unwrap();
         let mut line = String::new();
-        BufReader::new(recv).read_line(&mut line).unwrap();
+        BufReader::new(stream).read_line(&mut line).unwrap();
         let response: Response = serde_json::from_str(&line).unwrap();
         assert!(!response.ok);
         assert_eq!(response.error.unwrap().code, ErrorCode::BadRequest);
