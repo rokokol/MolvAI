@@ -126,8 +126,7 @@ fn millis_since(start: Instant, now: Instant) -> u32 {
 /// The part of the phrase that the chunks did not cover
 fn tail_after_prefix<'a>(full: &'a str, prefix: &str) -> &'a str {
     full.strip_prefix(prefix)
-        .map(str::trim_start)
-        .unwrap_or(full)
+        .map_or(full, str::trim_start)
 }
 
 /// Whether two pieces need a space between them. Punctuation attaches to the word before it
