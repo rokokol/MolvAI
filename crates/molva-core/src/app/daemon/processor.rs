@@ -42,6 +42,7 @@ impl From<crate::app::pipeline::PipelineError> for ProcessError {
         match err {
             P::Stt(inner) => ProcessError::Stt(inner),
             P::Journal(inner) => ProcessError::Journal(inner),
+            P::Inject(inner) => ProcessError::Inject(inner),
             other => ProcessError::Pipeline(other.to_string()),
         }
     }
@@ -76,6 +77,21 @@ impl Processor for crate::app::pipeline::Pipeline {
             crate::app::pipeline::Pipeline::transcribe_chunk(self, audio, context)
                 .map_err(ProcessError::from),
         )
+    }
+
+    fn stream_chunk(
+        &mut self,
+        chunk: &ChunkText,
+        app_hint: Option<&str>,
+    ) -> Option<Result<(), ProcessError>> {
+        Some(
+            crate::app::pipeline::Pipeline::stream_chunk(self, chunk, app_hint)
+                .map_err(ProcessError::from),
+        )
+    }
+
+    fn discard_stream(&mut self) {
+        crate::app::pipeline::Pipeline::discard_stream(self);
     }
 
     fn process_with_prefix(
@@ -119,7 +135,7 @@ pub trait Processor: std::fmt::Debug + Send {
     /// Recognize a chunk of a recording that is still running
     ///
     /// `None` means that the processor cannot do streaming processing: the daemon then waits
-    /// for the end of the phrase and gives it whole, as before
+    /// for the end of the phrase and gives it whole
     fn transcribe_chunk(
         &mut self,
         _audio: &PcmAudio,
@@ -127,6 +143,20 @@ pub trait Processor: std::fmt::Debug + Send {
     ) -> Option<Result<ChunkText, ProcessError>> {
         None
     }
+
+    /// Type one recognized chunk while the recording is still running
+    ///
+    /// `None` means that the processor cannot stream: the phrase arrives whole at the end
+    fn stream_chunk(
+        &mut self,
+        _chunk: &ChunkText,
+        _app_hint: Option<&str>,
+    ) -> Option<Result<(), ProcessError>> {
+        None
+    }
+
+    /// Drop the typed prefix of a cancelled recording
+    fn discard_stream(&mut self) {}
 
     /// Process a phrase whose start is already recognized in chunks
     ///
@@ -314,6 +344,7 @@ impl<I: TextInjector, J: Journal> Processor for SimpleProcessor<I, J> {
             text_raw: Some(transcript.text.clone()),
             text_final: Some(text),
             audio_path: None,
+            segments: Vec::new(),
         };
 
         let stored = if self.config.include_text {

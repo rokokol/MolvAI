@@ -40,12 +40,13 @@ pub(crate) enum Action {
     Path { name: String },
 }
 
-/// The border of a "light" model for `--all-small`: this is how much a small or quantized model weighs
+/// The border of a "light" model for `--all-small`: this is how much a small or quantized
+/// model weighs
 pub(crate) const SMALL_MODEL_LIMIT_BYTES: u64 = 500 * 1_048_576;
 
 /// The models that `--all-small` downloads, in order of growing size
 pub(crate) fn small_models() -> Vec<&'static models::ModelInfo> {
-    let mut small: Vec<_> = models::CATALOG
+    let mut small: Vec<_> = models::catalog()
         .iter()
         .filter(|m| m.size_bytes <= SMALL_MODEL_LIMIT_BYTES)
         .collect();
@@ -98,7 +99,8 @@ fn dir_for(config: &Config) -> Result<std::path::PathBuf, CmdError> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PullReport {
     pub path: std::path::PathBuf,
-    /// `false` — the model was already in place and passed the check, so the network was not needed (A-09)
+    /// `false` — the model was already in place and passed the check, so the network was not
+    /// needed (A-09)
     pub downloaded: bool,
 }
 
@@ -127,10 +129,10 @@ pub(crate) fn pull(
     quiet: bool,
 ) -> Result<PullReport, CmdError> {
     let info = models::find(name).map_err(|e| CmdError::args(e.to_string()))?;
-    let target = directory.join(info.file_name);
-    if !needs_download(&target, info.sha256, force)? {
-        // We download nothing and say so honestly: "downloading" for a file that is already ready misleads
-        // the user, especially when the model is several gigabytes
+    let target = directory.join(&info.file_name);
+    if !needs_download(&target, &info.sha256, force)? {
+        // Nothing is downloaded and the report says so. "Downloading" for a file that is
+        // already ready misleads the user, especially when the model is several gigabytes
         return Ok(PullReport {
             path: target,
             downloaded: false,
@@ -195,7 +197,7 @@ pub(crate) fn run(
             force,
         } => {
             let names: Vec<String> = if *all_small {
-                small_models().iter().map(|m| m.name.to_string()).collect()
+                small_models().iter().map(|m| m.name.clone()).collect()
             } else {
                 // clap does not let a call pass without a name and without --all-small
                 name.iter().cloned().collect()
@@ -218,14 +220,14 @@ pub(crate) fn run(
         }
         Action::Verify { name } => {
             let info = models::find(name).map_err(|e| CmdError::args(e.to_string()))?;
-            let path = directory.join(info.file_name);
+            let path = directory.join(&info.file_name);
             if !path.is_file() {
                 return Err(CmdError::file(format!(
                     "the model {name} is not installed. Download it: molva models pull {name}"
                 )));
             }
             let ok =
-                models::verify(&path, info.sha256).map_err(|e| CmdError::file(e.to_string()))?;
+                models::verify(&path, &info.sha256).map_err(|e| CmdError::file(e.to_string()))?;
             if !ok {
                 return Err(CmdError::file(format!(
                     "the checksum of {name} does not match: the file is damaged, \
@@ -285,7 +287,7 @@ mod tests {
         .unwrap();
         let value: serde_json::Value = serde_json::from_slice(&out).unwrap();
         let array = value.as_array().unwrap();
-        assert_eq!(array.len(), models::CATALOG.len());
+        assert_eq!(array.len(), models::catalog().len());
         assert!(array[0].get("sha256").is_some());
         assert_eq!(array[0]["installed"], serde_json::Value::Bool(false));
     }
@@ -388,8 +390,17 @@ mod tests {
 
     #[test]
     fn all_small_covers_only_light_models_smallest_first() {
-        let names: Vec<&str> = small_models().iter().map(|m| m.name).collect();
-        assert_eq!(names, vec!["tiny", "base", "small-q5_1", "small"]);
+        let names: Vec<&str> = small_models().iter().map(|m| m.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "tiny",
+                "base",
+                "gigaam-v3-e2e-rnnt-q4_k_m",
+                "small-q5_1",
+                "small"
+            ]
+        );
         assert!(!names.contains(&"large-v3"), "heavy models do not get here");
         for pair in small_models().windows(2) {
             assert!(pair[0].size_bytes <= pair[1].size_bytes, "order by size");

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 //! `molva transcribe` — transcription of files, directories and stdin
 //!
-//! This is the offline path: it pastes nothing anywhere and does not touch the microphone, so it can
-//! be run in scripts and in CI. The error of one file in a batch does not cancel the others — every
-//! file that could be done gets its result, and the exit code 6 reports that not everything went through
+//! This is the offline path: it pastes nothing anywhere and does not touch the microphone, so
+//! it can be run in scripts and in CI. The error of one file in a batch does not cancel the
+//! others — every file that could be done gets its result, and the exit code 6 reports that
+//! not everything went through
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -12,6 +13,7 @@ use std::time::Instant;
 use chrono::Utc;
 use molva_core::app::dictionary::Dictionary;
 use molva_core::app::engine::{build_stt_with, EngineChoice};
+use molva_core::app::file_result::FileResult;
 use molva_core::app::llm_output::sanitize_llm_output;
 use molva_core::app::rules::RuleSet;
 use molva_core::app::secrets;
@@ -19,13 +21,12 @@ use molva_core::app::styles::Styles;
 use molva_core::domain::entry::{Entry, LatencyMs, Mode, Source, Tokens, SCHEMA_VERSION};
 use molva_core::domain::journal::Journal;
 use molva_core::domain::llm::{ChatRequest, LlmClient};
-use molva_core::domain::stt::{LanguageHint, Segment, SttEngine, SttOptions};
+use molva_core::domain::stt::{LanguageHint, SttEngine, SttOptions};
 use molva_core::domain::text::{word_count, Style};
 use molva_core::infra::audio::decode;
 use molva_core::infra::llm::openai_compat::{OpenAiCompatClient, Provider};
 use molva_core::infra::stt::transcribe_with_language_policy;
 use molva_core::Config;
-use serde::Serialize;
 use uuid::Uuid;
 
 use super::{progress_enabled, CmdError};
@@ -66,10 +67,10 @@ pub(crate) fn identity(text: &str, _language: &str) -> Postprocessed {
     Postprocessed::plain(text)
 }
 
-/// The text pipeline for files: the same order as in a dictation — dictionary, rules,
-/// the model by style. The model is called only when the style asks for it, it is enabled in the settings,
-/// `--no-llm` is not given and there are more words than `rules.llm_min_words`; a model failure returns the text
-/// after the rules and not an error
+/// The text pipeline for files: the same order as in a dictation — dictionary, rules, the
+/// model by style. The model is called only when the style asks for it, it is enabled in the
+/// settings, `--no-llm` is not given and there are more words than `rules.llm_min_words`; a
+/// model failure returns the text after the rules and not an error
 pub(crate) struct FilePostprocessor {
     dictionary: Dictionary,
     rules: RuleSet,
@@ -159,8 +160,8 @@ impl FilePostprocessor {
             Ok(response) => {
                 let text = sanitize_llm_output(&response.text, &self.dictionary.prompt_hint());
                 if text.is_empty() {
-                    // An empty answer is not a result: the model most likely burned the token limit
-                    // on thinking. The text after the rules is worth more than an empty string
+                    // An empty answer is not a result: the token limit can go to thinking. The
+                    // text after the rules is worth more than an empty string
                     eprintln!(
                         "warning: the model returned an empty text, the text after the rules is kept"
                     );
@@ -238,6 +239,10 @@ pub(crate) struct Args {
     #[arg(long)]
     pub timecodes: bool,
 
+    /// Copy the result to the clipboard and leave it there
+    #[arg(long)]
+    pub copy: bool,
+
     /// File or directory for the result; without it the text goes to stdout
     #[arg(short = 'o', long, value_name = "PATH")]
     pub out: Option<PathBuf>,
@@ -251,7 +256,7 @@ pub(crate) struct Args {
     pub stdin_format: Option<String>,
 }
 
-/// What we transcribe: a file on the disk or a stream on the input
+/// What a job reads: a file on the disk or a stream on the input
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum JobSource {
     File(PathBuf),
@@ -263,19 +268,6 @@ pub(crate) struct Job {
     /// The name for the output and the journal
     pub label: String,
     pub source: JobSource,
-}
-
-/// The result for one input
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub(crate) struct FileResult {
-    pub file: String,
-    pub text: String,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub segments: Vec<Segment>,
-    pub audio_secs: f32,
-    pub latency_ms: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub language: Option<String>,
 }
 
 /// The outcome of a batch: what worked and what did not
@@ -292,7 +284,8 @@ impl Outcome {
     }
 }
 
-/// Build the list of inputs: files in the order of the arguments, the contents of directories in alphabetical order
+/// Build the list of inputs: files in the order of the arguments, the contents of directories
+/// in alphabetical order
 pub(crate) fn collect_jobs(inputs: &[PathBuf], recursive: bool) -> Result<Vec<Job>, CmdError> {
     let mut jobs = Vec::new();
     for input in inputs {
@@ -383,8 +376,8 @@ pub(crate) fn transcribe_jobs(
         let ready = audio.to_16k();
 
         let started = Instant::now();
-        // Through the policy and not directly: the language is chosen among the allowed ones, and `auto` does not force
-        // whisper to compute a full window of thirty seconds
+        // Through the policy and not directly. The language is chosen among the allowed ones,
+        // and `auto` does not force whisper to compute a full window of thirty seconds
         let transcript = match transcribe_with_language_policy(engine, &ready, options) {
             Ok(transcript) => transcript,
             Err(e) => {
@@ -395,7 +388,8 @@ pub(crate) fn transcribe_jobs(
         let stt_ms = started.elapsed().as_millis() as u32;
 
         let raw = transcript.text.clone();
-        // The language for the rules: what whisper detected, else the one given explicitly, else "auto"
+        // The language for the rules: what whisper detected, else the one given explicitly,
+        // else "auto"
         let rules_language = transcript
             .detected_language
             .clone()
@@ -404,6 +398,8 @@ pub(crate) fn transcribe_jobs(
                 LanguageHint::Auto => None,
             })
             .unwrap_or_else(|| "auto".to_string());
+        // GigaAM does not report a language, but a fixed one is a fact of the request
+        let language = (rules_language != "auto").then(|| rules_language.clone());
         let processed = postprocess(&raw, &rules_language);
         let text = processed.text;
         let total_ms = started.elapsed().as_millis() as u32;
@@ -416,11 +412,11 @@ pub(crate) fn transcribe_jobs(
             ts: Utc::now(),
             session_id,
             mode: Mode::Dictation,
-            // The source is a file and not the microphone: by this field the statistics separate a batch
-            // transcription from a live dictation
+            // The source is a file and not the microphone: by this field the statistics
+            // separate a batch transcription from a live dictation
             source: Source::File,
             app: None,
-            language: transcript.detected_language.clone(),
+            language: language.clone(),
             audio_secs,
             words,
             wpm: Entry::wpm_for(words, audio_secs),
@@ -449,7 +445,8 @@ pub(crate) fn transcribe_jobs(
             error: None,
             text_raw: Some(raw),
             text_final: Some(text.clone()),
-            audio_path: None,
+            audio_path: matches!(job.source, JobSource::File(_)).then(|| job.label.clone()),
+            segments: transcript.segments.clone(),
         };
         if let Err(e) = journal.append(&entry) {
             // The journal is an auxiliary function: its failure must not cost the user the text
@@ -462,7 +459,7 @@ pub(crate) fn transcribe_jobs(
             segments: transcript.segments,
             audio_secs,
             latency_ms: total_ms,
-            language: transcript.detected_language,
+            language,
         });
     }
     outcome
@@ -485,7 +482,8 @@ pub(crate) fn render_text(result: &FileResult, timecodes: bool) -> String {
         return result.text.clone();
     }
     if result.segments.is_empty() {
-        // The engine gave no segments — we show the whole text as one segment and not emptiness
+        // The engine gave no segments: the whole text goes out as one segment and not as
+        // emptiness
         let end = (result.audio_secs * 1000.0) as u32;
         return format!(
             "[{} → {}] {}",
@@ -509,7 +507,8 @@ pub(crate) fn render_text(result: &FileResult, timecodes: bool) -> String {
         .join("\n")
 }
 
-/// Build the output for several inputs: a header with the name before each one, if there is more than one input
+/// Build the output for several inputs: a header with the name before each one, if there is
+/// more than one input
 pub(crate) fn render_all(results: &[FileResult], timecodes: bool) -> String {
     if results.len() == 1 {
         return render_text(&results[0], timecodes);
@@ -605,6 +604,11 @@ pub(crate) fn write_output(
     Ok(())
 }
 
+/// Whether the engine must report segments for this run
+fn wants_segments(args: &Args) -> bool {
+    args.timecodes || args.json
+}
+
 /// The entry point of the subcommand
 pub(crate) fn run(args: &Args, config: &Config, config_path: &Path) -> Result<(), CmdError> {
     let jobs = collect_jobs(&args.input, args.recursive)?;
@@ -623,7 +627,9 @@ pub(crate) fn run(args: &Args, config: &Config, config_path: &Path) -> Result<()
         allowed_languages: config.stt.allowed_languages.clone(),
         initial_prompt: None,
         threads: config.stt.threads as usize,
-        timestamps: args.timecodes,
+        // JSON is the machine form: it carries the segments even without --timecodes,
+        // because the GUI draws them
+        timestamps: wants_segments(args),
     };
 
     let style = args
@@ -634,9 +640,10 @@ pub(crate) fn run(args: &Args, config: &Config, config_path: &Path) -> Result<()
     // The same text pipeline as in a dictation: dictionary, rules, the model by style
     let postprocessor = FilePostprocessor::from_config(config, config_path, &style, args.no_llm);
     let postprocess = |raw: &str, language: &str| postprocessor.apply(raw, language);
-    // The pipeline of track D connects the file journal; here the entry is built and goes
-    // to the sink that was passed
-    let mut journal = molva_core::domain::fakes::MemJournal::default();
+    // The journal is the same file the history and the search read. A file that was
+    // transcribed once stays findable after the window closes
+    let mut journal = molva_core::app::journal::FileJournal::open_for(config)
+        .map_err(|e| CmdError::file(e.to_string()))?;
 
     let bar = (jobs.len() > 1 && progress_enabled(args.json))
         .then(|| indicatif::ProgressBar::new(jobs.len() as u64));
@@ -668,6 +675,11 @@ pub(crate) fn run(args: &Args, config: &Config, config_path: &Path) -> Result<()
     }
 
     let mut stdout = std::io::stdout().lock();
+    if args.copy {
+        let body = render_all(&outcome.results, args.timecodes);
+        molva_core::infra::inject::clipboard::copy_text(&body)
+            .map_err(|e| CmdError::file(format!("cannot copy the result: {e}")))?;
+    }
     write_output(&outcome, args, &mut stdout)?;
 
     for (label, reason) in &outcome.errors {
@@ -686,8 +698,10 @@ pub(crate) fn run(args: &Args, config: &Config, config_path: &Path) -> Result<()
 #[cfg(test)]
 mod tests {
     use super::*;
+    use molva_core::app::journal::FileJournal;
+    use molva_core::app::search;
     use molva_core::domain::fakes::{FakeStt, MemJournal};
-    use molva_core::domain::stt::Transcript;
+    use molva_core::domain::stt::{Segment, Transcript};
 
     fn write_wav(path: &Path, secs: f32) {
         let spec = hound::WavSpec {
@@ -883,7 +897,8 @@ mod tests {
             &mut |_, _| {},
         );
         assert_eq!(outcome.results[0].text, "привет!");
-        // The journal gets both the raw text and the final one: it shows what the post-processing did
+        // The journal gets both the raw text and the final one: it shows what the
+        // post-processing did
         assert_eq!(journal.entries[0].text_raw.as_deref(), Some("привет"));
         assert_eq!(journal.entries[0].text_final.as_deref(), Some("привет!"));
     }
@@ -1193,6 +1208,7 @@ mod tests {
             no_inject: false,
             json: false,
             timecodes: false,
+            copy: false,
             out: Some(out.clone()),
             recursive: false,
             stdin_format: None,
@@ -1250,6 +1266,7 @@ mod tests {
             no_inject: false,
             json: false,
             timecodes: false,
+            copy: false,
             out: Some(target.clone()),
             recursive: false,
             stdin_format: None,
@@ -1286,6 +1303,7 @@ mod tests {
             no_inject: false,
             json: false,
             timecodes: false,
+            copy: false,
             out: None,
             recursive: false,
             stdin_format: None,
@@ -1347,5 +1365,69 @@ mod tests {
         );
         assert_eq!(outcome.results[0].segments.len(), 1);
         assert_eq!(outcome.results[0].language.as_deref(), Some("ru"));
+    }
+
+    #[test]
+    fn a_file_transcription_is_persisted_with_segments_and_found_by_search() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("lecture.wav");
+        write_wav(&path, 0.5);
+        let journal_path = directory.path().join("journal.jsonl");
+        let mut journal = FileJournal::open(&journal_path).unwrap();
+        let mut stt = FakeStt::with_responses(vec![Ok(Transcript {
+            text: "привет мир".into(),
+            segments: vec![Segment {
+                start_ms: 0,
+                end_ms: 500,
+                text: "привет мир".into(),
+            }],
+            detected_language: Some("ru".into()),
+            no_speech_prob: None,
+        })]);
+
+        transcribe_jobs(
+            &jobs_for(std::slice::from_ref(&path)),
+            &mut stt,
+            &SttOptions::default(),
+            None,
+            &identity,
+            &mut journal,
+            "cleanup",
+            &mut |_, _| {},
+        );
+
+        let entries = journal.load_all().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(
+            entries[0].audio_path.as_deref(),
+            Some(path.to_str().unwrap()),
+            "the source path is what the search shows"
+        );
+        assert_eq!(entries[0].segments.len(), 1);
+        let hits = search::search(&entries, "мир", 0);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].timecode.as_deref(), Some("00:00.000 → 00:00.500"));
+    }
+
+    #[test]
+    fn json_always_asks_the_engine_for_segments() {
+        let args = |json, timecodes| Args {
+            input: vec![],
+            language: None,
+            model: None,
+            engine: None,
+            style: None,
+            no_llm: false,
+            no_inject: false,
+            json,
+            timecodes,
+            copy: false,
+            out: None,
+            recursive: false,
+            stdin_format: None,
+        };
+        assert!(wants_segments(&args(true, false)));
+        assert!(wants_segments(&args(false, true)));
+        assert!(!wants_segments(&args(false, false)));
     }
 }

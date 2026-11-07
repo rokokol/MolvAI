@@ -23,7 +23,7 @@ use crate::domain::audio::{downmix_to_mono, AudioError, AudioSource, DeviceInfo,
 /// Device name that means "the system default"
 pub const DEFAULT_DEVICE: &str = "default";
 
-/// Sample rates that we show to the user if the device reports a range
+/// Sample rates offered to the user when the device reports a range
 const COMMON_RATES: [u32; 5] = [16_000, 22_050, 32_000, 44_100, 48_000];
 
 /// At most 10 times per second: the level indicator in the GUI needs no more, and the channel
@@ -64,8 +64,8 @@ pub fn list_input_devices() -> Result<Vec<DeviceInfo>, AudioError> {
         );
     }
 
-    // ALSA returns the default device as a separate entry that is not in the general list:
-    // without it the user cannot see where the recording really goes
+    // ALSA returns the default device as a separate entry that is not in the general list.
+    // Without it the user cannot see where the recording really goes
     if let Some(default_name) = default_name {
         if !out.iter().any(|d| d.name == default_name) {
             out.insert(
@@ -172,10 +172,10 @@ impl AudioSource for CpalSource {
         }
         self.truncated = false;
 
-        // The device list is rebuilt on each start: the microphone may have been reconnected.
-        // But only when a specific name is chosen: a scan that polls each device takes up to
-        // 300 ms (USB cards answer "busy"), and `default` does not need it —
-        // this time was taken from the start of the phrase and turned a short tap into a key hold
+        // The device list is rebuilt on each start, because a microphone can be reconnected. The
+        // scan runs only when a specific name is chosen. It polls each device and takes up to
+        // 300 ms (USB cards answer "busy"), and `default` needs none of it. That time came out of
+        // the start of the phrase and turned a short tap into a key hold
         let requested = self.device.trim();
         let selected = if requested.is_empty() || requested.eq_ignore_ascii_case(DEFAULT_DEVICE) {
             None
@@ -373,8 +373,8 @@ fn open_stream(
 ) -> Result<(cpal::Stream, u32, Arc<Shared>), AudioError> {
     let host = cpal::default_host();
     let device = match &selected {
-        // The default device may be absent from the general list (ALSA does this), so the name
-        // is compared with it too: otherwise the list item chosen in the GUI would not open
+        // The default device can be absent from the general list (ALSA does this), so the name is
+        // compared with it too. Otherwise the list item chosen in the GUI would not open
         Some(name) => host
             .input_devices()
             .map_err(|e| map_cpal_error(&e, requested))?

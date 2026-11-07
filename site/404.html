@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page not found — MolvAI</title>
+<meta name="description" content="This page does not exist. Return to the MolvAI home page or the documentation">
+<meta name="robots" content="noindex">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0a0c12">
+<link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg: #0a0c12;
+    --surface: #12161f;
+    --text: #eef1f8;
+    --muted: #a6b0c4;
+    --border: #262d3d;
+    --accent: #93aaff;
+    --accent-ink: #0a0c12;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f6f7fa;
+      --surface: #ffffff;
+      --text: #14161c;
+      --muted: #485061;
+      --border: #d5dae4;
+      --accent: #2743c4;
+      --accent-ink: #ffffff;
+      color-scheme: light;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 2rem 1.25rem;
+    background: var(--bg);
+    color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+    line-height: 1.6;
+  }
+  main {
+    width: 100%;
+    max-width: 34rem;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: var(--surface);
+    padding: 2rem;
+  }
+  .code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.8rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 0.75rem;
+  }
+  h1 { margin: 0 0 0.6rem; font-size: 1.9rem; line-height: 1.15; letter-spacing: -0.03em; }
+  p { color: var(--muted); margin: 0 0 1.4rem; }
+  nav { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+  a {
+    display: inline-block;
+    padding: 0.6rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    font-weight: 600;
+    text-decoration: none;
+    color: var(--text);
+  }
+  a.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  a:hover { border-color: var(--accent); }
+  a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .skip {
+    position: absolute;
+    left: 1rem;
+    top: -4rem;
+    padding: 0.6rem 1rem;
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-radius: 0 0 9px 9px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .skip:focus { top: 0; outline: 3px solid var(--text); }
+  small { display: block; margin-top: 1.5rem; color: var(--muted); font-size: 0.78rem; }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<main id="main">
+  <p class="code">404</p>
+  <h1>This page does not exist</h1>
+  <p>The address may have moved with a release, or a link may have a typo in it. The home page and the documentation are one click away</p>
+  <nav aria-label="Ways back">
+    <a class="primary" href="./index.html">Home</a>
+    <a href="./docs/index.html">Documentation</a>
+    <a href="https://github.com/rokokol/MolvAI">GitHub</a>
+  </nav>
+  <small>MolvAI is open source under the MIT license · no cookies, no analytics</small>
+</main>
+</body>
+</html>

@@ -215,7 +215,7 @@ impl HotkeySpec {
         if code != self.key {
             return false;
         }
-        // A modifier that is itself the key of the combination need not be in the set:
+        // A modifier that is itself the key of the combination need not be in the set.
         // `RightCtrl` is pressed, and it also enters the active modifiers
         if let Some(own) = Modifier::from_code(self.key) {
             return active.is_superset(&self.modifiers) && active.contains(&own);

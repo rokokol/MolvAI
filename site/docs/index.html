@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Documentation — MolvAI</title>
+<meta name="description" content="MolvAI documentation: install and first run, models and GigaAM, hotkeys, settings and the Nix-managed mode, the CLI, privacy and the journal, troubleshooting and status">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0a0c12">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/site.css">
+<script src="../assets/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="../index.html" aria-label="MolvAI home">
+      <img src="../assets/logo.svg" alt="" width="26" height="26">
+      <span>Molv<span class="brand-ai">AI</span></span>
+    </a>
+    <nav class="site-nav" id="site-nav" aria-label="Main">
+      <a href="../index.html">Home</a>
+      <a href="../features.html">Features</a>
+      <a href="../models.html">Models</a>
+      <a href="../cli.html">CLI</a>
+      <a href="./index.html" aria-current="page">Docs</a>
+      <a href="../faq.html">FAQ</a>
+      <a href="./status.html">Status</a>
+      <a class="nav-github" href="https://github.com/rokokol/MolvAI"><img src="../assets/icon-github.svg" alt="" width="15" height="15">GitHub</a>
+    </nav>
+    <div class="header-tools">
+      <button class="icon-btn theme-toggle" type="button" data-theme-toggle aria-label="Switch between dark and light theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="12" cy="12" r="8"></circle>
+          <path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"></path>
+        </svg>
+      </button>
+      <button class="icon-btn menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="site-nav">
+        <span class="menu-bars" aria-hidden="true"></span>
+        <span class="visually-hidden">Menu</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="wrap doc-layout">
+  <aside class="doc-nav" aria-label="Documentation">
+    <p class="doc-nav-title">Documentation</p>
+    <ul>
+      <li><a href="./index.html" aria-current="page">Overview</a></li>
+      <li><a href="./install.html">Install and first run</a></li>
+      <li><a href="./models.html">Models and GigaAM</a></li>
+      <li><a href="./hotkeys.html">Hotkeys and compositors</a></li>
+      <li><a href="./settings.html">Settings and Nix mode</a></li>
+      <li><a href="./cli.html">CLI guide</a></li>
+      <li><a href="./privacy.html">Privacy and journal</a></li>
+      <li><a href="./troubleshooting.html">Troubleshooting</a></li>
+      <li><a href="./status.html">Status and roadmap</a></li>
+    </ul>
+    <p class="doc-nav-title">Elsewhere</p>
+    <ul>
+      <li><a href="../cli.html">CLI reference</a></li>
+      <li><a href="../models.html">Model catalog</a></li>
+      <li><a href="../index.html">Home</a></li>
+    </ul>
+  </aside>
+
+  <article class="doc-body prose">
+    <h1>Documentation</h1>
+    <p class="canonical">Canonical source: <a href="https://github.com/rokokol/MolvAI/tree/main/docs">docs/</a> in the repository</p>
+
+    <p>These pages are a short path into the repository. Each one states the fact, shows the command, and links the file that owns the detail. When a page and the repository disagree, the repository is right</p>
+
+    <div class="grid grid-2">
+      <a class="card" href="./install.html">
+        <h3>Install and first run</h3>
+        <p class="muted">Nix, one command, ready builds, the dependency check, the first microphone and the first phrase</p>
+      </a>
+      <a class="card" href="./models.html">
+        <h3>Models and GigaAM</h3>
+        <p class="muted">Why GigaAM-v3 is the default, how the catalog works, how to switch, where the weights come from</p>
+      </a>
+      <a class="card" href="./hotkeys.html">
+        <h3>Hotkeys and compositors</h3>
+        <p class="muted">Push-to-talk, toggle and cancel on Hyprland, Sway, KDE, GNOME and X11, and the evdev fallback</p>
+      </a>
+      <a class="card" href="./settings.html">
+        <h3>Settings and Nix mode</h3>
+        <p class="muted">The TOML file, the keys that matter, reload behavior, and what changes when Home Manager owns the file</p>
+      </a>
+      <a class="card" href="./cli.html">
+        <h3>CLI guide</h3>
+        <p class="muted">Recipes for dictation, file transcription, search, history, models and diagnostics</p>
+      </a>
+      <a class="card" href="./privacy.html">
+        <h3>Privacy and journal</h3>
+        <p class="muted">What is recorded, for how long, how to encrypt it, how to stop recording, and what leaves the machine</p>
+      </a>
+      <a class="card" href="./troubleshooting.html">
+        <h3>Troubleshooting</h3>
+        <p class="muted">The doctor, the silent bind, the empty recording, the failed paste and the missing model</p>
+      </a>
+      <a class="card" href="./status.html">
+        <h3>Status and roadmap</h3>
+        <p class="muted">What works, what is cut, and where the canonical status log lives</p>
+      </a>
+    </div>
+
+    <h2>Canonical documents</h2>
+    <p>These files hold the depth. They are maintained with the code and reviewed in the same pull requests</p>
+    <div class="table-wrap">
+      <table>
+        <caption>Where each subject is owned</caption>
+        <thead>
+          <tr><th scope="col">File</th><th scope="col">It owns</th></tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row"><a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README.md</a></th><td>The overview, the settings table, the model story, the project's own features</td></tr>
+          <tr><th scope="row"><a href="https://github.com/rokokol/MolvAI/blob/main/docs/install.md">docs/install.md</a></th><td>Installation as a step-by-step prompt for an agent, with the checks after each step</td></tr>
+          <tr><th scope="row"><a href="https://github.com/rokokol/MolvAI/blob/main/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a></th><td>The processes, the layers, the phrase pipeline and the daemon state machine</td></tr>
+          <tr><th scope="row"><a href="https://github.com/rokokol/MolvAI/blob/main/docs/journal-schema.md">docs/journal-schema.md</a></th><td>Every field of a journal line and the rules behind the numbers</td></tr>
+          <tr><th scope="row"><a href="https://github.com/rokokol/MolvAI/blob/main/docs/hotkeys-wayland.md">docs/hotkeys-wayland.md</a></th><td>Why Wayland has no global hotkeys and the binds per compositor</td></tr>
+          <tr><th scope="row"><a href="https://github.com/rokokol/MolvAI/blob/main/docs/outgoing-endpoints.md">docs/outgoing-endpoints.md</a></th><td>Every network address the program can call</td></tr>
+          <tr><th scope="row"><a href="https://github.com/rokokol/MolvAI/blob/main/docs/model-licenses.md">docs/model-licenses.md</a></th><td>The terms of each weights file, which the MIT license does not cover</td></tr>
+          <tr><th scope="row"><a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></th><td>The checkpoint log: what works, what was cut, and the results of the checks</td></tr>
+          <tr><th scope="row"><a href="https://github.com/rokokol/MolvAI/blob/main/CHANGELOG.md">CHANGELOG.md</a></th><td>Released changes, in Keep a Changelog form</td></tr>
+          <tr><th scope="row"><a href="https://github.com/rokokol/MolvAI/blob/main/UNIQUENESS.md">UNIQUENESS.md</a></th><td>What was taken from the analogues and what was written here</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <span class="callout-title">A note about this site</span>
+      <p>The site is static and has no backend, no cookies and no analytics. It reads one preference from your browser, the theme, and nothing else</p>
+    </div>
+  </article>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <div class="footer-brand">
+      <a class="brand" href="../index.html">
+        <img src="../assets/logo.svg" alt="" width="26" height="26">
+        <span>Molv<span class="brand-ai">AI</span></span>
+      </a>
+      <p>Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
+      <p class="footer-note">MIT licensed · no trackers · no external fonts</p>
+    </div>
+    <nav aria-label="Project links">
+      <p class="footer-title">Project</p>
+      <ul>
+        <li><a href="https://github.com/rokokol/MolvAI">GitHub</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/releases">Releases</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE">License (MIT)</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/issues">Issues</a></li>
+      </ul>
+    </nav>
+    <nav aria-label="Site links">
+      <p class="footer-title">Site</p>
+      <ul>
+        <li><a href="../features.html">Features</a></li>
+        <li><a href="../models.html">Models</a></li>
+        <li><a href="../cli.html">CLI reference</a></li>
+        <li><a href="./index.html">Documentation</a></li>
+        <li><a href="../faq.html">FAQ</a></li>
+        <li><a href="./status.html">Status and roadmap</a></li>
+      </ul>
+    </nav>
+    <div>
+      <p class="footer-title">Canonical docs</p>
+      <p class="footer-note">The repository is the source of truth. These pages summarize it and link back</p>
+      <ul>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/CHANGELOG.md">CHANGELOG</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="wrap footer-credit">
+    <p>MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
+    <p>This site runs without cookies, analytics or third-party assets</p>
+  </div>
+</footer>
+</body>
+</html>

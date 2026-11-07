@@ -2,7 +2,8 @@
 //! `molva record start|stop|toggle|cancel` — a thin client of the daemon
 //!
 //! These exact calls stand in the binds of the compositor, so the command must be fast and
-//! return an honest code: a bind does not show the error text to the user, but a script sees the code
+//! return a code a script can trust: a bind does not show the error text to the user, but a
+//! script sees the code
 
 use std::path::Path;
 
@@ -71,7 +72,8 @@ mod tests {
 
     #[test]
     fn stop_and_cancel_ignore_mode_and_style() {
-        // The mode and the style are remembered at the start: to pass them again means to let them diverge
+        // The mode and the style are remembered at the start: to pass them again means to let
+        // them diverge
         assert_eq!(
             command_for(Action::Stop, Mode::Command, Some("x".into())),
             Command::RecordStop

@@ -51,6 +51,8 @@ pub enum PipelineError {
     CommandModeDisabled,
     #[error("command mode needs a post-processing model: {0}")]
     CommandModeNeedsLlm(LlmError),
+    #[error("paste failed: {0}")]
+    Inject(#[from] crate::domain::inject::InjectError),
 }
 
 /// Settings that the pipeline needs. They are built from [`Config`] in one call
@@ -105,6 +107,9 @@ fn output_mode(value: &str) -> OutputMode {
 /// successful paste into an input field
 pub const NO_FOCUS_METHOD: &str = "clipboard-no-focus";
 
+/// The journal method of a phrase whose chunks were typed while the person spoke
+pub const STREAMED_METHOD: &str = "streamed";
+
 fn inject_method_for(method: &str, app_hint: Option<&str>) -> String {
     if app_hint.is_none() && method == "clipboard-only" {
         return NO_FOCUS_METHOD.to_string();
@@ -116,6 +121,30 @@ fn millis_since(start: Instant, now: Instant) -> u32 {
     now.saturating_duration_since(start)
         .as_millis()
         .min(u128::from(u32::MAX)) as u32
+}
+
+/// The part of the phrase that the chunks did not cover
+fn tail_after_prefix<'a>(full: &'a str, prefix: &str) -> &'a str {
+    full.strip_prefix(prefix)
+        .map(str::trim_start)
+        .unwrap_or(full)
+}
+
+/// Whether two pieces need a space between them. Punctuation attaches to the word before it
+fn needs_space(left: &str, right: &str) -> bool {
+    if left.is_empty() || right.is_empty() {
+        return false;
+    }
+    !right
+        .chars()
+        .next()
+        .is_some_and(|ch| ",.!?;:…)]}".contains(ch))
+}
+
+/// Glue two pieces of text with the separator their first characters ask for
+fn glue(left: &str, right: &str) -> String {
+    let separator = if needs_space(left, right) { " " } else { "" };
+    format!("{left}{separator}{right}")
 }
 
 /// Pipeline of one phrase
@@ -137,6 +166,14 @@ pub struct Pipeline {
     /// Start of the phrase, recognized in chunks during recording; `None` means an ordinary
     /// whole phrase
     chunk_prefix: Option<ChunkPrefix>,
+    /// Text already typed while the person spoke, with the separators between chunks
+    streamed: String,
+    /// Dictionary hits of the typed chunks, for the journal
+    streamed_dict_hits: u32,
+    /// Time spent in the chunk pastes
+    streamed_inject_ms: u32,
+    /// A chunk paste failed: the typed prefix stays, and the phrase is not retyped from the start
+    streamed_failed: bool,
 }
 
 impl Pipeline {
@@ -163,6 +200,10 @@ impl Pipeline {
             session_id: Uuid::new_v4(),
             stop_after_release_ms: None,
             chunk_prefix: None,
+            streamed: String::new(),
+            streamed_dict_hits: 0,
+            streamed_inject_ms: 0,
+            streamed_failed: false,
         }
     }
 
@@ -239,6 +280,11 @@ impl Pipeline {
         // Chunks recognized during recording; the input here is then only the tail of the
         // phrase, and the prefix knows its duration
         let prefix = self.chunk_prefix.take().unwrap_or_default();
+        let streamed = std::mem::take(&mut self.streamed);
+        let streamed_hits = std::mem::take(&mut self.streamed_dict_hits);
+        let streamed_ms = std::mem::take(&mut self.streamed_inject_ms);
+        self.streamed_failed = false;
+        let streaming = !streamed.is_empty();
         let audio_secs = prefix.audio_secs.unwrap_or_else(|| audio.duration_secs());
 
         // The selection is taken before recognition: while the user spoke, it was still in place
@@ -264,8 +310,7 @@ impl Pipeline {
         let stt_ms = millis_since(stt_started, self.clock.instant()) + prefix.stt_ms;
 
         // Silence and noise: whisper confidently prints "Продолжение следует" on an empty input.
-        // We do not paste such a phrase and do not give it to the model, but it enters the
-        // journal (F-22)
+        // Such a phrase is neither pasted nor given to the model, but it enters the journal (F-22)
         let text_raw = if is_silence_hallucination(&transcript, self.config.stt.no_speech_threshold)
         {
             String::new()
@@ -282,12 +327,30 @@ impl Pipeline {
         let lang = language.clone().unwrap_or_else(|| "auto".to_string());
 
         let rules_started = self.clock.instant();
-        let (after_dictionary, dict_hits) = self.dictionary.apply(&text_raw);
+        let mut dict_hits = 0;
+        let mut streamed_tail = String::new();
         let after_rules = match mode {
             // The command mode instruction goes to the model as it is: the rules would distort
             // the command
-            Mode::Command => after_dictionary,
-            Mode::Dictation => self.rules.apply(&after_dictionary, &lang),
+            Mode::Command => {
+                let (after_dictionary, hits) = self.dictionary.apply(&text_raw);
+                dict_hits = hits;
+                after_dictionary
+            }
+            // The prefix is already in the field with its own rules applied. Only the tail is
+            // processed now, so the two halves cannot disagree at their boundary
+            Mode::Dictation if streaming => {
+                let tail_raw = tail_after_prefix(&text_raw, &prefix.text);
+                let (tail_dictionary, hits) = self.dictionary.apply(tail_raw);
+                dict_hits = hits;
+                streamed_tail = self.rules.apply(&tail_dictionary, &lang).trim().to_string();
+                glue(&streamed, &streamed_tail)
+            }
+            Mode::Dictation => {
+                let (after_dictionary, hits) = self.dictionary.apply(&text_raw);
+                dict_hits = hits;
+                self.rules.apply(&after_dictionary, &lang)
+            }
         };
         let rules_ms = millis_since(rules_started, self.clock.instant());
 
@@ -310,7 +373,7 @@ impl Pipeline {
             llm_model: None,
             llm_used: false,
             local_llm: self.llm.as_ref().is_none_or(|llm| llm.is_local()),
-            dict_hits,
+            dict_hits: dict_hits.saturating_add(streamed_hits),
             inject_method: None,
             latency_ms: LatencyMs {
                 stt: stt_ms,
@@ -324,6 +387,7 @@ impl Pipeline {
             text_raw: Some(text_raw),
             text_final: None,
             audio_path: None,
+            segments: Vec::new(),
         };
 
         let text = match mode {
@@ -331,6 +395,9 @@ impl Pipeline {
                 let selection = selection.unwrap_or_default();
                 self.run_command(&mut entry, &selection, &after_rules)?
             }
+            // The text of the prefix is already in the user's field: a model answer on the
+            // whole phrase would rewrite what cannot be rewritten
+            Mode::Dictation if streaming => after_rules,
             Mode::Dictation => self.run_dictation(&mut entry, &style, after_rules),
         };
 
@@ -342,6 +409,21 @@ impl Pipeline {
             // Nothing to paste: silence or a hallucination on empty audio
             entry.error = Some("empty phrase: nothing to paste".into());
             warn!("the phrase is empty after post-processing, paste skipped");
+        } else if streaming {
+            // The prefix is already in the field. Only the tail after it is still missing; a
+            // leading space keeps the last typed word and the tail apart
+            if !streamed_tail.is_empty() {
+                self.inject_tail(&mut entry, app_hint, &streamed, &streamed_tail);
+            }
+            if entry.error.is_none() {
+                entry.inject_method = Some(STREAMED_METHOD.to_string());
+            }
+            entry.latency_ms.inject = Some(
+                entry
+                    .latency_ms
+                    .inject
+                    .map_or(streamed_ms, |tail| streamed_ms.saturating_add(tail)),
+            );
         } else {
             let resolved = output_mode(&self.config.output.mode)
                 .resolve(&text, self.config.output.auto_type_max_chars as usize);
@@ -413,6 +495,94 @@ impl Pipeline {
     /// [`Pipeline::run`] gets only the tail
     pub fn set_chunk_prefix(&mut self, prefix: ChunkPrefix) {
         self.chunk_prefix = (!prefix.is_empty()).then_some(prefix);
+    }
+
+    /// Type one recognized chunk while the recording is still running
+    ///
+    /// The rules apply to the chunk alone: no model sees the phrase, because its answer would
+    /// rewrite text that is already in the user's field. A failure leaves the typed prefix in
+    /// place and stops further streaming for this phrase.
+    pub fn stream_chunk(
+        &mut self,
+        chunk: &ChunkText,
+        app_hint: Option<&str>,
+    ) -> Result<(), PipelineError> {
+        if !self.config.stt.streaming_inject || self.streamed_failed || chunk.text.trim().is_empty()
+        {
+            return Ok(());
+        }
+        let language = chunk.language.as_deref().unwrap_or("auto");
+        let (after_dictionary, hits) = self.dictionary.apply(&chunk.text);
+        let text = self
+            .rules
+            .apply(&after_dictionary, language)
+            .trim()
+            .to_string();
+        if text.is_empty() {
+            return Ok(());
+        }
+        let separator = if needs_space(&self.streamed, &text) {
+            " "
+        } else {
+            ""
+        };
+        let piece = format!("{separator}{text}");
+        let resolved = output_mode(&self.config.output.mode)
+            .resolve(&piece, self.config.output.auto_type_max_chars as usize);
+        if resolved == OutputMode::Clipboard {
+            // A clipboard write replaces the previous one: streaming would leave only the last
+            // chunk there. The whole phrase goes to the clipboard at the end instead
+            self.streamed_failed = true;
+            return Ok(());
+        }
+        self.injector.set_window(app_hint);
+        let started = self.clock.instant();
+        match self.injector.inject(&piece, resolved) {
+            Ok(_) => {
+                self.streamed.push_str(&piece);
+                self.streamed_dict_hits = self.streamed_dict_hits.saturating_add(hits);
+                self.streamed_inject_ms = self
+                    .streamed_inject_ms
+                    .saturating_add(millis_since(started, self.clock.instant()));
+                Ok(())
+            }
+            Err(err) => {
+                self.streamed_failed = true;
+                Err(PipelineError::Inject(err))
+            }
+        }
+    }
+
+    /// Forget the counters of the typed prefix after a cancelled recording
+    ///
+    /// The text is already in the user's field: removing it would need a selection and a
+    /// backspace, and the cursor may have moved by then. The counters are dropped so that the
+    /// next phrase does not inherit them
+    pub fn discard_stream(&mut self) {
+        self.streamed.clear();
+        self.streamed_dict_hits = 0;
+        self.streamed_inject_ms = 0;
+        self.streamed_failed = false;
+    }
+
+    /// Paste the tail after the typed prefix
+    fn inject_tail(&mut self, entry: &mut Entry, app_hint: Option<&str>, prefix: &str, tail: &str) {
+        let separator = if needs_space(prefix, tail) { " " } else { "" };
+        let piece = format!("{separator}{tail}");
+        let resolved = output_mode(&self.config.output.mode)
+            .resolve(&piece, self.config.output.auto_type_max_chars as usize);
+        self.injector.set_window(app_hint);
+        let started = self.clock.instant();
+        match self.injector.inject(&piece, resolved) {
+            Ok(report) => {
+                entry.inject_method = Some(inject_method_for(&report.method, app_hint));
+                entry.latency_ms.inject = Some(millis_since(started, self.clock.instant()));
+            }
+            Err(err) => {
+                warn!(error = %err, "paste of the tail failed, the typed prefix stays");
+                entry.error = Some(err.to_string());
+            }
+        }
     }
 
     /// Recognize the whole phrase or, if the start already exists as chunks, only its tail
@@ -491,7 +661,7 @@ impl Pipeline {
                 text
             }
             Err(err) => {
-                // The phrase is not lost: we return the text after the rules
+                // The phrase is not lost: the text after the rules is returned
                 warn!(error = %err, "post-processing failed, returning the text after the rules");
                 after_rules
             }
@@ -1273,9 +1443,8 @@ mod tests {
 
     #[test]
     fn the_microphone_release_measurement_lands_in_the_entry_once() {
-        // The microphone privacy guarantee must be visible in the journal: the daemon
-        // measurement goes into the entry of the phrase it belongs to, and does not move to the
-        // next
+        // The microphone privacy guarantee must be visible in the journal. The daemon measurement
+        // goes into the entry of the phrase it belongs to, and does not move to the next one
         let mut harness = build("привет мир", None, PipelineConfig::default());
         harness.pipeline.set_stop_after_release(120);
         let first = harness
@@ -1324,6 +1493,55 @@ mod tests {
             "a window exists: an ordinary paste through the clipboard, even if with Ctrl+V by hand"
         );
         assert_eq!(inject_method_for("wtype-type", None), "wtype-type");
+    }
+
+    #[test]
+    fn streaming_types_the_chunks_and_the_tail_without_losing_words() {
+        let mut harness = build("утром", None, PipelineConfig::default());
+        for text in ["мама", "мыла", "раму"] {
+            harness
+                .pipeline
+                .stream_chunk(
+                    &ChunkText {
+                        text: text.into(),
+                        language: Some("ru".into()),
+                        stt_ms: 0,
+                    },
+                    None,
+                )
+                .expect("the chunk is typed");
+        }
+        harness.pipeline.set_chunk_prefix(ChunkPrefix {
+            text: "мама мыла раму".into(),
+            language: Some("ru".into()),
+            audio_secs: Some(20.0),
+            ..ChunkPrefix::default()
+        });
+
+        let entry = harness
+            .pipeline
+            .run(audio(2.0), Mode::Dictation, None, None)
+            .expect("the phrase is processed");
+
+        let final_text = entry.text_final.clone().unwrap_or_default();
+        assert!(
+            final_text.contains("Утром"),
+            "the tail was lost: {final_text:?}"
+        );
+        let typed = injected(&harness).join("");
+        assert_eq!(
+            typed.trim(),
+            final_text.trim(),
+            "the field and the journal disagree"
+        );
+        assert!(
+            entry
+                .text_raw
+                .as_deref()
+                .unwrap_or_default()
+                .contains("утром"),
+            "the raw text lost the tail"
+        );
     }
 
     #[test]

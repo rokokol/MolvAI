@@ -139,7 +139,7 @@ pub trait AudioSource: std::fmt::Debug + Send {
     fn start(&mut self, level_tx: Option<Sender<f32>>) -> Result<(), AudioError>;
     /// Stop the capture, release the microphone and return everything recorded
     fn stop(&mut self) -> Result<PcmAudio, AudioError>;
-    /// Whether the capture runs right now. `false` means the microphone is free
+    /// Whether the capture is on. `false` means the microphone is free
     fn is_recording(&self) -> bool;
 
     /// The samples that appeared after the previous such call, without stopping the recording
@@ -148,7 +148,7 @@ pub trait AudioSource: std::fmt::Debug + Send {
     /// gives it to the segmenter. This is a read position, not a removal: [`AudioSource::stop`]
     /// still returns the whole recording, so the caller counts how much it has already
     /// processed. A source that cannot do this returns `None` — then the phrase is processed as a
-    /// whole, as before
+    /// whole
     fn drain_new_samples(&mut self) -> Option<PcmAudio> {
         None
     }

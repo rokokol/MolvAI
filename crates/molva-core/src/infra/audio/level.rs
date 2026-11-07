@@ -129,9 +129,9 @@ mod tests {
 
     #[test]
     fn a_pause_between_recordings_does_not_carry_silence_into_the_next_one() {
-        // The daemon watches the levels of all recordings with one watcher: there are no
-        // measurements between recordings, and the silence at the end of the previous recording
-        // must not count for the start of the next one
+        // The daemon watches the levels of all recordings with one watcher. There are no
+        // measurements between recordings. The silence at the end of the previous recording must
+        // not count for the start of the next one
         let mut watch = ZeroLevelWatch::with_defaults();
         let t0 = Instant::now();
         watch.observe(0.0, t0);

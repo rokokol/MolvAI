@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy and journal — MolvAI documentation</title>
+<meta name="description" content="What MolvAI records: the microphone lifecycle, the JSONL journal and its fields, encryption, privacy mode, and when the network is used">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0a0c12">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/site.css">
+<script src="../assets/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="../index.html" aria-label="MolvAI home">
+      <img src="../assets/logo.svg" alt="" width="26" height="26">
+      <span>Molv<span class="brand-ai">AI</span></span>
+    </a>
+    <nav class="site-nav" id="site-nav" aria-label="Main">
+      <a href="../index.html">Home</a>
+      <a href="../features.html">Features</a>
+      <a href="../models.html">Models</a>
+      <a href="../cli.html">CLI</a>
+      <a href="./index.html" aria-current="page">Docs</a>
+      <a href="../faq.html">FAQ</a>
+      <a href="./status.html">Status</a>
+      <a class="nav-github" href="https://github.com/rokokol/MolvAI"><img src="../assets/icon-github.svg" alt="" width="15" height="15">GitHub</a>
+    </nav>
+    <div class="header-tools">
+      <button class="icon-btn theme-toggle" type="button" data-theme-toggle aria-label="Switch between dark and light theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="12" cy="12" r="8"></circle>
+          <path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"></path>
+        </svg>
+      </button>
+      <button class="icon-btn menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="site-nav">
+        <span class="menu-bars" aria-hidden="true"></span>
+        <span class="visually-hidden">Menu</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="wrap doc-layout">
+  <aside class="doc-nav" aria-label="Documentation">
+    <p class="doc-nav-title">Documentation</p>
+    <ul>
+      <li><a href="./index.html">Overview</a></li>
+      <li><a href="./install.html">Install and first run</a></li>
+      <li><a href="./models.html">Models and GigaAM</a></li>
+      <li><a href="./hotkeys.html">Hotkeys and compositors</a></li>
+      <li><a href="./settings.html">Settings and Nix mode</a></li>
+      <li><a href="./cli.html">CLI guide</a></li>
+      <li><a href="./privacy.html" aria-current="page">Privacy and journal</a></li>
+      <li><a href="./troubleshooting.html">Troubleshooting</a></li>
+      <li><a href="./status.html">Status and roadmap</a></li>
+    </ul>
+    <p class="doc-nav-title">Elsewhere</p>
+    <ul>
+      <li><a href="../cli.html">CLI reference</a></li>
+      <li><a href="../models.html">Model catalog</a></li>
+      <li><a href="../index.html">Home</a></li>
+    </ul>
+  </aside>
+
+  <article class="doc-body prose">
+    <h1>Privacy and the journal</h1>
+    <p class="canonical">Canonical source: <a href="https://github.com/rokokol/MolvAI/blob/main/docs/journal-schema.md">docs/journal-schema.md</a> and <a href="https://github.com/rokokol/MolvAI/blob/main/docs/outgoing-endpoints.md">docs/outgoing-endpoints.md</a></p>
+
+    <h2>The microphone</h2>
+    <p>The capture stream opens at the key press and closes right after the release. The close does not depend on how the phrase ended: a cancel, an error and an abnormal exit of the daemon all release the device</p>
+    <p>The delay from the release to the close is measured, logged and written to the journal as <code>latency_ms.stop_after_release</code>. That is why the claim is checkable rather than a promise</p>
+
+    <h2>The journal</h2>
+    <p>The only storage of dictation data is one JSONL file, <code>journal.jsonl</code>, under <code>$XDG_DATA_HOME/molva/</code> and the matching platform directories. It has permissions for the owner only, one phrase per line, and it is append-only. Deleting an entry, cleanup and rotation rewrite the file atomically</p>
+    <div class="table-wrap">
+      <table>
+        <caption>What a line holds, in groups</caption>
+        <thead><tr><th scope="col">Group</th><th scope="col">Fields</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Identity</th><td><code>schema</code>, <code>id</code>, <code>ts</code>, <code>session_id</code>, <code>mode</code>, <code>source</code></td></tr>
+          <tr><th scope="row">The phrase</th><td><code>app</code>, <code>language</code>, <code>audio_secs</code>, <code>words</code>, <code>wpm</code>, <code>style</code>, <code>stt_engine</code>, <code>stt_model</code></td></tr>
+          <tr><th scope="row">Post-processing</th><td><code>llm_provider</code>, <code>llm_model</code>, <code>llm_used</code>, <code>local_llm</code>, <code>dict_hits</code>, <code>tokens</code></td></tr>
+          <tr><th scope="row">Delivery</th><td><code>inject_method</code>, <code>latency_ms</code>, <code>error</code></td></tr>
+          <tr><th scope="row">Text</th><td><code>text_raw</code>, <code>text_final</code>, <code>audio_path</code>, all optional and absent in privacy mode</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>The latency object carries <code>stt</code>, <code>rules</code>, <code>llm</code>, <code>inject</code>, <code>total</code>, <code>first_hypothesis</code> and <code>stop_after_release</code>. Every field and every calculation rule is in <a href="https://github.com/rokokol/MolvAI/blob/main/docs/journal-schema.md">docs/journal-schema.md</a></p>
+
+    <h2>The switches</h2>
+    <div class="table-wrap">
+      <table>
+        <caption>What to set, and what each setting removes</caption>
+        <thead><tr><th scope="col">Setting</th><th scope="col">Effect</th></tr></thead>
+        <tbody>
+          <tr><th scope="row"><code>journal.include_text = false</code></th><td>The line is written without the phrase texts and the audio path. Every metric stays</td></tr>
+          <tr><th scope="row"><code>journal.encrypt = true</code></th><td>The texts are sealed with XChaCha20-Poly1305. The other fields stay open, so statistics and filters work without the key</td></tr>
+          <tr><th scope="row"><code>journal.key_source</code></th><td><code>file</code> means <code>journal.key</code> next to the journal, created with owner permissions; <code>keyring</code> means the entry <code>journal-key</code> in the OS store</td></tr>
+          <tr><th scope="row"><code>journal.enabled = false</code></th><td>No journal line is written</td></tr>
+          <tr><th scope="row"><code>privacy.no_record_mode = true</code></th><td>No journal and no history at all</td></tr>
+          <tr><th scope="row"><code>journal.max_entries</code></th><td>How many phrases the journal keeps; the oldest go first</td></tr>
+          <tr><th scope="row"><code>privacy.send_to_llm = false</code></th><td>No text is sent to the configured language model</td></tr>
+          <tr><th scope="row"><code>privacy.telemetry</code></th><td>There is no telemetry; the key exists to be <code>false</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Without the journal key, the tools show empty text fields instead of ciphertext. The key is created by itself at the first opening of an encrypted journal</p>
+
+    <h2>What leaves the machine</h2>
+    <p>The network has few uses, and each waits for an explicit command or an explicit configuration</p>
+    <ul>
+      <li><code>molva models pull</code>, or the automatic download at daemon start, fetches the weights from the catalog address and checks the SHA-256. A mirror serves the same files from a directory you name</li>
+      <li>A language model provider that you configure receives the text of a phrase when <code>llm.enabled</code> and the style ask for it. Ollama on localhost is the default provider, so the default path stays on the machine</li>
+    </ul>
+    <p>The complete list of addresses the program can call is in <a href="https://github.com/rokokol/MolvAI/blob/main/docs/outgoing-endpoints.md">docs/outgoing-endpoints.md</a>. The tests do not use the network</p>
+
+    <h2>Command mode and the clipboard</h2>
+    <p>Command mode needs the selected text. The daemon copies the selection with a Ctrl+C combination through the compositor. It clears the clipboard before the copy, so a stale selection cannot be read, and polls for the result for up to 600 ms. The model receives the selection and the instruction</p>
+    <p>Normal dictation does not touch the selection. With <code>output.restore_clipboard = true</code>, which is the default, a paste returns the previous clipboard content afterwards</p>
+
+    <h2>Delete what you recorded</h2>
+    <div class="cmd"><code>molva history clear --yes</code><button class="copy" type="button" data-copy="molva history clear --yes">Copy</button></div>
+    <div class="cmd"><code>./install.sh --uninstall --purge</code><button class="copy" type="button" data-copy="./install.sh --uninstall --purge">Copy</button></div>
+    <p>The first clears the phrases and keeps the settings. The second removes the installation together with the history; without <code>--purge</code> the installer asks about the journal</p>
+
+    <p class="to-top"><a href="./troubleshooting.html">Next: troubleshooting →</a> · <a href="#main">Back to top</a></p>
+  </article>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <div class="footer-brand">
+      <a class="brand" href="../index.html">
+        <img src="../assets/logo.svg" alt="" width="26" height="26">
+        <span>Molv<span class="brand-ai">AI</span></span>
+      </a>
+      <p>Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
+      <p class="footer-note">MIT licensed · no trackers · no external fonts</p>
+    </div>
+    <nav aria-label="Project links">
+      <p class="footer-title">Project</p>
+      <ul>
+        <li><a href="https://github.com/rokokol/MolvAI">GitHub</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/releases">Releases</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE">License (MIT)</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/issues">Issues</a></li>
+      </ul>
+    </nav>
+    <nav aria-label="Site links">
+      <p class="footer-title">Site</p>
+      <ul>
+        <li><a href="../features.html">Features</a></li>
+        <li><a href="../models.html">Models</a></li>
+        <li><a href="../cli.html">CLI reference</a></li>
+        <li><a href="./index.html">Documentation</a></li>
+        <li><a href="../faq.html">FAQ</a></li>
+        <li><a href="./status.html">Status and roadmap</a></li>
+      </ul>
+    </nav>
+    <div>
+      <p class="footer-title">Canonical docs</p>
+      <p class="footer-note">The repository is the source of truth. These pages summarize it and link back</p>
+      <ul>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/CHANGELOG.md">CHANGELOG</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="wrap footer-credit">
+    <p>MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
+    <p>This site runs without cookies, analytics or third-party assets</p>
+  </div>
+</footer>
+</body>
+</html>

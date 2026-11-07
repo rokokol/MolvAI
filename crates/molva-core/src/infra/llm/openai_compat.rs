@@ -244,7 +244,7 @@ impl OpenAiCompatClient {
     }
 }
 
-/// Provider answer: we parse only what the journal and the paste need
+/// Provider answer: only the fields the journal and the paste need are parsed
 #[derive(Debug, Deserialize)]
 struct Completion {
     #[serde(default)]
@@ -695,13 +695,13 @@ mod tests {
 
     #[test]
     fn a_closed_port_becomes_unavailable_not_a_panic() {
-        // We take the port and release it at once: nobody listens on the address for sure
+        // The port is taken and released at once, so nothing listens on the address
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         drop(listener);
-        // Windows does not answer a closed port at once, but after several SYN retries
-        // (about a second), so the timeout must be clearly larger, or the test gets
-        // "timeout" instead of "unavailable"
+        // Windows does not answer a closed port at once, but after several SYN retries (about a
+        // second). The timeout must be clearly larger, or the test gets "timeout" instead of
+        // "unavailable"
         let client = OpenAiCompatClient::new(
             format!("http://{addr}/v1"),
             "m",

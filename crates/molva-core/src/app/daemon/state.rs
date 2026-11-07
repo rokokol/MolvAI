@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
-//! State machine of the daemon: `Idle → Recording → Transcribing → PostProcessing → Injecting → Idle`
+//! State machine of the daemon:
+//! `Idle → Recording → Transcribing → PostProcessing → Injecting → Idle`
 //!
 //! It has no audio and no threads. The input is an event, and the output is a list of actions
-//! and, maybe, an error for the reply to the client. The time comes from `Clock`, so tests
-//! check all the rules about key hold without a single real pause
+//! and, when the event fails, an error for the reply to the client. The time comes from
+//! `Clock`, so tests check all the rules about key hold without a single real pause
 //!
 //! The main input rule: **key hold and toggle are available at the same time**, and the
 //! settings need no choice between them. A long press is push-to-talk: recording runs while the
@@ -135,7 +136,7 @@ pub struct Machine {
     clock: Arc<dyn Clock>,
     /// Moment of the press that the machine accepted: the window for double-press suppression
     last_press: Option<Instant>,
-    /// How many phrases are in processing now. The recording of the next phrase starts without
+    /// How many phrases are in processing. The recording of the next phrase starts without
     /// waiting for the end of the previous processing: the microphone is free, and the jobs
     /// for the worker thread queue up by themselves. The machine goes to "ready" only when all
     /// are processed
@@ -260,7 +261,7 @@ impl Machine {
 
     fn start(&mut self, mode: Mode, style: Option<String>, at: Instant) -> Outcome {
         match &self.phase {
-            // While the previous phrase is in processing, the microphone is free: the next
+            // While the previous phrase is in processing, the microphone is free. The next
             // recording starts at once, and its processing joins the queue of the worker thread
             Phase::Idle | Phase::Processing(_) => {
                 self.last_press = Some(at);

@@ -114,7 +114,7 @@ impl FileJournal {
     }
 
     /// Turn on text encryption: with `Some`, the texts of new lines are written as ciphertext
-    /// and decrypted on read; lines written in plain text are read as before
+    /// and decrypted on read; lines written in plain text are read without decryption
     #[must_use]
     pub fn with_cipher(mut self, cipher: Option<JournalCipher>) -> Self {
         self.cipher = cipher;
@@ -408,6 +408,17 @@ pub fn search_entries(entries: &[Entry], substring: &str) -> Vec<Entry> {
         .collect()
 }
 
+/// Application names that occur in the journal, alphabetical and unique
+pub fn apps(entries: &[Entry]) -> Vec<String> {
+    let mut names: Vec<String> = entries
+        .iter()
+        .filter_map(|entry| entry.app.clone())
+        .collect();
+    names.sort();
+    names.dedup();
+    names
+}
+
 /// Filter by application class, ignoring case
 pub fn filter_by_app(entries: &[Entry], app: &str) -> Vec<Entry> {
     entries
@@ -509,6 +520,7 @@ pub(crate) fn test_entry(ts: &str, words: u32, audio_secs: f32, app: &str) -> En
         text_raw: Some(format!("сырой текст {words}")),
         text_final: Some(format!("Итоговый текст {words}.")),
         audio_path: None,
+        segments: Vec::new(),
     }
 }
 

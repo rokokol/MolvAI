@@ -1,0 +1,38 @@
+# Publish every v* tag to FlakeHub, and publish an existing tag by hand by giving its
+# name to the dispatch input. A tag is the only event that may release: the token a
+# workflow runs with cannot mint one, so a release is a human creating a tag and this
+# workflow answering it, not a job deciding to ship. The flake name comes from the
+# repository itself (rokokol/<repo>), so the file has no repository-specific part and
+# every flake repository takes this same copy, vendored from
+# https://github.com/rokokol/ci-skill
+name: Publish to FlakeHub
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The existing tag to publish to FlakeHub
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  flakehub-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: cachix/install-nix-action@v31
+      - uses: DeterminateSystems/flakehub-push@v7
+        with:
+          visibility: public
+          tag: ${{ inputs.tag || github.ref_name }}

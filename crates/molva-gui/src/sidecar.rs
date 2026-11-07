@@ -47,7 +47,7 @@ pub fn locate() -> Result<PathBuf, SidecarError> {
     Ok(PathBuf::from(exe_name))
 }
 
-/// How the daemon that we started ended, if it crashed
+/// How the daemon that this process started ended, if it crashed
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DaemonFailure {
     /// `None` if a signal killed the process
@@ -132,11 +132,11 @@ impl Daemon {
         Ok(())
     }
 
-    /// Whether the daemon that we started has crashed, and what it said last
+    /// Whether the daemon that this process started has crashed, and what it said last
     ///
-    /// The reader thread may not have drained the pipe yet when the process exits. So we wait
-    /// a short time for the last line: without it the window would show an exit code with no
-    /// reason
+    /// The reader thread may not have drained the pipe yet when the process exits. So the call
+    /// waits a short time for the last line: without it the window would show an exit code with
+    /// no reason
     pub fn failure(&mut self) -> Option<DaemonFailure> {
         let status = self.child.as_mut()?.try_wait().ok()??;
         if status.success() {
@@ -156,7 +156,7 @@ impl Daemon {
         })
     }
 
-    /// Whether the process that we started is alive
+    /// Whether the process that this handle started is alive
     pub fn is_alive(&mut self) -> bool {
         match self.child.as_mut() {
             None => false,
@@ -164,7 +164,7 @@ impl Daemon {
         }
     }
 
-    /// Whether we own the daemon: only our own Quit may stop it
+    /// Whether the daemon belongs to this handle: only its own Quit may stop it
     pub fn is_ours(&self) -> bool {
         self.child.is_some()
     }
@@ -218,12 +218,13 @@ pub fn transcribe(
     id: &str,
     path: &Path,
     progress: ProgressSink,
-) -> Result<serde_json::Value, SidecarError> {
+) -> Result<Vec<molva_core::app::file_result::FileResult>, SidecarError> {
     let program = locate()?;
     let mut child = OsCommand::new(&program)
         .arg("transcribe")
         .arg(path)
         .arg("--json")
+        .arg("--timecodes")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -240,7 +241,7 @@ pub fn transcribe(
         running.push((id.to_string(), child));
     }
 
-    // We read stderr in a separate thread: otherwise a full pipe buffer stops the process
+    // A separate thread reads stderr: otherwise a full pipe buffer stops the process
     let stderr_thread = stderr.map(|stderr| {
         std::thread::spawn(move || {
             let mut collected = String::new();
@@ -306,7 +307,7 @@ mod tests {
         let mut daemon = Daemon::default();
         assert!(!daemon.is_ours());
         assert!(!daemon.is_alive());
-        // Stopping what we did not start breaks nothing
+        // A stop without a started process breaks nothing
         daemon.stop();
     }
 

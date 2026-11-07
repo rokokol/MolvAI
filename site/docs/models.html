@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Models and GigaAM — MolvAI documentation</title>
+<meta name="description" content="How MolvAI selects a recognition model: the GigaAM-v3 default, the auto engine, checksum-verified downloads, mirrors, custom weights and the licenses">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0a0c12">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/site.css">
+<script src="../assets/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="../index.html" aria-label="MolvAI home">
+      <img src="../assets/logo.svg" alt="" width="26" height="26">
+      <span>Molv<span class="brand-ai">AI</span></span>
+    </a>
+    <nav class="site-nav" id="site-nav" aria-label="Main">
+      <a href="../index.html">Home</a>
+      <a href="../features.html">Features</a>
+      <a href="../models.html">Models</a>
+      <a href="../cli.html">CLI</a>
+      <a href="./index.html" aria-current="page">Docs</a>
+      <a href="../faq.html">FAQ</a>
+      <a href="./status.html">Status</a>
+      <a class="nav-github" href="https://github.com/rokokol/MolvAI"><img src="../assets/icon-github.svg" alt="" width="15" height="15">GitHub</a>
+    </nav>
+    <div class="header-tools">
+      <button class="icon-btn theme-toggle" type="button" data-theme-toggle aria-label="Switch between dark and light theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="12" cy="12" r="8"></circle>
+          <path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"></path>
+        </svg>
+      </button>
+      <button class="icon-btn menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="site-nav">
+        <span class="menu-bars" aria-hidden="true"></span>
+        <span class="visually-hidden">Menu</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="wrap doc-layout">
+  <aside class="doc-nav" aria-label="Documentation">
+    <p class="doc-nav-title">Documentation</p>
+    <ul>
+      <li><a href="./index.html">Overview</a></li>
+      <li><a href="./install.html">Install and first run</a></li>
+      <li><a href="./models.html" aria-current="page">Models and GigaAM</a></li>
+      <li><a href="./hotkeys.html">Hotkeys and compositors</a></li>
+      <li><a href="./settings.html">Settings and Nix mode</a></li>
+      <li><a href="./cli.html">CLI guide</a></li>
+      <li><a href="./privacy.html">Privacy and journal</a></li>
+      <li><a href="./troubleshooting.html">Troubleshooting</a></li>
+      <li><a href="./status.html">Status and roadmap</a></li>
+    </ul>
+    <p class="doc-nav-title">Elsewhere</p>
+    <ul>
+      <li><a href="../cli.html">CLI reference</a></li>
+      <li><a href="../models.html">Model catalog</a></li>
+      <li><a href="../index.html">Home</a></li>
+    </ul>
+  </aside>
+
+  <article class="doc-body prose">
+    <h1>Models and GigaAM</h1>
+    <p class="canonical">Canonical source: <a href="https://github.com/rokokol/MolvAI/blob/main/models.toml">models.toml</a> and <a href="https://github.com/rokokol/MolvAI/blob/main/docs/model-licenses.md">docs/model-licenses.md</a></p>
+
+    <h2>What a model is here</h2>
+    <p>One weights file and one entry in <code>models.toml</code>. The entry carries the name, the file name, the download address, the size, the SHA-256 and the engine that can load the file. The CLI, the GUI and the Nix module read that one list, so a name means the same thing everywhere</p>
+
+    <h2>The default</h2>
+    <p>The default is <code>gigaam-v3-e2e-rnnt-q4_k_m</code>: GigaAM-v3 end-to-end RNNT from Sber, at Q4_K_M quantization, 175 MiB, Russian. The default engine is <code>auto</code></p>
+    <div class="table-wrap">
+      <table>
+        <caption>The default, as the catalog declares it</caption>
+        <thead><tr><th scope="col">Field</th><th scope="col">Value</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Name</th><td><code>gigaam-v3-e2e-rnnt-q4_k_m</code></td></tr>
+          <tr><th scope="row">File</th><td><code>gigaam-v3-e2e-rnnt-Q4_K_M.gguf</code></td></tr>
+          <tr><th scope="row">Engine</th><td><code>transcribe-cpp</code></td></tr>
+          <tr><th scope="row">Quantization</th><td>Q4_K_M</td></tr>
+          <tr><th scope="row">Language</th><td><code>ru</code></td></tr>
+          <tr><th scope="row">Size</th><td>183,948,704 bytes, 175 MiB</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>The full catalog, with sizes and quantization for every file, is on the <a href="../models.html">model catalog page</a></p>
+
+    <h2>Why the CPU-first default</h2>
+    <p>Russian dictation is the main case, and the CPU is the hardware every machine has. GigaAM is a Russian-first family, and the Q4_K_M file keeps the model small enough to load quickly and to sit beside other work</p>
+    <p>transcribe.cpp publishes a benchmark of this quantization on a Ryzen 7 4750U: 10.98 s of audio in 630 ms, about 17× realtime. The same run reports about 15.5× on a 33.84 s clip</p>
+    <p>That is an upstream measurement, not this project's. No GigaAM GPU figure is published in the repository</p>
+
+    <h2>The engine</h2>
+    <div class="table-wrap">
+      <table>
+        <caption>What <code>stt.engine</code> accepts</caption>
+        <thead><tr><th scope="col">Value</th><th scope="col">Meaning</th></tr></thead>
+        <tbody>
+          <tr><th scope="row"><code>auto</code></th><td>Follow the catalog entry of the model. This is the default, and it is why a GigaAM file needs no special setting</td></tr>
+          <tr><th scope="row"><code>whisper-cpp</code></th><td>The whisper.cpp runtime. It reads the <code>ggml</code> files of the catalog and your own whisper weights</td></tr>
+          <tr><th scope="row"><code>transcribe-cpp</code></th><td>The transcribe.cpp runtime, which loads the GigaAM GGUF file. <code>stt.transcribe_cli</code> names the binary; empty means <code>transcribe-cli</code> from <code>PATH</code></td></tr>
+          <tr><th scope="row"><code>fake</code></th><td>A test engine that returns fixed text. It runs the pipeline without weights</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>The GPU path belongs to whisper.cpp: the released Linux and Windows builds use Vulkan. A CUDA build is a separate opt-in, and the releases carry it for Windows. <code>stt.transcribe_backend</code> passes <code>auto</code>, <code>cpu</code>, <code>vulkan</code> or <code>cuda</code> to transcribe.cpp</p>
+
+    <h2>Download, verify, switch</h2>
+    <div class="cmd"><code>molva models list</code><button class="copy" type="button" data-copy="molva models list">Copy</button></div>
+    <div class="cmd"><code>molva models pull large-v3-turbo</code><button class="copy" type="button" data-copy="molva models pull large-v3-turbo">Copy</button></div>
+    <div class="cmd"><code>molva models verify large-v3-turbo</code><button class="copy" type="button" data-copy="molva models verify large-v3-turbo">Copy</button></div>
+    <div class="cmd"><code>molva config set stt.model large-v3-turbo</code><button class="copy" type="button" data-copy="molva config set stt.model large-v3-turbo">Copy</button></div>
+    <p>Every download is checked against the SHA-256 from the catalog before it reaches the disk. A daemon start pulls missing weights on its own while <code>stt.auto_pull</code> is <code>true</code>, which is the default. The recognizer is built when the daemon starts, so restart the daemon to load different weights</p>
+
+    <h2>Mirrors and your own weights</h2>
+    <p><code>stt.models_mirror</code> points at a directory that serves the same file names instead of Hugging Face. The checksum check still runs, so a plain <code>http://</code> mirror on a local network is acceptable</p>
+    <p>Your own file goes through <code>stt.model_path</code>, the directory that holds the weights, and <code>stt.model</code>, the name the engine sees. A <code>ggml</code> file that whisper.cpp understands fits the whisper engine</p>
+
+    <h2>Licenses</h2>
+    <p>The repository is MIT and the weights are not covered by that license. Their terms are collected in <a href="https://github.com/rokokol/MolvAI/blob/main/docs/model-licenses.md">docs/model-licenses.md</a>, and the addresses they come from are part of <a href="https://github.com/rokokol/MolvAI/blob/main/docs/outgoing-endpoints.md">docs/outgoing-endpoints.md</a></p>
+
+    <h2>With Nix</h2>
+    <p>The Home Manager module fetches the models named in <code>programs.molvai.models</code> at evaluation time and renders <code>stt.model_path</code> into the store as a directory of symlinks. A switch is the only thing that changes them. <code>programs.molvai.model</code> must be one of <code>programs.molvai.models</code>, and an unknown name fails the switch with a message that names the option</p>
+
+    <p class="to-top"><a href="./settings.html">Next: settings and Nix mode →</a> · <a href="#main">Back to top</a></p>
+  </article>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <div class="footer-brand">
+      <a class="brand" href="../index.html">
+        <img src="../assets/logo.svg" alt="" width="26" height="26">
+        <span>Molv<span class="brand-ai">AI</span></span>
+      </a>
+      <p>Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
+      <p class="footer-note">MIT licensed · no trackers · no external fonts</p>
+    </div>
+    <nav aria-label="Project links">
+      <p class="footer-title">Project</p>
+      <ul>
+        <li><a href="https://github.com/rokokol/MolvAI">GitHub</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/releases">Releases</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE">License (MIT)</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/issues">Issues</a></li>
+      </ul>
+    </nav>
+    <nav aria-label="Site links">
+      <p class="footer-title">Site</p>
+      <ul>
+        <li><a href="../features.html">Features</a></li>
+        <li><a href="../models.html">Models</a></li>
+        <li><a href="../cli.html">CLI reference</a></li>
+        <li><a href="./index.html">Documentation</a></li>
+        <li><a href="../faq.html">FAQ</a></li>
+        <li><a href="./status.html">Status and roadmap</a></li>
+      </ul>
+    </nav>
+    <div>
+      <p class="footer-title">Canonical docs</p>
+      <p class="footer-note">The repository is the source of truth. These pages summarize it and link back</p>
+      <ul>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/CHANGELOG.md">CHANGELOG</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="wrap footer-credit">
+    <p>MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
+    <p>This site runs without cookies, analytics or third-party assets</p>
+  </div>
+</footer>
+</body>
+</html>

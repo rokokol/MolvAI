@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings and the Nix-managed mode — MolvAI documentation</title>
+<meta name="description" content="The MolvAI settings file: the keys worth knowing, their defaults, reload behavior, keys in the OS store, and what changes when the Home Manager module renders the settings and weights into the Nix store">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0a0c12">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/site.css">
+<script src="../assets/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="../index.html" aria-label="MolvAI home">
+      <img src="../assets/logo.svg" alt="" width="26" height="26">
+      <span>Molv<span class="brand-ai">AI</span></span>
+    </a>
+    <nav class="site-nav" id="site-nav" aria-label="Main">
+      <a href="../index.html">Home</a>
+      <a href="../features.html">Features</a>
+      <a href="../models.html">Models</a>
+      <a href="../cli.html">CLI</a>
+      <a href="./index.html" aria-current="page">Docs</a>
+      <a href="../faq.html">FAQ</a>
+      <a href="./status.html">Status</a>
+      <a class="nav-github" href="https://github.com/rokokol/MolvAI"><img src="../assets/icon-github.svg" alt="" width="15" height="15">GitHub</a>
+    </nav>
+    <div class="header-tools">
+      <button class="icon-btn theme-toggle" type="button" data-theme-toggle aria-label="Switch between dark and light theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="12" cy="12" r="8"></circle>
+          <path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"></path>
+        </svg>
+      </button>
+      <button class="icon-btn menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="site-nav">
+        <span class="menu-bars" aria-hidden="true"></span>
+        <span class="visually-hidden">Menu</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="wrap doc-layout">
+  <aside class="doc-nav" aria-label="Documentation">
+    <p class="doc-nav-title">Documentation</p>
+    <ul>
+      <li><a href="./index.html">Overview</a></li>
+      <li><a href="./install.html">Install and first run</a></li>
+      <li><a href="./models.html">Models and GigaAM</a></li>
+      <li><a href="./hotkeys.html">Hotkeys and compositors</a></li>
+      <li><a href="./settings.html" aria-current="page">Settings and Nix mode</a></li>
+      <li><a href="./cli.html">CLI guide</a></li>
+      <li><a href="./privacy.html">Privacy and journal</a></li>
+      <li><a href="./troubleshooting.html">Troubleshooting</a></li>
+      <li><a href="./status.html">Status and roadmap</a></li>
+    </ul>
+    <p class="doc-nav-title">Elsewhere</p>
+    <ul>
+      <li><a href="../cli.html">CLI reference</a></li>
+      <li><a href="../models.html">Model catalog</a></li>
+      <li><a href="../index.html">Home</a></li>
+    </ul>
+  </aside>
+
+  <article class="doc-body prose">
+    <h1>Settings and the Nix-managed mode</h1>
+    <p class="canonical">Canonical source: <a href="https://github.com/rokokol/MolvAI/blob/main/crates/molva-core/src/config.rs">crates/molva-core/src/config.rs</a>, <a href="https://github.com/rokokol/MolvAI/blob/main/nix/module.nix">nix/module.nix</a> and the settings table in the <a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README</a></p>
+
+    <h2>The file</h2>
+    <p>The settings are one TOML file at <code>~/.config/molva/config.toml</code>, or the matching settings directory on Windows and macOS. It is created at the first start and stays readable by a human</p>
+    <p>An empty file is valid. Every skipped field comes from the defaults, so the file makes sense as a diff against them. A wrong value fails with the path of the file and the name of the key</p>
+    <div class="cmd"><code>molva config path</code><button class="copy" type="button" data-copy="molva config path">Copy</button></div>
+    <div class="cmd"><code>molva config validate</code><button class="copy" type="button" data-copy="molva config validate">Copy</button></div>
+
+    <h2>Keys worth knowing</h2>
+    <p>The defaults below are the ones this site's pages assume. The README lists every field; this table is the small set that changes the behaviour people notice</p>
+    <div class="table-wrap">
+      <table class="settings-table">
+        <caption>A short settings map, grouped by section</caption>
+        <thead><tr><th scope="col">Section</th><th scope="col">Key</th><th scope="col">Default</th><th scope="col">Effect</th></tr></thead>
+        <tbody>
+          <tr><th scope="row" rowspan="4"><code>stt</code></th><td><code>engine</code></td><td><code>auto</code></td><td>Follow the catalog entry of the model</td></tr>
+          <tr><td><code>model</code></td><td><code>gigaam-v3-e2e-rnnt-q4_k_m</code></td><td>The Russian default at 175 MiB</td></tr>
+          <tr><td><code>language</code></td><td><code>ru</code></td><td>A fixed language is the fastest path; <code>auto</code> detects</td></tr>
+          <tr><td><code>streaming_inject</code></td><td><code>true</code></td><td>Types each chunk while you speak</td></tr>
+          <tr><th scope="row" rowspan="3"><code>audio</code></th><td><code>device</code></td><td><code>default</code></td><td>A name from <code>molva devices</code></td></tr>
+          <tr><td><code>trim_silence</code></td><td><code>true</code></td><td>Cuts silence at the edges of the recording</td></tr>
+          <tr><td><code>sounds</code></td><td><code>true</code></td><td>Marks the start and the end; <code>false</code> is silence</td></tr>
+          <tr><th scope="row" rowspan="3"><code>output</code></th><td><code>mode</code></td><td><code>auto</code></td><td>Typing or paste, chosen from the length and the window</td></tr>
+          <tr><td><code>restore_clipboard</code></td><td><code>true</code></td><td>Returns the previous clipboard content after a paste</td></tr>
+          <tr><td><code>pre_inject_delay_ms</code></td><td>50</td><td>A pause before the paste; slow remotes want more</td></tr>
+          <tr><th scope="row" rowspan="2"><code>rules</code></th><td><code>enabled</code></td><td><code>true</code></td><td>Punctuation, fillers, repeats, digits, without a model</td></tr>
+          <tr><td><code>llm_min_words</code></td><td>10</td><td>Shorter phrases skip the language model</td></tr>
+          <tr><th scope="row" rowspan="3"><code>llm</code></th><td><code>enabled</code></td><td><code>false</code></td><td>The language model is off until you ask for it</td></tr>
+          <tr><td><code>provider</code></td><td><code>ollama</code></td><td><code>ollama</code>, <code>lmstudio</code>, <code>openrouter</code>, <code>groq</code>, <code>openai</code> or <code>custom</code></td></tr>
+          <tr><td><code>reasoning_effort</code></td><td><code>auto</code></td><td>Sends <code>none</code> to local providers so reasoning models answer</td></tr>
+          <tr><th scope="row" rowspan="3"><code>journal</code></th><td><code>include_text</code></td><td><code>true</code></td><td><code>false</code> writes the line without the phrase text</td></tr>
+          <tr><td><code>encrypt</code></td><td><code>false</code></td><td>Seals the texts with XChaCha20-Poly1305</td></tr>
+          <tr><td><code>max_entries</code></td><td>10000</td><td>How many phrases to keep</td></tr>
+          <tr><th scope="row" rowspan="3"><code>privacy</code></th><td><code>send_to_llm</code></td><td><code>true</code></td><td>Whether text may go to the configured model</td></tr>
+          <tr><td><code>no_record_mode</code></td><td><code>false</code></td><td>Turns the journal and the history off completely</td></tr>
+          <tr><td><code>telemetry</code></td><td><code>false</code></td><td>There is no telemetry; the key states it</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Hotkeys have their own page: <a href="./hotkeys.html">hotkeys and compositors</a>. Journal fields are explained in <a href="./privacy.html">privacy and journal</a></p>
+
+    <h2>Edit and apply</h2>
+    <div class="cmd"><code>molva config set stt.language auto</code><button class="copy" type="button" data-copy="molva config set stt.language auto">Copy</button></div>
+    <div class="cmd"><code>molva config edit</code><button class="copy" type="button" data-copy="molva config edit">Copy</button></div>
+    <div class="cmd"><code>molva config reload</code><button class="copy" type="button" data-copy="molva config reload">Copy</button></div>
+    <p>The reload passes the new settings to the running daemon. The recognizer and the paste chain are built when the daemon starts, so a changed model, engine or output method needs a restart. <code>molva doctor</code> shows what the daemon actually loaded</p>
+
+    <h2>Keys never live in the file</h2>
+    <p>A cloud model key is read from the OS store, from a file with owner-only permissions, or from an environment variable, by <code>llm.api_key_source</code>. The journal key follows the same idea with <code>journal.key_source</code>. Values are written through stdin, so they never enter the shell history</p>
+    <div class="cmd"><code>printf '%s' "$KEY" | molva secret set llm</code><button class="copy" type="button" data-copy="printf '%s' &quot;$KEY&quot; | molva secret set llm">Copy</button></div>
+    <div class="cmd"><code>molva secret status</code><button class="copy" type="button" data-copy="molva secret status">Copy</button></div>
+
+    <h2>The Nix-managed mode</h2>
+    <p>The Home Manager module does not edit the same file at runtime. It renders the settings and the weights into the Nix store, and a switch is the only thing that changes them</p>
+    <ul>
+      <li><code>home.packages</code> gains <code>molva</code>, and <code>systemd.user.services.molva-daemon</code> runs <code>molva daemon</code> as part of the graphical session</li>
+      <li>The generated settings carry the engine and the model of the catalog entry, the language, <code>stt.auto_pull = false</code> and <code>streaming_inject = true</code>. They also carry the transcribe.cpp binary and backend, and <code>stt.model_path</code> pointing at a store directory of weights</li>
+      <li><code>xdg.configFile."molva/config.toml"</code> links the generated file into place with <code>force = true</code></li>
+      <li>The GUI hides its settings page, because every save would be refused. A banner explains that the settings are managed by Nix and names the option to change</li>
+      <li>Under Hyprland with a Lua config the module also writes and includes the binds on each switch. A failure there prints a warning and does not fail the generation</li>
+    </ul>
+    <div class="table-wrap">
+      <table>
+        <caption>The options of <code>programs.molvai</code></caption>
+        <thead><tr><th scope="col">Option</th><th scope="col">Meaning</th></tr></thead>
+        <tbody>
+          <tr><th scope="row"><code>enable</code></th><td>Installs the package and enables everything below</td></tr>
+          <tr><th scope="row"><code>model</code></th><td>The model name from <code>models.toml</code>, default <code>gigaam-v3-e2e-rnnt-q4_k_m</code></td></tr>
+          <tr><th scope="row"><code>models</code></th><td>Every model to fetch into the store; <code>model</code> must be one of them</td></tr>
+          <tr><th scope="row"><code>modelsDirectory</code></th><td>A directory that already holds the weights, for a machine that gets them another way</td></tr>
+          <tr><th scope="row"><code>language</code>, <code>uiLanguage</code></th><td>The speech language and the interface language</td></tr>
+          <tr><th scope="row"><code>transcribeBackend</code></th><td>The compute backend for transcribe.cpp: <code>auto</code>, <code>cpu</code>, <code>vulkan</code>, <code>cuda</code></td></tr>
+          <tr><th scope="row"><code>settings</code></th><td>Extra settings merged over the generated ones, in the shape of <code>molva config export</code></td></tr>
+          <tr><th scope="row"><code>daemon.enable</code></th><td>Runs the user service; on by default on Linux</td></tr>
+          <tr><th scope="row"><code>hyprland.enable</code></th><td>Writes the Hyprland Lua binds and includes the file</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>A minimal configuration is short. Everything else has a default</p>
+<pre class="code"><code>programs.molvai = {
+  enable = true;
+  model = "gigaam-v3-e2e-rnnt-q4_k_m";
+  settings.stt.chunk_pause_ms = 400;
+};</code></pre>
+    <p>The rule is the same as for any Nix option: edit the configuration and run your switch. If a value did not take, the banner in the GUI says why</p>
+
+    <p class="to-top"><a href="./cli.html">Next: CLI guide →</a> · <a href="#main">Back to top</a></p>
+  </article>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <div class="footer-brand">
+      <a class="brand" href="../index.html">
+        <img src="../assets/logo.svg" alt="" width="26" height="26">
+        <span>Molv<span class="brand-ai">AI</span></span>
+      </a>
+      <p>Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
+      <p class="footer-note">MIT licensed · no trackers · no external fonts</p>
+    </div>
+    <nav aria-label="Project links">
+      <p class="footer-title">Project</p>
+      <ul>
+        <li><a href="https://github.com/rokokol/MolvAI">GitHub</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/releases">Releases</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE">License (MIT)</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/issues">Issues</a></li>
+      </ul>
+    </nav>
+    <nav aria-label="Site links">
+      <p class="footer-title">Site</p>
+      <ul>
+        <li><a href="../features.html">Features</a></li>
+        <li><a href="../models.html">Models</a></li>
+        <li><a href="../cli.html">CLI reference</a></li>
+        <li><a href="./index.html">Documentation</a></li>
+        <li><a href="../faq.html">FAQ</a></li>
+        <li><a href="./status.html">Status and roadmap</a></li>
+      </ul>
+    </nav>
+    <div>
+      <p class="footer-title">Canonical docs</p>
+      <p class="footer-note">The repository is the source of truth. These pages summarize it and link back</p>
+      <ul>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/CHANGELOG.md">CHANGELOG</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="wrap footer-credit">
+    <p>MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
+    <p>This site runs without cookies, analytics or third-party assets</p>
+  </div>
+</footer>
+</body>
+</html>

@@ -11,6 +11,7 @@ use crate::app::models::{self, ModelError};
 use crate::config::Config;
 use crate::domain::fakes::FakeStt;
 use crate::domain::stt::SttEngine;
+use crate::infra::stt::TranscribeCppEngine;
 use crate::infra::stt::WhisperEngine;
 
 /// Text that the fake engine returns when no other text is set
@@ -69,8 +70,15 @@ pub fn build_stt_with(
     cfg: &Config,
     choice: &EngineChoice,
 ) -> Result<Box<dyn SttEngine>, EngineError> {
-    let engine = choice.engine.as_deref().unwrap_or(&cfg.stt.engine).trim();
+    let requested = choice.engine.as_deref().unwrap_or(&cfg.stt.engine).trim();
     let model = choice.model.as_deref().unwrap_or(&cfg.stt.model).trim();
+    // `auto` follows the catalog. The model says which runtime can load it, and the user
+    // does not have to know that GigaAM is not a whisper file
+    let engine = if requested == "auto" {
+        models::find(model).map_or("whisper-cpp", |info| info.engine.as_str())
+    } else {
+        requested
+    };
 
     match engine {
         FAKE_ENGINE => Ok(Box::new(FakeStt::returning(
@@ -84,6 +92,16 @@ pub fn build_stt_with(
             Ok(Box::new(WhisperEngine::new(
                 path,
                 model.to_string(),
+                cfg.stt.threads as usize,
+            )))
+        }
+        "transcribe-cpp" => {
+            let path = models::installed_path(cfg, model)?;
+            Ok(Box::new(TranscribeCppEngine::new(
+                path,
+                model.to_string(),
+                cfg.stt.transcribe_cli.clone(),
+                cfg.stt.transcribe_backend.clone(),
                 cfg.stt.threads as usize,
             )))
         }
@@ -162,7 +180,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         std::fs::write(directory.path().join("ggml-tiny.bin"), "not real weights").unwrap();
         let cfg = cfg_with_models_dir(directory.path());
-        // The weights are not real, but the context loads lazily: building the engine must
+        // The weights are not real, but the context loads lazily. Building the engine must
         // succeed, and the error about the broken file comes only at the first phrase
         let engine = match build_stt(&cfg, Some("tiny")) {
             Ok(engine) => engine,
@@ -178,5 +196,20 @@ mod tests {
         cfg.stt.engine = "vosk".into();
         let err = build_stt(&cfg, None).unwrap_err();
         assert!(matches!(err, EngineError::Unknown(_)), "{err}");
+    }
+
+    #[test]
+    fn auto_engine_follows_the_catalog() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join("gigaam-v3-e2e-rnnt-Q4_K_M.gguf"),
+            "weights",
+        )
+        .unwrap();
+        let mut cfg = cfg_with_models_dir(directory.path());
+        cfg.stt.engine = "auto".into();
+        cfg.stt.model = "gigaam-v3-e2e-rnnt-q4_k_m".into();
+        let engine = build_stt(&cfg, None).expect("the GigaAM weights are in place");
+        assert_eq!(engine.id(), "transcribe-cpp");
     }
 }

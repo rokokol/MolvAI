@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Features — MolvAI</title>
+<meta name="description" content="What MolvAI does: push-to-talk and toggle dictation, streaming text while you speak, local cleanup rules, optional local language model, voice editing of a selection, file transcription with timecodes, transcript search and a private journal">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0a0c12">
+<link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./assets/site.css">
+<script src="./assets/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="./index.html" aria-label="MolvAI home">
+      <img src="./assets/logo.svg" alt="" width="26" height="26">
+      <span>Molv<span class="brand-ai">AI</span></span>
+    </a>
+    <nav class="site-nav" id="site-nav" aria-label="Main">
+      <a href="./index.html">Home</a>
+      <a href="./features.html" aria-current="page">Features</a>
+      <a href="./models.html">Models</a>
+      <a href="./cli.html">CLI</a>
+      <a href="./docs/index.html">Docs</a>
+      <a href="./faq.html">FAQ</a>
+      <a href="./docs/status.html">Status</a>
+      <a class="nav-github" href="https://github.com/rokokol/MolvAI"><img src="./assets/icon-github.svg" alt="" width="15" height="15">GitHub</a>
+    </nav>
+    <div class="header-tools">
+      <button class="icon-btn theme-toggle" type="button" data-theme-toggle aria-label="Switch between dark and light theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="12" cy="12" r="8"></circle>
+          <path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"></path>
+        </svg>
+      </button>
+      <button class="icon-btn menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="site-nav">
+        <span class="menu-bars" aria-hidden="true"></span>
+        <span class="visually-hidden">Menu</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+  <section class="section">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="kicker">Features</span>
+        <h1>Dictation first, and the small things around it</h1>
+        <p>MolvAI is one pipeline with one storage file. Each feature below is a setting of that pipeline, not a separate service. Where a feature has a limit, the limit is named too</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="dictation">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="kicker">Dictation</span>
+        <h2 id="dictation">From a held key to a finished sentence</h2>
+      </div>
+      <div class="grid grid-2">
+        <article class="card">
+          <h3>Any application</h3>
+          <p class="muted">The text goes into the field that has the focus: an editor, a chat, a terminal, a browser form. The paste method is chosen automatically and the journal records which one worked. In a terminal the shortcut switches to Ctrl+Shift+V</p>
+        </article>
+        <article class="card">
+          <h3>Hold, tap or cancel</h3>
+          <p class="muted">Hold <kbd>F9</kbd> to dictate while the key is down. A short tap latches the recording, and the next tap ends it. <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Z</kbd> toggles from anywhere, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd> throws the recording away. Every combination is a setting</p>
+        </article>
+        <article class="card">
+          <h3>Text while you speak</h3>
+          <p class="muted">With <code>stt.chunked</code> the phrase is cut at short pauses and each chunk goes to the model during the recording. With <code>stt.streaming_inject</code> the finished chunks are typed as they arrive, so a long paragraph is mostly on screen before you release the key</p>
+        </article>
+        <article class="card">
+          <h3>Two recordings never collide</h3>
+          <p class="muted">The next phrase records while the previous one is recognized. The daemon counts the phrases in processing and goes back to ready after the last one. Exit code 4 appears only when the previous phrase truly blocks the request</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="text">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="kicker">Text quality</span>
+        <h2 id="text">Cleanup without a model, a model when you want one</h2>
+        <p>The default pipeline is deterministic: a term dictionary and a rule set. No token leaves the machine unless you turn the model on</p>
+      </div>
+      <div class="grid grid-2">
+        <article class="card">
+          <h3>Dictionary and rules</h3>
+          <p class="muted">Your names and product terms are substituted fuzzily. Spoken punctuation becomes punctuation, filler words disappear, repeats collapse, numerals become digits. The rules run in milliseconds and are covered by the same tests as the rest</p>
+        </article>
+        <article class="card">
+          <h3>Styles per application</h3>
+          <p class="muted">Verbatim, Cleanup, Messenger, Email, Code and Formal. One is the default, and <code>style.by_app</code> gives a window class its own style: terse in a messenger, formal in mail</p>
+        </article>
+        <article class="card">
+          <h3>Optional language model</h3>
+          <p class="muted">Off by default. When on, it speaks the OpenAI-compatible protocol and Ollama is the default provider. It runs only for phrases longer than <code>rules.llm_min_words</code> and only for styles that need it. A timeout returns the text after the rules, never an empty field</p>
+        </article>
+        <article class="card">
+          <h3>Command mode</h3>
+          <p class="muted">Select a paragraph, press <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>X</kbd>, say "make it shorter" or "translate to English", press again. The selection is replaced in place. This is the project's original feature, and it needs a model</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="files">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="kicker">Files and search</span>
+        <h2 id="files">Your recordings become text you can search</h2>
+      </div>
+      <div class="grid grid-2">
+        <article class="card">
+          <h3>Audio and video, with timecodes</h3>
+          <p class="muted">A single path, a directory, a nested tree or a stream on stdin. <code>molva transcribe --timecodes</code> prints segments with their start and end, <code>--json</code> gives a machine array, and one bad file does not cancel the batch</p>
+          <div class="cmd"><code>molva transcribe talks/ --recursive --timecodes</code><button class="copy" type="button" data-copy="molva transcribe talks/ --recursive --timecodes">Copy</button></div>
+        </article>
+        <article class="card">
+          <h3>Search across transcripts</h3>
+          <p class="muted">Every transcription lands in the same journal. <code>molva search</code> finds a phrase in any of them and prints the source file with a <code>MM:SS.mmm</code> timecode. There is no second index to fall out of date</p>
+          <div class="cmd"><code>molva search "release date" --since 7d</code><button class="copy" type="button" data-copy="molva search &quot;release date&quot; --since 7d">Copy</button></div>
+        </article>
+        <article class="card">
+          <h3>Journal and statistics</h3>
+          <p class="muted">One JSON line per phrase: text, words, words per minute, style, engine, model, dictionary hits, the paste method and the latency of every stage. <code>molva stats</code> turns it into averages, a personal record and a daily picture</p>
+        </article>
+        <article class="card">
+          <h3>History that comes back</h3>
+          <p class="muted"><code>molva history paste --last</code> puts the previous phrase into the field again without a second dictation. Filters by app and time, export to JSONL or CSV, delete one line or clear all of it</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="privacy-feature">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="kicker">Privacy and portability</span>
+        <h2 id="privacy-feature">Local by construction, not by a setting</h2>
+      </div>
+      <div class="grid grid-3">
+        <article class="card">
+          <h3>Microphone discipline</h3>
+          <p class="muted">The device opens on the press and closes on the release. The close does not depend on how the phrase ended, and its delay is measured and journaled</p>
+        </article>
+        <article class="card">
+          <h3>Encryption and no-record mode</h3>
+          <p class="muted">The journal texts can be sealed with XChaCha20-Poly1305 and a key in the OS store or a 0600 file. The statistics keep working without the key. No-record mode writes nothing at all</p>
+        </article>
+        <article class="card">
+          <h3>Offline</h3>
+          <p class="muted">Only the weight download and a cloud model provider use the network, and both wait for your command or your configuration. Everything else works with the cable out</p>
+        </article>
+        <article class="card">
+          <h3>Nix first</h3>
+          <p class="muted">The flake gives a dev shell, a package and a Home Manager module. The module renders the settings file and the weights into the store, runs the daemon as a user service and writes the Hyprland binds</p>
+        </article>
+        <article class="card">
+          <h3>Other systems</h3>
+          <p class="muted">Ready builds exist for Linux, Windows and macOS, and the installer checks dependencies instead of installing them. The paste chain falls back to the clipboard when the compositor refuses</p>
+        </article>
+        <article class="card">
+          <h3>Model choice</h3>
+          <p class="muted">GigaAM-v3 by default, whisper.cpp models when you want them. Downloads are checked against a SHA-256 from the catalog, and <code>stt.models_mirror</code> serves the same file from a local network</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="limits">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="kicker">Limits</span>
+        <h2 id="limits">What it does not do yet</h2>
+        <p>The project is in development. A feature list without a cut list is marketing, so the cut list lives in the open</p>
+      </div>
+      <div class="callout warn">
+        <span class="callout-title">Read the status page before you rely on a feature</span>
+        <p>Known gaps include the Windows and macOS checks on live hardware, which the status log lists as unverified. The releases carry CUDA builds for Windows only. The canonical list is <a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a>, summarized on the <a href="./docs/status.html">status page</a></p>
+      </div>
+      <div class="grid grid-2">
+        <article class="card">
+          <h3>Speech in the middle of a phrase</h3>
+          <p class="muted">A whole English sentence inside a Russian phrase is not read as English. Latin insertions and terms work, and the language is chosen once per phrase</p>
+        </article>
+        <article class="card">
+          <h3>Pre-roll audio</h3>
+          <p class="muted">The first syllable you say before the microphone opens is lost. A pre-roll needs a permanently open stream, and this project keeps the microphone closed</p>
+        </article>
+      </div>
+      <div class="to-top"><a href="#main">Back to top</a></div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <div class="footer-brand">
+      <a class="brand" href="./index.html">
+        <img src="./assets/logo.svg" alt="" width="26" height="26">
+        <span>Molv<span class="brand-ai">AI</span></span>
+      </a>
+      <p>Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
+      <p class="footer-note">MIT licensed · no trackers · no external fonts</p>
+    </div>
+    <nav aria-label="Project links">
+      <p class="footer-title">Project</p>
+      <ul>
+        <li><a href="https://github.com/rokokol/MolvAI">GitHub</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/releases">Releases</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE">License (MIT)</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/issues">Issues</a></li>
+      </ul>
+    </nav>
+    <nav aria-label="Site links">
+      <p class="footer-title">Site</p>
+      <ul>
+        <li><a href="./features.html">Features</a></li>
+        <li><a href="./models.html">Models</a></li>
+        <li><a href="./cli.html">CLI reference</a></li>
+        <li><a href="./docs/index.html">Documentation</a></li>
+        <li><a href="./faq.html">FAQ</a></li>
+        <li><a href="./docs/status.html">Status and roadmap</a></li>
+      </ul>
+    </nav>
+    <div>
+      <p class="footer-title">Canonical docs</p>
+      <p class="footer-note">The repository is the source of truth. These pages summarize it and link back</p>
+      <ul>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/CHANGELOG.md">CHANGELOG</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="wrap footer-credit">
+    <p>MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
+    <p>This site runs without cookies, analytics or third-party assets</p>
+  </div>
+</footer>
+</body>
+</html>

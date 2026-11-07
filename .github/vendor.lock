@@ -7,3 +7,7 @@ check-pins.sh rokokol/ci-skill templates/check-pins.sh 50429c30159553c635ab0020c
 scripts/t.sh rokokol/tests-skill t.sh 9fcde010a74664014fdd1bf54cad3dc47b565430 5f7deb30e49cbebca1f0bf0e36ce2c2d481e91af
 scripts/markers/ rokokol/tests-skill markers/ f82cadb0c1a297a37f322cb03a5b13f0d528ab45 65d141bbf07ecb99a3bd6ebfe4e0d3050a2c1ab4
 .github/workflows/vendor-sync.yml rokokol/ci-skill templates/github/workflows/vendor-sync.yml d55020ab3ca780ea6299336d923b8a3fcb8f491d a5bde77f98d55a43b2c993f4c96a952e0b68010d manual
+.github/workflows/flakehub-publish.yml rokokol/ci-skill templates/github/workflows/flakehub-publish.yml 500307ed9ea72875ca08da769829089069c2a747 407d7ebc264a8fe16ee2aa2fe2f31863255f3de7 manual
+scripts/check-comments.sh rokokol/code-comments-skill check-comments.sh 8ccc6f74dd074afae844c94692d90685686199c0 0f4b375fe91b86a1ddfe1b447667ad98133afcb6
+scripts/check-prose.sh rokokol/create-readme-skill check-prose.sh 613639eb6ec2a73209bb1f7d1ba103e9d1c90db7 0438eca6ca155baf2b5fbbd8157747ec3619b579
+scripts/check-sh.sh rokokol/bash-best-practices-skill check-sh.sh 1045482d25b5f2ec63655c62a45ca3961317c00d 37cb4b54dc245288c711b9665c9b4aedc496b1ce

@@ -4,8 +4,9 @@
 //! The subcommands live in `cmd/`. This file has only the argument parsing and the exit codes
 
 // In tests a panic is the way to report a failure, not an unhandled error. An exact
-// comparison of floating-point numbers is legal (the test compares a computed value with a constant
-// that the test itself set), and printing measurements to stdout is the report of a measuring test
+// comparison of floating-point numbers is legal: the test compares a computed value with a
+// constant that the test itself set. Printing measurements to stdout is the report of a
+// measuring test
 #![cfg_attr(
     test,
     allow(
@@ -36,7 +37,8 @@ mod exit {
     pub(crate) const BUSY: u8 = 4;
     pub(crate) const ENGINE: u8 = 5;
     pub(crate) const FILE: u8 = 6;
-    /// The daemon is already running: the second copy exits with a message and does not fight for the microphone
+    /// The daemon is already running: the second copy exits with a message and does not fight
+    /// for the microphone
     pub(crate) const ALREADY_RUNNING: u8 = 7;
 }
 
@@ -82,7 +84,8 @@ enum Commands {
     },
     /// Start the daemon
     Daemon {
-        /// Notifications go to the log instead of the desktop; the process does not go to the background in any case
+        /// Notifications go to the log instead of the desktop; the process does not go to the
+        /// background in any case
         #[arg(long)]
         foreground: bool,
     },
@@ -102,6 +105,8 @@ enum Commands {
     },
     /// Transcribe an audio file, a directory or a stream from standard input
     Transcribe(cmd::transcribe::Args),
+    /// Find text in the transcriptions of audio and video files
+    Search(cmd::search::Args),
     /// Speech recognition model weights
     Models {
         #[command(subcommand)]
@@ -219,7 +224,8 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         None => Config::default_path()?,
     };
     let socket = cmd::daemon::resolve_socket(cli.socket);
-    // The settings are read leniently: a damaged file must not stop the user from viewing the history
+    // The settings are read leniently: a damaged file must not stop the user from viewing the
+    // history
     let config = || -> anyhow::Result<Config> {
         let (config, warning) = Config::load_lenient(&config_path)?;
         if let Some(warning) = warning {
@@ -260,6 +266,10 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         Commands::Transcribe(args) => {
             let config = Config::load(&config_path)?;
             Ok(cmd::transcribe::run(&args, &config, &config_path)?)
+        }
+        Commands::Search(args) => {
+            let mut stdout = std::io::stdout().lock();
+            Ok(cmd::search::run(&args, &config()?, &mut stdout)?)
         }
         Commands::Models { action } => {
             let config = Config::load(&config_path)?;

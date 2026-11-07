@@ -2,7 +2,7 @@
 // Pure presentation functions and chart geometry.
 // The core in Rust computes everything it can compute. Here we only format
 
-import type { DayPoint, DownloadProgress } from "./types";
+import type { DayPoint, DownloadProgress, FileResult } from "./types";
 
 /** Pace with one decimal digit; a missing value becomes a dash */
 export function formatWpm(value: number | null | undefined, dash = "—"): string {
@@ -165,4 +165,31 @@ export function chartGeometry(
 /** Round axis labels: zero, the middle and the maximum */
 export function axisTicks(max: number): number[] {
   return [0, Math.round(max / 2), Math.round(max)];
+}
+
+/** A moment of the recording as `MM:SS.mmm`; minutes may pass 59 for a long file */
+export function formatTimecode(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) {
+    return "00:00.000";
+  }
+  const total = Math.floor(ms / 1000);
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(Math.floor(ms) % 1000).padStart(3, "0")}`;
+}
+
+/** The text of a file transcription, with a timecode per segment when asked */
+export function renderFileResult(result: FileResult, timecodes: boolean): string {
+  if (!timecodes) {
+    return result.text;
+  }
+  if (!result.segments || result.segments.length === 0) {
+    return `[${formatTimecode(0)} → ${formatTimecode(result.audio_secs * 1000)}] ${result.text}`;
+  }
+  return result.segments
+    .map(
+      (segment) =>
+        `[${formatTimecode(segment.start_ms)} → ${formatTimecode(segment.end_ms)}] ${segment.text.trim()}`,
+    )
+    .join("\n");
 }

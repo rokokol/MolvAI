@@ -1,110 +1,69 @@
 // SPDX-License-Identifier: MIT
-//! Catalog of whisper.cpp model weights: where they live, where to download them, how to check
+//! Catalog of recognition weights: where they live, where to download them, how to check
 //! them
 //!
-//! The weights download from Hugging Face over HTTPS or from the mirror in `stt.models_mirror`,
-//! and only against a known SHA-256. The hashes are fixed in the catalog from the LFS pointers
-//! of the `ggerganov/whisper.cpp` repository. So a replaced or incomplete file never reaches
-//! the disk, even if the mirror serves it over `http://`. The download goes to
-//! `<name>.bin.part` and is renamed only after a successful check. An interrupted download
-//! resumes with a `Range` request
+//! The list is `models.toml` at the repository root: the CLI and the GUI read it at run
+//! time, and the Nix module reads the same file to fetch weights into the store. The
+//! weights download from Hugging Face over HTTPS or from the mirror in `stt.models_mirror`,
+//! and only against a known SHA-256. So a replaced or incomplete file never reaches the
+//! disk, even if the mirror serves it over `http://`. The download goes to `<name>.part`
+//! and is renamed only after a successful check. An interrupted download resumes with a
+//! `Range` request
 
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::time::{Duration, SystemTime};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
+use tracing::error;
 
 use crate::config::Config;
 
-/// Base address of the weights; a separate constant, so it is visible in the docs and in tests
+/// Base address of the whisper weights; a separate constant, so it is visible in the docs
 pub const HF_BASE: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
 
 /// Size of a chunk when reading the network and when computing the hash
 const CHUNK: usize = 64 * 1024;
 
 /// Description of one set of weights
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelInfo {
     /// Name for the CLI and the config: `small`, `large-v3-turbo-q5_0`
-    pub name: &'static str,
-    pub file_name: &'static str,
-    pub url: &'static str,
+    pub name: String,
+    pub file_name: String,
+    pub url: String,
     pub size_bytes: u64,
     /// Expected SHA-256 of the file, lower case, 64 hex characters
-    pub sha256: &'static str,
+    pub sha256: String,
+    /// Recognizer that can run these weights: `whisper-cpp` or `transcribe-cpp`
+    pub engine: String,
+    /// Language the model is trained for, when it is not multilingual
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
 }
 
-/// Catalog of models. The sizes and hashes come from the Hugging Face LFS pointers of 2026-09-05
-pub const CATALOG: &[ModelInfo] = &[
-    ModelInfo {
-        name: "tiny",
-        file_name: "ggml-tiny.bin",
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin",
-        size_bytes: 77_691_713,
-        sha256: "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21",
-    },
-    ModelInfo {
-        name: "base",
-        file_name: "ggml-base.bin",
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
-        size_bytes: 147_951_465,
-        sha256: "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
-    },
-    ModelInfo {
-        name: "small",
-        file_name: "ggml-small.bin",
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
-        size_bytes: 487_601_967,
-        sha256: "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
-    },
-    ModelInfo {
-        name: "small-q5_1",
-        file_name: "ggml-small-q5_1.bin",
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin",
-        size_bytes: 190_085_487,
-        sha256: "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb",
-    },
-    ModelInfo {
-        name: "medium",
-        file_name: "ggml-medium.bin",
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin",
-        size_bytes: 1_533_763_059,
-        sha256: "6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208",
-    },
-    ModelInfo {
-        name: "large-v3-turbo",
-        file_name: "ggml-large-v3-turbo.bin",
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
-        size_bytes: 1_624_555_275,
-        sha256: "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
-    },
-    ModelInfo {
-        name: "large-v3-turbo-q5_0",
-        file_name: "ggml-large-v3-turbo-q5_0.bin",
-        url:
-            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
-        size_bytes: 574_041_195,
-        sha256: "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
-    },
-    ModelInfo {
-        name: "large-v3-turbo-q8_0",
-        file_name: "ggml-large-v3-turbo-q8_0.bin",
-        url:
-            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q8_0.bin",
-        size_bytes: 874_188_075,
-        sha256: "317eb69c11673c9de1e1f0d459b253999804ec71ac4c23c17ecf5fbe24e259a1",
-    },
-    ModelInfo {
-        name: "large-v3",
-        file_name: "ggml-large-v3.bin",
-        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin",
-        size_bytes: 3_095_033_483,
-        sha256: "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2",
-    },
-];
+#[derive(Debug, Deserialize)]
+struct CatalogFile {
+    model: Vec<ModelInfo>,
+}
+
+/// The catalog, parsed once from the file that the flake also reads
+pub fn catalog() -> &'static [ModelInfo] {
+    static CATALOG: OnceLock<Vec<ModelInfo>> = OnceLock::new();
+    CATALOG.get_or_init(|| {
+        let text = include_str!("../../../../models.toml");
+        match toml::from_str::<CatalogFile>(text) {
+            Ok(file) => file.model,
+            Err(err) => {
+                error!(error = %err, "models.toml cannot be read; the catalog is empty");
+                Vec::new()
+            }
+        }
+    })
+}
 
 #[derive(Debug, Error)]
 pub enum ModelError {
@@ -146,7 +105,7 @@ pub struct ModelStatus {
 
 /// Find a model by name
 pub fn find(name: &str) -> Result<&'static ModelInfo, ModelError> {
-    CATALOG
+    catalog()
         .iter()
         .find(|m| m.name == name)
         .ok_or_else(|| ModelError::UnknownModel {
@@ -157,9 +116,9 @@ pub fn find(name: &str) -> Result<&'static ModelInfo, ModelError> {
 
 /// List of the catalog names, separated by commas, for hints in errors
 pub fn known_names() -> String {
-    CATALOG
+    catalog()
         .iter()
-        .map(|m| m.name)
+        .map(|m| m.name.as_str())
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -178,7 +137,7 @@ pub fn models_dir(cfg: &Config) -> Result<PathBuf, ModelError> {
 /// Path to the file of a given model, whether it is downloaded or not
 pub fn model_path(cfg: &Config, name: &str) -> Result<PathBuf, ModelError> {
     let info = find(name)?;
-    Ok(models_dir(cfg)?.join(info.file_name))
+    Ok(models_dir(cfg)?.join(info.file_name.clone()))
 }
 
 /// Path to an installed model; otherwise an error with the download command (O-03)
@@ -195,13 +154,13 @@ pub fn installed_path(cfg: &Config, name: &str) -> Result<PathBuf, ModelError> {
 
 /// Which models of the catalog are on disk
 pub fn list(directory: &Path) -> Vec<ModelStatus> {
-    CATALOG
+    catalog()
         .iter()
         .map(|info| {
-            let path = directory.join(info.file_name);
+            let path = directory.join(info.file_name.clone());
             let size_on_disk = std::fs::metadata(&path).map_or(0, |m| m.len());
             ModelStatus {
-                info: *info,
+                info: info.clone(),
                 installed: size_on_disk > 0,
                 size_on_disk,
                 path,
@@ -213,7 +172,7 @@ pub fn list(directory: &Path) -> Vec<ModelStatus> {
 /// Remove an installed model; returns the path of the removed file
 pub fn remove(name: &str, directory: &Path) -> Result<PathBuf, ModelError> {
     let info = find(name)?;
-    let path = directory.join(info.file_name);
+    let path = directory.join(info.file_name.clone());
     if !path.exists() {
         return Err(ModelError::NotInstalled {
             model: name.to_string(),
@@ -271,8 +230,8 @@ pub fn pull(
     download_verified(
         &download_url(info, mirror),
         directory,
-        info.file_name,
-        info.sha256,
+        &info.file_name,
+        &info.sha256,
         name,
         progress,
     )
@@ -282,7 +241,7 @@ pub fn pull(
 pub fn download_url(info: &ModelInfo, mirror: &str) -> String {
     let mirror = mirror.trim();
     if mirror.is_empty() {
-        return info.url.to_string();
+        return info.url.clone();
     }
     format!("{}/{}", mirror.trim_end_matches('/'), info.file_name)
 }
@@ -293,7 +252,7 @@ pub fn download_url(info: &ModelInfo, mirror: &str) -> String {
 /// would look like an endless download stuck at one percent
 pub const ACTIVE_DOWNLOAD_WINDOW: Duration = Duration::from_secs(15);
 
-/// Download of a model that this process or another process runs now
+/// Download of a model that this process or another process runs
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DownloadProgress {
     pub model: String,
@@ -313,7 +272,7 @@ pub fn partial_path(directory: &Path, file_name: &str) -> PathBuf {
 /// or the GUI
 pub fn active_download(cfg: &Config, name: &str, now: SystemTime) -> Option<DownloadProgress> {
     let info = find(name).ok()?;
-    let metadata = std::fs::metadata(partial_path(&models_dir(cfg).ok()?, info.file_name)).ok()?;
+    let metadata = std::fs::metadata(partial_path(&models_dir(cfg).ok()?, &info.file_name)).ok()?;
     // A clock that went backwards gives an error: such a file counts as fresh, not abandoned
     let idle = now
         .duration_since(metadata.modified().ok()?)
@@ -322,7 +281,7 @@ pub fn active_download(cfg: &Config, name: &str, now: SystemTime) -> Option<Down
         return None;
     }
     Some(DownloadProgress {
-        model: info.name.to_string(),
+        model: info.name.clone(),
         downloaded: metadata.len(),
         total: info.size_bytes.max(metadata.len()),
     })
@@ -509,12 +468,12 @@ mod tests {
 
     #[test]
     fn catalog_names_are_unique_and_hashes_look_like_sha256() {
-        let mut names: Vec<_> = CATALOG.iter().map(|m| m.name).collect();
+        let mut names: Vec<_> = catalog().iter().map(|m| m.name.clone()).collect();
         names.sort_unstable();
         let before = names.len();
         names.dedup();
         assert_eq!(names.len(), before, "model names repeat");
-        for m in CATALOG {
+        for m in catalog() {
             assert_eq!(m.sha256.len(), 64, "{}: {}", m.name, m.sha256);
             assert!(
                 m.sha256.chars().all(|c| c.is_ascii_hexdigit()),
@@ -524,7 +483,7 @@ mod tests {
             assert!(m.size_bytes > 1_000_000, "{}: suspicious size", m.name);
             assert!(m.url.starts_with("https://"), "{}: not HTTPS", m.name);
             assert!(
-                m.url.ends_with(m.file_name),
+                m.url.ends_with(&m.file_name),
                 "{}: the url and the file differ",
                 m.name
             );
@@ -537,6 +496,19 @@ mod tests {
         let text = err.to_string();
         assert!(text.contains("huge"), "{text}");
         assert!(text.contains("large-v3-turbo"), "{text}");
+    }
+
+    #[test]
+    fn gigaam_is_the_russian_default_at_the_agents_quantization() {
+        let info = find("gigaam-v3-e2e-rnnt-q4_k_m").expect("GigaAM is in the catalog");
+        assert_eq!(info.engine, "transcribe-cpp");
+        assert_eq!(info.language.as_deref(), Some("ru"));
+        assert_eq!(info.size_bytes, 183_948_704);
+        assert_eq!(
+            info.sha256,
+            "7d69952fb431a8d7800ed9910dc61fea37d84066fe96d10bf24c8bd4b7c68623"
+        );
+        assert!(info.file_name.ends_with("-Q4_K_M.gguf"));
     }
 
     #[test]
@@ -562,7 +534,7 @@ mod tests {
         let cfg = config_in(directory.path());
         let info = find("small").unwrap();
         std::fs::write(
-            partial_path(directory.path(), info.file_name),
+            partial_path(directory.path(), &info.file_name),
             vec![0u8; 4096],
         )
         .unwrap();
@@ -588,7 +560,7 @@ mod tests {
     fn a_part_file_left_by_an_interrupted_download_is_not_active() {
         let directory = tempfile::tempdir().unwrap();
         let cfg = config_in(directory.path());
-        let part = partial_path(directory.path(), find("small").unwrap().file_name);
+        let part = partial_path(directory.path(), &find("small").unwrap().file_name);
         std::fs::write(&part, vec![0u8; 4096]).unwrap();
         let later = SystemTime::now() + ACTIVE_DOWNLOAD_WINDOW + Duration::from_secs(1);
         assert_eq!(active_download(&cfg, "small", later), None);
@@ -599,8 +571,8 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let cfg = config_in(directory.path());
         // Every model of the catalog can download: an unknown name must not take another download
-        for info in CATALOG {
-            std::fs::write(partial_path(directory.path(), info.file_name), b"x").unwrap();
+        for info in catalog() {
+            std::fs::write(partial_path(directory.path(), &info.file_name), b"x").unwrap();
         }
         assert_eq!(active_download(&cfg, "huge", SystemTime::now()), None);
     }
@@ -843,7 +815,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         std::fs::write(directory.path().join("ggml-tiny.bin"), vec![0u8; 42]).unwrap();
         let statuses = list(directory.path());
-        assert_eq!(statuses.len(), CATALOG.len());
+        assert_eq!(statuses.len(), catalog().len());
         let tiny = statuses.iter().find(|s| s.info.name == "tiny").unwrap();
         assert!(tiny.installed);
         assert_eq!(tiny.size_on_disk, 42);

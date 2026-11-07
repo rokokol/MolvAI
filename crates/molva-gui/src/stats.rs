@@ -14,7 +14,7 @@ use molva_core::domain::entry::MIN_AUDIO_SECS_FOR_WPM;
 use molva_core::domain::Entry;
 use serde::{Deserialize, Serialize};
 
-/// An application that we cannot identify appears as one row
+/// An application with no identifiable name appears as one row
 pub const UNKNOWN_APP: &str = "unknown";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -316,6 +316,7 @@ mod tests {
             text_raw: None,
             text_final: None,
             audio_path: None,
+            segments: Vec::new(),
         }
     }
 

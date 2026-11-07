@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CLI guide — MolvAI documentation</title>
+<meta name="description" content="Recipes for the molva command: dictation from a bind, file transcription with timecodes, search, history, models, diagnostics and settings">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0a0c12">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/site.css">
+<script src="../assets/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="../index.html" aria-label="MolvAI home">
+      <img src="../assets/logo.svg" alt="" width="26" height="26">
+      <span>Molv<span class="brand-ai">AI</span></span>
+    </a>
+    <nav class="site-nav" id="site-nav" aria-label="Main">
+      <a href="../index.html">Home</a>
+      <a href="../features.html">Features</a>
+      <a href="../models.html">Models</a>
+      <a href="../cli.html">CLI</a>
+      <a href="./index.html" aria-current="page">Docs</a>
+      <a href="../faq.html">FAQ</a>
+      <a href="./status.html">Status</a>
+      <a class="nav-github" href="https://github.com/rokokol/MolvAI"><img src="../assets/icon-github.svg" alt="" width="15" height="15">GitHub</a>
+    </nav>
+    <div class="header-tools">
+      <button class="icon-btn theme-toggle" type="button" data-theme-toggle aria-label="Switch between dark and light theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="12" cy="12" r="8"></circle>
+          <path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"></path>
+        </svg>
+      </button>
+      <button class="icon-btn menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="site-nav">
+        <span class="menu-bars" aria-hidden="true"></span>
+        <span class="visually-hidden">Menu</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="wrap doc-layout">
+  <aside class="doc-nav" aria-label="Documentation">
+    <p class="doc-nav-title">Documentation</p>
+    <ul>
+      <li><a href="./index.html">Overview</a></li>
+      <li><a href="./install.html">Install and first run</a></li>
+      <li><a href="./models.html">Models and GigaAM</a></li>
+      <li><a href="./hotkeys.html">Hotkeys and compositors</a></li>
+      <li><a href="./settings.html">Settings and Nix mode</a></li>
+      <li><a href="./cli.html" aria-current="page">CLI guide</a></li>
+      <li><a href="./privacy.html">Privacy and journal</a></li>
+      <li><a href="./troubleshooting.html">Troubleshooting</a></li>
+      <li><a href="./status.html">Status and roadmap</a></li>
+    </ul>
+    <p class="doc-nav-title">Elsewhere</p>
+    <ul>
+      <li><a href="../cli.html">CLI reference</a></li>
+      <li><a href="../models.html">Model catalog</a></li>
+      <li><a href="../index.html">Home</a></li>
+    </ul>
+  </aside>
+
+  <article class="doc-body prose">
+    <h1>CLI guide</h1>
+    <p class="canonical">Canonical source: <a href="https://github.com/rokokol/MolvAI/blob/main/crates/molva/src/main.rs">crates/molva/src/main.rs</a> and <code>molva &lt;command&gt; --help</code></p>
+
+    <p>Recipes for the tasks people actually run. Every option is listed once, on the <a href="../cli.html">CLI reference</a>, so this page stays about intent</p>
+
+    <h2>Dictate without a hotkey</h2>
+    <p>The daemon must be running. The commands are the same ones a compositor bind calls, and they return before the phrase is finished</p>
+    <div class="cmd"><code>molva record start</code><button class="copy" type="button" data-copy="molva record start">Copy</button></div>
+    <div class="cmd"><code>molva record stop</code><button class="copy" type="button" data-copy="molva record stop">Copy</button></div>
+    <p>A cancel throws the audio away and creates no journal line</p>
+    <div class="cmd"><code>molva record cancel</code><button class="copy" type="button" data-copy="molva record cancel">Copy</button></div>
+    <p><code>molva record toggle --mode command</code> edits the selected text instead of dictating at the cursor</p>
+
+    <h2>Put the last phrase into a field again</h2>
+    <p>No second dictation and no clipboard trip by hand</p>
+    <div class="cmd"><code>molva history paste --last</code><button class="copy" type="button" data-copy="molva history paste --last">Copy</button></div>
+    <p>An identifier from <code>molva history</code> works in place of <code>--last</code>, and its beginning is enough</p>
+
+    <h2>Transcribe a folder of recordings</h2>
+    <p>The input may be audio or video. One unreadable file does not cancel the batch; the exit code 6 reports that not everything went through</p>
+    <div class="cmd"><code>molva transcribe talks/ --recursive --timecodes -o talks/transcripts/</code><button class="copy" type="button" data-copy="molva transcribe talks/ --recursive --timecodes -o talks/transcripts/">Copy</button></div>
+    <p>For a pipeline, ask for JSON on stdout. The format hint helps with a stream that has no file name</p>
+    <div class="cmd"><code>cat recording.opus | molva transcribe - --stdin-format ogg --json</code><button class="copy" type="button" data-copy="cat recording.opus | molva transcribe - --stdin-format ogg --json">Copy</button></div>
+    <p>The result also enters the journal, which is what makes the search work later</p>
+
+    <h2>Find something you recorded</h2>
+    <div class="cmd"><code>molva search "release date" --since 7d</code><button class="copy" type="button" data-copy="molva search &quot;release date&quot; --since 7d">Copy</button></div>
+    <p>A hit prints the source file and the timecode of the segment that holds the match. <code>--json</code> gives the same as an array for a script, and an empty query lists the newest transcriptions</p>
+
+    <h2>Read and export the history</h2>
+    <div class="cmd"><code>molva history --limit 5 --format plain</code><button class="copy" type="button" data-copy="molva history --limit 5 --format plain">Copy</button></div>
+    <div class="cmd"><code>molva history export history.csv</code><button class="copy" type="button" data-copy="molva history export history.csv">Copy</button></div>
+    <p><code>--app</code> and the time window narrow the list, <code>--search</code> looks inside the text. A CSV export opens in a spreadsheet, and a JSONL export is the journal itself</p>
+
+    <h2>Manage the weights</h2>
+    <div class="cmd"><code>molva models list</code><button class="copy" type="button" data-copy="molva models list">Copy</button></div>
+    <div class="cmd"><code>molva models pull gigaam-v3-e2e-rnnt-q4_k_m</code><button class="copy" type="button" data-copy="molva models pull gigaam-v3-e2e-rnnt-q4_k_m">Copy</button></div>
+    <div class="cmd"><code>molva models verify gigaam-v3-e2e-rnnt-q4_k_m</code><button class="copy" type="button" data-copy="molva models verify gigaam-v3-e2e-rnnt-q4_k_m">Copy</button></div>
+    <p>The list marks what is already on disk. <code>verify</code> rechecks the checksum, <code>path</code> prints the file location, and <code>remove</code> deletes one file</p>
+
+    <h2>Diagnose a quiet machine</h2>
+    <div class="cmd"><code>molva doctor</code><button class="copy" type="button" data-copy="molva doctor">Copy</button></div>
+    <div class="cmd"><code>molva status --json</code><button class="copy" type="button" data-copy="molva status --json">Copy</button></div>
+    <div class="cmd"><code>molva test-inject</code><button class="copy" type="button" data-copy="molva test-inject">Copy</button></div>
+    <p>The doctor explains its findings line by line. <code>status --watch</code> follows the daemon events when a phrase seems to vanish</p>
+
+    <h2>Change a setting</h2>
+    <div class="cmd"><code>molva config set output.mode clipboard</code><button class="copy" type="button" data-copy="molva config set output.mode clipboard">Copy</button></div>
+    <div class="cmd"><code>molva config reload</code><button class="copy" type="button" data-copy="molva config reload">Copy</button></div>
+    <p>Profile export and import move a working setup to another machine. The model, the engine and the paste chain need a daemon restart, because they are built at start</p>
+
+    <h2>Script against it</h2>
+    <p>Use the exit code, not the text. A bind shows nothing to the user, but a script sees the number</p>
+    <div class="table-wrap">
+      <table>
+        <caption>Exit codes, repeated here because scripts depend on them</caption>
+        <thead><tr><th scope="col" class="num">Code</th><th scope="col">Meaning</th></tr></thead>
+        <tbody>
+          <tr><td class="num">0</td><td>Everything worked</td></tr>
+          <tr><td class="num">2</td><td>Wrong arguments or an unknown name</td></tr>
+          <tr><td class="num">3</td><td>The daemon is not running or does not answer</td></tr>
+          <tr><td class="num">4</td><td>The daemon is busy with the previous phrase</td></tr>
+          <tr><td class="num">5</td><td>Error of the recognition engine</td></tr>
+          <tr><td class="num">6</td><td>Could not read or write a file</td></tr>
+          <tr><td class="num">7</td><td>The daemon is already running</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>The machine-readable flags are <code>--json</code> on <code>history</code>, <code>status</code>, <code>stats</code>, <code>models list</code>, <code>transcribe</code> and <code>search</code>. Completion scripts come from <code>molva completions bash</code> and its siblings</p>
+
+    <p class="to-top"><a href="./privacy.html">Next: privacy and journal →</a> · <a href="#main">Back to top</a></p>
+  </article>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <div class="footer-brand">
+      <a class="brand" href="../index.html">
+        <img src="../assets/logo.svg" alt="" width="26" height="26">
+        <span>Molv<span class="brand-ai">AI</span></span>
+      </a>
+      <p>Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
+      <p class="footer-note">MIT licensed · no trackers · no external fonts</p>
+    </div>
+    <nav aria-label="Project links">
+      <p class="footer-title">Project</p>
+      <ul>
+        <li><a href="https://github.com/rokokol/MolvAI">GitHub</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/releases">Releases</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE">License (MIT)</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/issues">Issues</a></li>
+      </ul>
+    </nav>
+    <nav aria-label="Site links">
+      <p class="footer-title">Site</p>
+      <ul>
+        <li><a href="../features.html">Features</a></li>
+        <li><a href="../models.html">Models</a></li>
+        <li><a href="../cli.html">CLI reference</a></li>
+        <li><a href="./index.html">Documentation</a></li>
+        <li><a href="../faq.html">FAQ</a></li>
+        <li><a href="./status.html">Status and roadmap</a></li>
+      </ul>
+    </nav>
+    <div>
+      <p class="footer-title">Canonical docs</p>
+      <p class="footer-note">The repository is the source of truth. These pages summarize it and link back</p>
+      <ul>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/CHANGELOG.md">CHANGELOG</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="wrap footer-credit">
+    <p>MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
+    <p>This site runs without cookies, analytics or third-party assets</p>
+  </div>
+</footer>
+</body>
+</html>

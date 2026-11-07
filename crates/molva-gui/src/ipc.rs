@@ -2,7 +2,7 @@
 //! Minimal IPC client of the daemon: newline-delimited JSON over a local socket
 //!
 //! Replaced by `molva_core::infra::ipc::Client` when track F moves the transport to the core.
-//! Here we deliberately keep only what the GUI needs: a one-shot request and a subscription
+//! The client deliberately keeps only what the GUI needs: a one-shot request and a subscription
 //! stream
 
 use std::io::{BufRead, BufReader, Write};

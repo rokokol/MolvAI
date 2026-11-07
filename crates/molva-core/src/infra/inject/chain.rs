@@ -296,7 +296,7 @@ impl TextInjector for ChainInjector {
         }
 
         if mode == OutputMode::Type && unsupported_chars {
-            // Cyrillic cannot be typed blindly — for this phrase we switch to paste
+            // Cyrillic cannot be typed blindly, so this phrase goes through paste instead
             let mut ignored = false;
             if let Some(mut report) =
                 self.try_chain(text, OutputMode::Paste, &mut attempts, &mut ignored)

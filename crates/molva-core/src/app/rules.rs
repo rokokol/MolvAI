@@ -795,8 +795,7 @@ impl TextRule for NumbersAsDigits {
                     index += len;
                 }
                 Some((len, None)) => {
-                    // The chain is recognized, but it must not be written in digits: we keep the
-                    // words
+                    // An ordinal follows the chain, so digits would break it: the words stay
                     out.extend(tokens[index..index + len].iter().cloned());
                     index += len;
                 }
@@ -1051,8 +1050,6 @@ impl TextRule for Capitalize {
         out
     }
 }
-
-// --- Rule set -------------------------------------------------------------------------------
 
 /// Set of rules in a fixed order, built from the settings
 pub struct RuleSet {

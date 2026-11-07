@@ -1,6 +1,6 @@
 name: release
 
-# The only workflow with the right to write to the repository: it and only it creates a release
+# The only workflow with the right to write to the repository: it and only it creates a release.
 # It runs on a tag vX.Y.Z, and a manual run is a rehearsal without publication
 on:
   push:
@@ -18,8 +18,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # A tag is not released until the gate has passed: we call the real workflow,
-  # not a copy of its steps
+  # A tag is not released until the gate has passed. The job calls the real workflow, not a
+  # copy of its steps: a copy drifts from the original
   gate:
     uses: ./.github/workflows/build.yml
 
@@ -64,8 +64,8 @@ jobs:
       matrix:
         include:
           # The oldest supported LTS: the binary needs a glibc no newer than the one it is
-          # built on. On ubuntu-24.04 this is 2.39, and the appimage.github.io catalog, which checks
-          # the AppImage on ubuntu-22.04, rejected an image with GLIBC_2.39 not found
+          # built on. On ubuntu-24.04 this is 2.39, and the appimage.github.io catalog, which
+          # checks the AppImage on ubuntu-22.04, rejected an image with GLIBC_2.39 not found.
           # Vulkan runs whisper on a video card of any vendor, and without a Vulkan
           # device whisper.cpp falls back to the processor by itself
           - os: ubuntu-22.04
@@ -87,9 +87,10 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
             librsvg2-dev libasound2-dev libxkbcommon-dev libwayland-dev \
-            cmake patchelf squashfs-tools libvulkan-dev libclang-dev
+            cmake patchelf squashfs-tools libvulkan-dev libclang-dev zsync
 
-      # The ggml-vulkan shaders are compiled by glslc from the Vulkan SDK: Ubuntu 22.04 has no glslc package
+      # The ggml-vulkan shaders are compiled by glslc from the Vulkan SDK: Ubuntu 22.04 has no
+      # glslc package
       - uses: jakoch/install-vulkan-sdk-action@v1.7.0
         if: contains(matrix.features, 'vulkan')
         with:
@@ -102,8 +103,9 @@ jobs:
           rustup target add ${{ matrix.target }}
 
       # The ready bindings of whisper-rs match the ABI of macOS, but they have no
-      # ggml_backend_vk_* functions: for a Vulkan build, libclang generates the bindings. On Windows the layout of
-      # structures is different, and the bindings are always generated there
+      # ggml_backend_vk_* functions: for a Vulkan build, libclang generates the bindings.
+      # On Windows the layout of structures is different, and the bindings are always
+      # generated there
       - name: whisper-rs bindings from the crate (macOS)
         if: runner.os == 'macOS'
         shell: bash
@@ -115,7 +117,8 @@ jobs:
         run: printf 'LIBCLANG_PATH=%s\n' 'C:\Program Files\LLVM\bin' >> "$GITHUB_ENV"
 
       # The release for x86_64 is built for the portable x86-64-v3 (AVX2/FMA/F16C), not for the
-      # processor of the runner: otherwise the binary either crashes on another machine, or without SIMD is 20 times slower
+      # processor of the runner. Otherwise the binary either crashes on another machine, or
+      # without SIMD is 20 times slower
       - name: whisper.cpp SIMD for x86_64
         if: runner.arch == 'X64'
         shell: bash
@@ -128,15 +131,17 @@ jobs:
             echo "GGML_F16C=ON"
           } >> "$GITHUB_ENV"
 
-      # The runner image is in the key: build scripts built on a newer image do not run
-      # on an older one because of the glibc version
+      # The runner image is in the key. A build script built on a newer image does not run on
+      # an older one, because of the glibc version
       - uses: Swatinem/rust-cache@v2
         with:
           key: release-${{ matrix.os }}-${{ matrix.target }}
 
-      # One version for everything: the tag v<version> must match [workspace.package] version,
-      # otherwise the CLI and the GUI packages come out under the old number, as happened with v0.1.1 and v0.1.2
-      # A manual run goes from a branch, not from a tag: there is nothing to compare with, and nothing is published
+      # One version for everything: the tag v<version> must match [workspace.package] version.
+      # Otherwise the CLI and the GUI packages come out under the old number, as happened with
+      # v0.1.1 and v0.1.2.
+      # A manual run goes from a branch, not from a tag: there is nothing to compare with, and
+      # nothing is published
       - name: The tag matches the version in Cargo.toml
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
@@ -150,8 +155,8 @@ jobs:
           fi
 
       # On Windows, ggml-vulkan builds the shader generator as a nested CMake project deep
-      # inside the build directory, and the path goes over 260 characters: cl.exe fails with C1083
-      # A short directory and a build without --target (the target equals the host) give a margin
+      # inside the build directory, and the path goes over 260 characters. cl.exe fails with C1083
+      # A short directory and a build without --target (the target equals the host) give a margin.
       # The steps below take the path to the binary from CLI_OUT
       - name: Build the CLI
         shell: bash
@@ -222,7 +227,7 @@ jobs:
           cache-dependency-path: crates/molva-gui/ui/package-lock.json
 
       # tauri-action runs only beforeBuildCommand (the frontend build), and it does not install
-      # the npm dependencies: without this step TypeScript does not find react and the build fails
+      # the npm dependencies. Without this step TypeScript does not find react, and the build fails
       - name: Frontend dependencies
         if: steps.tauri.outputs.present == 'true'
         working-directory: crates/molva-gui/ui
@@ -235,21 +240,30 @@ jobs:
         with:
           projectPath: crates/molva-gui
           # The sidecar is declared by a separate config only for the release: the main
-          # tauri.conf.json does not have it, otherwise the CI gate would fail on the missing file
-          # binaries/molva-<triple>, which appears only after the CLI build above
+          # tauri.conf.json does not have it. Otherwise the CI gate would fail on the missing
+          # file binaries/molva-<triple>, which appears only after the CLI build above.
           # Without the sidecar the installer puts one MolvAI.exe, and the GUI does not find molva
           args: --target ${{ matrix.target }} --config tauri.sidecar.conf.json
-          # The CLI from package-lock.json of the interface, not from the registry: without tauriScript the action does not
-          # see it in projectPath and installs a fresh @tauri-apps/cli@v2 on every run
-          # The path is counted from projectPath, and node exists on the runners of all three operating systems
+          # The CLI comes from package-lock.json of the interface, not from the registry.
+          # Without tauriScript the action does not see it in projectPath, and it installs a
+          # fresh @tauri-apps/cli@v2 on every run.
+          # The path is counted from projectPath, and node exists on the runners of all three
+          # operating systems
           tauriScript: node ui/node_modules/@tauri-apps/cli/tauri.js
 
-      # The bundler before 2.12 built an AppImage that firejail and the appimage.github.io test could not
-      # run: https://github.com/tauri-apps/tauri/issues/16155
+      # The bundler before 2.12 built an AppImage that firejail and the appimage.github.io test
+      # could not run: https://github.com/tauri-apps/tauri/issues/16155
       - name: Any user can run the AppImage
         if: steps.tauri.outputs.present == 'true' && runner.os == 'Linux'
         shell: bash
         run: scripts/check-appimage.sh target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
+
+      # AppImageUpdate reads .upd_info from the image and the .zsync index next to it. The
+      # Tauri bundler writes neither, so both are added before the artifact is uploaded
+      - name: AppImage updates itself
+        if: steps.tauri.outputs.present == 'true' && runner.os == 'Linux'
+        shell: bash
+        run: scripts/appimage-update-info.sh target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
 
       - uses: actions/upload-artifact@v7
         if: steps.tauri.outputs.present == 'true'
@@ -257,6 +271,7 @@ jobs:
           name: gui-${{ matrix.target }}
           path: |
             target/${{ matrix.target }}/release/bundle/**/*.AppImage
+            target/${{ matrix.target }}/release/bundle/**/*.AppImage.zsync
             target/${{ matrix.target }}/release/bundle/**/*.deb
             target/${{ matrix.target }}/release/bundle/**/*.msi
             target/${{ matrix.target }}/release/bundle/**/*setup.exe
@@ -265,9 +280,10 @@ jobs:
 
   # A CUDA build of the CLI for Windows: optional, and the release does not fail when it fails
   # (continue-on-error). The artifact pulls in the proprietary NVIDIA runtime (cudart, cublas),
-  # so it goes in a separate archive with the suffix cuda, and the free packages stay without it
-  # The runner is windows-2022, not windows-latest: CUDA 12.6 knows Visual Studio only up to 2022,
-  # and with VS 2026 cudafe++ fails even with -allow-unsupported-compiler. Checked in cuda.yml
+  # so it goes in a separate archive with the suffix cuda. The free packages stay without it.
+  # The runner is windows-2022, not windows-latest. CUDA 12.6 knows Visual Studio only up to
+  # 2022, and with VS 2026 cudafe++ fails even with -allow-unsupported-compiler. Checked in
+  # cuda.yml
   cli-cuda:
     needs: gate
     runs-on: windows-2022
@@ -291,18 +307,20 @@ jobs:
         run: printf 'LIBCLANG_PATH=%s\n' 'C:\Program Files\LLVM\bin' >> "$GITHUB_ENV"
 
       # The network installer of CUDA does not register its toolset in MSBuild, and the Visual
-      # Studio generator fails with "No CUDA toolset found". Ninja with cl.exe from the developer environment
-      # bypasses MSBuild completely: nvcc and cl are found through PATH
+      # Studio generator fails with "No CUDA toolset found". Ninja with cl.exe from the developer
+      # environment bypasses MSBuild completely: nvcc and cl are found through PATH
       - uses: ilammy/msvc-dev-cmd@v1
 
       - uses: Swatinem/rust-cache@v2
         with:
           key: release-cuda-x86_64-pc-windows-msvc
 
-      # Not bash: in the PATH of the Git shell, the coreutils `link.exe` from /usr/bin is first, and rustc
-      # linked with it instead of the MSVC linker. PowerShell keeps the PATH from msvc-dev-cmd
+      # Not bash: in the PATH of the Git shell, the coreutils `link.exe` from /usr/bin is first.
+      # rustc linked with it instead of the MSVC linker. PowerShell keeps the PATH from
+      # msvc-dev-cmd
       # The runner has a Visual Studio newer than CUDA 12.6 knows (2017–2022): nvcc refuses
-      # without the flag -allow-unsupported-compiler. It is read from NVCC_APPEND_FLAGS and CUDAFLAGS
+      # without the flag -allow-unsupported-compiler. It is read from NVCC_APPEND_FLAGS and
+      # CUDAFLAGS
       - name: Build the CLI with CUDA
         shell: pwsh
         env:

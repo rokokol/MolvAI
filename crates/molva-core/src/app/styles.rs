@@ -9,8 +9,8 @@
 //! other phrase. A custom style has one prompt, written by the user, for every language
 //!
 //! Every system prompt ends with a common condition: keep the input language, add no facts,
-//! output only the result. Without it the model readily answers "Конечно! Вот исправленный
-//! текст:", and this goes straight into the active field of the user
+//! output only the result. Without it the model answers with a preamble such as
+//! `Конечно! Вот исправленный текст:`, and that preamble lands in the active field of the user
 
 use crate::config::StyleConfig;
 use crate::domain::text::Style;
@@ -313,7 +313,8 @@ mod tests {
         };
         let styles = Styles::from_config(&cfg);
         assert_eq!(styles.get("poem").unwrap().name, "Poem");
-        // A replaced built-in style loses its Russian prompt too: the user's prompt is the whole style
+        // A replaced built-in style loses its Russian prompt too: the user's prompt serves every
+        // language
         assert_eq!(
             styles.get("cleanup").unwrap().prompt_for("ru"),
             "My prompt."

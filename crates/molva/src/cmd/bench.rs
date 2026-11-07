@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-//! `molva bench` — our own checker of quality and speed
+//! `molva bench` — the local checker of quality and speed
 //!
 //! One command runs the whole set and prints a summary: WER/CER per case and on average,
-//! the latencies p50/p95/p99 and the ratio p99/p50. A bad WER is not a start error: it is a report,
-//! so the exit code is 0. The only error is a missing set
+//! the latencies p50/p95/p99 and the ratio p99/p50. A bad WER is not a start error: it is a
+//! report, so the exit code is 0. The only error is a missing set
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -48,9 +48,8 @@ pub(crate) fn run(args: &Args, config: &Config, stdout: &mut dyn Write) -> Resul
     let choice = EngineChoice {
         engine: args.engine.clone(),
         model: args.model.clone(),
-        // Does the fake engine in the bench answer with the reference of the first case? No: it answers
-        // with a fixed string, and this is on purpose — it shows that the metric is really
-        // computed and is not fitted to the answer
+        // The fake engine answers with a fixed string and not with the reference of the case.
+        // So the metric is computed and is not fitted to the answer
         fake_text: None,
     };
     let mut engine =

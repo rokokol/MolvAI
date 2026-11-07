@@ -4,8 +4,10 @@
 //! The policy is moved out of the engine into a pure function: tests check it on a fake with no
 //! model, and it works the same for any engine (whisper.cpp, cloud)
 
+pub mod transcribe_cpp;
 pub mod whisper;
 
+pub use transcribe_cpp::TranscribeCppEngine;
 pub use whisper::WhisperEngine;
 
 use std::path::{Path, PathBuf};
@@ -72,11 +74,8 @@ pub fn stt_options_from_config(cfg: &SttConfig, timestamps: bool) -> SttOptions 
     }
 }
 
-/// Path to the weights file: the explicit `model_path` from the settings, or the model name in
-/// the models directory
-///
-/// The directory is a parameter because the model catalogue (`molva models`) owns it, not the
-/// engine: so the path is computed the same way in the daemon and in the CLI
+/// The models directory is a parameter because the model catalogue (`molva models`) owns it,
+/// not the engine: the path is computed the same way in the daemon and in the CLI
 pub fn model_file_path(cfg: &SttConfig, models_dir: &Path) -> PathBuf {
     let explicit = cfg.model_path.trim();
     if !explicit.is_empty() {
@@ -143,10 +142,11 @@ fn normalise_for_match(text: &str) -> String {
 /// that can do this avoids the `auto` mode of the recognition itself — and that mode computes the
 /// full thirty-second window and costs many times more on the CPU
 ///
-/// If the engine cannot detect, the old path stays: recognize and, if the model chose a language
-/// outside the allowed list, repeat exactly once with the first language of the list (I-06). A
-/// typical whisper error on short phrases is to take Russian speech for Ukrainian or Bulgarian.
-/// With a fixed language (I-07) there is no auto-detection at all and no retry is needed
+/// If the engine cannot detect, the recognition itself decides the language. Recognize, and if
+/// the model chose a language outside the allowed list, repeat exactly once with the first
+/// language of the list (`I-06`). A typical whisper error on short phrases is to take Russian
+/// speech for Ukrainian or Bulgarian. With a fixed language (`I-07`) there is no auto-detection
+/// at all and no retry is needed
 pub fn transcribe_with_language_policy(
     engine: &mut dyn SttEngine,
     audio: &PcmAudio,

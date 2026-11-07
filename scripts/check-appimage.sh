@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Needs bash 3.2 and POSIX tools only, plus unsquashfs from squashfs-tools 4.4 or newer
+# Needs bash 3.2, unsquashfs from squashfs-tools 4.4 or newer, and the
+# appimage_squashfs_offset helper in lib/appimage-offset.sh
 #
 # The check reads the permissions straight from the squashfs and mounts nothing. Under the
 # FUSE runtime of AppImage, the files look like the user's own to the process that started
-# the image, so a run on your own machine passes even with broken permissions. The files
-# break for other users: firejail --appimage and the test of the appimage.github.io catalog
-# mount the image as root, but run it as an ordinary user
+# the image. A run on your own machine therefore passes even with broken permissions.
+# The files break for other users: both firejail --appimage and the appimage.github.io
+# catalog mount the image as root, but run it as an ordinary user
 set -euo pipefail
 
 usage() {
@@ -34,44 +35,21 @@ die() { # the request is wrong
   exit 2
 }
 
-# An unsigned little-endian number of COUNT bytes at the offset OFFSET
-read_le() {
-  local file="$1" offset="$2" count="$3" value=0 i
-  local -a bytes
-  # `od -t u8` cannot be used here: the BSD od has no eight-byte integers. The bytes are read one by one
-  # shellcheck disable=SC2207 # od prints only decimal numbers, so splitting by words is safe
-  bytes=($(od -An -v -t u1 -j "$offset" -N "$count" -- "$file"))
-  ((${#bytes[@]} == count)) || die "$file: the file is shorter than an ELF header"
-  for ((i = count - 1; i >= 0; i--)); do
-    value=$((value * 256 + bytes[i]))
-  done
-  printf '%s\n' "$value"
-}
-
-# The squashfs starts right after the ELF runtime, and the runtime ends with the table of
-# section headers. The runtime counts the same way in --appimage-offset. The image must not
-# be run for this: on NixOS, binfmt intercepts the start through appimage-run
-squashfs_offset() {
-  local file="$1" magic class shoff shentsize shnum
-  magic=$(od -An -c -N 4 -- "$file" | tr -d ' ')
-  [[ "$magic" == '177ELF' ]] || die "$file: not an ELF, so not an AppImage"
-  # `|| exit`: the function itself runs inside $(...), where set -e is not inherited
-  class=$(read_le "$file" 4 1) || exit
-  ((class == 2)) || die "$file: a 32-bit ELF is not supported"
-  shoff=$(read_le "$file" 40 8) || exit
-  shentsize=$(read_le "$file" 58 2) || exit
-  shnum=$(read_le "$file" 60 2) || exit
-  printf '%s\n' $((shoff + shentsize * shnum))
-}
+HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=lib/appimage-offset.sh
+. "$HERE/lib/appimage-offset.sh"
 
 violations=0
 
-# Violations pile up in violations and not in the status of a function: a call in `if` or `||`
-# would turn set -e off, and a die from a substitution would become a permission violation instead of a call error
+# Violations pile up in violations and not in the status of a function. A call in `if` or `||`
+# would turn set -e off. A die from a substitution would then become a permission violation
+# instead of a call error
 check_one() {
   local file="$1" offset listing mode rest
   [[ -f "$file" ]] || die "$file: no such file"
-  offset=$(squashfs_offset "$file")
+  if ! offset=$(appimage_squashfs_offset "$file"); then
+    exit 2
+  fi
   listing=$(unsquashfs -lln -o "$offset" "$file") ||
     die "$file: unsquashfs could not read the squashfs at offset $offset"
   [[ -n "$listing" ]] || die "$file: the listing is empty, nothing to check"

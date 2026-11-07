@@ -27,6 +27,10 @@ let
           type = lib.types.attrsOf lib.types.attrs;
           default = { };
         };
+        assertions = lib.mkOption {
+          type = lib.types.listOf lib.types.attrs;
+          default = [ ];
+        };
         systemd.user.services = lib.mkOption {
           type = lib.types.attrsOf lib.types.attrs;
           default = { };
@@ -34,6 +38,10 @@ let
         xdg.configHome = lib.mkOption {
           type = lib.types.str;
           default = "/home/u/.config";
+        };
+        xdg.configFile = lib.mkOption {
+          type = lib.types.attrsOf lib.types.attrs;
+          default = { };
         };
         wayland.windowManager.hyprland = {
           enable = lib.mkEnableOption "Hyprland";
@@ -74,10 +82,19 @@ let
     # The name is enough here: with its string context the check would build molva first
     packages = map (p: builtins.unsafeDiscardStringContext (toString p)) config.home.packages;
     extraConfig = config.wayland.windowManager.hyprland.extraConfig;
-    activation = config.home.activation.molvaiHyprland.data or "";
+    activation = builtins.unsafeDiscardStringContext (config.home.activation.molvaiHyprland.data or "");
     daemon = builtins.unsafeDiscardStringContext (
       config.systemd.user.services.molva-daemon.Service.ExecStart or ""
     );
+    model = config.programs.molvai.model;
+    models = config.programs.molvai.models;
+    configSource = builtins.unsafeDiscardStringContext (
+      toString (config.xdg.configFile."molva/config.toml".source or "")
+    );
+    binds = builtins.unsafeDiscardStringContext (
+      toString (config.xdg.configFile."hypr/molvai.lua".source or "")
+    );
+    settings = config.programs.molvai.settings;
   };
 in
 {
@@ -102,6 +119,15 @@ in
     programs.molvai = {
       enable = true;
       daemon.enable = false;
+    };
+  });
+  whisper = summary (eval {
+    programs.molvai = {
+      enable = true;
+      model = "small";
+      models = [ "small" ];
+      transcribeCli = null;
+      settings.stt.chunk_pause_ms = 400;
     };
   });
 }

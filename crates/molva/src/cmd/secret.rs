@@ -92,9 +92,9 @@ pub(crate) fn entry_name(name: SecretName, provider: &str) -> String {
     }
 }
 
-/// The store and the entry name by the settings. For the journal with `key_source = "file"`, the file
-/// store is built over the directory of `journal.key_path`, so that `molva secret` and the daemon read
-/// the same file
+/// The store and the entry name by the settings. For the journal with `key_source = "file"`,
+/// the file store is built over the directory of `journal.key_path`, so that `molva secret`
+/// and the daemon read the same file
 pub(crate) fn resolve(name: SecretName, config: &Config) -> Result<Backend, CmdError> {
     let source = match name {
         SecretName::Llm => config.llm.api_key_source.trim().to_lowercase(),
@@ -227,7 +227,8 @@ fn refuse_env(name: SecretName, backend: &Backend) -> CmdError {
     }
 }
 
-/// A report line: the name, where it is stored and whether the entry exists. The value is not printed
+/// A report line: the name, where it is stored and whether the entry exists. The value is not
+/// printed
 fn status_line(name: SecretName, config: &Config) -> String {
     match resolve(name, config) {
         Ok(Backend::Store {

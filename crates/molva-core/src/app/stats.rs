@@ -475,7 +475,7 @@ pub fn write_reset_marker(journal_path: &Path, at: DateTime<Utc>) -> Result<(), 
     std::fs::write(&path, text).map_err(|source| StatsError::Write { path, source })
 }
 
-/// Read the reset marker. If the file is missing or damaged, we treat it as no reset
+/// Read the reset marker. A missing or damaged file counts as no reset
 pub fn read_reset_marker(journal_path: &Path) -> Option<DateTime<Utc>> {
     let path = reset_marker_path(journal_path);
     let text = std::fs::read_to_string(path).ok()?;

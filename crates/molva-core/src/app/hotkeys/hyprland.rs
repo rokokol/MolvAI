@@ -62,7 +62,7 @@ pub fn lua(hotkeys: &HotkeysConfig) -> Result<String, HotkeyError> {
             passes_through: false,
         },
         // Cancel matters only during a recording, and its key usually means something in the
-        // application too: a bind on a bare Escape would take Escape away from every program
+        // application too. A bind on a bare Escape would take Escape away from every program
         Bind {
             keys: &hotkeys.cancel,
             command: "molva record cancel",

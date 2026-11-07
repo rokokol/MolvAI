@@ -234,7 +234,8 @@ pub(crate) fn pick_for_paste<'a>(
         .ok_or_else(|| anyhow::anyhow!("the history is empty: nothing to repeat"))
 }
 
-/// The text of the phrase to repeat; an entry without text cannot be repeated, and this is not an "empty paste"
+/// The text of the phrase to repeat; an entry without text cannot be repeated, and this is not
+/// an "empty paste"
 pub(crate) fn text_to_paste(entry: &Entry) -> anyhow::Result<&str> {
     let text = entry
         .text_final
@@ -249,7 +250,8 @@ pub(crate) fn text_to_paste(entry: &Entry) -> anyhow::Result<&str> {
     })
 }
 
-/// What to say when there is no daemon: the text is already in the clipboard, and there is no need to dictate again
+/// What to say when there is no daemon: the text is already in the clipboard, and there is no
+/// need to dictate again
 fn daemon_is_down(err: &IpcClientError) -> CmdError {
     CmdError::no_daemon(format!(
         "the daemon is not running ({err}); the text of the phrase is copied to the clipboard, press Ctrl+V"
@@ -258,8 +260,9 @@ fn daemon_is_down(err: &IpcClientError) -> CmdError {
 
 /// Repeat a phrase from the history: the paste goes the same way as in an ordinary dictation
 ///
-/// Criterion AM-17: the repeat is available from the history, and when the daemon is unavailable the text stays
-/// in the clipboard, and the command reports this honestly with the exit code 3 and not with a silent success
+/// Criterion AM-17: the repeat is available from the history, and when the daemon is unavailable
+/// the text stays in the clipboard, and the command reports it with the exit code 3 and not
+/// with a silent success
 fn paste(
     journal: &FileJournal,
     id: Option<&str>,
@@ -384,6 +387,7 @@ mod tests {
             text_raw: None,
             text_final: Some(text.into()),
             audio_path: None,
+            segments: Vec::new(),
         }
     }
 

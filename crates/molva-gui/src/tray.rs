@@ -114,7 +114,7 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         true,
         None::<&str>,
     )?;
-    // The second item is the panel itself: on Wayland it is the only way to a hidden window
+    // The second item is the panel itself. On Wayland it is the only way to a hidden window
     // besides the left click, and not every tray host passes the left click
     let open_panel = MenuItem::with_id(
         app,
@@ -513,7 +513,8 @@ mod tests {
     #[test]
     fn the_tray_icon_changes_at_most_twice_during_a_reply() {
         // Criterion AM-11: during a phrase the icon changes to "recording" and to
-        // "processing", and no more. The signal level arrives in tens of events, but the state does not change
+        // "processing", and no more. The signal level arrives in tens of events, but the state
+        // does not change
         let mut reply = vec![Some(DaemonState::Recording); 40];
         reply.extend([
             Some(DaemonState::Transcribing),

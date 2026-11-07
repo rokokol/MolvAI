@@ -9,7 +9,9 @@ import type {
   CommandError,
   DeviceInfo,
   Entry,
+  FileResult,
   HyprlandBinds,
+  SearchHit,
   StatsSummary,
   Status,
   StyleOption,
@@ -48,6 +50,8 @@ export const api = {
   stopDaemon: () => invoke<void>("stop_daemon"),
 
   getConfig: () => invoke<Config>("get_config"),
+  /** The config is a read-only file from the Nix store, so the settings page is hidden */
+  configManaged: () => invoke<boolean>("config_managed"),
   /** The resolved interface language; the Rust side resolves it so the tray agrees */
   uiLanguage: () => invoke<string>("ui_language"),
   getConfigPath: () => invoke<string>("get_config_path"),
@@ -84,8 +88,12 @@ export const api = {
     invoke<string>("stats_export_csv", { rangeDays }),
 
   transcribeFile: (id: string, path: string) =>
-    invoke<unknown>("transcribe_file", { id, path }),
+    invoke<FileResult[]>("transcribe_file", { id, path }),
   transcribeCancel: (id: string) => invoke<boolean>("transcribe_cancel", { id }),
+
+  /** Search the transcriptions of audio and video files, newest first */
+  searchFiles: (query: string, limit: number) =>
+    invoke<SearchHit[]>("search_files", { query, limit }),
 };
 
 /**

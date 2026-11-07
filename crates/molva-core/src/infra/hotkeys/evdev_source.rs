@@ -30,7 +30,7 @@ impl EvdevHotkeys {
         Self { specs }
     }
 
-    /// Whether there is at least one keyboard that we may read
+    /// Whether at least one readable keyboard exists
     pub fn available() -> bool {
         !keyboards().is_empty()
     }
@@ -69,7 +69,7 @@ impl HotkeySource for EvdevHotkeys {
                 "no keyboards available in /dev/input: add the user to the input group".into(),
             ));
         }
-        // Modifiers are shared by all devices: Ctrl on the built-in keyboard and Space on an
+        // Modifiers are shared by all devices. Ctrl on the built-in keyboard and Space on an
         // external one are one combination from the point of view of the user
         let modifiers = Arc::new(Mutex::new(BTreeSet::<Modifier>::new()));
         let specs = Arc::new(self.specs);
@@ -112,7 +112,7 @@ fn pump(
                 // The key auto-repeat does not create new presses
                 _ => continue,
             };
-            // The snapshot of the modifiers is taken before the update: when the modifier key
+            // The snapshot of the modifiers is taken before the update. When the modifier key
             // itself is pressed, the combination `RightCtrl` must see it already pressed, and
             // `Ctrl+Space` must not
             let mut active = {

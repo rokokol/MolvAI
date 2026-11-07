@@ -62,6 +62,35 @@ export interface DeviceInfo {
   sample_rates: number[];
 }
 
+/** A fragment of a file transcription with its place in the recording */
+export interface Segment {
+  start_ms: number;
+  end_ms: number;
+  text: string;
+}
+
+/** One result of `molva transcribe --json` */
+export interface FileResult {
+  file: string;
+  text: string;
+  segments?: Segment[];
+  audio_secs: number;
+  latency_ms: number;
+  language?: string | null;
+}
+
+/** One match of the transcript search, shaped by the Rust side */
+export interface SearchHit {
+  entry_id: string;
+  file: string;
+  recorded_at: string;
+  text: string;
+  start_ms?: number | null;
+  end_ms?: number | null;
+  timecode?: string | null;
+  language?: string | null;
+}
+
 export interface Status {
   daemon_running: boolean;
   daemon_ours: boolean;
@@ -96,6 +125,8 @@ export interface HyprlandBinds {
   path: string;
   include_line: string;
   written: boolean;
+  /** The window runs inside a Hyprland session */
+  session: boolean;
 }
 
 export interface StyleOption {
@@ -180,6 +211,9 @@ export interface Config {
     unload_after_secs: number;
     no_speech_threshold: number;
     streaming_preview: boolean;
+    streaming_inject: boolean;
+    transcribe_cli: string;
+    transcribe_backend: string;
     remote: RemoteSttConfig;
   };
   dictionary: { path: string; fuzzy: boolean; in_prompt: boolean };

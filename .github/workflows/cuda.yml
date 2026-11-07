@@ -1,11 +1,13 @@
 name: cuda
 
-# A CUDA build of the CLI for Windows by manual start: it is debugged here, without a tag and without a release
+# A CUDA build of the CLI for Windows by manual start: it is debugged here, without a tag
+# and without a release.
 # When the build is stably green, the same steps live in the job cli-cuda in release.yml
 #
 # What is already found out on the GitHub runners:
 # - the network installer of CUDA does not register the toolset in MSBuild → the Ninja generator;
-# - in the bash from Git, the coreutils link.exe is first in PATH → the build step runs from PowerShell;
+# - in the bash from Git, the coreutils link.exe is first in PATH → the build step runs
+#   from PowerShell;
 # - CUDA 12.6 does not know Visual Studio 2026 on windows-latest, and cudafe++ fails even with
 #   -allow-unsupported-compiler → the windows-2022 runner with Visual Studio 2022
 

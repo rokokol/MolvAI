@@ -16,7 +16,8 @@ use molva_core::infra::llm::openai_compat::{OpenAiCompatClient, Provider};
 use molva_core::infra::platform::{self, Platform, Tools};
 use molva_core::Config;
 
-/// How long the diagnostics wait for the model provider: longer than this is already "does not answer"
+/// How long the diagnostics wait for the model provider: longer than this already means the
+/// provider does not answer
 const LLM_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// One line of the report
@@ -42,7 +43,7 @@ impl Check {
     }
 }
 
-/// Whether `/dev/uinput` is writable: the file can exist and be closed
+/// Whether `/dev/uinput` is writable: the node can exist and still refuse the open
 pub(crate) fn uinput_check() -> Check {
     let path = Path::new("/dev/uinput");
     if !path.exists() {
@@ -58,7 +59,7 @@ pub(crate) fn uinput_check() -> Check {
     }
 }
 
-/// Keyboards in `/dev/input` that we are allowed to read
+/// Keyboards in `/dev/input` that the user is allowed to read
 pub(crate) fn input_devices_check() -> Check {
     #[cfg(target_os = "linux")]
     {
@@ -79,7 +80,8 @@ pub(crate) fn input_devices_check() -> Check {
     }
 }
 
-/// The whisper weights: the configured model is found on the disk and its SHA-256 matches the catalog
+/// The whisper weights: the configured model is found on the disk and its SHA-256 matches the
+/// catalog
 pub(crate) fn whisper_model_check(config: &Config) -> Check {
     let name = config.stt.model.trim();
     let info = match models::find(name) {
@@ -90,7 +92,7 @@ pub(crate) fn whisper_model_check(config: &Config) -> Check {
         Ok(path) => path,
         Err(error) => return Check::new("whisper model", false, error.to_string()),
     };
-    match models::verify(&path, info.sha256) {
+    match models::verify(&path, &info.sha256) {
         Ok(true) => Check::new(
             "whisper model",
             true,
@@ -108,7 +110,8 @@ pub(crate) fn whisper_model_check(config: &Config) -> Check {
     }
 }
 
-/// The language model: switched off in the settings, or the provider answers and knows the configured model
+/// The language model: switched off in the settings, or the provider answers and knows the
+/// configured model
 pub(crate) fn llm_check(config: &Config) -> Check {
     if !config.llm.enabled {
         return Check::new(
@@ -175,8 +178,8 @@ pub(crate) fn llm_check(config: &Config) -> Check {
     }
 }
 
-/// The HTTP client was not built: the request did not reach the provider, so the advice is about the environment
-/// of this machine and not about starting the model
+/// The HTTP client was not built: the request did not reach the provider, so the advice is
+/// about the environment of this machine and not about starting the model
 pub(crate) fn client_not_built(error: &LlmError) -> Check {
     Check::new(
         "LLM",
@@ -188,9 +191,9 @@ pub(crate) fn client_not_built(error: &LlmError) -> Check {
     )
 }
 
-/// The full report: lines in the order in which they are read
 /// The OS key store: write, read and delete of a probe entry. An unavailable store is
-/// a "no" with an explanation, not a crash: without it the keys are read from environment variables
+/// a "no" with an explanation, not a crash: without it the keys are read from environment
+/// variables
 pub(crate) fn keyring_check(store: &dyn SecretStore) -> Check {
     const NAME: &str = "key store";
     const HINT: &str = "start gnome-keyring/kwallet or use api_key_source = env";
@@ -211,6 +214,7 @@ pub(crate) fn keyring_check(store: &dyn SecretStore) -> Check {
     }
 }
 
+/// The full report: lines in the order in which they are read
 pub(crate) fn checks(socket: &Path, config: &Config) -> Vec<Check> {
     checks_with(socket, config, &OsKeyring)
 }

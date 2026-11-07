@@ -14,7 +14,7 @@
 /// Which signal to play
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CueKind {
-    /// Recording started: the microphone is open, you can speak
+    /// Recording started: the microphone is open, and the user is free to speak
     RecordStart,
     /// Recording ended: the microphone is closed, the phrase went to processing
     RecordStop,

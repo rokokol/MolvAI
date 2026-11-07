@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+# No sitemap while the site is served from two addresses, the GitHub project path
+# and, later, the molvai.rokokol.art subdomain

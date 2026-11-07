@@ -261,7 +261,7 @@ mod tests {
         samples.extend(tone(300, 0.5));
         let input = audio(samples);
 
-        // Threshold −45 dB: the speech is louder, so we keep it
+        // Threshold −45 dB: the tone is above it, so the trim keeps the phrase
         let normal = AudioConfig::default();
         assert!(!trim_for_config(&input, &normal).samples.is_empty());
 

@@ -17,13 +17,14 @@ import type {
 import Dashboard from "./views/Dashboard";
 import Files from "./views/Files";
 import History from "./views/History";
+import Search from "./views/Search";
 import Settings from "./views/Settings";
 import Stats from "./views/Stats";
 
-export type Tab = "dashboard" | "history" | "stats" | "files" | "settings";
+export type Tab = "dashboard" | "history" | "search" | "stats" | "files" | "settings";
 export type Theme = "system" | "light" | "dark";
 
-const TABS: Tab[] = ["dashboard", "history", "stats", "files", "settings"];
+const TABS: Tab[] = ["dashboard", "history", "search", "stats", "files", "settings"];
 const THEME_KEY = "molva.theme";
 
 /** Silence longer than this during recording is a reason to warn about a dead microphone */
@@ -46,6 +47,8 @@ function storedTheme(): Theme {
 export default function App() {
   const [tab, setTab] = useState<Tab>("dashboard");
   const [config, setConfig] = useState<Config | null>(null);
+  const [configPath, setConfigPath] = useState("");
+  const [managed, setManaged] = useState(false);
   const [theme, setThemeState] = useState<Theme>(storedTheme);
   const [status, setStatus] = useState<Status | null>(null);
   const [level, setLevel] = useState(0);
@@ -120,8 +123,14 @@ export default function App() {
     void (async () => {
       await reloadConfig();
       await refreshStatus();
+      const [isManaged, path] = await Promise.all([
+        api.configManaged().catch(() => false),
+        api.getConfigPath().catch(() => ""),
+      ]);
+      setManaged(isManaged);
+      setConfigPath(path);
       try {
-        if (await api.isFirstRun()) {
+        if (!isManaged && (await api.isFirstRun())) {
           setTab("settings");
         }
       } catch {
@@ -209,6 +218,14 @@ export default function App() {
 
   const i18n = useMemo(() => ({ lang, t }), [lang, t]);
 
+  // A managed config has no settings page: every attempt to save would be refused
+  const tabs = managed ? TABS.filter((item) => item !== "settings") : TABS;
+  useEffect(() => {
+    if (managed && tab === "settings") {
+      setTab("dashboard");
+    }
+  }, [managed, tab]);
+
   const shared = {
     config,
     status,
@@ -229,7 +246,7 @@ export default function App() {
             <span>{t("app.subtitle")}</span>
           </div>
           <div className="nav">
-            {TABS.map((item) => (
+            {tabs.map((item) => (
               <button
                 key={item}
                 type="button"
@@ -242,6 +259,13 @@ export default function App() {
           </div>
         </nav>
         <main className="content" id="main" tabIndex={-1}>
+          {managed && (
+            <div className="notice">
+              <strong>{t("app.managed")}</strong>
+              <p>{t("app.managedHint")}</p>
+              {configPath && <p className="mono small">{configPath}</p>}
+            </div>
+          )}
           {error && (
             <div className="notice error" role="alert">
               <strong>{t("error.title")}</strong>
@@ -266,6 +290,7 @@ export default function App() {
             />
           )}
           {tab === "history" && <History {...shared} />}
+          {tab === "search" && <Search {...shared} />}
           {tab === "stats" && <Stats {...shared} />}
           {tab === "files" && <Files {...shared} />}
           {tab === "settings" && (

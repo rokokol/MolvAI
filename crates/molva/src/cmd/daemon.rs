@@ -29,10 +29,11 @@ use molva_core::infra::platform;
 use molva_core::infra::sound;
 use uuid::Uuid;
 
-/// The socket path: the flag wins over the environment variable, and the variable wins over the default
+/// The socket path: the flag wins over the environment variable, and the variable wins over
+/// the default
 ///
-/// The core does not know about the environment on purpose: a test on a socket in a temporary directory must not
-/// depend on whether someone exported `MOLVA_SOCKET`
+/// The core does not know about the environment on purpose: a test on a socket in a temporary
+/// directory must not depend on whether someone exported `MOLVA_SOCKET`
 pub(crate) fn resolve_socket(flag: Option<PathBuf>) -> PathBuf {
     if let Some(path) = flag {
         return path;
@@ -46,16 +47,17 @@ pub(crate) fn resolve_socket(flag: Option<PathBuf>) -> PathBuf {
     ipc::socket_path()
 }
 
-/// The recognition engine by the settings: the single factory of the core, the same as in `transcribe` and `bench`
+/// The recognition engine by the settings: the single factory of the core, the same as in
+/// `transcribe` and `bench`
 pub(crate) fn build_stt(config: &Config) -> anyhow::Result<Box<dyn SttEngine>> {
     ensure_model_present(config)?;
     engine::build_stt(config, None).map_err(|err| anyhow!("{err}"))
 }
 
-/// Download the weights if they are missing (`stt.auto_pull`): the daemon on a clean machine must start
-/// with one command and not send the person to read about `molva models pull`. The progress goes to
-/// stderr as a bar, like in `molva models pull`; with the setting off, the behavior is as before:
-/// a clear error with the command for the download
+/// Download the weights if they are missing (`stt.auto_pull`): the daemon on a clean machine
+/// must start with one command and not send the person to read about `molva models pull`.
+/// The progress goes to stderr as a bar, like in `molva models pull`; with the setting off
+/// the build fails with a clear error that names the download command
 fn ensure_model_present(config: &Config) -> anyhow::Result<()> {
     if config.stt.engine.trim() != "whisper-cpp" || !config.stt.auto_pull {
         return Ok(());
@@ -99,13 +101,15 @@ fn build_journal(config: &Config) -> anyhow::Result<Box<dyn Journal>> {
         return Ok(Box::new(NullJournal));
     }
     let path = config.journal_path()?;
-    // The core decides the path, the privacy and the cipher: the CLI and the GUI open the journal with the same function
+    // The core decides the path, the privacy and the cipher: the CLI and the GUI open the
+    // journal with the same function
     let journal =
         FileJournal::open_for(config).with_context(|| format!("journal {}", path.display()))?;
     Ok(Box::new(journal))
 }
 
-/// The post-processing model, if it is enabled; the key is taken from the environment by the name from the settings
+/// The post-processing model, if it is enabled; the key is taken from the environment by the
+/// name from the settings
 fn build_llm(config: &Config) -> Option<Arc<dyn LlmClient>> {
     if !config.llm.enabled || !config.privacy.send_to_llm {
         return None;
@@ -139,11 +143,12 @@ fn build_dictionary(config: &Config, config_path: &Path) -> Dictionary {
 
 /// One instance per user: the second copy exits with a message
 ///
-/// The `single_instance` feature (criterion O-14): if a live daemon answers on the socket, the second
-/// start does not begin at all, because two copies would fight for the microphone and for the paste. The check goes
-/// through a ping of the socket and not through a pid file: a file survives the crash of a process, and an answer on the socket
-/// does not. The exit code is separate, `7` (`exit::ALREADY_RUNNING`), so that the autostart tells
-/// "already running" from a real error
+/// The `single_instance` feature (criterion O-14): if a live daemon answers on the socket, the
+/// second start does not begin at all, because two copies would fight for the microphone and
+/// for the paste. The check goes through a ping of the socket and not through a pid file: a
+/// file survives the crash of a process, and an answer on the socket does not. The exit code
+/// is separate, `7` (`exit::ALREADY_RUNNING`), so that the autostart tells "already running"
+/// from a real error
 pub(crate) fn single_instance_guard(
     socket: &Path,
     ping: impl Fn(&Path) -> Option<u32>,
@@ -185,8 +190,8 @@ pub(crate) fn run(config_path: &Path, options: &Options) -> anyhow::Result<()> {
     );
 
     let injector = ChainInjector::for_platform(&config.output, &detected, notifier.clone());
-    // The second instance is for repeating phrases from the history by `inject.text`: it must not wait
-    // until the pipeline finishes its phrase
+    // The second instance is for repeating phrases from the history by `inject.text`: it must
+    // not wait until the pipeline finishes its phrase
     let repeat_injector = ChainInjector::for_platform(&config.output, &detected, notifier.clone());
     let mut pipeline = Pipeline::new(
         build_stt(&config)?,
@@ -203,7 +208,8 @@ pub(crate) fn run(config_path: &Path, options: &Options) -> anyhow::Result<()> {
         audio: build_audio(&config),
         processor: Box::new(pipeline),
         notifier,
-        // The sound of the start and the end of the recording; `audio.sounds = false` gives a silent implementation
+        // The sound of the start and the end of the recording; `audio.sounds = false` gives a
+        // silent implementation
         sound: sound::build_sound_cue(&config.audio),
         injector: Some(Box::new(repeat_injector)),
         clock,
@@ -234,14 +240,16 @@ mod tests {
 
     #[test]
     fn without_a_flag_the_default_path_is_used() {
-        // The test does not override the environment variable: the result is either it or the default
+        // The test does not override the environment variable: the result is either it or the
+        // default
         let path = resolve_socket(None);
         assert!(path.to_string_lossy().contains("molva"), "{path:?}");
     }
 
     #[test]
     fn a_second_instance_refuses_to_start_and_says_which_one_is_running() {
-        // Criterion O-14: the second copy exits with a message, not silently and not by fighting for the microphone
+        // Criterion O-14: the second copy exits with a message, not silently and not by
+        // fighting for the microphone
         let socket = PathBuf::from("/tmp/molva-test.sock");
         let err = single_instance_guard(&socket, |_| Some(4242)).unwrap_err();
         assert_eq!(err.code, 7, "exit code \"the daemon is already running\"");
@@ -266,7 +274,7 @@ mod tests {
         ensure_model_present(&config).unwrap();
 
         // A switched-off download with missing weights downloads nothing and does not fail here:
-        // the engine build gives the error with the pull command, as before
+        // the engine build gives the error with the pull command
         config.stt.engine = "whisper-cpp".into();
         config.stt.auto_pull = false;
         ensure_model_present(&config).unwrap();
@@ -292,7 +300,8 @@ mod tests {
         }
         config.stt.engine = "whisper-cpp".into();
         config.stt.model_path = directory.path().display().to_string();
-        // Tests do not go to the network: without this the daemon would honestly download the weights into a temporary directory
+        // Tests do not go to the network: without this the daemon would download the weights
+        // into a temporary directory
         config.stt.auto_pull = false;
         let err = match build_stt(&config) {
             Err(err) => err.to_string(),

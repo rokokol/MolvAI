@@ -26,7 +26,8 @@ use crate::domain::audio::{downmix_to_mono, AudioError, PcmAudio};
 /// The list is wider than the set of codecs on purpose: if the container is known but the codec
 /// inside is unknown, the user gets a clear error instead of a silent skip of the file
 pub const SUPPORTED_EXTENSIONS: &[&str] = &[
-    "wav", "wave", "mp3", "ogg", "oga", "flac", "m4a", "mp4", "aac", "m4b",
+    "wav", "wave", "mp3", "ogg", "oga", "flac", "m4a", "mp4", "aac", "m4b", "mov", "mkv", "webm",
+    "avi",
 ];
 
 /// Alias of the path for stdin in error messages
@@ -69,6 +70,46 @@ pub fn decode_file(path: &Path) -> Result<PcmAudio, AudioError> {
         hint.with_extension(ext);
     }
     decode_source(Box::new(file), &hint, &label)
+        .or_else(|err| decode_with_ffmpeg(path).map_err(|_| err))
+}
+
+/// Extract the audio track of a video with ffmpeg, or read a container symphonia lacks
+///
+/// Symphonia has no Matroska or WebM demuxer, so a `.mkv` or `.webm` file is out of its
+/// reach. ffmpeg already decodes every container the user is likely to have; it is called
+/// only when the built-in path failed, and a missing binary leaves the original error.
+fn decode_with_ffmpeg(path: &Path) -> Result<PcmAudio, AudioError> {
+    let label = path.display().to_string();
+    if which::which("ffmpeg").is_err() {
+        return Err(decode_error(
+            &label,
+            "this container needs ffmpeg; install it or convert the file to wav",
+        ));
+    }
+    let output = std::process::Command::new("ffmpeg")
+        .args(["-nostdin", "-hide_banner", "-loglevel", "error", "-i"])
+        .arg(path)
+        .args(["-vn", "-ac", "1", "-ar", "16000", "-f", "f32le", "pipe:1"])
+        .output()
+        .map_err(|e| decode_error(&label, format!("ffmpeg did not start: {e}")))?;
+    if !output.status.success() {
+        let reason = String::from_utf8_lossy(&output.stderr);
+        let last = reason
+            .lines()
+            .rev()
+            .find(|line| !line.trim().is_empty())
+            .unwrap_or("no message");
+        return Err(decode_error(&label, format!("ffmpeg failed: {last}")));
+    }
+    let samples: Vec<f32> = output
+        .stdout
+        .chunks_exact(4)
+        .map(|bytes| f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+        .collect();
+    if samples.is_empty() {
+        return Err(decode_error(&label, "the file has no audio track"));
+    }
+    Ok(PcmAudio::new(samples, 16_000))
 }
 
 /// Decode any source: used for stdin and tests
@@ -205,6 +246,42 @@ mod tests {
             writer.write_sample(-16_000i16).unwrap();
         }
         writer.finalize().unwrap();
+    }
+
+    #[test]
+    fn video_containers_are_accepted_by_the_walker() {
+        for name in ["clip.mp4", "clip.mkv", "clip.webm", "clip.mov", "clip.avi"] {
+            assert!(
+                is_supported_audio(Path::new(name)),
+                "{name} is skipped by a directory walk"
+            );
+        }
+    }
+
+    #[test]
+    fn a_container_outside_symphonia_falls_back_to_ffmpeg() {
+        if which::which("ffmpeg").is_err() {
+            return;
+        }
+        let directory = tempfile::tempdir().unwrap();
+        // A WAV renamed to .mkv: symphonia has no Matroska demuxer, and ffmpeg sniffs the
+        // content rather than trusting the extension
+        let path = directory.path().join("clip.mkv");
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: 16_000,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        let mut writer = hound::WavWriter::create(&path, spec).unwrap();
+        for _ in 0..1_600 {
+            writer.write_sample(1_000i16).unwrap();
+        }
+        writer.finalize().unwrap();
+
+        let audio = decode_file(&path).expect("ffmpeg extracts the audio track");
+        assert_eq!(audio.sample_rate, 16_000);
+        assert_eq!(audio.samples.len(), 1_600);
     }
 
     #[test]

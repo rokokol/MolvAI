@@ -94,6 +94,9 @@ pub struct Entry {
     pub text_final: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio_path: Option<String>,
+    /// Segments with timecodes of a file transcription; empty for a phrase from the microphone
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub segments: Vec<crate::domain::stt::Segment>,
 }
 
 impl Entry {
@@ -111,6 +114,7 @@ impl Entry {
         self.text_raw = None;
         self.text_final = None;
         self.audio_path = None;
+        self.segments.clear();
         self
     }
 }
@@ -154,6 +158,7 @@ mod tests {
             text_raw: Some("привет мир".into()),
             text_final: Some("Привет, мир.".into()),
             audio_path: None,
+            segments: Vec::new(),
         }
     }
 

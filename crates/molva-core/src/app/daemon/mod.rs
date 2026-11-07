@@ -71,6 +71,8 @@ enum Job {
         audio: PcmAudio,
         /// Start of the recording: the delay to the first hypothesis counts from it
         started: Instant,
+        mode: Mode,
+        app: Option<String>,
     },
     /// The phrase has ended
     Finish {
@@ -170,7 +172,7 @@ impl Daemon {
     /// Start the daemon: the control thread, the worker thread and the signal level thread
     // The three threads and their closures read as one whole: the channels they share are
     // visible only here. Splitting them into functions belongs together with the track of
-    // streaming processing, which changes these same closures now
+    // streaming processing, which changes these same closures
     #[allow(clippy::too_many_lines)]
     pub fn spawn(parts: DaemonParts) -> Daemon {
         let DaemonParts {
@@ -225,9 +227,16 @@ impl Daemon {
                             if shared.generation.load(Ordering::SeqCst) == generation {
                                 let started = feeder.started();
                                 for chunk in feeder.tick(audio.as_mut()) {
+                                    let (mode, app) = pending
+                                        .as_ref()
+                                        .map_or((Mode::Dictation, None), |(mode, _, app)| {
+                                            (*mode, app.clone())
+                                        });
                                     let job = Job::Chunk {
                                         audio: chunk.audio,
                                         started,
+                                        mode,
+                                        app,
                                     };
                                     if work_tx.send(job).is_err() {
                                         break;
@@ -244,9 +253,9 @@ impl Daemon {
                         }
                         Ctl::Message(message) => message,
                     };
-                    // Start of the count for the guarantee "microphone freed after the phrase":
-                    // from the stop command (that is, from the key release) to the stream
-                    // close (AG-03)
+                    // Start of the count for the guarantee "microphone freed after the phrase".
+                    // The count runs from the stop command, that is from the key release, to the
+                    // stream close (AG-03)
                     let released_from = control_clock.instant();
                     let input_label = format!("{:?}", message.input);
                     let outcome = machine.on(message.input);
@@ -263,7 +272,7 @@ impl Daemon {
                                 let app = platform::active_window_class();
                                 match audio.start(Some(level_tx.clone())) {
                                     Ok(()) => {
-                                        // The hold counts from the open microphone: the stream
+                                        // The hold counts from the open microphone. The stream
                                         // start itself takes up to 300 ms, and a short tap would
                                         // otherwise look like a long hold
                                         machine.capture_started(control_clock.instant());
@@ -319,8 +328,8 @@ impl Daemon {
                                             "microphone released"
                                         );
                                         shared.set_state(DaemonState::Transcribing, Some(*mode));
-                                        // Chunks returned during recording; if there were none,
-                                        // the phrase goes whole, as before
+                                        // Chunks emitted during recording: with none, the whole
+                                        // phrase goes to recognition
                                         let streamed = feeder.emitted();
                                         let started = feeder.started();
                                         let mut rest = feeder.finish(&pcm);
@@ -335,6 +344,8 @@ impl Daemon {
                                             let job = Job::Chunk {
                                                 audio: chunk.audio,
                                                 started,
+                                                mode: *mode,
+                                                app: app.clone(),
                                             };
                                             sent &= work_tx.send(job).is_ok();
                                         }
@@ -370,7 +381,7 @@ impl Daemon {
                                 // The chunks of a cancelled recording must not attach to the next
                                 // phrase
                                 let _ = work_tx.send(Job::Discard);
-                                // The microphone may not have opened: a failure here changes
+                                // The microphone need not have opened, so a failure here changes
                                 // nothing
                                 let _ = audio.stop();
                                 // There will be no phrase, so there is no end cue either: the user
@@ -398,13 +409,14 @@ impl Daemon {
             let notifier = notifier.clone();
             let tx = tx.clone();
             threads.push(std::thread::spawn(move || {
-                // Chunks come in one queue to one thread, so the order of the texts is the order of
-                // the chunks, and they cannot get mixed up
+                // Chunks come in one queue to one thread. The order of the texts is the order of
+                // the chunks, so they cannot get mixed up
                 let mut chunks = ChunkAccumulator::default();
                 while let Ok(job) = work_rx.recv() {
                     let (audio, tail, mode, style, app, stop_after_release_ms) = match job {
                         Job::Discard => {
                             chunks.reset();
+                            processor.discard_stream();
                             continue;
                         }
                         Job::Reload(config) => {
@@ -412,14 +424,23 @@ impl Daemon {
                             tracing::info!(style = %config.style.default, "pipeline reloaded the settings");
                             continue;
                         }
-                        Job::Chunk { audio, started } => {
+                        Job::Chunk {
+                            audio,
+                            started,
+                            mode,
+                            app,
+                        } => {
                             process_chunk(
                                 processor.as_mut(),
                                 &mut chunks,
                                 &shared,
                                 &audio,
                                 started,
-                                streaming_preview,
+                                ChunkPolicy {
+                                    preview: streaming_preview,
+                                    mode,
+                                },
+                                app.as_deref(),
                             );
                             continue;
                         }
@@ -474,8 +495,8 @@ impl Daemon {
         }
 
         // Level thread: the indicator in the GUI and the warning about a silent microphone. The
-        // watcher lives here and not in the cpal callback: a real-time callback cannot show a
-        // notification, and from here it goes by the same path as a recording error
+        // watcher lives here and not in the cpal callback. A real-time callback cannot show a
+        // notification, and from here the error goes by the same path as a recording error
         {
             let shared = shared.clone();
             let notifier = notifier.clone();
@@ -550,6 +571,13 @@ fn spawn_chunk_ticker(tx: Sender<Ctl>, shared: Arc<Shared>, generation: u64) {
     });
 }
 
+/// What to do with a recognized chunk: show the draft, type it, or both
+#[derive(Debug, Clone, Copy)]
+struct ChunkPolicy {
+    preview: bool,
+    mode: Mode,
+}
+
 /// Recognize the next chunk and show the draft to the subscribers
 ///
 /// A chunk that failed to recognize does not fail the phrase: its text is simply missing, and
@@ -560,7 +588,8 @@ fn process_chunk(
     shared: &Shared,
     audio: &PcmAudio,
     started: Instant,
-    streaming_preview: bool,
+    policy: ChunkPolicy,
+    app: Option<&str>,
 ) {
     let context = chunks.context();
     let Some(result) = processor.transcribe_chunk(audio, &context) else {
@@ -570,8 +599,16 @@ fn process_chunk(
     match result {
         Ok(chunk) => {
             let since_start = u32::try_from(started.elapsed().as_millis()).unwrap_or(u32::MAX);
+            if policy.mode == Mode::Dictation {
+                if let Some(Err(err)) = processor.stream_chunk(&chunk, app) {
+                    tracing::warn!(
+                        %err,
+                        "chunk not typed, the phrase continues without streaming"
+                    );
+                }
+            }
             chunks.push(chunk, since_start);
-            if streaming_preview {
+            if policy.preview {
                 shared.publish(&Event::Hypothesis {
                     text: chunks.draft(),
                 });
@@ -1040,9 +1077,9 @@ mod tests {
 
     #[test]
     fn a_short_tap_through_ipc_latches_the_recording_instead_of_finishing_it() {
-        // The compositor bind sends `record start` on press and `record stop` on release: a
-        // short tap arrives as two requests in a row and must turn on hands-free, and not
-        // return an empty phrase
+        // The compositor bind sends `record start` on press and `record stop` on release. A short
+        // tap arrives as two requests in a row. It must turn on hands-free rather than return an
+        // empty phrase
         let h = harness("тестовая реплика");
         let events = h.handle.subscribe();
         h.handle
@@ -1155,9 +1192,9 @@ mod tests {
 
     #[test]
     fn the_microphone_is_free_outside_a_recording_and_the_delay_lands_in_the_entry() {
-        // Criterion AG-01/AG-03: outside a recording the microphone is not busy, and the time of
-        // its release after the key release is visible in the journal, not only on the
-        // developer's word
+        // Criterion AG-01/AG-03: outside a recording the microphone is not busy. The time of its
+        // release after the key release is visible in the journal, so it is a measurement and
+        // not a claim
         let h = harness("реплика");
         assert!(
             !h.audio.is_recording(),
@@ -1564,7 +1601,11 @@ mod tests {
     #[test]
     fn chunks_are_recognised_during_the_recording_and_joined_in_order() {
         let responses = ["раз", "два", "три", "четыре", "пять"];
-        let h = streaming_harness(&responses, Config::default());
+        let mut config = Config::default();
+        // This test checks the whole-phrase paste of a chunked reply; the streaming paste has
+        // its own test below
+        config.stt.streaming_inject = false;
+        let h = streaming_harness(&responses, config);
 
         let (drafts, entry) = record(&h);
 
@@ -1606,6 +1647,50 @@ mod tests {
             entry.audio_secs
         );
         assert_eq!(h.injected.lock().unwrap().len(), 1, "exactly one paste");
+        drop(h.daemon);
+    }
+
+    #[test]
+    fn chunks_are_typed_while_the_recording_runs() {
+        let responses = ["раз", "два", "три", "четыре", "пять"];
+        let mut config = Config::default();
+        // The words are checked literally, not after the number rule turns them into digits
+        config.rules.numbers_as_digits = false;
+        let h = streaming_harness(&responses, config);
+
+        let (_drafts, entry) = record(&h);
+
+        let typed = h.injected.lock().unwrap().clone();
+        assert!(
+            typed.len() >= 2,
+            "the chunks did not reach the field during the recording: {typed:?}"
+        );
+        assert_eq!(
+            entry.inject_method.as_deref(),
+            Some("streamed"),
+            "the journal does not say the phrase was typed in chunks"
+        );
+        let typed_text = typed.concat();
+        assert!(
+            typed_text.split_whitespace().count() >= 2,
+            "the field got one word instead of a phrase: {typed_text:?}"
+        );
+        let final_text = entry.text_final.clone().unwrap_or_default();
+        assert!(
+            final_text.starts_with(typed_text.trim()),
+            "the journal text does not start with what was typed: {final_text:?} against {typed_text:?}"
+        );
+        let lower = |text: &str| {
+            text.split_whitespace()
+                .map(str::to_lowercase)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            lower(&final_text),
+            lower(entry.text_raw.as_deref().unwrap_or_default()),
+            "the streamed phrase lost a tail word: {final_text:?} against {:?}",
+            entry.text_raw
+        );
         drop(h.daemon);
     }
 

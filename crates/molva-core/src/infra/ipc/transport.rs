@@ -97,9 +97,10 @@ pub fn socket_name(
 ) -> Result<interprocess::local_socket::Name<'static>, std::io::Error> {
     #[cfg(windows)]
     {
-        // Windows accepts only pipe names `\\.\pipe\…`. Any other path (for example a temporary
-        // directory in tests, or `--socket /tmp/x.sock` from a foreign instruction) maps
-        // to a pipe name in a deterministic way, so the client and the server agree on the same one
+        // Windows accepts only pipe names `\\.\pipe\…`. Any other path maps to a pipe name in a
+        // deterministic way, so the client and the server agree on the same one. A temporary
+        // directory in tests is one such path, and so is `--socket /tmp/x.sock` from a foreign
+        // instruction
         let text = path.to_string_lossy();
         if !text.starts_with(r"\\.\pipe\") {
             let sanitized: String = text
@@ -212,7 +213,7 @@ fn serve_connection(
     stream: Stream,
     handler: &Arc<dyn RequestHandler>,
 ) -> Result<(), IpcServerError> {
-    // A second handle on the same socket, not a split half: `Stream::split` is deprecated from
+    // A second handle on the same socket, not a split half. `Stream::split` is deprecated from
     // interprocess 2.4.7, where a half no longer closes the socket when dropped
     let mut send = stream
         .try_clone()
@@ -233,8 +234,7 @@ fn serve_connection(
         let request: Request = match serde_json::from_str(&line) {
             Ok(request) => request,
             Err(err) => {
-                // The id is unknown — we answer with zero, so the client sees the reason, not
-                // silence
+                // The id is unknown, so zero is answered: the client sees the reason, not silence
                 write_line(
                     &mut send,
                     &Response::err(0, ErrorCode::BadRequest, err.to_string(), None),

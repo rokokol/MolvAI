@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="MolvAI">
+  <defs>
+    <linearGradient id="bar" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#6d8bff"/>
+      <stop offset="1" stop-color="#c3d0ff"/>
+    </linearGradient>
+  </defs>
+  <rect x="0.6" y="0.6" width="30.8" height="30.8" rx="8.5" fill="#101420" stroke="#39456a" stroke-width="1.2"/>
+  <g fill="url(#bar)">
+    <rect x="6" y="13" width="2.6" height="6" rx="1.3"/>
+    <rect x="10.2" y="10" width="2.6" height="12" rx="1.3"/>
+    <rect x="14.4" y="6.6" width="2.6" height="18.8" rx="1.3"/>
+    <rect x="18.6" y="11" width="2.6" height="10" rx="1.3"/>
+    <rect x="22.8" y="13.6" width="2.6" height="4.8" rx="1.3"/>
+  </g>
+</svg>

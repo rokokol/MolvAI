@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MolvAI — open-source system-wide voice input that runs on your machine</title>
+<meta name="description" content="Hold a key, speak, release: MolvAI types into any application. Local recognition with GigaAM-v3 for Russian, a searchable transcript journal, audio and video transcription with timecodes. MIT, Linux, Windows and macOS">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0a0c12">
+<link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./assets/site.css">
+<script src="./assets/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="./index.html" aria-label="MolvAI home">
+      <img src="./assets/logo.svg" alt="" width="26" height="26">
+      <span>Molv<span class="brand-ai">AI</span></span>
+    </a>
+    <nav class="site-nav" id="site-nav" aria-label="Main">
+      <a href="./index.html" aria-current="page">Home</a>
+      <a href="./features.html">Features</a>
+      <a href="./models.html">Models</a>
+      <a href="./cli.html">CLI</a>
+      <a href="./docs/index.html">Docs</a>
+      <a href="./faq.html">FAQ</a>
+      <a href="./docs/status.html">Status</a>
+      <a class="nav-github" href="https://github.com/rokokol/MolvAI"><img src="./assets/icon-github.svg" alt="" width="15" height="15">GitHub</a>
+    </nav>
+    <div class="header-tools">
+      <button class="icon-btn theme-toggle" type="button" data-theme-toggle aria-label="Switch between dark and light theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="12" cy="12" r="8"></circle>
+          <path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"></path>
+        </svg>
+      </button>
+      <button class="icon-btn menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="site-nav">
+        <span class="menu-bars" aria-hidden="true"></span>
+        <span class="visually-hidden">Menu</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="dot" aria-hidden="true"></span>Open source · MIT · Local by default</p>
+        <h1>Hold a key. Talk. <em>Your words appear.</em></h1>
+        <p class="lead">MolvAI is open-source voice input that types into any field, while recognition and post-processing run on your own computer</p>
+        <div class="actions">
+          <a class="btn btn-primary" href="#install">Install MolvAI <span class="arrow" aria-hidden="true">→</span></a>
+          <a class="btn btn-ghost" href="./docs/index.html">Read the docs</a>
+        </div>
+        <ul class="chips">
+          <li class="chip">Default model <strong>GigaAM-v3</strong></li>
+          <li class="chip">Engine <strong>auto</strong></li>
+          <li class="chip">Linux · Windows · macOS</li>
+          <li class="chip">No account, no telemetry</li>
+        </ul>
+      </div>
+
+      <div class="panel" aria-hidden="true">
+        <div class="panel-head">
+          <span class="panel-state"><span class="rec"></span>Listening</span>
+          <span class="panel-clock">00:03.4</span>
+        </div>
+        <div class="wave">
+          <span style="--h:24%;--d:0s"></span>
+          <span style="--h:40%;--d:.06s"></span>
+          <span style="--h:62%;--d:.12s"></span>
+          <span style="--h:88%;--d:.18s"></span>
+          <span style="--h:70%;--d:.24s"></span>
+          <span style="--h:96%;--d:.3s"></span>
+          <span style="--h:52%;--d:.36s"></span>
+          <span style="--h:76%;--d:.42s"></span>
+          <span style="--h:100%;--d:.48s"></span>
+          <span style="--h:60%;--d:.54s"></span>
+          <span style="--h:86%;--d:.6s"></span>
+          <span style="--h:44%;--d:.66s"></span>
+          <span style="--h:68%;--d:.72s"></span>
+          <span style="--h:92%;--d:.78s"></span>
+          <span style="--h:54%;--d:.84s"></span>
+          <span style="--h:78%;--d:.9s"></span>
+          <span style="--h:38%;--d:.96s"></span>
+          <span style="--h:64%;--d:1.02s"></span>
+          <span style="--h:90%;--d:1.08s"></span>
+          <span style="--h:48%;--d:1.14s"></span>
+          <span style="--h:74%;--d:1.2s"></span>
+          <span style="--h:98%;--d:1.26s"></span>
+          <span style="--h:56%;--d:1.32s"></span>
+          <span style="--h:70%;--d:1.38s"></span>
+          <span style="--h:32%;--d:1.44s"></span>
+          <span style="--h:60%;--d:1.5s"></span>
+          <span style="--h:84%;--d:1.56s"></span>
+          <span style="--h:46%;--d:1.62s"></span>
+          <span style="--h:66%;--d:1.68s"></span>
+          <span style="--h:52%;--d:1.74s"></span>
+          <span style="--h:30%;--d:1.8s"></span>
+          <span style="--h:42%;--d:1.86s"></span>
+          <span style="--h:26%;--d:1.92s"></span>
+          <span style="--h:36%;--d:1.98s"></span>
+        </div>
+        <div class="transcript">Let me check the changelog before the release, and then<span class="caret"></span></div>
+        <div class="panel-stats">
+          <div class="panel-stat"><b>Local</b><span>engine</span></div>
+          <div class="panel-stat"><b>ru · en</b><span>languages</span></div>
+          <div class="panel-stat"><b>F9</b><span>hold to talk</span></div>
+        </div>
+        <div class="panel-foot"><kbd>F9</kbd> hold to dictate · <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Z</kbd> toggle</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="promises">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="kicker">Why it is built this way</span>
+        <h2 id="promises">Promises the code keeps</h2>
+        <p>The interesting part of a dictation tool is not the transcription. It is what happens to your voice when you stop talking</p>
+      </div>
+      <div class="grid grid-3">
+        <article class="card proof">
+          <span class="num" aria-hidden="true">01</span>
+          <h3>The microphone is open only while you talk</h3>
+          <p class="muted">The capture stream opens on the key press and closes right after the release, including on a cancel or an error. The measured delay from release to close is written to the journal as <code>latency_ms.stop_after_release</code>, so you can check the promise instead of trusting it</p>
+        </article>
+        <article class="card proof">
+          <span class="num" aria-hidden="true">02</span>
+          <h3>Russian is the default, not a translation layer</h3>
+          <p class="muted">The default model is GigaAM-v3 e2e RNNT at Q4_K_M, 175 MiB, and the default engine is <code>auto</code>. It recognizes Russian speech on the CPU without a video card, and English speech in a bilingual phrase stays possible with <code>stt.language = "auto"</code></p>
+        </article>
+        <article class="card proof">
+          <span class="num" aria-hidden="true">03</span>
+          <h3>Every phrase stays findable</h3>
+          <p class="muted">A JSONL journal holds the text, the timing, the app and the model of each phrase. <code>molva history</code>, <code>molva stats</code> and <code>molva search</code> read that one file, and a file transcription keeps its timecodes</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="demo">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="kicker">The 20-second version</span>
+        <h2 id="demo">Install, hold a key, speak, release</h2>
+        <p>No account to create, no model to choose before the first phrase. The daemon fetches the default weights at start and checks their SHA-256</p>
+      </div>
+      <ol class="steps">
+        <li class="step">
+          <div>
+            <h3>Install with Nix, or with the script</h3>
+            <p>With Nix nothing enters the system. Without Nix, <code>install.sh</code> checks the dependencies and installs nothing itself</p>
+            <div class="cmd"><code>nix run github:rokokol/MolvAI -- --help</code><button class="copy" type="button" data-copy="nix run github:rokokol/MolvAI -- --help">Copy</button></div>
+          </div>
+        </li>
+        <li class="step">
+          <div>
+            <h3>Start the daemon</h3>
+            <p>It opens the socket, loads the default GigaAM model and listens for the hotkeys. The Home Manager module runs the same command as a user service</p>
+            <div class="cmd"><code>molva daemon</code><button class="copy" type="button" data-copy="molva daemon">Copy</button></div>
+          </div>
+        </li>
+        <li class="step">
+          <div>
+            <h3>Hold <kbd>F9</kbd> and speak</h3>
+            <p>Chunks are recognized while you speak, so most of the phrase is already text when you stop. A short tap latches the recording hands-free</p>
+          </div>
+        </li>
+        <li class="step">
+          <div>
+            <h3>Release, and the text is in the field</h3>
+            <p>The paste method is chosen automatically and the phrase goes to the journal. <code>molva history --last</code> brings it back without dictating it again</p>
+            <div class="cmd"><code>molva history paste --last</code><button class="copy" type="button" data-copy="molva history paste --last">Copy</button></div>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="shots">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="kicker">The actual window</span>
+        <h2 id="shots">Not a mockup: the panel and the journal</h2>
+        <p>These are screenshots of the Tauri window. The panel shows the live signal, the streamed draft and the last phrase; the command mode replaces a selected paragraph in place</p>
+      </div>
+      <div class="shots">
+        <figure class="snap snap-left">
+          <span class="tape" aria-hidden="true"></span>
+          <img src="./docs/img/panel-idle.png" alt="The MolvAI panel at rest: the style selector, the last phrase and the statistics for today" loading="lazy" width="900" height="600">
+          <figcaption>The panel at rest, with the journal for today</figcaption>
+        </figure>
+        <figure class="snap snap-right">
+          <span class="tape" aria-hidden="true"></span>
+          <img src="./docs/img/panel-recording.png" alt="The MolvAI panel while recording: the signal level, the draft text and the stop controls" loading="lazy" width="900" height="600">
+          <figcaption>Recording: the level and the streamed draft</figcaption>
+        </figure>
+        <figure class="snap snap-right">
+          <span class="tape" aria-hidden="true"></span>
+          <img src="./docs/img/command-mode-before.png" alt="A line of text selected in an editor before a voice edit" loading="lazy" width="900" height="600">
+          <figcaption>Command mode: the selection before</figcaption>
+        </figure>
+        <figure class="snap snap-left">
+          <span class="tape" aria-hidden="true"></span>
+          <img src="./docs/img/command-mode-after.png" alt="The same line replaced by the result of the voice instruction" loading="lazy" width="900" height="600">
+          <figcaption>The same paragraph, rewritten by voice</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="compare">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="kicker">Honest comparison</span>
+        <h2 id="compare">MolvAI next to the usual choices</h2>
+        <p>One column comes from this repository. The others are marked <em>not verified</em>, because this repository holds no measurement or documentation of those products</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <caption>The axes that decide a dictation tool. "Not verified" means the repository is silent about that product, not that the answer is no</caption>
+          <thead>
+            <tr>
+              <th scope="col">Axis</th>
+              <th scope="col" class="col-molva">MolvAI</th>
+              <th scope="col">Wispr Flow</th>
+              <th scope="col">OS dictation (Windows Voice Typing, macOS Dictation)</th>
+              <th scope="col">Cloud Whisper API</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Local processing</th>
+              <td class="col-molva"><span class="verdict verdict-yes">Yes</span> recognition and rules on the device; the optional language model can run on Ollama</td>
+              <td><span class="verdict verdict-nv">not verified</span></td>
+              <td><span class="verdict verdict-nv">not verified</span></td>
+              <td><span class="verdict verdict-nv">not verified</span></td>
+            </tr>
+            <tr>
+              <th scope="row">Open source</th>
+              <td class="col-molva"><span class="verdict verdict-yes">Yes</span> MIT, the whole pipeline is in the repository</td>
+              <td><span class="verdict verdict-nv">not verified</span></td>
+              <td><span class="verdict verdict-nv">not verified</span></td>
+              <td><span class="verdict verdict-nv">not verified</span></td>
+            </tr>
+            <tr>
+              <th scope="row">Price</th>
+              <td class="col-molva"><span class="verdict verdict-yes">Free</span> no paid tier and no account</td>
+              <td><span class="verdict verdict-nv">not verified</span></td>
+              <td><span class="verdict verdict-nv">not verified</span></td>
+              <td><span class="verdict verdict-nv">not verified</span></td>
+            </tr>
+            <tr>
+              <th scope="row">Russian quality</th>
+              <td class="col-molva">GigaAM-v3 for Russian is the default; <code>stt.language</code> and <code>allowed_languages</code> control the rest</td>
+              <td><span class="verdict verdict-nv">not verified</span></td>
+              <td><span class="verdict verdict-nv">not verified</span></td>
+              <td><span class="verdict verdict-nv">not verified</span></td>
+            </tr>
+            <tr>
+              <th scope="row">Audio and video files with timecodes</th>
+              <td class="col-molva"><span class="verdict verdict-yes">Yes</span> <code>molva transcribe --timecodes</code>, single files, directories and stdin</td>
+              <td><span class="verdict verdict-nv">not verified</span></td>
+              <td><span class="verdict verdict-nv">not verified</span></td>
+              <td><span class="verdict verdict-nv">not verified</span></td>
+            </tr>
+            <tr>
+              <th scope="row">Search over transcripts</th>
+              <td class="col-molva"><span class="verdict verdict-yes">Yes</span> <code>molva search</code> over the same journal, with a timecode per hit</td>
+              <td><span class="verdict verdict-nv">not verified</span></td>
+              <td><span class="verdict verdict-nv">not verified</span></td>
+              <td><span class="verdict verdict-nv">not verified</span></td>
+            </tr>
+            <tr>
+              <th scope="row">Linux support</th>
+              <td class="col-molva"><span class="verdict verdict-yes">Yes</span> Wayland and X11, with binds for Hyprland, Sway, KDE and GNOME</td>
+              <td><span class="verdict verdict-nv">not verified</span></td>
+              <td><span class="verdict verdict-nv">not verified</span></td>
+              <td><span class="verdict verdict-nv">not verified</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="footnote">The blanks are deliberate. Filling them would mean repeating vendor marketing as fact, and a comparison built that way is worth nothing. The MolvAI column cites the <a href="./docs/index.html">documentation</a> and the source in this repository</p>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="benchmarks">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="kicker">Numbers, with their origin</span>
+        <h2 id="benchmarks">Benchmarks and latency</h2>
+        <p>Every figure carries the name of who measured it. Nothing here is a projection</p>
+      </div>
+      <div class="grid grid-4">
+        <div class="metric">
+          <span class="source-tag own">This project</span>
+          <span class="big">60–70 <small>ms</small></span>
+          <span class="label">Whisper <code>small</code> on an RTX 3060 through Vulkan, per phrase after warm-up</span>
+          <p class="footnote">The same phrase takes 4.1 s on the CPU. From <a href="./docs/status.html">the status log</a> and <a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></p>
+        </div>
+        <div class="metric">
+          <span class="source-tag own">This project</span>
+          <span class="big">5.9–6.8 <small>s</small></span>
+          <span class="label">A 15.5 s phrase on the CPU with <code>small</code> and chunk cutting, after the release, instead of 12.3 s</span>
+          <p class="footnote">Chunks are recognized while the person speaks. From <a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></p>
+        </div>
+        <div class="metric">
+          <span class="source-tag upstream">Upstream benchmark</span>
+          <span class="big">17× <small>realtime</small></span>
+          <span class="label">GigaAM-v3 e2e RNNT Q4_K_M on a Ryzen 7 4750U: 10.98 s of audio in 630 ms</span>
+          <p class="footnote">Published by transcribe.cpp for the same quantization. The project has not re-run it on its own hardware</p>
+        </div>
+        <div class="metric">
+          <span class="source-tag upstream">Upstream benchmark</span>
+          <span class="big">15.5× <small>realtime</small></span>
+          <span class="label">The same GigaAM benchmark on a 33.84 s clip</span>
+          <p class="footnote">The longer the clip, the more the fixed model load amortizes. No GPU figure for GigaAM is published in the repository</p>
+        </div>
+      </div>
+      <p class="footnote">Caveat: the GigaAM numbers describe transcribe.cpp with these weights, not a MolvAI measurement. The whisper numbers came from this project's own runs, with the phrase lengths and the hardware named above</p>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="privacy">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="kicker">Privacy</span>
+        <h2 id="privacy">The network is used twice, and both times you ask</h2>
+        <p>Capture, recognition, the dictionary, the rules, the paste, the journal, the statistics and the GUI all work with the cable pulled out</p>
+      </div>
+      <div class="grid grid-3">
+        <article class="card">
+          <h3>Microphone</h3>
+          <p class="muted">The stream exists for the length of one recording. Outside a recording MolvAI listens to nothing, and the system recording indicator is off</p>
+        </article>
+        <article class="card">
+          <h3>Journal</h3>
+          <p class="muted">One JSON line per phrase, file permissions for the owner only. <code>journal.include_text = false</code> drops the text, <code>privacy.no_record_mode = true</code> stops the journal, and <code>journal.encrypt</code> seals the texts with XChaCha20-Poly1305</p>
+        </article>
+        <article class="card">
+          <h3>Network</h3>
+          <p class="muted">Only <code>molva models pull</code> downloads weights, and only a cloud language model provider that you configure calls out. <code>privacy.telemetry</code> exists to be <code>false</code></p>
+        </article>
+      </div>
+      <div class="callout">
+        <span class="callout-title">Read the receipts</span>
+        <p>The full list of addresses the program can call is in <a href="https://github.com/rokokol/MolvAI/blob/main/docs/outgoing-endpoints.md">docs/outgoing-endpoints.md</a>. The journal schema, field by field, is in <a href="https://github.com/rokokol/MolvAI/blob/main/docs/journal-schema.md">docs/journal-schema.md</a></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="install" aria-labelledby="install-title">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="kicker">Install</span>
+        <h2 id="install-title">Pick the way that fits your machine</h2>
+        <p>With Nix the toolchain stays in the store. Without Nix, the installer prints the exact commands for your distribution and changes nothing without you</p>
+      </div>
+      <div class="tabs" data-tabs>
+        <div class="tablist" role="tablist" aria-label="Install methods">
+          <button class="tab" role="tab" id="tab-nix" aria-controls="panel-nix" aria-selected="true" tabindex="0">Nix</button>
+          <button class="tab" role="tab" id="tab-script" aria-controls="panel-script" aria-selected="false" tabindex="-1">One command</button>
+          <button class="tab" role="tab" id="tab-release" aria-controls="panel-release" aria-selected="false" tabindex="-1">Ready builds</button>
+        </div>
+        <div class="tabpanel" role="tabpanel" id="panel-nix" aria-labelledby="tab-nix" tabindex="0">
+          <h3>Build and run without cloning</h3>
+          <div class="cmd"><code>nix run github:rokokol/MolvAI -- --help</code><button class="copy" type="button" data-copy="nix run github:rokokol/MolvAI -- --help">Copy</button></div>
+          <p class="muted">With Home Manager, the flake module installs <code>molva</code>, runs the daemon as a user service and writes the Hyprland binds from your settings</p>
+<pre class="code"><code><span class="c"># flake inputs: molvai.url = "github:rokokol/MolvAI";</span>
+imports = [ inputs.molvai.homeModules.default ];
+programs.molvai.enable = true;</code></pre>
+        </div>
+        <div class="tabpanel" role="tabpanel" id="panel-script" aria-labelledby="tab-script" tabindex="0">
+          <h3>Clone, check, install</h3>
+          <div class="cmd"><code>git clone https://github.com/rokokol/MolvAI &amp;&amp; cd MolvAI &amp;&amp; ./install.sh</code><button class="copy" type="button" data-copy="git clone https://github.com/rokokol/MolvAI && cd MolvAI && ./install.sh">Copy</button></div>
+          <p class="muted">The binary goes to <code>~/.local/bin</code> and needs no administrator rights. <code>./install.sh --check</code> prints the dependency commands for Debian, Fedora, Arch, openSUSE, macOS and Windows, and the script installs none of them itself</p>
+          <div class="cmd"><code>./install.sh --uninstall</code><button class="copy" type="button" data-copy="./install.sh --uninstall">Copy</button></div>
+          <p class="muted">Removal follows the manifest, so it takes exactly what was installed</p>
+        </div>
+        <div class="tabpanel" role="tabpanel" id="panel-release" aria-labelledby="tab-release" tabindex="0">
+          <h3>Download a build</h3>
+          <p class="muted">The releases page carries the CLI archives for Linux, Windows and macOS, an AppImage, deb, dmg and a Windows installer. Each file has a SHA-256 sum in <code>sha256sums.txt</code>. The Linux and Windows builds use Vulkan for whisper models and fall back to the CPU when no Vulkan device exists</p>
+          <p><a class="btn" href="https://github.com/rokokol/MolvAI/releases">Open the releases page <span class="arrow" aria-hidden="true">↗</span></a></p>
+        </div>
+      </div>
+      <p class="footnote">Full steps, including the microphone choice and the compositor binds, are in the <a href="./docs/install.html">install guide</a></p>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="next">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="next">Where to look next</h2>
+        <p>The project is in development. The status page says what works and what is cut, and it links the canonical file in the repository</p>
+      </div>
+      <div class="grid grid-3">
+        <a class="card" href="./features.html">
+          <h3>Features <span aria-hidden="true">→</span></h3>
+          <p class="muted">Push-to-talk, streaming text, command mode, file transcription, search and the journal</p>
+        </a>
+        <a class="card" href="./models.html">
+          <h3>Models <span aria-hidden="true">→</span></h3>
+          <p class="muted">The GigaAM default and the full catalog with sizes, quantization and engines</p>
+        </a>
+        <a class="card" href="./docs/index.html">
+          <h3>Documentation <span aria-hidden="true">→</span></h3>
+          <p class="muted">Install, first run, hotkeys, settings, the CLI, privacy and troubleshooting</p>
+        </a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <div class="footer-brand">
+      <a class="brand" href="./index.html">
+        <img src="./assets/logo.svg" alt="" width="26" height="26">
+        <span>Molv<span class="brand-ai">AI</span></span>
+      </a>
+      <p>Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
+      <p class="footer-note">MIT licensed · no trackers · no external fonts</p>
+    </div>
+    <nav aria-label="Project links">
+      <p class="footer-title">Project</p>
+      <ul>
+        <li><a href="https://github.com/rokokol/MolvAI">GitHub</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/releases">Releases</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE">License (MIT)</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/issues">Issues</a></li>
+      </ul>
+    </nav>
+    <nav aria-label="Site links">
+      <p class="footer-title">Site</p>
+      <ul>
+        <li><a href="./features.html">Features</a></li>
+        <li><a href="./models.html">Models</a></li>
+        <li><a href="./cli.html">CLI reference</a></li>
+        <li><a href="./docs/index.html">Documentation</a></li>
+        <li><a href="./faq.html">FAQ</a></li>
+        <li><a href="./docs/status.html">Status and roadmap</a></li>
+      </ul>
+    </nav>
+    <div>
+      <p class="footer-title">Canonical docs</p>
+      <p class="footer-note">The repository is the source of truth. These pages summarize it and link back</p>
+      <ul>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/CHANGELOG.md">CHANGELOG</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="wrap footer-credit">
+    <p>MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
+    <p>This site runs without cookies, analytics or third-party assets</p>
+  </div>
+</footer>
+</body>
+</html>

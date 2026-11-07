@@ -38,7 +38,7 @@ impl Lang {
 
 type Dictionary = HashMap<String, String>;
 
-// A broken file gives an empty dictionary rather than a panic at start: every string then
+// A broken file gives an empty dictionary rather than a panic at start. Every string then
 // falls back to its key, and a test keeps both files parseable
 fn parse(json: &str) -> Dictionary {
     serde_json::from_str(json).unwrap_or_default()

@@ -261,10 +261,10 @@ export default function Settings({
           ))}
         </div>
 
-        <div className="notice">
-          <strong>{t("settings.wayland.title")}</strong>
-          <p>{t("settings.wayland.body")}</p>
-          <div className="row" style={{ marginTop: "0.4rem" }}>
+        {hyprland?.session && (
+          <details className="help">
+            <summary>{t("settings.wayland.title")}</summary>
+            <p>{t("settings.wayland.body")}</p>
             <button
               type="button"
               className="chip"
@@ -275,15 +275,17 @@ export default function Settings({
                   .catch((err) => onError(asCommandError(err)))
               }
             >
-              {hyprland?.written ? t("settings.wayland.rewrite") : t("settings.wayland.write")}
+              {hyprland.written ? t("settings.wayland.rewrite") : t("settings.wayland.write")}
             </button>
-          </div>
-          {hyprland?.written && (
-            <>
-              <p className="small">{t("settings.wayland.written", { path: hyprland.path })}</p>
-              <p>{t("settings.wayland.include")}</p>
-              <input readOnly value={hyprland.include_line} aria-label={t("settings.wayland.include")} />
-              <div className="row" style={{ marginTop: "0.4rem" }}>
+            {hyprland.written && (
+              <>
+                <p className="small">{t("settings.wayland.written", { path: hyprland.path })}</p>
+                <p>{t("settings.wayland.include")}</p>
+                <input
+                  readOnly
+                  value={hyprland.include_line}
+                  aria-label={t("settings.wayland.include")}
+                />
                 <button
                   type="button"
                   className="chip"
@@ -293,10 +295,10 @@ export default function Settings({
                 >
                   {includeCopied ? t("common.copied") : t("common.copy")}
                 </button>
-              </div>
-            </>
-          )}
-        </div>
+              </>
+            )}
+          </details>
+        )}
       </Section>
 
       <Section title={t("settings.section.audio")}>

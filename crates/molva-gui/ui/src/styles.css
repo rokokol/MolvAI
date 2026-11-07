@@ -454,6 +454,24 @@ textarea {
   font-size: 0.85rem;
 }
 
+.help {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-alt);
+}
+
+.help summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.help p {
+  margin: 0.35rem 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
 .meter {
   height: 1.1rem;
   border: 1px solid var(--border);
@@ -513,6 +531,20 @@ textarea {
   margin: 0 0 0.5rem;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.transcript {
+  border-top: 1px solid var(--border);
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+}
+
+.transcript-text {
+  margin: 0 0 0.5rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--mono, monospace);
+  font-size: 0.85rem;
 }
 
 table {

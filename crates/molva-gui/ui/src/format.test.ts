@@ -12,10 +12,12 @@ import {
   formatLatency,
   formatMegabytes,
   formatMinutes,
+  formatTimecode,
   formatWpm,
   GROUP_SEPARATOR,
+  renderFileResult,
 } from "./format";
-import type { DayPoint } from "./types";
+import type { DayPoint, FileResult } from "./types";
 
 function day(date: string, words: number, avg_wpm: number | null): DayPoint {
   return { day: date, entries: 1, words, audio_secs: 10, avg_wpm, avg_latency_ms: 500 };
@@ -164,5 +166,45 @@ describe("formatMegabytes", () => {
 describe("axisTicks", () => {
   it("gives zero, the middle and the maximum", () => {
     expect(axisTicks(100)).toEqual([0, 50, 100]);
+  });
+});
+
+describe("formatTimecode", () => {
+  it("renders minutes, seconds and milliseconds", () => {
+    expect(formatTimecode(0)).toBe("00:00.000");
+    expect(formatTimecode(75_120)).toBe("01:15.120");
+  });
+
+  it("lets minutes pass 59 for a long recording", () => {
+    expect(formatTimecode(3_723_500)).toBe("62:03.500");
+  });
+});
+
+describe("renderFileResult", () => {
+  const result: FileResult = {
+    file: "lecture.mp4",
+    text: "привет мир",
+    segments: [
+      { start_ms: 0, end_ms: 2500, text: " привет" },
+      { start_ms: 2500, end_ms: 4000, text: "мир" },
+    ],
+    audio_secs: 4,
+    latency_ms: 10,
+  };
+
+  it("renders a timecode per segment", () => {
+    expect(renderFileResult(result, true)).toBe(
+      "[00:00.000 → 00:02.500] привет\n[00:02.500 → 00:04.000] мир",
+    );
+  });
+
+  it("returns the plain text when timecodes are off", () => {
+    expect(renderFileResult(result, false)).toBe("привет мир");
+  });
+
+  it("wraps the whole text when the engine gave no segments", () => {
+    expect(renderFileResult({ ...result, segments: [] }, true)).toBe(
+      "[00:00.000 → 00:04.000] привет мир",
+    );
   });
 });

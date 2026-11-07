@@ -4,7 +4,8 @@
 use molva_core::domain::audio::DeviceInfo;
 use molva_core::infra::audio::list_input_devices;
 
-/// Print the input devices: a table for a person, JSON for scripts (Y-15 — everything goes to stdout)
+/// Print the input devices: a table for a person, JSON for scripts (Y-15, everything goes to
+/// stdout)
 pub(crate) fn run(json: bool) -> anyhow::Result<()> {
     let devices = list_input_devices()?;
     if json {
@@ -32,7 +33,8 @@ fn render_table(devices: &[DeviceInfo]) -> String {
         name_width = name_width
     );
     for device in devices {
-        // Spaces instead of a width by characters: device names can contain non-ASCII letters
+        // Padding is counted in characters and not in bytes: device names can contain
+        // non-ASCII letters
         let padding = " ".repeat(name_width.saturating_sub(device.name.chars().count()));
         let rates = if device.sample_rates.is_empty() {
             "—".to_string()

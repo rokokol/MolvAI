@@ -10,7 +10,7 @@ test_cmd := "cargo test --workspace --no-fail-fast"
 default: check
 
 # The full gate: formatting, linter, dependencies, tests, SPDX headers, no stubs
-check: fmt clippy lint-deps test spdx-check no-stubs
+check: fmt clippy lint-deps test spdx-check no-stubs comments prose sh-check
 
 fmt:
     cargo fmt --all --check
@@ -45,6 +45,22 @@ falsify *FILTER:
 # Which commit broke the suite, starting from GOOD
 bisect GOOD:
     scripts/t.sh bisect {{GOOD}} -b '{{build_cmd}}' -- {{test_cmd}}
+
+# Comments follow the code-comments skill; the checker proves its own rules first
+comments:
+    scripts/check-comments.sh --strict
+
+# The README follows the create-readme skill
+prose:
+    scripts/check-prose.sh README.md
+
+# The shell scripts follow the bash-best-practices skill
+sh-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for script in install.sh scripts/check-appimage.sh scripts/appimage-update-info.sh; do
+        scripts/check-sh.sh "$script"
+    done
 
 # Every source file has an SPDX header
 spdx-check:

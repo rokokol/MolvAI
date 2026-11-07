@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 //! `molva test-inject` — check the paste without starting the daemon and without saying a word
 //!
-//! The pause before the paste is required: the command is started from a terminal, but the window to check
-//! is the one the user has time to switch to
+//! The pause before the paste is required: the command is started from a terminal, but the
+//! window to check is the one the user has time to switch to
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -50,7 +50,8 @@ pub(crate) fn run(
     Ok(())
 }
 
-/// The paste mode for the check: the argument wins over the config, and `auto` is resolved by the length of the text
+/// The paste mode for the check: the argument wins over the config, and `auto` is resolved by
+/// the length of the text
 pub(crate) fn resolve_mode(config: &Config, mode: Option<&str>, text: &str) -> OutputMode {
     let requested = mode.map_or_else(|| parse_output_mode(&config.output.mode), parse_output_mode);
     requested.resolve(text, config.output.auto_type_max_chars as usize)

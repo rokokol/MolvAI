@@ -159,7 +159,7 @@ fn spawn_subscription(app: AppHandle) {
                             hint: None,
                         },
                     );
-                    // We ask for the device list only when the daemon appears
+                    // The device list is asked for only when the daemon appears
                     let _ = commands::fetch_devices(&app.state::<AppState>());
                     refresh_tray(&app);
                     loop {
@@ -252,6 +252,7 @@ pub fn run() {
             commands::start_daemon,
             commands::stop_daemon,
             commands::get_config,
+            commands::config_managed,
             commands::get_config_path,
             commands::is_first_run,
             commands::save_config,
@@ -265,6 +266,7 @@ pub fn run() {
             commands::toggle_hotkeys_paused,
             commands::history_list,
             commands::history_apps,
+            commands::search_files,
             commands::history_delete,
             commands::history_clear,
             commands::data_dir_path,

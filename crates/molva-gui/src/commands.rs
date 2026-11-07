@@ -102,7 +102,6 @@ impl From<SidecarError> for CommandError {
     }
 }
 
-/// Settings validation error: field, reason, allowed values
 #[derive(Debug, Clone, PartialEq)]
 pub struct ValidationError {
     pub field: String,
@@ -158,7 +157,7 @@ pub fn validate_config(config: &Config) -> Result<(), ValidationError> {
     one_of(
         "stt.engine",
         &config.stt.engine,
-        &["whisper-cpp", "remote-openai"],
+        &["auto", "whisper-cpp", "transcribe-cpp", "remote-openai"],
     )?;
     one_of(
         "hotkeys.backend",
@@ -258,11 +257,13 @@ pub fn available_styles(state: State<'_, AppState>) -> Vec<StyleOption> {
         .collect()
 }
 
-/// Shared state: settings, the daemon that we started, file transcriptions, hotkey pause
+/// Shared state: settings, the daemon this process started, file transcriptions, hotkey pause
 #[derive(Debug)]
 pub struct AppState {
     config: Mutex<Config>,
     config_path: PathBuf,
+    /// The config resolves into the Nix store: the settings page is hidden and writes are refused
+    managed: bool,
     /// There was no settings file: the interface opens on the Settings tab at once
     first_run: bool,
     daemon: Mutex<Daemon>,
@@ -277,12 +278,14 @@ impl AppState {
     /// Read the settings, and on the first start create them with the default values
     pub fn load() -> Result<Self, ConfigError> {
         let config_path = Config::default_path()?;
-        let first_run = !config_path.exists();
+        let managed = Config::is_managed(&config_path);
+        let first_run = !config_path.exists() && !managed;
         let config = Config::load_or_create(&config_path)?;
         i18n::apply(&config.ui_language);
         Ok(Self {
             config: Mutex::new(config),
             config_path,
+            managed,
             first_run,
             daemon: Mutex::new(Daemon::default()),
             transcriptions: Transcriptions::default(),
@@ -315,6 +318,10 @@ impl AppState {
 
     pub fn config_path(&self) -> &PathBuf {
         &self.config_path
+    }
+
+    pub fn managed(&self) -> bool {
+        self.managed
     }
 
     pub fn first_run(&self) -> bool {
@@ -448,7 +455,7 @@ async fn tell_daemon(cmd: Command) -> Result<(), CommandError> {
 
 #[tauri::command]
 pub async fn get_status(state: State<'_, AppState>) -> Result<Status, CommandError> {
-    // The lock is taken and released before the wait: we must not hold it across `await`
+    // The lock is taken and released before the wait: it must not be held across `await`
     let daemon_ours = lock(&state.daemon).is_ours();
     match ask_daemon(Command::Status).await {
         Ok(value) => {
@@ -607,11 +614,29 @@ pub fn is_first_run(state: State<'_, AppState>) -> bool {
 }
 
 #[tauri::command]
+pub fn config_managed(state: State<'_, AppState>) -> bool {
+    state.managed()
+}
+
+/// A managed config is a store symlink: a write fails at the file system with a message that
+/// does not name Nix. This check answers before the write and names the place to change.
+fn refuse_managed(state: &AppState) -> Result<(), CommandError> {
+    if state.managed() {
+        return Err(CommandError::new(
+            "config",
+            "the settings are managed by Nix; change programs.molvai and run switch",
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub fn save_config(
     app: AppHandle,
     state: State<'_, AppState>,
     config: Config,
 ) -> Result<(), CommandError> {
+    refuse_managed(&state)?;
     validate_config(&config)?;
     let hotkeys_changed = state.config().hotkeys != config.hotkeys;
     state.replace_config(config)?;
@@ -641,6 +666,7 @@ pub fn export_config(state: State<'_, AppState>) -> Result<String, CommandError>
 /// Import settings from a TOML file: the file is checked before it replaces the current settings
 #[tauri::command]
 pub fn import_config(state: State<'_, AppState>, path: String) -> Result<Config, CommandError> {
+    refuse_managed(&state)?;
     let path = PathBuf::from(path);
     let text = std::fs::read_to_string(&path)
         .map_err(|e| CommandError::new("config", format!("{}: {e}", path.display())))?;
@@ -653,6 +679,7 @@ pub fn import_config(state: State<'_, AppState>, path: String) -> Result<Config,
 
 #[tauri::command]
 pub fn reset_config(state: State<'_, AppState>) -> Result<Config, CommandError> {
+    refuse_managed(&state)?;
     let config = Config::default();
     state.replace_config(config.clone())?;
     notify_config_reload();
@@ -748,6 +775,16 @@ pub fn history_apps(state: State<'_, AppState>) -> Result<Vec<String>, CommandEr
 }
 
 #[tauri::command]
+pub fn search_files(
+    state: State<'_, AppState>,
+    query: String,
+    limit: usize,
+) -> Result<Vec<molva_core::app::search::Hit>, CommandError> {
+    let entries = history::load_for(&state.config())?;
+    Ok(molva_core::app::search::search(&entries, &query, limit))
+}
+
+#[tauri::command]
 pub fn history_delete(state: State<'_, AppState>, id: String) -> Result<bool, CommandError> {
     let id = Uuid::parse_str(&id)
         .map_err(|e| CommandError::new("history", format!("invalid id: {e}")))?;
@@ -819,10 +856,10 @@ pub async fn transcribe_file<R: Runtime>(
     app: AppHandle<R>,
     id: String,
     path: String,
-) -> Result<serde_json::Value, CommandError> {
+) -> Result<Vec<molva_core::app::file_result::FileResult>, CommandError> {
     let handle = app.clone();
     let task_id = id.clone();
-    // Transcription is slow: we move it off the command thread so the interface does not hang
+    // Transcription is slow, so it runs off the command thread and the interface does not hang
     tauri::async_runtime::spawn_blocking(move || {
         let state = handle.state::<AppState>();
         let emitter = handle.clone();
@@ -967,7 +1004,7 @@ mod tests {
         config.stt.model_path = directory.path().display().to_string();
         let info = models::find(config.stt.model.trim()).unwrap();
         std::fs::write(
-            models::partial_path(directory.path(), info.file_name),
+            models::partial_path(directory.path(), &info.file_name),
             vec![0u8; 1024],
         )
         .unwrap();

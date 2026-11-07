@@ -1,6 +1,6 @@
 name: deny
 
-# A detector, not a gate: a red run here blames the world (a new CVE in the RustSec database,
+# A detector, not a gate. A red run here blames the world (a new CVE in the RustSec database,
 # a changed license of a dependency), not someone's pull request. So it runs
 # on a push to main, once a week and by hand, but never on a pull request
 on:

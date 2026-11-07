@@ -82,7 +82,7 @@ fn strip_code_fences(text: &str) -> String {
         return trimmed.to_string();
     }
     let mut lines: Vec<&str> = trimmed.lines().collect();
-    // The first line is the fence itself, maybe with a language name
+    // The first line is the fence itself, with an optional language name
     lines.remove(0);
     if lines
         .last()

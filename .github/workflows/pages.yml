@@ -1,0 +1,54 @@
+name: pages
+
+# The static site in site/ is published on every push to main and by hand from the
+# Actions tab. docs/img is copied into the artifact next to the site, so a screenshot
+# can be shown by a relative path without a second binary copy in the repository
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One publication at a time and in order: a newer run waits for the running one, so an
+# older deploy can never overwrite a newer one. Cancelling a deploy halfway is worse
+# than waiting
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/configure-pages@v6
+
+      - name: Assemble the site
+        run: |
+          mkdir -p _site
+          cp -R site/. _site/
+          mkdir -p _site/docs
+          cp -R docs/img _site/docs/img
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    name: deploy
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

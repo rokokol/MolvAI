@@ -3,8 +3,8 @@
 //!
 //! It also applies one fix for Linux. The tray loads `libayatana-appindicator3` with `dlopen`
 //! when it creates the icon. In the Nix devShell this library sits in the store. Neither
-//! `ld.so.cache` nor `LD_LIBRARY_PATH` shows it. At build time we ask pkg-config for its
-//! directory and write it to the RUNPATH of the executable: `dlopen` called from the binary
+//! `ld.so.cache` nor `LD_LIBRARY_PATH` shows it. At build time pkg-config gives its directory,
+//! and that directory goes into the RUNPATH of the executable: `dlopen` called from the binary
 //! itself reads that RUNPATH
 
 fn main() {

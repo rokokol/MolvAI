@@ -42,6 +42,8 @@ interprocess = { workspace = true }
 which = { workspace = true }
 arboard = { workspace = true }
 enigo = { workspace = true }
+# Temporary WAV for the transcribe.cpp CLI
+tempfile = { workspace = true }
 
 # On Linux the clipboard and input synthesis support Wayland, plus evdev and notifications
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -54,7 +56,6 @@ notify-rust = { workspace = true }
 notify-rust = { workspace = true }
 
 [dev-dependencies]
-tempfile = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 [lints]

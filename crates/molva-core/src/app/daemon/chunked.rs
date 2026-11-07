@@ -69,7 +69,7 @@ pub struct ChunkPrefix {
 }
 
 impl ChunkPrefix {
-    /// An empty prefix means "there were no chunks": the phrase is recognized whole, as before
+    /// An empty prefix means "there were no chunks", so the phrase goes to recognition whole
     pub fn is_empty(&self) -> bool {
         self.text.trim().is_empty()
     }

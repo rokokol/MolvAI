@@ -18,7 +18,25 @@
     },
     "root": {
       "inputs": {
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "transcribe-cpp": "transcribe-cpp"
+      }
+    },
+    "transcribe-cpp": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1792676080,
+        "narHash": "sha256-t+kTifoU+9NROp6p7SVicqqu0iUum0bLqS9gODZ53UU=",
+        "owner": "handy-computer",
+        "repo": "transcribe.cpp",
+        "rev": "4d7c1ccefd39e5a9ea36cca5f8fefc6dcc14b99b",
+        "type": "github"
+      },
+      "original": {
+        "owner": "handy-computer",
+        "ref": "v0.4.1",
+        "repo": "transcribe.cpp",
+        "type": "github"
       }
     }
   },

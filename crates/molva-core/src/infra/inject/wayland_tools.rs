@@ -146,10 +146,11 @@ impl TextInjector for HyprctlInjector {
     /// same way
     fn copy_selection(&mut self) -> Result<String, InjectError> {
         use crate::infra::inject::clipboard::{wl_clear, wl_paste};
-        // The clipboard is cleared before Ctrl+C: otherwise, if the application was too slow to
-        // put out the selection, the old clipboard content goes to the model — for example the
-        // result of the previous edit — and each next command builds on the old text. If the
-        // clear is not available, only content that differs from the old one counts as fresh
+        // The clipboard is cleared before Ctrl+C. An application that is slow to put out the
+        // selection leaves the old content in place, and that content reaches the model. The
+        // result of the previous edit is one such case, and each next command then builds on the
+        // old text. If the clear is not available, only content that differs from the old one
+        // counts as fresh
         let before = wl_paste();
         let cleared = wl_clear().is_ok();
         // The code 54 is the physical C key: the keysym `C` is not found with the Russian layout
@@ -159,8 +160,8 @@ impl TextInjector for HyprctlInjector {
         )?;
         std::thread::sleep(MODIFIER_RELEASE_DELAY);
         release_modifiers();
-        // The application does not return the selection at once: we wait for a new one to appear
-        // in the clipboard
+        // The application answers Ctrl+C with a delay, so the loop waits until a clipboard
+        // selection appears that was not there before the copy
         let deadline = std::time::Instant::now() + SELECTION_SETTLE_TIMEOUT;
         while std::time::Instant::now() < deadline {
             std::thread::sleep(SELECTION_POLL_INTERVAL);

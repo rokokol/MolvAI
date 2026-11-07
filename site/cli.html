@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CLI reference — MolvAI</title>
+<meta name="description" content="The molva command line: dictation control, transcribe with timecodes, search over transcripts, history, models, config, doctor, diagnostics and exit codes">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0a0c12">
+<link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./assets/site.css">
+<script src="./assets/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="./index.html" aria-label="MolvAI home">
+      <img src="./assets/logo.svg" alt="" width="26" height="26">
+      <span>Molv<span class="brand-ai">AI</span></span>
+    </a>
+    <nav class="site-nav" id="site-nav" aria-label="Main">
+      <a href="./index.html">Home</a>
+      <a href="./features.html">Features</a>
+      <a href="./models.html">Models</a>
+      <a href="./cli.html" aria-current="page">CLI</a>
+      <a href="./docs/index.html">Docs</a>
+      <a href="./faq.html">FAQ</a>
+      <a href="./docs/status.html">Status</a>
+      <a class="nav-github" href="https://github.com/rokokol/MolvAI"><img src="./assets/icon-github.svg" alt="" width="15" height="15">GitHub</a>
+    </nav>
+    <div class="header-tools">
+      <button class="icon-btn theme-toggle" type="button" data-theme-toggle aria-label="Switch between dark and light theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="12" cy="12" r="8"></circle>
+          <path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"></path>
+        </svg>
+      </button>
+      <button class="icon-btn menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="site-nav">
+        <span class="menu-bars" aria-hidden="true"></span>
+        <span class="visually-hidden">Menu</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+  <section class="section">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="kicker">CLI reference</span>
+        <h1>The <code>molva</code> command</h1>
+        <p>One binary holds the CLI and the daemon. The page lists the options that <code>molva --help</code> prints; the repository is the source of truth when the two disagree</p>
+        <p class="canonical">Canonical source: <a href="https://github.com/rokokol/MolvAI/blob/main/crates/molva/src/main.rs">crates/molva/src/main.rs</a></p>
+      </div>
+
+      <div class="grid grid-2">
+        <article class="card">
+          <h3>Global options</h3>
+          <div class="table-wrap" style="border:0">
+            <table>
+              <caption>Options accepted before or after the subcommand</caption>
+              <thead>
+                <tr><th scope="col">Option</th><th scope="col">Meaning</th></tr>
+              </thead>
+              <tbody>
+                <tr><th scope="row"><code>--config</code></th><td>Path to the settings file, default <code>~/.config/molva/config.toml</code>; <code>MOLVA_CONFIG</code> sets the same</td></tr>
+                <tr><th scope="row"><code>--socket</code></th><td>Path to the daemon socket, default <code>$XDG_RUNTIME_DIR/molva.sock</code>; <code>MOLVA_SOCKET</code> sets the same</td></tr>
+                <tr><th scope="row"><code>--version</code></th><td>The version of the binary</td></tr>
+                <tr><th scope="row"><code>--help</code></th><td>Help for the command and for every subcommand</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+        <article class="card">
+          <h3>Exit codes</h3>
+          <div class="table-wrap" style="border:0">
+            <table>
+              <caption>For scripts and compositor binds, the code matters</caption>
+              <thead>
+                <tr><th scope="col" class="num">Code</th><th scope="col">Meaning</th></tr>
+              </thead>
+              <tbody>
+                <tr><td class="num">0</td><td>Everything worked</td></tr>
+                <tr><td class="num">2</td><td>Wrong arguments or an unknown name</td></tr>
+                <tr><td class="num">3</td><td>The daemon is not running or does not answer</td></tr>
+                <tr><td class="num">4</td><td>The daemon is busy with the previous phrase</td></tr>
+                <tr><td class="num">5</td><td>Error of the recognition engine</td></tr>
+                <tr><td class="num">6</td><td>Could not read or write a file</td></tr>
+                <tr><td class="num">7</td><td>The daemon is already running; the second copy exits with a message</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="dictation">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="dictation">Dictation and the daemon</h2>
+        <p>These commands talk to the running daemon over a local socket. A compositor bind calls them, and a script reads their exit code</p>
+      </div>
+
+      <h3><code>molva daemon</code></h3>
+      <p class="muted">Starts the process that owns the microphone, the model and the state. One instance per user</p>
+      <div class="table-wrap">
+        <table>
+          <caption>molva daemon</caption>
+          <thead><tr><th scope="col">Option</th><th scope="col">Meaning</th></tr></thead>
+          <tbody>
+            <tr><th scope="row"><code>--foreground</code></th><td>Notifications go to the log instead of the desktop. The process does not go to the background in any case</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3><code>molva record</code></h3>
+      <p class="muted">Start, stop, toggle and cancel. The subcommands take <code>--mode dictation|command</code> and <code>--style</code></p>
+      <div class="table-wrap">
+        <table>
+          <caption>molva record &lt;action&gt;</caption>
+          <thead><tr><th scope="col">Action</th><th scope="col">Effect</th></tr></thead>
+          <tbody>
+            <tr><th scope="row"><code>start</code></th><td>Open the microphone and begin a phrase</td></tr>
+            <tr><th scope="row"><code>stop</code></th><td>Close the microphone and process the phrase</td></tr>
+            <tr><th scope="row"><code>toggle</code></th><td>Start if idle, stop if recording, which is the hands-free bind</td></tr>
+            <tr><th scope="row"><code>cancel</code></th><td>Throw the recording away without creating a phrase</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="cmd"><code>molva record toggle --mode command</code><button class="copy" type="button" data-copy="molva record toggle --mode command">Copy</button></div>
+
+      <h3>The rest of the dictation set</h3>
+      <div class="table-wrap">
+        <table>
+          <caption>Everyday commands around a dictation</caption>
+          <thead><tr><th scope="col">Command</th><th scope="col">What it does</th></tr></thead>
+          <tbody>
+            <tr><th scope="row"><code>molva status</code></th><td>The daemon state. <code>--json</code> for machines, <code>--watch</code> to keep printing events</td></tr>
+            <tr><th scope="row"><code>molva devices</code></th><td>The input devices that <code>audio.device</code> can name</td></tr>
+            <tr><th scope="row"><code>molva test-inject</code></th><td>Pastes a test string into the active field and prints the method that worked</td></tr>
+            <tr><th scope="row"><code>molva setup &lt;target&gt;</code></th><td>Prints the binds for <code>hyprland</code>, <code>sway</code>, <code>kde</code> or <code>gnome</code>. <code>--ptt</code> replaces the key, <code>--write</code> writes the Hyprland Lua file</td></tr>
+            <tr><th scope="row"><code>molva completions &lt;shell&gt;</code></th><td>A completion script for bash, zsh, fish, PowerShell or elvish</td></tr>
+            <tr><th scope="row"><code>molva secret</code></th><td><code>set</code>, <code>delete</code> and <code>status</code> for keys. The value is read from stdin and never printed</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="cmd"><code>printf '%s' "$KEY" | molva secret set llm</code><button class="copy" type="button" data-copy="printf '%s' &quot;$KEY&quot; | molva secret set llm">Copy</button></div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="transcribe">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="transcribe"><code>molva transcribe</code></h2>
+        <p>Offline transcription of audio and video. It never touches the microphone and never pastes anywhere, so it fits scripts and CI</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <caption>molva transcribe [OPTIONS] &lt;PATH&gt;…  ·  a path, a directory or <code>-</code> for stdin</caption>
+          <thead><tr><th scope="col">Option</th><th scope="col">Meaning</th></tr></thead>
+          <tbody>
+            <tr><th scope="row"><code>--timecodes</code></th><td>Print segments with their start and end</td></tr>
+            <tr><th scope="row"><code>--json</code></th><td>A JSON array instead of text</td></tr>
+            <tr><th scope="row"><code>-o, --out</code></th><td>A file or a directory for the result; without it the text goes to stdout</td></tr>
+            <tr><th scope="row"><code>--recursive</code></th><td>Walk nested directories</td></tr>
+            <tr><th scope="row"><code>--stdin-format</code></th><td>A format hint for a stream: <code>wav</code>, <code>mp3</code>, <code>ogg</code>, <code>flac</code>, <code>m4a</code></td></tr>
+            <tr><th scope="row"><code>--model</code></th><td>A model name from the catalog for this run</td></tr>
+            <tr><th scope="row"><code>--engine</code></th><td>The recognizer; <code>fake</code> runs the pipeline without weights</td></tr>
+            <tr><th scope="row"><code>--language</code></th><td>An ISO-639-1 code; by default it comes from the settings</td></tr>
+            <tr><th scope="row"><code>--style</code></th><td>Run the text pipeline with this style</td></tr>
+            <tr><th scope="row"><code>--no-llm</code></th><td>Do not call the language model in post-processing</td></tr>
+            <tr><th scope="row"><code>--copy</code></th><td>Copy the result to the clipboard and leave it there</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="cmd"><code>molva transcribe interview.mp4 --timecodes -o interview.txt</code><button class="copy" type="button" data-copy="molva transcribe interview.mp4 --timecodes -o interview.txt">Copy</button></div>
+      <p class="footnote">One unreadable file in a batch does not cancel the others. The exit code 6 reports that not everything went through</p>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="search">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="search"><code>molva search</code></h2>
+        <p>Finds text in the transcriptions of audio and video files. It reads the same journal as the history, so there is no second index to drift</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <caption>molva search [OPTIONS] [QUERY]  ·  an empty query prints the newest transcriptions</caption>
+          <thead><tr><th scope="col">Option</th><th scope="col">Meaning</th></tr></thead>
+          <tbody>
+            <tr><th scope="row"><code>--limit</code></th><td>Maximum hits, default 20; <code>0</code> means no limit</td></tr>
+            <tr><th scope="row"><code>--since</code>, <code>--until</code></th><td>A time window: <code>7d</code>, <code>24h</code>, <code>2026-09-01</code> or an RFC 3339 moment</td></tr>
+            <tr><th scope="row"><code>--json</code></th><td>A JSON array of hits</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="cmd"><code>molva search "deadline" --since 7d</code><button class="copy" type="button" data-copy="molva search &quot;deadline&quot; --since 7d">Copy</button></div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="history">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="history"><code>molva history</code></h2>
+        <p>The phrase journal, read and edited from the terminal. The filters work on the whole file</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <caption>molva history [OPTIONS] [SUBCOMMAND]</caption>
+          <thead><tr><th scope="col">Option or action</th><th scope="col">Meaning</th></tr></thead>
+          <tbody>
+            <tr><th scope="row"><code>--limit</code></th><td>How many of the latest entries, default 20</td></tr>
+            <tr><th scope="row"><code>--search</code></th><td>A substring in the text of the phrase</td></tr>
+            <tr><th scope="row"><code>--app</code></th><td>Only phrases from this application</td></tr>
+            <tr><th scope="row"><code>--since</code>, <code>--until</code></th><td>A time window</td></tr>
+            <tr><th scope="row"><code>--format</code></th><td><code>table</code>, <code>json</code>, <code>plain</code> or <code>rofi</code></td></tr>
+            <tr><th scope="row"><code>show &lt;id&gt;</code></th><td>One entry in full</td></tr>
+            <tr><th scope="row"><code>paste [id]</code></th><td>Paste a phrase again. <code>--last</code> takes the newest one</td></tr>
+            <tr><th scope="row"><code>delete &lt;id&gt;</code></th><td>Delete one entry</td></tr>
+            <tr><th scope="row"><code>clear</code></th><td>Clear the whole history; <code>--yes</code> skips the question</td></tr>
+            <tr><th scope="row"><code>export &lt;file&gt;</code></th><td>Write JSONL or CSV, by the file extension</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="models">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="models"><code>molva models</code></h2>
+        <p>Weights management against the same catalog the GUI and the Nix module read</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <caption>molva models &lt;action&gt;</caption>
+          <thead><tr><th scope="col">Action</th><th scope="col">Meaning</th></tr></thead>
+          <tbody>
+            <tr><th scope="row"><code>list</code></th><td>The catalog and which files are already downloaded; <code>--json</code> for machines</td></tr>
+            <tr><th scope="row"><code>pull &lt;name&gt;</code></th><td>Download over HTTPS and check the SHA-256. <code>--force</code> downloads again, <code>--all-small</code> takes every file under 500 MB</td></tr>
+            <tr><th scope="row"><code>verify &lt;name&gt;</code></th><td>Check the checksum of an installed file</td></tr>
+            <tr><th scope="row"><code>remove &lt;name&gt;</code></th><td>Delete an installed file</td></tr>
+            <tr><th scope="row"><code>path &lt;name&gt;</code></th><td>Print the path of the weights file</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="cmd"><code>molva models pull gigaam-v3-e2e-rnnt-q4_k_m</code><button class="copy" type="button" data-copy="molva models pull gigaam-v3-e2e-rnnt-q4_k_m">Copy</button></div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="config">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="config"><code>molva config</code></h2>
+        <p>The settings file, addressed by dotted keys. A wrong value fails with the file path and the key name</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <caption>molva config &lt;action&gt;</caption>
+          <thead><tr><th scope="col">Action</th><th scope="col">Meaning</th></tr></thead>
+          <tbody>
+            <tr><th scope="row"><code>path</code></th><td>The path of the settings file in use</td></tr>
+            <tr><th scope="row"><code>get [key]</code></th><td>The value at a dotted path, or every setting</td></tr>
+            <tr><th scope="row"><code>set &lt;key&gt; &lt;value&gt;</code></th><td>Write one value</td></tr>
+            <tr><th scope="row"><code>edit</code></th><td>Open the file in <code>$EDITOR</code> and check it afterwards</td></tr>
+            <tr><th scope="row"><code>validate</code></th><td>Check the file without changing it</td></tr>
+            <tr><th scope="row"><code>reset</code></th><td>Restore the default values; <code>--yes</code> skips the question</td></tr>
+            <tr><th scope="row"><code>export</code>, <code>import</code></th><td>A settings profile as a file</td></tr>
+            <tr><th scope="row"><code>reload</code></th><td>Ask the running daemon to reread the file</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="cmd"><code>molva config set stt.language auto</code><button class="copy" type="button" data-copy="molva config set stt.language auto">Copy</button></div>
+      <p class="footnote">The recognizer and the paste chain are built when the daemon starts, so a changed model, engine or output method needs a daemon restart. <code>molva config reload</code> passes the other settings to the running daemon</p>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="doctor">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="doctor"><code>molva doctor</code></h2>
+        <p>Diagnostics for the session, the compositor, the paste tools, the permissions, the daemon socket, the weights and their checksum, and the model provider</p>
+      </div>
+      <div class="cmd"><code>molva doctor</code><button class="copy" type="button" data-copy="molva doctor">Copy</button></div>
+      <p class="muted">Run it before asking for help. It names the failed part and the next step, and it is the first question in every troubleshooting thread</p>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="other">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="other">The remaining commands</h2>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <caption>Statistics, styles, the dictionary and benchmarks</caption>
+          <thead><tr><th scope="col">Command</th><th scope="col">What it does</th></tr></thead>
+          <tbody>
+            <tr><th scope="row"><code>molva stats</code></th><td>Words, pace, time and the record over <code>--period today|week|month|all</code>; <code>--series day|session|app</code>, <code>--json</code>; subcommands <code>export</code> and <code>reset</code></td></tr>
+            <tr><th scope="row"><code>molva styles</code></th><td><code>list</code> the post-processing styles, <code>show</code> the system prompt of one</td></tr>
+            <tr><th scope="row"><code>molva dictionary</code></th><td><code>list</code>, <code>add</code>, <code>reload</code> and <code>stats</code> for the term dictionary</td></tr>
+            <tr><th scope="row"><code>molva bench</code></th><td>Word and character error rate plus latency on the audio fixtures in the repository</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="footnote">A recipe for each everyday task is in the <a href="./docs/cli.html">CLI guide</a></p>
+      <div class="to-top"><a href="#main">Back to top</a></div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <div class="footer-brand">
+      <a class="brand" href="./index.html">
+        <img src="./assets/logo.svg" alt="" width="26" height="26">
+        <span>Molv<span class="brand-ai">AI</span></span>
+      </a>
+      <p>Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
+      <p class="footer-note">MIT licensed · no trackers · no external fonts</p>
+    </div>
+    <nav aria-label="Project links">
+      <p class="footer-title">Project</p>
+      <ul>
+        <li><a href="https://github.com/rokokol/MolvAI">GitHub</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/releases">Releases</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE">License (MIT)</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/issues">Issues</a></li>
+      </ul>
+    </nav>
+    <nav aria-label="Site links">
+      <p class="footer-title">Site</p>
+      <ul>
+        <li><a href="./features.html">Features</a></li>
+        <li><a href="./models.html">Models</a></li>
+        <li><a href="./cli.html">CLI reference</a></li>
+        <li><a href="./docs/index.html">Documentation</a></li>
+        <li><a href="./faq.html">FAQ</a></li>
+        <li><a href="./docs/status.html">Status and roadmap</a></li>
+      </ul>
+    </nav>
+    <div>
+      <p class="footer-title">Canonical docs</p>
+      <p class="footer-note">The repository is the source of truth. These pages summarize it and link back</p>
+      <ul>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/CHANGELOG.md">CHANGELOG</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="wrap footer-credit">
+    <p>MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
+    <p>This site runs without cookies, analytics or third-party assets</p>
+  </div>
+</footer>
+</body>
+</html>

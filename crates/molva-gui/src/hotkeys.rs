@@ -19,6 +19,8 @@ pub struct HyprlandBinds {
     pub path: String,
     pub include_line: String,
     pub written: bool,
+    /// The window runs inside a Hyprland session: the help is relevant only here
+    pub session: bool,
 }
 
 fn home() -> Option<PathBuf> {
@@ -37,6 +39,7 @@ pub fn hyprland_binds(path: &Path) -> HyprlandBinds {
         path: path.display().to_string(),
         include_line: hyprland::include_line(path, home().as_deref()),
         written: path.exists(),
+        session: std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_some(),
     }
 }
 

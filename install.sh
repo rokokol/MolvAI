@@ -5,10 +5,10 @@ set -euo pipefail
 here="$(cd -- "$(dirname -- "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
 # The version lives in one place: Cargo.toml of the workspace. A second source
-# would drift apart from the first, so here the version is read and not repeated
-# The first line is taken from the value and not through `| head`: a reader that stops
-# early leaves sed writing into a closed pipe, and under pipefail this SIGPIPE becomes
-# the status of a read that succeeded
+# would drift apart from the first, so here the version is read and not repeated.
+# The first line is taken from the value and not through `| head`. A reader that stops
+# early leaves sed writing into a closed pipe. Under pipefail, that SIGPIPE becomes the
+# status of a read that succeeded
 VERSION="$(sed -n '/^\[workspace\.package\]/,/^\[/s/^version *= *"\([^"]*\)".*/\1/p' \
   "$here/Cargo.toml")"
 VERSION="${VERSION%%$'\n'*}"
@@ -61,8 +61,8 @@ EOF
 }
 
 # need_value OPTION VALUE... — refuse if nothing follows the option. `${2:?}` prints
-# the message of bash itself and exits with code 1, but a missing argument is a usage
-# error, and the script must report it in its own voice and with its own code
+# the message of bash itself and exits with code 1. A missing argument is a usage error,
+# though, and the script must report it in its own voice and with its own code
 need_value() {
   [[ -n "${2:-}" ]] && return 0
   echo "install.sh: a directory is needed after $1" >&2
@@ -155,7 +155,7 @@ data_dir="${XDG_DATA_HOME:-$HOME/.local/share}/molva"
 autostart_file="${XDG_CONFIG_HOME:-$HOME/.config}/autostart/molva.desktop"
 
 # --- manifest ---------------------------------------------------------------------------
-# Each created path is recorded in its final form, without DESTDIR: the manifest travels
+# Each created path is recorded in its final form, without DESTDIR. The manifest travels
 # inside the staging tree and stays correct wherever this tree ends up
 
 old_paths=()
@@ -171,7 +171,7 @@ put() { # put MODE SOURCE FINAL_PATH
 }
 
 # write_file MODE FINAL_PATH CONTENT. The content is passed as an argument and not through
-# a pipeline: the right side of a pipeline is a subshell, and the manifest entry from it was lost
+# a pipeline. The right side of a pipeline is a subshell, and the manifest entry from it is lost
 write_file() {
   install -d "$(dirname "${DESTDIR%/}$2")"
   printf '%s\n' "$3" >"${DESTDIR%/}$2"
@@ -227,7 +227,8 @@ if ((UNINSTALL)); then
     exit 0
   fi
 
-  # The settings and the journal live outside the prefix: the user decides their fate, not the manifest
+  # The settings and the journal live outside the prefix: the user decides their fate, not the
+  # manifest
   history_paths=()
   [[ -e "$config_dir" ]] && history_paths+=("$config_dir")
   [[ -e "$data_dir" ]] && history_paths+=("$data_dir")

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Status and roadmap — MolvAI documentation</title>
+<meta name="description" content="What works in MolvAI today, what is not ready, the newest release, and where the canonical status log and changelog live">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0a0c12">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/site.css">
+<script src="../assets/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="../index.html" aria-label="MolvAI home">
+      <img src="../assets/logo.svg" alt="" width="26" height="26">
+      <span>Molv<span class="brand-ai">AI</span></span>
+    </a>
+    <nav class="site-nav" id="site-nav" aria-label="Main">
+      <a href="../index.html">Home</a>
+      <a href="../features.html">Features</a>
+      <a href="../models.html">Models</a>
+      <a href="../cli.html">CLI</a>
+      <a href="./index.html" aria-current="page">Docs</a>
+      <a href="../faq.html">FAQ</a>
+      <a href="./status.html">Status</a>
+      <a class="nav-github" href="https://github.com/rokokol/MolvAI"><img src="../assets/icon-github.svg" alt="" width="15" height="15">GitHub</a>
+    </nav>
+    <div class="header-tools">
+      <button class="icon-btn theme-toggle" type="button" data-theme-toggle aria-label="Switch between dark and light theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="12" cy="12" r="8"></circle>
+          <path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"></path>
+        </svg>
+      </button>
+      <button class="icon-btn menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="site-nav">
+        <span class="menu-bars" aria-hidden="true"></span>
+        <span class="visually-hidden">Menu</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="wrap doc-layout">
+  <aside class="doc-nav" aria-label="Documentation">
+    <p class="doc-nav-title">Documentation</p>
+    <ul>
+      <li><a href="./index.html">Overview</a></li>
+      <li><a href="./install.html">Install and first run</a></li>
+      <li><a href="./models.html">Models and GigaAM</a></li>
+      <li><a href="./hotkeys.html">Hotkeys and compositors</a></li>
+      <li><a href="./settings.html">Settings and Nix mode</a></li>
+      <li><a href="./cli.html">CLI guide</a></li>
+      <li><a href="./privacy.html">Privacy and journal</a></li>
+      <li><a href="./troubleshooting.html">Troubleshooting</a></li>
+      <li><a href="./status.html" aria-current="page">Status and roadmap</a></li>
+    </ul>
+    <p class="doc-nav-title">Elsewhere</p>
+    <ul>
+      <li><a href="../cli.html">CLI reference</a></li>
+      <li><a href="../models.html">Model catalog</a></li>
+      <li><a href="../index.html">Home</a></li>
+    </ul>
+  </aside>
+
+  <article class="doc-body prose">
+    <h1>Status and roadmap</h1>
+    <p class="canonical">Canonical source: <a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a> and <a href="https://github.com/rokokol/MolvAI/blob/main/CHANGELOG.md">CHANGELOG.md</a></p>
+
+    <p>MolvAI started at the V0ICE hackathon in Kazan in September 2026 and is in development. The repository has released <strong>v0.1.9</strong>, and the changes after that tag are in the Unreleased section of the changelog</p>
+    <p>This page is a signpost, not a second status file. The checkpoint log, the results of the checks and the cut list live in <a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a>, and the released changes live in the <a href="https://github.com/rokokol/MolvAI/blob/main/CHANGELOG.md">changelog</a></p>
+
+    <h2>What works</h2>
+    <ul>
+      <li>End-to-end dictation: a key press opens the microphone, the text lands in the active field, the phrase goes to the journal</li>
+      <li>Hold, tap, toggle and cancel, with the default GigaAM-v3 model and the <code>auto</code> engine</li>
+      <li>Chunks recognized during the recording, and the finished chunks typed while you speak</li>
+      <li>Text quality without a model, and an optional OpenAI-compatible model through Ollama or a cloud provider</li>
+      <li>Voice editing of a selected paragraph, which is command mode</li>
+      <li>Audio and video transcription with timecodes, and search over the resulting transcripts</li>
+      <li>A journal with statistics, optional encryption and keys in the OS store</li>
+      <li>A Nix flake and a Home Manager module that render the settings and the weights into the store</li>
+      <li>Vulkan recognition in the Linux and Windows builds, with a CPU fallback</li>
+    </ul>
+
+    <h2>What is not ready</h2>
+    <ul>
+      <li>Some live checks are still unverified, among them pasting in the Russian layout on Windows and opening the ad hoc signed dmg on a Mac. The current list is in <a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></li>
+      <li>The CUDA archive is for Windows only. Linux and Windows compute through Vulkan in the main packages</li>
+      <li>Pre-roll audio is not captured, by design: the microphone must stay closed between phrases</li>
+      <li>The project publishes no GigaAM GPU benchmark. The realtime figures on the home page are upstream CPU measurements</li>
+      <li>There is no long-term support promise. The project is a hackathon result that is being kept alive</li>
+    </ul>
+
+    <h2>Roadmap</h2>
+    <p>The project publishes no dates. What comes next is the Unreleased section of the changelog, which lists the changes already in the tree. The "Next" line of each checkpoint in the status log says the same</p>
+    <ul>
+      <li><a href="https://github.com/rokokol/MolvAI/blob/main/CHANGELOG.md">Unreleased changes</a></li>
+      <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">Checkpoints and cut lists</a></li>
+      <li><a href="https://github.com/rokokol/MolvAI/releases">Releases</a></li>
+      <li><a href="https://github.com/rokokol/MolvAI/issues">Open issues</a></li>
+    </ul>
+
+    <div class="callout">
+      <span class="callout-title">The honest measure of a green run</span>
+      <p>The repository gates changes on <code>just check</code>, which runs the formatter, the linter, the tests, the dependency checks and the SPDX headers. The status log records the test count and shows the checks that were seen red before they turned green</p>
+    </div>
+
+    <p class="to-top"><a href="./index.html">Back to the documentation overview</a> · <a href="#main">Back to top</a></p>
+  </article>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <div class="footer-brand">
+      <a class="brand" href="../index.html">
+        <img src="../assets/logo.svg" alt="" width="26" height="26">
+        <span>Molv<span class="brand-ai">AI</span></span>
+      </a>
+      <p>Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
+      <p class="footer-note">MIT licensed · no trackers · no external fonts</p>
+    </div>
+    <nav aria-label="Project links">
+      <p class="footer-title">Project</p>
+      <ul>
+        <li><a href="https://github.com/rokokol/MolvAI">GitHub</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/releases">Releases</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE">License (MIT)</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/issues">Issues</a></li>
+      </ul>
+    </nav>
+    <nav aria-label="Site links">
+      <p class="footer-title">Site</p>
+      <ul>
+        <li><a href="../features.html">Features</a></li>
+        <li><a href="../models.html">Models</a></li>
+        <li><a href="../cli.html">CLI reference</a></li>
+        <li><a href="./index.html">Documentation</a></li>
+        <li><a href="../faq.html">FAQ</a></li>
+        <li><a href="./status.html">Status and roadmap</a></li>
+      </ul>
+    </nav>
+    <div>
+      <p class="footer-title">Canonical docs</p>
+      <p class="footer-note">The repository is the source of truth. These pages summarize it and link back</p>
+      <ul>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/CHANGELOG.md">CHANGELOG</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="wrap footer-credit">
+    <p>MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
+    <p>This site runs without cookies, analytics or third-party assets</p>
+  </div>
+</footer>
+</body>
+</html>

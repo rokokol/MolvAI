@@ -49,6 +49,10 @@ pub enum ConfigError {
     NoHome,
     #[error("no such setting: {0}")]
     UnknownKey(String),
+    #[error(
+        "the settings file {path} is managed by Nix and is read-only; change programs.molvai instead"
+    )]
+    Managed { path: PathBuf },
     #[error("{key} = {value:?}: {message}")]
     BadValue {
         key: String,
@@ -144,7 +148,7 @@ impl Default for AudioConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SttConfig {
-    /// `whisper-cpp` | `remote-openai`
+    /// `auto` | `whisper-cpp` | `transcribe-cpp` | `remote-openai`
     pub engine: String,
     pub model: String,
     /// Empty means the default model directory
@@ -168,18 +172,24 @@ pub struct SttConfig {
     /// The pause that cuts a chunk in streaming processing
     pub chunk_pause_ms: u32,
     pub streaming_preview: bool,
+    /// Type each recognized chunk while the person speaks instead of waiting for the release
+    pub streaming_inject: bool,
+    /// Path to the transcribe-cli binary; empty means `transcribe-cli` from PATH
+    pub transcribe_cli: String,
+    /// Compute backend of transcribe.cpp: `auto`, `cpu`, `vulkan`, `cuda`…
+    pub transcribe_backend: String,
     pub remote: RemoteSttConfig,
 }
 
 impl Default for SttConfig {
     fn default() -> Self {
         Self {
-            engine: "whisper-cpp".into(),
-            model: "small".into(),
+            engine: "auto".into(),
+            model: "gigaam-v3-e2e-rnnt-q4_k_m".into(),
             model_path: String::new(),
             models_mirror: String::new(),
-            // Fixed language: auto-detection in whisper.cpp on the CPU is five times slower
-            // (23 s against 4 s for a 4 s phrase with the small model). `auto` stays an option
+            // Fixed language: auto-detection in whisper.cpp on the CPU is five times slower. For a
+            // 4 s phrase with the small model it costs 23 s against 4 s. `auto` stays an option
             language: "ru".into(),
             allowed_languages: vec!["ru".into(), "en".into()],
             threads: 0,
@@ -187,11 +197,14 @@ impl Default for SttConfig {
             no_speech_threshold: 0.6,
             auto_pull: true,
             chunked: true,
-            // The segmentation pause is shorter than `audio.vad_min_pause_ms`: there the pause
-            // decides whether the phrase has ended, and here it decides whether a chunk can
-            // already go to the model
+            // The segmentation pause is shorter than `audio.vad_min_pause_ms`. There the pause
+            // decides whether the phrase has ended. Here it decides whether a chunk can already
+            // go to the model
             chunk_pause_ms: crate::app::audio::segmenter::DEFAULT_CHUNK_PAUSE_MS,
             streaming_preview: true,
+            streaming_inject: true,
+            transcribe_cli: String::new(),
+            transcribe_backend: "auto".into(),
             remote: RemoteSttConfig::default(),
         }
     }
@@ -370,8 +383,8 @@ impl Default for OutputConfig {
             type_backend: "auto".into(),
             type_delay_ms: 4,
             pre_inject_delay_ms: 50,
-            // Terminals are a usual place for dictation, and Ctrl+V pastes nothing in them:
-            // by default we look at the window class and switch to Ctrl+Shift+V
+            // Terminals are a common place for dictation, and Ctrl+V pastes nothing in them:
+            // the window class decides when the shortcut becomes Ctrl+Shift+V
             terminal_shortcut: true,
             notify_on_fallback: true,
         }
@@ -399,9 +412,9 @@ impl Default for HotkeysConfig {
     fn default() -> Self {
         Self {
             backend: "auto".into(),
-            // The default key combinations are unergonomic on purpose: F9 and Ctrl+Alt are free in
-            // almost any system and application, so on a foreign test machine they work with no
-            // setup. While the application is in testing, this matters more than comfort; the
+            // The default key combinations are unergonomic on purpose. F9 and Ctrl+Alt are free
+            // in almost any system and application, so on a foreign test machine they work with
+            // no setup. While the application is in testing, this matters more than comfort. The
             // keys change to fit the hand in this same section
             push_to_talk: "F9".into(),
             toggle: "Ctrl+Alt+Z".into(),
@@ -610,6 +623,11 @@ impl Config {
     }
 
     pub fn save(&self, path: &Path) -> Result<(), ConfigError> {
+        if Self::is_managed(path) {
+            return Err(ConfigError::Managed {
+                path: path.to_path_buf(),
+            });
+        }
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|source| ConfigError::Write {
                 path: path.to_path_buf(),
@@ -620,6 +638,15 @@ impl Config {
             path: path.to_path_buf(),
             source,
         })
+    }
+
+    /// Whether the settings come from a read-only Nix store path
+    ///
+    /// Home Manager writes the config as a symlink to the store. The link itself is in the
+    /// user's directory, so `writable` there says nothing; the resolved target is what
+    /// decides. The GUI hides its settings page and `molva config set` refuses to write.
+    pub fn is_managed(path: &Path) -> bool {
+        std::fs::canonicalize(path).is_ok_and(|target| target.starts_with("/nix/store"))
     }
 
     /// Data directory of the user: the journal, the models, the saved audio
@@ -682,13 +709,22 @@ impl Config {
     /// someone's settings silently, but it is also wrong to crash at startup because of one extra
     /// bracket
     pub fn load_lenient(path: &Path) -> Result<(Self, Option<String>), ConfigError> {
+        let managed = Self::is_managed(path);
         match Self::load(path) {
             Ok(mut config) => {
                 let migrated = config.migrate();
-                if migrated {
+                if migrated && !managed {
                     config.save(path)?;
                 }
                 Ok((config, None))
+            }
+            Err(ConfigError::Parse { message, .. }) if managed => {
+                let warning = format!(
+                    "the managed settings file is damaged ({message}); the default values are \
+                     used until the Nix configuration is fixed"
+                );
+                tracing::warn!("{warning}");
+                Ok((Self::default(), Some(warning)))
             }
             Err(ConfigError::Parse { message, .. }) => {
                 let mut broken = path.as_os_str().to_os_string();
@@ -725,7 +761,7 @@ impl Config {
             );
             return false;
         }
-        // Version 0 is a file created before the field existed: some fields were missing, serde
+        // Version 0 is a file created before the field existed. Some fields were missing, serde
         // has already filled in the default values, and only the schema mark remains
         if self.version < 2 && self.command_mode.system_prompt == LEGACY_COMMAND_PROMPT {
             // The file holds the old default, not a choice of the user: let the built-in
@@ -798,7 +834,7 @@ impl Config {
             issues,
             "stt.engine",
             &self.stt.engine,
-            &["whisper-cpp", "remote-openai"],
+            &["auto", "whisper-cpp", "transcribe-cpp", "remote-openai"],
         );
         if self.stt.language != "auto" && self.stt.language.chars().count() != 2 {
             issues.push(ConfigIssue::new(
@@ -1236,7 +1272,15 @@ mod tests {
         let stt = Config::default().stt;
         assert!(stt.chunked, "streaming processing is off by default");
         assert!(stt.streaming_preview, "the draft is off by default");
+        assert!(
+            stt.streaming_inject,
+            "the chunks wait for the release instead of reaching the field"
+        );
         assert_eq!(stt.chunk_pause_ms, 700);
+        assert!(stt.transcribe_cli.is_empty());
+        assert_eq!(stt.transcribe_backend, "auto");
+        assert_eq!(stt.engine, "auto");
+        assert_eq!(stt.model, "gigaam-v3-e2e-rnnt-q4_k_m");
     }
 
     #[test]
@@ -1339,7 +1383,10 @@ mod tests {
     #[test]
     fn values_are_read_by_dotted_path() {
         let config = Config::default();
-        assert_eq!(config.get_by_path("stt.model").unwrap(), "small");
+        assert_eq!(
+            config.get_by_path("stt.model").unwrap(),
+            "gigaam-v3-e2e-rnnt-q4_k_m"
+        );
         assert_eq!(
             config.get_by_path("output.auto_type_max_chars").unwrap(),
             "200"
@@ -1430,7 +1477,7 @@ mod tests {
         assert!(std::fs::read_to_string(&broken)
             .unwrap()
             .contains("= = true"));
-        // A working file now stands in place of the settings
+        // A working file stands in place of the settings
         assert_eq!(Config::load(&path).unwrap(), Config::default());
     }
 

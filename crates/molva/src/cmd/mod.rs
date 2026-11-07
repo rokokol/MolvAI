@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: MIT
-//! Subcommands of `molva`. Each one is a separate file, so that the tracks do not fight for one module
+//! Subcommands of `molva`. Each one is a separate file, so that the tracks do not fight for
+//! one module
 //!
 //! The general output rule: data goes to stdout, everything else (progress, warnings,
 //! error messages) goes to stderr. So `molva transcribe ... | wc -w` counts words,
 //! not the progress bar. The common small things live here: opening the journal, parsing dates,
 //! confirming dangerous actions, an error with an exit code
 //!
-//! Declarations go one per line: the file is shared by several tracks, and this gives fewer conflicts
+//! Declarations go one per line: the file is shared by several tracks, and this gives fewer
+//! conflicts
 
-// Printing to stdout is the job of the command layer: the data for which `molva` is started goes here
-// The `print_stdout` rule stays in force for the core and the GUI, where stdout does not belong to them
+// Printing to stdout is the job of the command layer. The data for which `molva` is started
+// goes here. The `print_stdout` rule stays in force for the core and the GUI, where stdout
+// does not belong to them
 #![allow(clippy::print_stdout)]
 
 pub(crate) mod bench;
@@ -22,6 +25,7 @@ pub(crate) mod doctor;
 pub(crate) mod history;
 pub(crate) mod models;
 pub(crate) mod record;
+pub(crate) mod search;
 pub(crate) mod secret;
 pub(crate) mod setup;
 pub(crate) mod stats;
@@ -38,7 +42,8 @@ use molva_core::app::journal::FileJournal;
 use molva_core::Config;
 use thiserror::Error;
 
-/// The separator of the identifier in the `plain` and `rofi` formats: the printable record separator sign
+/// The separator of the identifier in the `plain` and `rofi` formats: the printable record
+/// separator sign
 pub(crate) const ID_SEPARATOR: char = '␟';
 
 /// How many characters of the text to show in the one-line formats
@@ -85,7 +90,7 @@ impl CmdError {
         }
     }
 
-    /// The daemon is unreachable: the command did what it could and reports this honestly
+    /// The daemon is unreachable: the command did what it could, and the exit code says so
     pub(crate) fn no_daemon(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
@@ -104,7 +109,8 @@ impl CmdError {
 
 /// Whether to show the progress bar: only to a live terminal and only with human output
 ///
-/// In a pipe and with `--json` the progress stays silent, otherwise it lands in the run log and in front of the jury
+/// In a pipe and with `--json` the progress stays silent, otherwise it lands in the run log and
+/// in front of the jury
 pub(crate) fn progress_enabled(machine_output: bool) -> bool {
     !machine_output && std::io::stderr().is_terminal()
 }

@@ -97,8 +97,8 @@ pub struct SystemClipboard {
     external_write: bool,
 }
 
-// `arboard::Clipboard` is a foreign type with no `Debug`, so we print not the connection but
-// whether it exists
+// `arboard::Clipboard` is a foreign type with no `Debug`, so the output shows only whether the
+// connection exists
 impl std::fmt::Debug for SystemClipboard {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SystemClipboard")
@@ -130,6 +130,11 @@ impl SystemClipboard {
     }
 }
 
+/// Put a text in the clipboard and leave it there, for a command that copies a result
+pub fn copy_text(text: &str) -> Result<(), InjectError> {
+    SystemClipboard::new().set_text(text)
+}
+
 impl ClipboardBackend for SystemClipboard {
     fn snapshot(&mut self) -> ClipboardSnapshot {
         if let Some(clipboard) = self.inner.as_mut() {
@@ -146,8 +151,9 @@ impl ClipboardBackend for SystemClipboard {
                 };
             }
         }
-        // arboard may not have seen the content (no protocol, a foreign owner) — we ask the
-        // utility, or "empty" would turn the restore of the clipboard into a clear
+        // arboard reads nothing when there is no data-control protocol or when the owner is
+        // foreign. The utility is asked, because an "empty" snapshot would turn the restore into
+        // a clear
         match wl_paste() {
             Some(text) if !text.is_empty() => ClipboardSnapshot::Text(text),
             _ => ClipboardSnapshot::Empty,
@@ -212,8 +218,8 @@ pub(crate) fn wl_paste() -> Option<String> {
 
 fn wl_copy(text: &str) -> Result<(), InjectError> {
     // wl-copy goes to the background by itself and stays the owner of the selection; it returns
-    // only after the clipboard is captured, so waiting for its exit is not only possible but
-    // needed: otherwise Ctrl+V goes out before the text appears in the clipboard
+    // only after the clipboard is captured, so waiting for its exit is possible and needed.
+    // Otherwise Ctrl+V goes out before the text appears in the clipboard
     let status = Command::new("wl-copy")
         .arg("--")
         .arg(text)

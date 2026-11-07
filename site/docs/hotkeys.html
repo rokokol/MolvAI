@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hotkeys and compositors — MolvAI documentation</title>
+<meta name="description" content="Push-to-talk, toggle and cancel on Hyprland, Sway, KDE Plasma, GNOME and X11, the Lua binds that MolvAI writes, and the evdev fallback on Wayland">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0a0c12">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/site.css">
+<script src="../assets/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="../index.html" aria-label="MolvAI home">
+      <img src="../assets/logo.svg" alt="" width="26" height="26">
+      <span>Molv<span class="brand-ai">AI</span></span>
+    </a>
+    <nav class="site-nav" id="site-nav" aria-label="Main">
+      <a href="../index.html">Home</a>
+      <a href="../features.html">Features</a>
+      <a href="../models.html">Models</a>
+      <a href="../cli.html">CLI</a>
+      <a href="./index.html" aria-current="page">Docs</a>
+      <a href="../faq.html">FAQ</a>
+      <a href="./status.html">Status</a>
+      <a class="nav-github" href="https://github.com/rokokol/MolvAI"><img src="../assets/icon-github.svg" alt="" width="15" height="15">GitHub</a>
+    </nav>
+    <div class="header-tools">
+      <button class="icon-btn theme-toggle" type="button" data-theme-toggle aria-label="Switch between dark and light theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="12" cy="12" r="8"></circle>
+          <path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"></path>
+        </svg>
+      </button>
+      <button class="icon-btn menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="site-nav">
+        <span class="menu-bars" aria-hidden="true"></span>
+        <span class="visually-hidden">Menu</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="wrap doc-layout">
+  <aside class="doc-nav" aria-label="Documentation">
+    <p class="doc-nav-title">Documentation</p>
+    <ul>
+      <li><a href="./index.html">Overview</a></li>
+      <li><a href="./install.html">Install and first run</a></li>
+      <li><a href="./models.html">Models and GigaAM</a></li>
+      <li><a href="./hotkeys.html" aria-current="page">Hotkeys and compositors</a></li>
+      <li><a href="./settings.html">Settings and Nix mode</a></li>
+      <li><a href="./cli.html">CLI guide</a></li>
+      <li><a href="./privacy.html">Privacy and journal</a></li>
+      <li><a href="./troubleshooting.html">Troubleshooting</a></li>
+      <li><a href="./status.html">Status and roadmap</a></li>
+    </ul>
+    <p class="doc-nav-title">Elsewhere</p>
+    <ul>
+      <li><a href="../cli.html">CLI reference</a></li>
+      <li><a href="../models.html">Model catalog</a></li>
+      <li><a href="../index.html">Home</a></li>
+    </ul>
+  </aside>
+
+  <article class="doc-body prose">
+    <h1>Hotkeys and compositors</h1>
+    <p class="canonical">Canonical source: <a href="https://github.com/rokokol/MolvAI/blob/main/docs/hotkeys-wayland.md">docs/hotkeys-wayland.md</a></p>
+
+    <h2>Why the compositor owns the key</h2>
+    <p>On Wayland no application can take a global hotkey. The compositor owns the keyboard focus completely, and a key combination cannot be intercepted past it. That is a protection, not a gap. So the main control path is a compositor bind that runs <code>molva record</code></p>
+    <p>The fallback reads <code>/dev/input/event*</code> through evdev and sees keys before the compositor does. It needs read permission on the input devices; on NixOS that means membership in the <code>input</code> group</p>
+
+    <h2>The defaults</h2>
+    <div class="table-wrap">
+      <table>
+        <caption>Values of the <code>[hotkeys]</code> section</caption>
+        <thead><tr><th scope="col">Key</th><th scope="col">Default</th><th scope="col">What it does</th></tr></thead>
+        <tbody>
+          <tr><th scope="row"><code>push_to_talk</code></th><td><kbd>F9</kbd></td><td>Records while the key is held</td></tr>
+          <tr><th scope="row"><code>toggle</code></th><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Z</kbd></td><td>Starts and stops a recording by a press, hands-free</td></tr>
+          <tr><th scope="row"><code>command</code></th><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>X</kbd></td><td>Command mode on the selected text</td></tr>
+          <tr><th scope="row"><code>cancel</code></th><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd></td><td>Throws the recording away without a phrase</td></tr>
+          <tr><th scope="row"><code>style_next</code></th><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd></td><td>The next post-processing style in a circle</td></tr>
+          <tr><th scope="row"><code>min_hold_ms</code></th><td>200</td><td>A shorter hold does not create a phrase</td></tr>
+          <tr><th scope="row"><code>tap_toggles</code></th><td>true</td><td>A short press latches the recording</td></tr>
+          <tr><th scope="row"><code>short_press_ms</code></th><td>250</td><td>Below this, a press counts as a tap</td></tr>
+          <tr><th scope="row"><code>double_tap_ms</code></th><td>350</td><td>A second press inside this window counts as a bounce</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>The default combinations are deliberately plain: <kbd>F9</kbd> and <kbd>Ctrl</kbd>+<kbd>Alt</kbd> are free almost everywhere, so they work on a borrowed machine with no setup. Change them in <code>~/.config/molva/config.toml</code>, not in the generated bind file</p>
+
+    <h2>Hold, tap, cancel</h2>
+    <p>Push-to-talk needs two events, the press and the release. Hyprland and Sway can send both. A hold shorter than <code>min_hold_ms</code> creates no phrase. A press shorter than <code>short_press_ms</code> with <code>tap_toggles = true</code> latches the recording, and the next press ends it</p>
+
+    <h2>Hyprland 0.55 and later</h2>
+    <p>Since 0.55 the Hyprland config is Lua. MolvAI writes its binds to a file of their own, and your config includes it once</p>
+    <div class="cmd"><code>molva setup hyprland --write</code><button class="copy" type="button" data-copy="molva setup hyprland --write">Copy</button></div>
+<pre class="code"><code><span class="c">-- ~/.config/hypr/hyprland.lua</span>
+dofile(os.getenv("HOME") .. "/.config/hypr/molvai.lua")</code></pre>
+    <p>The generated file holds a pair for the hold and binds for the toggle, command mode and cancel. The cancel bind is non-consuming, so the key still reaches the application and a bare Escape keeps working elsewhere</p>
+<pre class="code"><code>hl.bind("F9", hl.dsp.exec_cmd("molva record start"), { description = "MolvAI: dictate while the key is held" })
+hl.bind("F9", hl.dsp.exec_cmd("molva record stop"), { release = true, description = "MolvAI: paste the text on release" })
+hl.bind("CTRL + ALT + Z", hl.dsp.exec_cmd("molva record toggle"), { description = "MolvAI: start or stop a recording" })</code></pre>
+    <p>The GUI rewrites the file and reloads Hyprland when you change the hotkeys. Without the GUI, start the daemon from Lua: <code>hl.on("hyprland.start", function() hl.exec_cmd("molva daemon") end)</code></p>
+
+    <h2>Hyprland before 0.55</h2>
+    <p>That version reads <code>~/.config/hypr/hyprland.conf</code>. The hold pair is two lines, and <code>bindr</code> fires on the release</p>
+<pre class="code"><code>bind = , F9, exec, molva record start
+bindr = , F9, exec, molva record stop</code></pre>
+
+    <h2>Sway</h2>
+<pre class="code"><code><span class="c"># ~/.config/sway/config — --no-repeat stops auto-repeat from restarting the recording</span>
+bindsym --no-repeat F9 exec molva record start
+bindsym --release F9 exec molva record stop
+bindsym --no-repeat Ctrl+Shift+space exec molva record toggle
+bindsym --no-repeat Ctrl+Shift+Escape exec molva record cancel
+exec molva daemon</code></pre>
+
+    <h2>KDE Plasma and GNOME</h2>
+    <p>Neither reports the key release, so push-to-talk is impossible there and only the toggle works. Add <code>molva record toggle</code> as a custom shortcut in the system settings</p>
+<pre class="code"><code>path=/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/molva/
+gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "['$path']"
+gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$path name 'MolvAI toggle'
+gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$path command 'molva record toggle'
+gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$path binding '&lt;Ctrl&gt;&lt;Shift&gt;space'</code></pre>
+
+    <h2>X11 without a desktop</h2>
+    <p><code>sxhkd</code> works, and so does the built-in keyboard capture: <code>hotkeys.backend = "evdev"</code>. The evdev backend needs permission to read the input devices; after you add the group, log in again</p>
+
+    <h2>Windows and macOS</h2>
+    <p>The application registers the global combination itself, so the system needs no bind. On macOS grant the Accessibility and Input Monitoring rights, without which the global keys and the paste do not work</p>
+
+    <h2>If a bind does not fire</h2>
+    <p>Run <code>molva doctor</code>. It prints the session, the compositor, the paste utilities it found, the availability of <code>/dev/uinput</code> and <code>/dev/input</code>, and whether the daemon answers on the socket. The most common cause of a silent bind on NixOS is a <code>molva</code> missing from the <code>PATH</code> of the environment that starts the bind</p>
+    <div class="cmd"><code>molva doctor</code><button class="copy" type="button" data-copy="molva doctor">Copy</button></div>
+
+    <p class="to-top"><a href="./settings.html">Next: settings and Nix mode →</a> · <a href="#main">Back to top</a></p>
+  </article>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <div class="footer-brand">
+      <a class="brand" href="../index.html">
+        <img src="../assets/logo.svg" alt="" width="26" height="26">
+        <span>Molv<span class="brand-ai">AI</span></span>
+      </a>
+      <p>Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
+      <p class="footer-note">MIT licensed · no trackers · no external fonts</p>
+    </div>
+    <nav aria-label="Project links">
+      <p class="footer-title">Project</p>
+      <ul>
+        <li><a href="https://github.com/rokokol/MolvAI">GitHub</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/releases">Releases</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE">License (MIT)</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/issues">Issues</a></li>
+      </ul>
+    </nav>
+    <nav aria-label="Site links">
+      <p class="footer-title">Site</p>
+      <ul>
+        <li><a href="../features.html">Features</a></li>
+        <li><a href="../models.html">Models</a></li>
+        <li><a href="../cli.html">CLI reference</a></li>
+        <li><a href="./index.html">Documentation</a></li>
+        <li><a href="../faq.html">FAQ</a></li>
+        <li><a href="./status.html">Status and roadmap</a></li>
+      </ul>
+    </nav>
+    <div>
+      <p class="footer-title">Canonical docs</p>
+      <p class="footer-note">The repository is the source of truth. These pages summarize it and link back</p>
+      <ul>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/CHANGELOG.md">CHANGELOG</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="wrap footer-credit">
+    <p>MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
+    <p>This site runs without cookies, analytics or third-party assets</p>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: MIT
-// Audio file transcription: drag into the window or type a path, with progress and cancel
+// Audio and video transcription: drag a file into the window or type a path, then read the
+// text with its timecodes and copy it. The CLI does the work; this view only shows its JSON.
 
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 
-import { api, asCommandError } from "../api";
+import { api, asCommandError, copyToClipboard } from "../api";
+import { formatTimecode, renderFileResult } from "../format";
 import { useI18n } from "../i18n";
 import type { ViewProps } from "../App";
-import type { TranscribeProgress } from "../types";
+import type { FileResult, TranscribeProgress } from "../types";
 
 type JobStatus = "running" | "done" | "failed" | "cancelled";
 
@@ -17,7 +19,7 @@ interface Job {
   status: JobStatus;
   /** The last progress line from the CLI stderr */
   progress: string;
-  result?: string;
+  results?: FileResult[];
 }
 
 /** Job identifier: the clock plus a counter, so it does not depend on crypto in the webview */
@@ -30,6 +32,8 @@ export default function Files({ onError }: ViewProps) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [path, setPath] = useState("");
   const [over, setOver] = useState(false);
+  const [timecodes, setTimecodes] = useState(true);
+  const [copied, setCopied] = useState<string | null>(null);
   const counter = useRef(0);
 
   const update = (id: string, patch: Partial<Job>) => {
@@ -46,8 +50,8 @@ export default function Files({ onError }: ViewProps) {
     setJobs((prev) => [{ id, path: trimmed, status: "running", progress: "" }, ...prev]);
     api
       .transcribeFile(id, trimmed)
-      .then((result) => {
-        update(id, { status: "done", result: JSON.stringify(result) });
+      .then((results) => {
+        update(id, { status: "done", results });
       })
       .catch((err) => {
         const error = asCommandError(err);
@@ -124,7 +128,17 @@ export default function Files({ onError }: ViewProps) {
             {t("files.add")}
           </button>
         </div>
-        <p className="small muted">{t("files.hint")}</p>
+        <div className="row spread">
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={timecodes}
+              onChange={(event) => setTimecodes(event.target.checked)}
+            />
+            {t("files.timecodes")}
+          </label>
+          <span className="small muted">{t("files.hint")}</span>
+        </div>
       </section>
 
       <section className="card">
@@ -138,8 +152,48 @@ export default function Files({ onError }: ViewProps) {
                   <span>{statusLabel(job.status)}</span>
                   <span className="mono">{job.path}</span>
                 </div>
-                {job.progress && <p className="small mono">{job.progress}</p>}
-                {job.result && <p className="small mono">{job.result}</p>}
+                {job.progress && job.status !== "done" && (
+                  <p className="small mono">{job.progress}</p>
+                )}
+                {job.results?.map((result, index) => (
+                  <div className="transcript" key={`${job.id}-${index}`}>
+                    <div className="meta">
+                      <span className="mono">{result.file}</span>
+                      <span>{formatTimecode(result.audio_secs * 1000)}</span>
+                      {result.language && <span>{result.language}</span>}
+                      <span>
+                        {result.segments?.length ?? 0} {t("files.segments")}
+                      </span>
+                    </div>
+                    <pre className="transcript-text">
+                      {renderFileResult(result, timecodes)}
+                    </pre>
+                    <div className="row">
+                      <button
+                        type="button"
+                        className="chip"
+                        onClick={async () => {
+                          if (await copyToClipboard(renderFileResult(result, timecodes))) {
+                            setCopied(`${job.id}-${index}`);
+                          }
+                        }}
+                      >
+                        {copied === `${job.id}-${index}`
+                          ? t("common.copied")
+                          : t("common.copy")}
+                      </button>
+                      <button
+                        type="button"
+                        className="chip"
+                        onClick={() =>
+                          api.openPath(result.file).catch((err) => onError(asCommandError(err)))
+                        }
+                      >
+                        {t("files.open")}
+                      </button>
+                    </div>
+                  </div>
+                ))}
                 {job.status === "running" && (
                   <button
                     type="button"

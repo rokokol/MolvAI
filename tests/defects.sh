@@ -240,8 +240,8 @@ defect 'rules/no-space-before-punctuation' 'crates/molva-core/src/app/rules.rs' 
 # --- track E: file decoding ---
 
 defect 'decode/downmix-to-mono' 'crates/molva-core/src/infra/audio/decode.rs' \
-  '                mono.extend_from_slice(&downmix_to_mono(buf.samples(), channels));' \
-  '                mono.extend_from_slice(buf.samples());' \
+  '                mono.extend_from_slice(&downmix_to_mono(&interleaved, channels));' \
+  '                mono.extend_from_slice(&interleaved);' \
   'a stereo file goes to whisper as interleaved channels: twice as long and sounds like mush'
 
 defect 'decode/empty-file-rejected' 'crates/molva-core/src/infra/audio/decode.rs' \
@@ -809,3 +809,43 @@ defect 'secrets/journal-key-must-be-hex' 'crates/molva/src/cmd/secret.rs' \
   '    if name == SecretName::Journal' \
   '    if false' \
   '"molva secret set journal" accepts anything, and the daemon then cannot open the journal'
+
+defect 'transcribe/json-drops-timecodes' 'crates/molva/src/cmd/transcribe.rs' \
+  '    args.timecodes || args.json' \
+  '    args.timecodes' \
+  'the GUI and the search receive no segments from a JSON run: timecodes disappear from the file view'
+
+defect 'transcribe/file-result-not-in-journal' 'crates/molva/src/cmd/transcribe.rs' \
+  '        if let Err(e) = journal.append(&entry) {' \
+  '        if let Err(e) = Ok::<(), molva_core::domain::journal::JournalError>(()) {' \
+  'a transcribed file never reaches the journal, so history and search cannot find it'
+
+defect 'search/mic-phrases-in-file-search' 'crates/molva-core/src/app/search.rs' \
+  '    for entry in entries.iter().filter(|entry| entry.source == Source::File) {' \
+  '    for entry in entries.iter().filter(|_entry| true) {' \
+  'dictated phrases appear in the transcript search, where only files belong'
+
+defect 'streaming/injection-off' 'crates/molva-core/src/app/pipeline.rs' \
+  '        if !self.config.stt.streaming_inject || self.streamed_failed || chunk.text.trim().is_empty()' \
+  '        if true || self.streamed_failed || chunk.text.trim().is_empty()' \
+  'chunks are recognized but never typed during the recording: the feature is silent again'
+
+defect 'streaming/token-pause-never-splits' 'crates/molva-core/src/infra/stt/transcribe_cpp.rs' \
+  'const TOKEN_PAUSE_MS: u32 = 400;' \
+  'const TOKEN_PAUSE_MS: u32 = u32::MAX;' \
+  'GigaAM token timestamps collapse into one segment: a long file has one timecode'
+
+defect 'models/gigaam-hash-wrong' 'models.toml' \
+  'sha256 = "7d69952fb431a8d7800ed9910dc61fea37d84066fe96d10bf24c8bd4b7c68623"' \
+  'sha256 = "0000000000000000000000000000000000000000000000000000000000000000"' \
+  'the default Sber weights are downloaded without a matching checksum'
+
+defect 'streaming/tail-never-typed' 'crates/molva-core/src/app/pipeline.rs' \
+  '            if !streamed_tail.is_empty() {' \
+  '            if false {' \
+  'the last chunk after the final tick never reaches the field: the phrase ends on the previous word'
+
+defect 'transcribe/journal-drops-segments' 'crates/molva/src/cmd/transcribe.rs' \
+  '            segments: transcript.segments.clone(),' \
+  '            segments: Vec::new(),' \
+  'a file transcription loses its timecodes in the journal, so search cannot show where a word was said'

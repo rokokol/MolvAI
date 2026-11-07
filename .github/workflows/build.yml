@@ -8,7 +8,7 @@ on:
   pull_request:
   workflow_dispatch:
   # Automation (a dependency bump, a release) checks a branch by calling this workflow,
-  # not a copy of its commands, which would drift apart from the original
+  # not a copy of its commands. A copy would drift apart from the original
   workflow_call:
     inputs:
       ref:
@@ -38,21 +38,21 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
-      # An unpinned call from the registry changes the behavior of the job without a single change
-      # in the repository. The tools come from lock files and pinned actions
-      # Each vendored copy is byte-equal to its source: a copy that is edited here and not
-      # at the source fails with the file name — see .github/vendor.lock
+      # Each vendored copy is byte-equal to its source. A copy that is edited here and not at
+      # the source fails with the file name — see .github/vendor.lock
       - name: Vendored copies match the source byte for byte
         run: ./vendor-sync.sh check
+      # An unpinned call from the registry changes the behavior of the job without a single change
+      # in the repository. The tools come from lock files and pinned actions
       - name: CI tools come from lock files, not from the registry
         run: ./check-pins.sh
 
       - name: actionlint
         uses: raven-actions/actionlint@v2
 
-      # The gate on three operating systems installs the toolchain directly and does not know nix, so the check
-      # of Nix formatting lives here. `nix fmt` takes the formatter from the output of the flake,
-      # that is, from the same lock file, and not from the registry
+      # The gate on three operating systems installs the toolchain directly and does not know
+      # nix, so the check of Nix formatting lives here. `nix fmt` takes the formatter from the
+      # output of the flake, that is, from the same lock file, and not from the registry
       - uses: cachix/install-nix-action@v31
       - name: nix fmt --ci (Nix here is as the formatter writes it)
         run: nix fmt -- --ci
@@ -89,9 +89,9 @@ jobs:
           rustup component add rustfmt clippy
           cargo --version
 
-      # The ready bindings of whisper-rs match the ABI of Linux and macOS, and libclang is not needed there.
-      # On Windows the layout of their structures is different (a static assert fails), so the bindings
-      # are generated on the spot through LLVM, which is preinstalled on the runner
+      # The ready bindings of whisper-rs match the ABI of Linux and macOS, and libclang is not
+      # needed there. On Windows the layout of their structures is different, and a static
+      # assert fails. The bindings are generated there through LLVM, which the runner has
       - name: whisper-rs bindings from the crate (Linux, macOS)
         if: runner.os != 'Windows'
         shell: bash
@@ -102,8 +102,8 @@ jobs:
         shell: bash
         run: printf 'LIBCLANG_PATH=%s\n' 'C:\Program Files\LLVM\bin' >> "$GITHUB_ENV"
 
-      # whisper.cpp is built not for the processor of the runner (-march=native), but for the portable
-      # x86-64-v3: AVX2/FMA/F16C exist on any laptop newer than 2013, and without them
+      # whisper.cpp is built not for the processor of the runner (-march=native), but for the
+      # portable x86-64-v3. AVX2/FMA/F16C exist on any laptop newer than 2013, and without them
       # recognition is 20 times slower
       - name: whisper.cpp SIMD for x86_64
         if: runner.arch == 'X64'

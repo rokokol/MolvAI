@@ -40,7 +40,7 @@ impl WhisperEngine {
         }
     }
 
-    /// Whether the model is loaded in memory right now
+    /// Whether the model is loaded in memory
     pub fn is_loaded(&self) -> bool {
         self.context.is_some()
     }
@@ -124,8 +124,8 @@ impl SttEngine for WhisperEngine {
         params.set_print_progress(false);
         params.set_print_realtime(false);
         params.set_print_timestamps(false);
-        // The temperature fallback stays at the default: with `temperature_inc = 0` whisper.cpp 1.8
-        // returns no segments at all (checked on the fixtures), and it saves no time.
+        // The temperature fallback stays at the default. With `temperature_inc = 0` whisper.cpp
+        // 1.8 returns no segments at all (checked on the fixtures), and it saves no time.
         // `detect_language = true` in whisper.cpp means "only detect the language and exit":
         // there will be no segments at all. Auto-detection together with recognition is the
         // language "auto"
@@ -177,7 +177,7 @@ impl SttEngine for WhisperEngine {
     /// this is the single most expensive encoder run, and it is why `auto` costs twenty seconds.
     /// There is only one way around this: first a short run with a known language — it shrinks the
     /// encoder window in the state — and only then the language detection on the same
-    /// spectrogram, now on the shrunk window
+    /// spectrogram, but on the shrunk window
     ///
     /// From the probabilities the best language **from the list of the user** is taken: on a
     /// short Russian phrase whisper easily chooses Ukrainian or Bulgarian, and the list has no such
@@ -207,7 +207,7 @@ impl SttEngine for WhisperEngine {
         let started = Instant::now();
         let mut state = self.context().ok()?.create_state().ok()?;
 
-        // The first run is needed for its side effect, not for the text: `whisper_full` writes
+        // The first run is needed for its side effect, not for the text. `whisper_full` writes
         // `audio_ctx` into the state, and the next encoder run computes the short window instead
         // of the full one
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
@@ -346,9 +346,9 @@ const AUDIO_CTX_MARGIN: usize = 128;
 /// Encoder window size for a given recording length
 ///
 /// whisper pads the input to 30 seconds and honestly computes the convolutions over all the
-/// silence. For a phrase of four seconds this is five times more work than needed. We shrink the
-/// window to the length of the phrase plus a margin, but not below half a second: on very short
-/// windows the model starts to make errors
+/// silence. For a phrase of four seconds this is five times more work than needed. The window
+/// shrinks to the length of the phrase plus a margin, but never below half a second: on very
+/// short windows the model starts to make errors
 fn audio_ctx_for(samples: usize, sample_rate: u32) -> usize {
     if sample_rate == 0 {
         return FULL_AUDIO_CTX;
@@ -374,7 +374,7 @@ fn aggregate_no_speech(probs: &[f32]) -> Option<f32> {
 
 /// Language code for whisper: `None` means auto-detection
 ///
-/// The codes come from the config, so we check the form: whisper-rs panics on a zero byte
+/// The codes come from the config, so the form is checked: whisper-rs panics on a zero byte
 fn whisper_language(hint: &LanguageHint) -> Result<Option<String>, SttError> {
     match hint {
         LanguageHint::Auto => Ok(None),
