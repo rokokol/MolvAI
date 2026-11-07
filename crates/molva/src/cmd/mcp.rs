@@ -90,6 +90,7 @@ fn tools() -> Value {
                 "type": "object",
                 "properties": {
                     "path": { "type": "string", "description": "File or directory path" },
+                    "model": { "type": "string", "description": "Model name from models.toml; the configured model is used when absent" },
                     "timecodes": { "type": "boolean", "default": true, "description": "Include segments with timecodes" },
                     "style": { "type": "string", "description": "Post-processing style identifier; the default style is used when absent" },
                     "no_llm": { "type": "boolean", "default": false, "description": "Do not call the language model for this run" }
@@ -112,16 +113,6 @@ fn tools() -> Value {
         {
             "name": "stats_summary",
             "description": "Words, speed, latency and cost-related counters for a period; MCP transcriptions are counted separately",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "days": { "type": "integer", "minimum": 0, "default": 7 }
-                }
-            }
-        },
-        {
-            "name": "stats_export_csv",
-            "description": "The per-phrase statistics as CSV",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -165,10 +156,6 @@ fn call_tool(ctx: &Context, name: &str, arguments: &Value) -> Result<Value, Stri
             let entries = load_entries(ctx)?;
             let summary = stats::summary(&entries, Utc::now(), &ctx.config.stats, days);
             serde_json::to_value(summary).map_err(|e| e.to_string())
-        }
-        "stats_export_csv" => {
-            let entries = load_entries(ctx)?;
-            Ok(json!({ "csv": stats::export_csv(&entries) }))
         }
         "history_list" => {
             let mut entries = load_entries(ctx)?;
@@ -215,10 +202,14 @@ fn transcribe_tool(ctx: &Context, arguments: &Value) -> Result<Value, String> {
         .get("style")
         .and_then(Value::as_str)
         .map(str::to_string);
+    let model = arguments
+        .get("model")
+        .and_then(Value::as_str)
+        .map(str::to_string);
     let args = transcribe::Args {
         input: vec![PathBuf::from(path)],
         language: None,
-        model: None,
+        model,
         engine: None,
         style,
         no_llm,
@@ -349,6 +340,7 @@ mod tests {
             .collect();
         assert!(!names.contains(&"config_get"));
         assert!(!names.contains(&"config_validate"));
+        assert!(!names.contains(&"stats_export_csv"));
         assert!(!names.iter().any(|name| name.contains("config")));
     }
 

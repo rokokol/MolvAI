@@ -7,7 +7,17 @@ check-pins.sh rokokol/ci-skill templates/check-pins.sh 50429c30159553c635ab0020c
 scripts/t.sh rokokol/tests-skill t.sh 9fcde010a74664014fdd1bf54cad3dc47b565430 5f7deb30e49cbebca1f0bf0e36ce2c2d481e91af
 scripts/markers/ rokokol/tests-skill markers/ f82cadb0c1a297a37f322cb03a5b13f0d528ab45 65d141bbf07ecb99a3bd6ebfe4e0d3050a2c1ab4
 .github/workflows/vendor-sync.yml rokokol/ci-skill templates/github/workflows/vendor-sync.yml d55020ab3ca780ea6299336d923b8a3fcb8f491d a5bde77f98d55a43b2c993f4c96a952e0b68010d manual
-.github/workflows/flakehub-publish.yml rokokol/ci-skill templates/github/workflows/flakehub-publish.yml 500307ed9ea72875ca08da769829089069c2a747 407d7ebc264a8fe16ee2aa2fe2f31863255f3de7 manual
+.github/workflows/flakehub-publish.yml rokokol/ci-skill templates/github/workflows/flakehub-publish.yml 7947e44a83c32b8b8fe9d24584cf6adb415832dc 6cadb92dd6fb06c63d713868c40f3324e5e49b9b manual
 scripts/check-comments.sh rokokol/code-comments-skill check-comments.sh 8ccc6f74dd074afae844c94692d90685686199c0 0f4b375fe91b86a1ddfe1b447667ad98133afcb6
 scripts/check-prose.sh rokokol/create-readme-skill check-prose.sh 613639eb6ec2a73209bb1f7d1ba103e9d1c90db7 0438eca6ca155baf2b5fbbd8157747ec3619b579
 scripts/check-sh.sh rokokol/bash-best-practices-skill check-sh.sh 1045482d25b5f2ec63655c62a45ca3961317c00d 37cb4b54dc245288c711b9665c9b4aedc496b1ce
+site/assets/vendor/ddlc/ddlc-ui.css rokokol/ddlc-themes dist/ddlc-ui.css 5dcc8907c67cf60287349d8085992e4edd3a86bc 486ebc62f368ceac1ab87ff34b3516ad95504ee9
+site/assets/vendor/ddlc/ddlc-tokens.css rokokol/ddlc-themes dist/ddlc-tokens.css 5dcc8907c67cf60287349d8085992e4edd3a86bc b23d4ef1456ed7743fdb44a13f6dc3d78d26efad
+site/assets/vendor/ddlc/ddlc-report.css rokokol/ddlc-themes dist/ddlc-report.css 5dcc8907c67cf60287349d8085992e4edd3a86bc b869c0255f044f25492a72d737f7732a50ac47e6
+site/assets/vendor/ddlc/ddlc-theme.js rokokol/ddlc-themes dist/ddlc-theme.js 5dcc8907c67cf60287349d8085992e4edd3a86bc 12ec9eda878a5794061bb7bd21d71dd4feddd045
+site/assets/vendor/ddlc/ddlc-cloud.js rokokol/ddlc-themes dist/ddlc-cloud.js 5dcc8907c67cf60287349d8085992e4edd3a86bc 981b9b58d7b5be7a61f2b7b4ab06c6d3b5a9fdf8
+site/assets/vendor/ddlc/DepartureMono-Regular.woff2 rokokol/ddlc-themes dist/DepartureMono-Regular.woff2 5dcc8907c67cf60287349d8085992e4edd3a86bc b4a23dc1dad1c934005d0862e62c0294636afb08
+site/assets/vendor/ddlc/MyaNunito.woff2 rokokol/ddlc-themes dist/MyaNunito.woff2 5dcc8907c67cf60287349d8085992e4edd3a86bc 9cafbdfdf5f6c478a63083c683264b9fa3b20288
+site/assets/vendor/ddlc/MyaNunito-Italic.woff2 rokokol/ddlc-themes dist/MyaNunito-Italic.woff2 5dcc8907c67cf60287349d8085992e4edd3a86bc a614d128dc9c5955067df5584b3d5beaa36425c6
+site/assets/vendor/ddlc/MyaNunito-LICENSE.txt rokokol/ddlc-themes dist/MyaNunito-LICENSE.txt 5dcc8907c67cf60287349d8085992e4edd3a86bc 61526872c23ea450f97a6e9701cf9ff479ca095f
+site/assets/vendor/ddlc/DepartureMono-LICENSE.txt rokokol/ddlc-themes dist/DepartureMono-LICENSE.txt 5dcc8907c67cf60287349d8085992e4edd3a86bc de52476183807bbfc04e8ae7bced1dc9cbcbfd2f

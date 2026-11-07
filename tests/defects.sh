@@ -821,8 +821,8 @@ defect 'transcribe/file-result-not-in-journal' 'crates/molva/src/cmd/transcribe.
   'a transcribed file never reaches the journal, so history and search cannot find it'
 
 defect 'search/mic-phrases-in-file-search' 'crates/molva-core/src/app/search.rs' \
-  '    for entry in entries.iter().filter(|entry| entry.source == Source::File) {' \
-  '    for entry in entries.iter().filter(|_entry| true) {' \
+  '        .filter(|entry| matches!(entry.source, Source::File | Source::Mcp))' \
+  '        .filter(|_entry| true)' \
   'dictated phrases appear in the transcript search, where only files belong'
 
 defect 'streaming/injection-off' 'crates/molva-core/src/app/pipeline.rs' \
