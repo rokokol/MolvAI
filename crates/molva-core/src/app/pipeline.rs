@@ -327,7 +327,7 @@ impl Pipeline {
         let lang = language.clone().unwrap_or_else(|| "auto".to_string());
 
         let rules_started = self.clock.instant();
-        let mut dict_hits = 0;
+        let dict_hits;
         let mut streamed_tail = String::new();
         let after_rules = match mode {
             // The command mode instruction goes to the model as it is: the rules would distort

@@ -107,6 +107,8 @@ enum Commands {
     Transcribe(cmd::transcribe::Args),
     /// Find text in the transcriptions of audio and video files
     Search(cmd::search::Args),
+    /// Model Context Protocol server on standard input and output
+    Mcp,
     /// Speech recognition model weights
     Models {
         #[command(subcommand)]
@@ -271,6 +273,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             let mut stdout = std::io::stdout().lock();
             Ok(cmd::search::run(&args, &config()?, &mut stdout)?)
         }
+        Commands::Mcp => Ok(cmd::mcp::run(&config_path)?),
         Commands::Models { action } => {
             let config = Config::load(&config_path)?;
             let mut stdout = std::io::stdout().lock();

@@ -23,6 +23,7 @@ pub(crate) mod devices;
 pub(crate) mod dictionary;
 pub(crate) mod doctor;
 pub(crate) mod history;
+pub(crate) mod mcp;
 pub(crate) mod models;
 pub(crate) mod record;
 pub(crate) mod search;

@@ -80,7 +80,10 @@ fn hit(entry: &Entry, segment: Option<&Segment>, text: String) -> Hit {
 pub fn search(entries: &[Entry], query: &str, limit: usize) -> Vec<Hit> {
     let needle = query.trim().to_lowercase();
     let mut hits = Vec::new();
-    for entry in entries.iter().filter(|entry| entry.source == Source::File) {
+    for entry in entries
+        .iter()
+        .filter(|entry| matches!(entry.source, Source::File | Source::Mcp))
+    {
         let text = entry
             .text_final
             .as_deref()

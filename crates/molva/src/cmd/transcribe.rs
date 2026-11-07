@@ -343,12 +343,40 @@ fn collect_dir(directory: &Path, recursive: bool, jobs: &mut Vec<Job>) -> Result
 ///
 /// `postprocess` is the connection point of the text processing pipeline; `progress` is called
 /// before each input and writes only to stderr
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn transcribe_jobs(
     jobs: &[Job],
     engine: &mut dyn SttEngine,
     options: &SttOptions,
     stdin_format: Option<&str>,
+    postprocess: &dyn Fn(&str, &str) -> Postprocessed,
+    journal: &mut dyn Journal,
+    style: &str,
+    progress: &mut dyn FnMut(usize, &str),
+) -> Outcome {
+    transcribe_jobs_as(
+        jobs,
+        engine,
+        options,
+        stdin_format,
+        Source::File,
+        postprocess,
+        journal,
+        style,
+        progress,
+    )
+}
+
+/// The same, with the source recorded in the journal: a file typed by the CLI or a file
+/// that an MCP client asked for
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn transcribe_jobs_as(
+    jobs: &[Job],
+    engine: &mut dyn SttEngine,
+    options: &SttOptions,
+    stdin_format: Option<&str>,
+    source: Source,
     postprocess: &dyn Fn(&str, &str) -> Postprocessed,
     journal: &mut dyn Journal,
     style: &str,
@@ -414,7 +442,7 @@ pub(crate) fn transcribe_jobs(
             mode: Mode::Dictation,
             // The source is a file and not the microphone: by this field the statistics
             // separate a batch transcription from a live dictation
-            source: Source::File,
+            source,
             app: None,
             language: language.clone(),
             audio_secs,
@@ -609,8 +637,16 @@ fn wants_segments(args: &Args) -> bool {
     args.timecodes || args.json
 }
 
-/// The entry point of the subcommand
-pub(crate) fn run(args: &Args, config: &Config, config_path: &Path) -> Result<(), CmdError> {
+/// Run the inputs and return the results without printing them
+///
+/// The CLI writes them to stdout or a file; the MCP server sends them as JSON. Both go
+/// through this function, so a file transcribed once has the same journal line either way
+pub(crate) fn transcribe_outcome(
+    args: &Args,
+    config: &Config,
+    config_path: &Path,
+    source: Source,
+) -> Result<Outcome, CmdError> {
     let jobs = collect_jobs(&args.input, args.recursive)?;
 
     let choice = EngineChoice {
@@ -655,11 +691,12 @@ pub(crate) fn run(args: &Args, config: &Config, config_path: &Path) -> Result<()
         }
     }
 
-    let outcome = transcribe_jobs(
+    let outcome = transcribe_jobs_as(
         &jobs,
         engine.as_mut(),
         &options,
         args.stdin_format.as_deref(),
+        source,
         &postprocess,
         &mut journal,
         &style,
@@ -673,7 +710,13 @@ pub(crate) fn run(args: &Args, config: &Config, config_path: &Path) -> Result<()
     if let Some(bar) = bar {
         bar.finish_and_clear();
     }
+    Ok(outcome)
+}
 
+/// The entry point of the subcommand
+pub(crate) fn run(args: &Args, config: &Config, config_path: &Path) -> Result<(), CmdError> {
+    let outcome = transcribe_outcome(args, config, config_path, Source::File)?;
+    let total = outcome.results.len() + outcome.errors.len();
     let mut stdout = std::io::stdout().lock();
     if args.copy {
         let body = render_all(&outcome.results, args.timecodes);
@@ -689,7 +732,7 @@ pub(crate) fn run(args: &Args, config: &Config, config_path: &Path) -> Result<()
         return Err(CmdError::file(format!(
             "files that could not be transcribed: {} of {}",
             outcome.errors.len(),
-            jobs.len()
+            total
         )));
     }
     Ok(())

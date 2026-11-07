@@ -27,7 +27,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::config::StatsConfig;
-use crate::domain::entry::Entry;
+use crate::domain::entry::{Entry, Source};
 
 /// Phrases shorter than this do not qualify for the personal record
 pub const RECORD_MIN_AUDIO_SECS: f32 = 3.0;
@@ -110,6 +110,9 @@ pub struct StatsSummary {
     pub tokens: TokenSummary,
     pub series: Vec<DayStats>,
     pub by_app: Vec<AppStats>,
+    /// Files transcribed through the MCP server, separate from the CLI and dictation
+    pub mcp_entries: u32,
+    pub mcp_words: u64,
 }
 
 /// Segment of continuous work: one `session_id` with no pauses longer than 30 minutes
@@ -195,6 +198,11 @@ pub fn summary(
     let (record_wpm, record_at) = personal_record(&all);
     let total_secs: f32 = all.iter().map(|e| e.audio_secs).sum();
     let total_words: u64 = all.iter().map(|e| u64::from(e.words)).sum();
+    let mcp: Vec<&Entry> = all
+        .iter()
+        .copied()
+        .filter(|entry| entry.source == Source::Mcp)
+        .collect();
 
     StatsSummary {
         total_words,
@@ -211,6 +219,8 @@ pub fn summary(
         tokens: token_summary(&range),
         series: series(&range, range_start, today),
         by_app: by_app(&range),
+        mcp_entries: mcp.len() as u32,
+        mcp_words: mcp.iter().map(|entry| u64::from(entry.words)).sum(),
     }
 }
 
@@ -742,6 +752,8 @@ mod tests {
             "tokens",
             "series",
             "by_app",
+            "mcp_entries",
+            "mcp_words",
         ];
         for key in expected {
             assert!(object.contains_key(key), "missing field {key}: {value}");

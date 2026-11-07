@@ -26,6 +26,9 @@ pub enum Mode {
 pub enum Source {
     Mic,
     File,
+    /// A file transcription requested by an MCP client: still a file for search, separate in
+    /// the statistics
+    Mcp,
 }
 
 /// Stage latencies in milliseconds. A missing stage is `None`, not 0
