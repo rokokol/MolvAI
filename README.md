@@ -3,6 +3,7 @@
 [![ci](https://github.com/rokokol/MolvAI/actions/workflows/build.yml/badge.svg)](https://github.com/rokokol/MolvAI/actions/workflows/build.yml)
 [![deny](https://github.com/rokokol/MolvAI/actions/workflows/deny.yml/badge.svg)](https://github.com/rokokol/MolvAI/actions/workflows/deny.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![FlakeHub](https://img.shields.io/endpoint?url=https://flakehub.com/f/rokokol/MolvAI/badge)](https://flakehub.com/flake/rokokol/MolvAI)
 
 ![MolvAI: hold a key, speak, release, and the text is already in the field](docs/img/preview.png)
 
