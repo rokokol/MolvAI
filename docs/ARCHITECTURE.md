@@ -38,6 +38,7 @@ hotkey ──▶ RecordStart ──▶ microphone open, level shown in the GUI
                        ──▶ SttEngine.transcribe tail         t_stt
                        ──▶ join with the chunks
                        ──▶ term dictionary → rules           t_rules
+                       ──▶ snippet (whole phrase) ──▶ replacement, no model
                        ──▶ LlmClient (if the style needs it and the word count is above the threshold)  t_llm
                        ──▶ TextInjector (auto: type / paste)                    t_inject
                        ──▶ Journal.append: one JSONL line
@@ -56,6 +57,27 @@ selection ──▶ Ctrl+C through the compositor
 Command mode is the voice-edit path: select a paragraph, hold the command hotkey, and say what to do with it, for example "сделай короче" or "переведи на английский". The normal dictation path types into the active field; command mode edits the selected text instead
 
 The chunks (`stt.chunked`) are recognized while the person speaks. So after the key release only the tail is left, not the whole phrase. `latency_ms.total` counts from the release, and `latency_ms.first_hypothesis` counts from the start of the recording to the first chunk. There can be no chunks at all, for example a short phrase or a source without streaming capture. Then the path is the same as it always was: the whole recording in one run
+
+### Snippets
+
+A snippet is a phrase and the text that replaces it. The matching happens after the dictionary and the rules and before the model. A whole phrase that matches a snippet returns its replacement at once: no style, no model, no token cost and no waiting. The replacement is final and is not rewritten
+
+The phrase may contain `*`, which matches any run of characters, including an empty one. So `ответь *` matches `ответь клиенту` and `ответь дорогому клиенту`, and `* клиенту` matches from the other side. The replacement is static: a wildcard changes what triggers the snippet, not what the field receives. An exact phrase wins over a wildcard one, and a wildcard-only phrase is refused because it would replace every dictation
+
+The comparison ignores case, punctuation and repeated spaces, because the rules add punctuation and the recognizer may hear a comma that the phrase does not have. A phrase that merely contains a literal trigger does not match, and an empty phrase or replacement is refused by the validation. Command mode, file transcription and a phrase typed in chunks do not use snippets: those paths either edit a selection or have no single complete utterance to compare
+
+The settings hold the list:
+
+```toml
+[snippets]
+enabled = true
+
+[[snippets.items]]
+phrase = "Ответь *"
+replacement = "Добрый день! Уже подготовил ответ."
+```
+
+The Snippets tab of the window edits the same list. The page leaves the settings untouched until Save writes the whole file, and a managed Nix config opens it read-only
 
 A chunk boundary always falls in the middle of a pause, never on a timer, because a cut inside a syllable makes the model print a wrong word. The pause that counts is `stt.chunk_pause_ms`, 700 ms by default. After ten seconds of one chunk the requirement relaxes to 200 ms: a long sentence may hold no pause of 700 ms, and the wait for one then costs more than a less ideal boundary. There is no forced cut, so a stream without an acceptable pause keeps growing, and such a phrase pays for it with memory and a late first hypothesis
 
@@ -77,5 +99,6 @@ The only storage is the JSONL journal (`docs/journal-schema.md`). The history, t
 
 - recognizer: `stt.engine`, `stt.model`, `stt.model_path`
 - post-processing: `llm.provider`, `llm.base_url`, `llm.model`, `style.default`
+- snippets: `snippets.enabled` and the `snippets.items` list, through the Snippets tab or `molva config edit`
 - paste: `output.mode`, `output.paste_backend`, `output.type_backend`
 - hotkeys: `hotkeys.backend` and the combinations themselves

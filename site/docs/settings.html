@@ -114,6 +114,8 @@
       <tr><td data-ru="&lt;code&gt;pre_inject_delay_ms&lt;/code&gt;"><code>pre_inject_delay_ms</code></td><td data-ru="&lt;code&gt;50&lt;/code&gt;"><code>50</code></td><td data-ru="Пауза перед вставкой; медленным удалённым сессиям нужно больше">A pause before the paste; slow remotes want more</td></tr>
       <tr><th scope="row" rowspan="2"><code>rules</code></th><td data-ru="&lt;code&gt;enabled&lt;/code&gt;"><code>enabled</code></td><td data-ru="&lt;code&gt;true&lt;/code&gt;"><code>true</code></td><td data-ru="Пунктуация, слова-заполнители, повторы, цифры — без модели">Punctuation, fillers, repeats, digits, without a model</td></tr>
       <tr><td data-ru="&lt;code&gt;llm_min_words&lt;/code&gt;"><code>llm_min_words</code></td><td data-ru="&lt;code&gt;10&lt;/code&gt;"><code>10</code></td><td data-ru="Более короткие фразы минуют языковую модель">Shorter phrases skip the language model</td></tr>
+      <tr><th scope="row" rowspan="2"><code>snippets</code></th><td data-ru="&lt;code&gt;enabled&lt;/code&gt;"><code>enabled</code></td><td data-ru="&lt;code&gt;true&lt;/code&gt;"><code>true</code></td><td data-ru="Совпавшая целиком фраза заменяется без модели">A whole phrase that matches is replaced without the model</td></tr>
+      <tr><td data-ru="&lt;code&gt;items&lt;/code&gt;"><code>items</code></td><td data-ru="пусто"><code>[]</code></td><td data-ru="Пары «фраза — замена»; фраза может содержать &lt;code&gt;*&lt;/code&gt; для любого текста">Phrase and replacement pairs; a phrase may contain <code>*</code> for any text</td></tr>
       <tr><th scope="row" rowspan="3"><code>llm</code></th><td data-ru="&lt;code&gt;enabled&lt;/code&gt;"><code>enabled</code></td><td data-ru="&lt;code&gt;false&lt;/code&gt;"><code>false</code></td><td data-ru="Языковая модель выключена, пока её не попросишь">The language model is off until you ask for it</td></tr>
       <tr><td data-ru="&lt;code&gt;provider&lt;/code&gt;"><code>provider</code></td><td data-ru="&lt;code&gt;ollama&lt;/code&gt;"><code>ollama</code></td><td data-ru="&lt;code&gt;ollama&lt;/code&gt;, &lt;code&gt;lmstudio&lt;/code&gt;, &lt;code&gt;openrouter&lt;/code&gt;, &lt;code&gt;groq&lt;/code&gt;, &lt;code&gt;openai&lt;/code&gt; или &lt;code&gt;custom&lt;/code&gt;"><code>ollama</code>, <code>lmstudio</code>, <code>openrouter</code>, <code>groq</code>, <code>openai</code> or <code>custom</code></td></tr>
       <tr><td data-ru="&lt;code&gt;reasoning_effort&lt;/code&gt;"><code>reasoning_effort</code></td><td data-ru="&lt;code&gt;auto&lt;/code&gt;"><code>auto</code></td><td data-ru="Шлёт &lt;code&gt;none&lt;/code&gt; локальным провайдерам, чтобы рассуждающие модели отвечали">Sends <code>none</code> to local providers so reasoning models answer</td></tr>
@@ -128,6 +130,16 @@
   </table>
 </div>
 <p data-ru="У горячих клавиш своя страница: &lt;a href=&quot;./hotkeys.html&quot;&gt;клавиши и композиторы&lt;/a&gt;. Поля журнала объясняет раздел &lt;a href=&quot;./privacy.html&quot;&gt;приватность и журнал&lt;/a&gt;">Hotkeys have their own page: <a href="./hotkeys.html">hotkeys and compositors</a>. Journal fields are explained in <a href="./privacy.html">privacy and journal</a></p>
+
+<h2 data-ru="Сниппеты">Snippets</h2>
+<p data-ru="Сниппет заменяет всю фразу готовым ответом ещё до модели. Совпадение проверяется после словаря и правил и не учитывает регистр, пунктуацию и лишние пробелы. Фраза, которая только содержит триггер, не совпадает. Символ &lt;code&gt;*&lt;/code&gt; заменяет любой текст, в том числе пустой, а точная фраза важнее wildcard">A snippet replaces the whole phrase with a ready answer before the model. The match is checked after the dictionary and the rules and ignores case, punctuation and repeated spaces. A phrase that only contains the trigger does not match. A <code>*</code> matches any text, including nothing, and an exact phrase wins over a wildcard</p>
+<pre><code>[snippets]
+enabled = true
+
+[[snippets.items]]
+phrase = "Ответь *"
+replacement = "Добрый день! Уже подготовил ответ."</code></pre>
+<p data-ru="Замена окончательная: её не переписывает ни стиль, ни модель. Wildcard меняет только то, что запускает сниппет, а не текст замены. Командный режим, распознавание файлов и фраза, набранная кусками, сниппеты не используют">The replacement is final: neither the style nor the model rewrites it. A wildcard changes only what triggers the snippet, not the replacement text. Command mode, file transcription and a phrase typed in chunks do not use snippets</p>
 <p data-ru="Провайдер модели задаёт и порядок вызовов. Облачному разрешено до четырёх одновременных вызовов, локальная модель получает запросы по одному">The model provider also decides how calls run. A cloud provider may answer up to four calls at once, and a local model takes requests one at a time</p>
 
 <h2 data-ru="Изменить и применить">Edit and apply</h2>
@@ -145,6 +157,7 @@
   <li data-ru="Микрофон со списком от демона и кнопкой обновления: демон поднимает сокет только после весов, и страница говорит об этом вместо пустого списка">The microphone, from the daemon's list, with a refresh button: the daemon raises the socket only after the weights, and the page says so instead of showing an empty list</li>
   <li data-ru="Источник ключа для каждого секрета: хранилище ОС, переменная окружения или открытый текст в файле с предупреждением. Модель предупреждает отдельно, что текст уйдёт в облако">The key source of each secret: the OS store, an environment variable or plain text in the file with a warning. The model warns separately that text will leave for the cloud</li>
   <li data-ru="Свои стили рядом со встроенными: идентификатор, название, признак вызова модели и системный промпт">Custom styles beside the built-in ones: an identifier, a name, whether the style calls the model, and a system prompt</li>
+  <li data-ru="Вкладка сниппетов: фраза и готовый ответ. Совпавшая целиком фраза возвращает ответ до модели, поэтому частый ответ не ждёт вызова и не тратит токены. Карточки можно отфильтровать по фразе или замене">A Snippets tab: a phrase and a ready answer. A phrase that matches as a whole returns the answer before the model, so a frequent reply neither waits for a call nor spends tokens. The cards can be filtered by phrase or replacement</li>
   <li data-ru="Запись каждого сочетания клавиш: нажми сочетание, и страница его запишет">A recorder for every hotkey: press the combination and the page writes it</li>
   <li data-ru="Раздел MCP: выключатель и готовая команда для Claude Code, Codex, Cursor, VS Code, Claude Desktop и терминала">An MCP section: the switch and the ready command for Claude Code, Codex, Cursor, VS Code, Claude Desktop and a terminal</li>
 </ul>

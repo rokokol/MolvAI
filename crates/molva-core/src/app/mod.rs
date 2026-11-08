@@ -24,6 +24,7 @@ pub mod pipeline;
 pub mod rules;
 pub mod search;
 pub mod secrets;
+pub mod snippets;
 pub mod stats;
 pub mod styles;
 pub mod wer;

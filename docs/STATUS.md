@@ -19,6 +19,7 @@ One section per checkpoint, the newest on top. A section has four items: what st
 - Cloud model calls run up to four at once (`CLOUD_SLOTS`), and a local model stays serial behind one mutex. Phrase post-processing still runs on the daemon worker; a style can ask the same model to translate the text
 - MCP is a stdio client of the daemon: no port, no URL and no autostart, and `mcp.enabled` gates it. The server starts the daemon when it is absent and reuses its recognizer. Six tools: `transcribe`, `search_transcripts`, `stats_summary`, `history_list`, `models_list` and `search_docs`
 - The GUI settings page covers the recognition provider, the key source of each secret, custom styles, a hotkey recorder, a retry for the device list and an MCP section
+- Snippets are a first-class tab: a phrase and its replacement are saved in `[snippets]`, and a whole phrase that matches after the dictionary and the rules returns the ready answer before the model. The match ignores case, punctuation and repeated spaces, and `*` in the phrase matches any text; an exact phrase wins over a wildcard. A search field filters the cards by phrase or replacement. Command mode, file transcription and chunked typing do not use it
 - The release workflow publishes CUDA archives for Linux and Windows beside the Vulkan builds
 - `molva bench --latency` measures one audio file: recognition, the post-processing stage, and the peak RAM and VRAM of the process tree. On a Ryzen 7 5700X a 15.0 s GigaAM clip takes 3.6 s without post-processing, 9.4 s with the `cleanup` style, and 252 MiB of RAM; GigaAM runs on the CPU, so its VRAM peak is zero
 
@@ -29,6 +30,8 @@ One section per checkpoint, the newest on top. A section has four items: what st
 - The public site is not deployed: the working tree is not committed and the Pages workflow has not run
 - The GUI memory use is not measured or optimized: its peak RSS, the copies of history and media, and the pages WebKit keeps after a tab closes are a roadmap item
 - The GUI's GPU use is not measured or optimized either: the open window keeps the video card busy, and the idle VRAM, the cost of tab switches and the background animations are a roadmap item
+
+**Site key feature, later**: the public site will present snippets as the headline feature once a screenshot of the tab exists
 
 **Checks**: this checkpoint documents the architecture, so the code gate of the daemon work belongs to its own commit. Here `scripts/check-prose.sh README.md` is green, and the site was checked for broken internal links, unbalanced tags and a missing Russian counterpart by a local script. `just check` and `just falsify` are not run for this documentation pass
 

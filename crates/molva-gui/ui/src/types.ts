@@ -249,6 +249,17 @@ export interface CustomStyle {
   system_prompt: string;
 }
 
+/** One exact phrase and the text that replaces it before the model stage */
+export interface Snippet {
+  phrase: string;
+  replacement: string;
+}
+
+export interface SnippetsConfig {
+  enabled: boolean;
+  items: Snippet[];
+}
+
 export interface RemoteSttConfig {
   base_url: string;
   api_key_source: string;
@@ -301,6 +312,7 @@ export interface Config {
     paragraph_pause_ms: number;
     llm_min_words: number;
   };
+  snippets: SnippetsConfig;
   llm: {
     enabled: boolean;
     provider: string;

@@ -14,6 +14,7 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 - A button in the GUI settings writes the Hyprland binds to "~/.config/hypr/molvai.lua" and shows the line that includes the file in "hyprland.lua". The GUI rewrites the file and reloads Hyprland when the hotkeys change
 - "molva setup hyprland --write" writes the same file and prints the same line
 - A Home Manager module, "homeModules.default": "programs.molvai" installs molva, runs "molva daemon" as a user service and, under Hyprland with a Lua config, writes and includes the binds on each switch
+- A Snippets tab: a phrase and its replacement are saved in "[snippets]", and a whole phrase that matches after the dictionary and the rules returns the replacement before the model. Case, punctuation and repeated spaces do not affect the match, and "*" in the phrase matches any text; command mode, file transcription and chunked typing do not use snippets. The list filters its cards by phrase or replacement
 
 ### Changed
 

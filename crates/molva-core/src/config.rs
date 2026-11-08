@@ -74,6 +74,7 @@ pub struct Config {
     pub stt: SttConfig,
     pub dictionary: DictionaryConfig,
     pub rules: RulesConfig,
+    pub snippets: SnippetsConfig,
     pub llm: LlmConfig,
     pub style: StyleConfig,
     pub output: OutputConfig,
@@ -96,6 +97,7 @@ impl Default for Config {
             stt: SttConfig::default(),
             dictionary: DictionaryConfig::default(),
             rules: RulesConfig::default(),
+            snippets: SnippetsConfig::default(),
             llm: LlmConfig::default(),
             style: StyleConfig::default(),
             output: OutputConfig::default(),
@@ -279,6 +281,36 @@ impl Default for RulesConfig {
             llm_min_words: 10,
         }
     }
+}
+
+/// Phrases that bypass the model and return a ready answer
+///
+/// A phrase matches after the dictionary and the rules, when the whole text equals it without
+/// regard to case, punctuation or repeated spaces. A `*` in the phrase matches any run of
+/// characters, including an empty one. The replacement goes to the paste step as it is, so a
+/// frequent reply costs no model call and no waiting
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SnippetsConfig {
+    pub enabled: bool,
+    pub items: Vec<Snippet>,
+}
+
+impl Default for SnippetsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            items: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Snippet {
+    /// What the person says, for example `Ответь клиенту`; `*` matches any text
+    pub phrase: String,
+    /// What the field receives instead, for example a prepared reply
+    pub replacement: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -862,6 +894,7 @@ impl Config {
         self.validate_output(&mut issues);
         self.validate_llm(&mut issues);
         self.validate_styles(&mut issues);
+        self.validate_snippets(&mut issues);
         self.validate_limits(&mut issues);
 
         if issues.is_empty() {
@@ -1107,6 +1140,63 @@ impl Config {
                     &format!("style.by_app.{app}"),
                     style,
                     "no such style: see `molva styles list`",
+                ));
+            }
+        }
+    }
+
+    /// Snippets: a phrase, its replacement and no duplicates after normalization
+    fn validate_snippets(&self, issues: &mut Vec<ConfigIssue>) {
+        if self.snippets.items.len() > 100 {
+            issues.push(ConfigIssue::new(
+                "snippets.items",
+                &self.snippets.items.len().to_string(),
+                "at most one hundred snippets are allowed",
+            ));
+        }
+        let mut seen = BTreeMap::new();
+        for (index, snippet) in self.snippets.items.iter().enumerate() {
+            let phrase = snippet.phrase.trim();
+            let key = format!("snippets.items.{index}.phrase");
+            if phrase.is_empty() {
+                issues.push(ConfigIssue::new(
+                    &key,
+                    phrase,
+                    "a snippet needs a phrase to listen for",
+                ));
+            } else if phrase.chars().count() > 200 {
+                issues.push(ConfigIssue::new(
+                    &key,
+                    phrase,
+                    "a snippet phrase is limited to 200 characters",
+                ));
+            } else {
+                let normalized = crate::app::snippets::comparison_key(phrase);
+                if normalized.is_empty() {
+                    issues.push(ConfigIssue::new(
+                        &key,
+                        phrase,
+                        "a snippet needs at least one fixed word beside a wildcard",
+                    ));
+                } else if seen.insert(normalized, index).is_some() {
+                    issues.push(ConfigIssue::new(
+                        &key,
+                        phrase,
+                        "the phrase duplicates another snippet after normalization",
+                    ));
+                }
+            }
+            if snippet.replacement.trim().is_empty() {
+                issues.push(ConfigIssue::new(
+                    &format!("snippets.items.{index}.replacement"),
+                    &snippet.replacement,
+                    "a snippet needs a replacement; delete the snippet to turn it off",
+                ));
+            } else if snippet.replacement.chars().count() > 10_000 {
+                issues.push(ConfigIssue::new(
+                    &format!("snippets.items.{index}.replacement"),
+                    &snippet.replacement,
+                    "a snippet replacement is limited to 10000 characters",
                 ));
             }
         }
@@ -1797,6 +1887,123 @@ mod tests {
                 .unwrap(),
             Path::new("/srv/terms.toml")
         );
+    }
+
+    #[test]
+    fn snippets_round_trip_through_toml() {
+        let mut config = Config::default();
+        config.snippets.items = vec![Snippet {
+            phrase: "ответь клиенту".into(),
+            replacement: "Добрый день!".into(),
+        }];
+        let text = config.to_toml_string().unwrap();
+        let back = Config::from_toml_str(Path::new("x.toml"), &text).unwrap();
+        assert_eq!(back, config);
+        assert!(text.contains("[[snippets.items]]"), "{text}");
+    }
+
+    #[test]
+    fn a_snippet_needs_a_phrase_and_a_replacement() {
+        let mut config = Config::default();
+        config.snippets.items = vec![
+            Snippet {
+                phrase: " ".into(),
+                replacement: "answer".into(),
+            },
+            Snippet {
+                phrase: "answer".into(),
+                replacement: " ".into(),
+            },
+        ];
+        let issues = config.validate().unwrap_err();
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.key == "snippets.items.0.phrase"),
+            "{issues:?}"
+        );
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.key == "snippets.items.1.replacement"),
+            "{issues:?}"
+        );
+    }
+
+    #[test]
+    fn snippets_with_the_same_normalized_phrase_are_rejected() {
+        let mut config = Config::default();
+        config.snippets.items = vec![
+            Snippet {
+                phrase: "Ответь клиенту".into(),
+                replacement: "one".into(),
+            },
+            Snippet {
+                phrase: "ответь, клиенту!".into(),
+                replacement: "two".into(),
+            },
+        ];
+        let issues = config.validate().unwrap_err();
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.key == "snippets.items.1.phrase"),
+            "{issues:?}"
+        );
+    }
+
+    #[test]
+    fn a_wildcard_only_snippet_is_rejected() {
+        let mut config = Config::default();
+        config.snippets.items = vec![Snippet {
+            phrase: " * ".into(),
+            replacement: "everything".into(),
+        }];
+        let issues = config.validate().unwrap_err();
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.key == "snippets.items.0.phrase"),
+            "{issues:?}"
+        );
+    }
+
+    #[test]
+    fn wildcard_snippets_with_the_same_pattern_are_rejected() {
+        let mut config = Config::default();
+        config.snippets.items = vec![
+            Snippet {
+                phrase: "ответь *".into(),
+                replacement: "one".into(),
+            },
+            Snippet {
+                phrase: "Ответь,*".into(),
+                replacement: "two".into(),
+            },
+        ];
+        let issues = config.validate().unwrap_err();
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.key == "snippets.items.1.phrase"),
+            "{issues:?}"
+        );
+    }
+
+    #[test]
+    fn an_exact_and_a_wildcard_snippet_may_live_together() {
+        let mut config = Config::default();
+        config.snippets.items = vec![
+            Snippet {
+                phrase: "ответь".into(),
+                replacement: "exact".into(),
+            },
+            Snippet {
+                phrase: "ответь *".into(),
+                replacement: "wildcard".into(),
+            },
+        ];
+        assert!(config.validate().is_ok(), "{:?}", config.validate());
     }
 
     #[test]

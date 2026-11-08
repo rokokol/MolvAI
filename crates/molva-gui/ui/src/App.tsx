@@ -22,12 +22,13 @@ import Dashboard from "./views/Dashboard";
 import Files from "./views/Files";
 import History from "./views/History";
 import Settings from "./views/Settings";
+import Snippets from "./views/Snippets";
 import Stats from "./views/Stats";
 
-export type Tab = "dashboard" | "history" | "stats" | "files" | "settings";
+export type Tab = "dashboard" | "history" | "stats" | "files" | "snippets" | "settings";
 export type Theme = "system" | "light" | "dark";
 
-const TABS: Tab[] = ["dashboard", "history", "stats", "files", "settings"];
+const TABS: Tab[] = ["dashboard", "history", "stats", "files", "snippets", "settings"];
 const THEME_KEY = "molva.theme";
 
 /** Silence longer than this during recording is a reason to warn about a dead microphone */
@@ -318,6 +319,7 @@ export default function App() {
               {tab === "history" && <History />}
               {tab === "stats" && <Stats {...shared} />}
               {tab === "files" && <Files {...shared} />}
+              {tab === "snippets" && <Snippets {...shared} managed={managed} />}
               {tab === "settings" && (
                 <Settings
                   {...shared}

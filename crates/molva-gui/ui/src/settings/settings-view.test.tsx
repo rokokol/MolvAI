@@ -65,6 +65,7 @@ function config(change: (draft: Config) => void = () => undefined): Config {
       paragraph_pause_ms: 2000,
       llm_min_words: 10,
     },
+    snippets: { enabled: true, items: [] },
     llm: {
       enabled: false,
       provider: "ollama",

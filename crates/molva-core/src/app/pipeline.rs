@@ -11,6 +11,9 @@
 //! is on, privacy allows it, and the phrase has more than `rules.llm_min_words` words. Short
 //! phrases go through the rules only, which is both faster and cheaper in tokens
 //!
+//! A snippet is checked after the dictionary and the rules, before the model. A whole phrase that
+//! matches a snippet returns its replacement at once: no style, no model and no tokens
+//!
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -20,9 +23,10 @@ use tracing::warn;
 use uuid::Uuid;
 
 use crate::app::command_mode;
+use crate::app::snippets::SnippetSet;
 use crate::config::{
     CommandModeConfig, Config, DictionaryConfig, LlmConfig, OutputConfig, PrivacyConfig,
-    RulesConfig, SttConfig, StyleConfig,
+    RulesConfig, SnippetsConfig, SttConfig, StyleConfig,
 };
 use crate::domain::audio::PcmAudio;
 use crate::domain::clock::Clock;
@@ -66,6 +70,7 @@ pub struct PipelineConfig {
     pub stt: SttConfig,
     pub dictionary: DictionaryConfig,
     pub rules: RulesConfig,
+    pub snippets: SnippetsConfig,
     pub llm: LlmConfig,
     pub style: StyleConfig,
     pub output: OutputConfig,
@@ -85,6 +90,7 @@ impl PipelineConfig {
             stt: cfg.stt.clone(),
             dictionary: cfg.dictionary.clone(),
             rules: cfg.rules.clone(),
+            snippets: cfg.snippets.clone(),
             llm: cfg.llm.clone(),
             style: cfg.style.clone(),
             output: cfg.output.clone(),
@@ -170,6 +176,7 @@ pub struct Pipeline {
     config: PipelineConfig,
     dictionary: Dictionary,
     rules: RuleSet,
+    snippets: SnippetSet,
     styles: Styles,
     session_id: Uuid,
     /// Time from the key release to the close of the microphone stream: the daemon measures
@@ -198,6 +205,7 @@ impl Pipeline {
         config: PipelineConfig,
     ) -> Self {
         let rules = RuleSet::from_config(&config.rules);
+        let snippets = SnippetSet::from_config(&config.snippets);
         let styles = Styles::from_config(&config.style);
         Self {
             stt,
@@ -210,6 +218,7 @@ impl Pipeline {
             config,
             dictionary: Dictionary::empty(),
             rules,
+            snippets,
             styles,
             session_id: Uuid::new_v4(),
             stop_after_release_ms: None,
@@ -257,6 +266,7 @@ impl Pipeline {
     /// Apply new settings: the rules and the styles are rebuilt
     pub fn set_config(&mut self, config: PipelineConfig) {
         self.rules = RuleSet::from_config(&config.rules);
+        self.snippets = SnippetSet::from_config(&config.snippets);
         self.styles = Styles::from_config(&config.style);
         self.config = config;
     }
@@ -568,7 +578,12 @@ impl Pipeline {
             // The text of the prefix is already in the user's field: a model answer on the
             // whole phrase would rewrite what cannot be rewritten
             Mode::Dictation if streaming => after_rules,
-            Mode::Dictation => self.run_dictation(&mut entry, &style, after_rules),
+            // A snippet replaces the whole phrase and returns before the model: a prepared
+            // answer must not wait for a call and must not be rewritten by a style
+            Mode::Dictation => match self.snippets.replacement(&after_rules) {
+                Some(replacement) => replacement.to_string(),
+                None => self.run_dictation(&mut entry, &style, after_rules),
+            },
         };
 
         entry.words = word_count(&text);
@@ -969,6 +984,7 @@ mod tests {
     use std::sync::Mutex;
 
     use crate::app::dictionary::Term;
+    use crate::config::Snippet;
     use crate::domain::fakes::{FakeClock, FakeLlm, FakeStt, MemJournal, RecordingInjector};
     use crate::domain::inject::{InjectError, InjectReport};
     use crate::domain::journal::Journal as JournalTrait;
@@ -1373,6 +1389,97 @@ mod tests {
             .run(audio(4.0), Mode::Dictation, None, Some("kitty"))
             .unwrap();
         assert_eq!(entry.style, "verbatim");
+    }
+
+    #[test]
+    fn a_snippet_returns_its_replacement_instead_of_the_phrase() {
+        let phrase = "ответь клиенту очень подробно и вежливо прямо сейчас";
+        let mut config = with_llm();
+        config.snippets.items = vec![Snippet {
+            phrase: phrase.into(),
+            replacement: "Добрый день! Уже подготовил ответ.".into(),
+        }];
+        let llm = Arc::new(FakeLlm::echoing("этот ответ не должен понадобиться"));
+        let mut harness = build(phrase, Some(Arc::clone(&llm)), config);
+        let entry = harness
+            .pipeline
+            .run(audio(4.0), Mode::Dictation, None, None)
+            .unwrap();
+
+        assert_eq!(
+            injected(&harness),
+            vec!["Добрый день! Уже подготовил ответ."]
+        );
+        assert_eq!(llm.calls(), 0);
+        assert!(!entry.llm_used);
+        assert_eq!(
+            entry.text_final.as_deref(),
+            Some("Добрый день! Уже подготовил ответ.")
+        );
+    }
+
+    #[test]
+    fn a_wildcard_snippet_returns_its_replacement_without_the_model() {
+        let phrase = "ответь клиенту очень подробно и вежливо прямо сейчас";
+        let mut config = with_llm();
+        config.snippets.items = vec![Snippet {
+            phrase: "ответь *".into(),
+            replacement: "Добрый день!".into(),
+        }];
+        let llm = Arc::new(FakeLlm::echoing("этот ответ не должен понадобиться"));
+        let mut harness = build(phrase, Some(Arc::clone(&llm)), config);
+        let entry = harness
+            .pipeline
+            .run(audio(4.0), Mode::Dictation, None, None)
+            .unwrap();
+
+        assert_eq!(injected(&harness), vec!["Добрый день!"]);
+        assert_eq!(llm.calls(), 0);
+        assert!(!entry.llm_used);
+    }
+
+    #[test]
+    fn a_switched_off_snippet_list_leaves_the_phrase_alone() {
+        let phrase = "ответь клиенту очень подробно и вежливо прямо сейчас";
+        let mut config = PipelineConfig::default();
+        config.snippets.items = vec![Snippet {
+            phrase: phrase.into(),
+            replacement: "Добрый день!".into(),
+        }];
+        config.snippets.enabled = false;
+        let mut harness = build(phrase, None, config);
+        let entry = harness
+            .pipeline
+            .run(audio(4.0), Mode::Dictation, None, None)
+            .unwrap();
+
+        assert_eq!(injected(&harness), vec![entry.text_final.clone().unwrap()]);
+        assert!(!entry.llm_used);
+        assert_ne!(entry.text_final.as_deref(), Some("Добрый день!"));
+    }
+
+    #[test]
+    fn a_snippet_does_not_match_a_longer_phrase() {
+        let mut config = with_llm();
+        config.rules.llm_min_words = 0;
+        config.snippets.items = vec![Snippet {
+            phrase: "ответь клиенту".into(),
+            replacement: "Добрый день!".into(),
+        }];
+        let llm = Arc::new(FakeLlm::echoing("ответ модели"));
+        let mut harness = build(
+            "ответь клиенту очень подробно и вежливо прямо сейчас",
+            Some(Arc::clone(&llm)),
+            config,
+        );
+        let entry = harness
+            .pipeline
+            .run(audio(4.0), Mode::Dictation, None, None)
+            .unwrap();
+
+        assert_eq!(llm.calls(), 1);
+        assert_eq!(injected(&harness), vec!["ответ модели"]);
+        assert!(entry.llm_used);
     }
 
     #[test]
