@@ -317,7 +317,6 @@ mod tests {
             text_final: None,
             audio_path: None,
             segments: Vec::new(),
-            translation: None,
         }
     }
 

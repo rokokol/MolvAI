@@ -86,7 +86,7 @@ fn is_separator(c: char) -> bool {
 /// Where the typed text splits: the directory to read and the part of a name to match
 ///
 /// A trailing separator means "list this directory"; otherwise the text after the last
-/// separator is the prefix. Text without a separator is not a path we can complete.
+/// separator is the prefix. A path without a separator cannot be completed.
 fn split_for_listing(input: &str) -> Option<(String, String)> {
     let trimmed = input.trim();
     if trimmed.is_empty() {

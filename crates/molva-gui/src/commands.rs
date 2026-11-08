@@ -1590,8 +1590,6 @@ pub fn stats_export_csv(
     Ok(path.display().to_string())
 }
 
-// --- File transcription ---
-
 /// A stage of one file transcription, as the window shows it
 ///
 /// `percent` stays empty for one file: neither the recognizer nor the daemon reports a share of

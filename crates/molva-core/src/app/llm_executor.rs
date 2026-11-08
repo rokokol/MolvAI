@@ -2,23 +2,21 @@
 //! Scheduling of model calls: a local model is serial, a cloud provider is not
 //!
 //! One policy for every caller, and the caller is any stage that needs text from a model: the
-//! post-processing of a phrase, the command mode, the live translation of the dictation, the
-//! translation of a file. The policy is one object, so no stage can decide on its own whether it
-//! may wait for the network beside another call.
+//! post-processing of a phrase and the command mode. The policy is one object, so no stage can
+//! decide on its own whether it may wait for the network beside another call.
 //!
 //! - A local provider (Ollama, LM Studio, any endpoint on the loopback interface) loads one
 //!   request at a time. A second call waits on one mutex, and the model is never asked for two
 //!   answers at once: it would answer both slower and worse.
 //! - A cloud provider (OpenAI, OpenRouter, Groq, a custom remote URL) answers requests
-//!   independently. They run at the same time, up to [`CLOUD_SLOTS`]: enough for the pieces of a
-//!   phrase to translate beside each other, and few enough that a rate limit is not the first
-//!   thing the user learns about. A caller beyond the bound waits for a free slot, and every
-//!   call is itself bounded by `llm.timeout_secs`, so that wait is finite.
+//!   independently. They run at the same time, up to [`CLOUD_SLOTS`]: enough for independent
+//!   phrases, and few enough that a rate limit is not the first thing the user learns about. A
+//!   caller beyond the bound waits for a free slot, and every call is itself bounded by
+//!   `llm.timeout_secs`, so that wait is finite.
 //!
 //! Privacy is decided before this object: `build_llm` returns `None` unless the model is enabled
 //! and `privacy.send_to_llm` allows a call, so a request that arrives here may leave the machine.
-//! A failure is returned unchanged: the fallbacks of the phrase, the piece and the file stay
-//! where they were.
+//! A failure is returned unchanged: the fallback text of the phrase stays where it was.
 //!
 //! The seam for a still asynchronous delivery is this type as well. Today every caller waits for
 //! its own answer, because the text must be pasted before the next phrase; the recognition of the
@@ -86,8 +84,7 @@ impl LlmClient for LlmExecutor {
 
     fn complete(&self, request: &ChatRequest) -> Result<ChatResponse, LlmError> {
         if self.client.is_local() {
-            // The guard lives until the answer: two phrases, or a phrase and a translated
-            // chunk, never reach a local model together
+            // The guard lives until the answer: two phrases never reach a local model together
             let _serial = self.local.lock().unwrap_or_else(PoisonError::into_inner);
             return self.client.complete(request);
         }

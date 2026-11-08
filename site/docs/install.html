@@ -106,7 +106,7 @@
 
 <h2 data-ru="Установка с Nix">Install with Nix</h2>
 <p data-ru="В систему ничего не попадает. Флейк даёт пакет, dev-shell и модуль Home Manager">Nothing enters the system. The flake gives a package, a dev shell and a Home Manager module</p>
-<div class="cmd"><code>nix run github:rokokol/MolvAI -- --help</code><button class="copy" type="button" data-copy="nix run github:rokokol/MolvAI -- --help" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>nix run github:rokokol/MolvAI -- --help</code><button class="copy-button" type="button" data-copy="nix run github:rokokol/MolvAI -- --help"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
 <pre data-lang="sh"><code># a development shell with the toolchain and the system libraries
 nix develop
 cargo build --release --bin molva
@@ -121,14 +121,14 @@ programs.molvai.showSettings = true;</code></pre>
 
 <h2 data-ru="Установка без Nix">Install without Nix</h2>
 <p data-ru="Скрипт сам ничего не устанавливает. Он находит недостающие зависимости, печатает команды для твоего дистрибутива, а решение оставляет тебе">The script installs nothing by itself. It finds the missing dependencies, prints the commands for your distribution, and leaves the decision to you</p>
-<div class="cmd"><code>./install.sh --check</code><button class="copy" type="button" data-copy="./install.sh --check" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>./install.sh --check</code><button class="copy-button" type="button" data-copy="./install.sh --check"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
 <p data-ru="После того как поставишь всё из списка, запусти установщик. Бинарник попадает в &lt;code&gt;~/.local/bin&lt;/code&gt; и не требует прав администратора">After you install what it lists, run the installer. The binary goes to <code>~/.local/bin</code> and needs no administrator rights</p>
-<div class="cmd"><code>git clone https://github.com/rokokol/MolvAI &amp;&amp; cd MolvAI &amp;&amp; ./install.sh</code><button class="copy" type="button" data-copy="git clone https://github.com/rokokol/MolvAI &amp;&amp; cd MolvAI &amp;&amp; ./install.sh" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>git clone https://github.com/rokokol/MolvAI &amp;&amp; cd MolvAI &amp;&amp; ./install.sh</code><button class="copy-button" type="button" data-copy="git clone https://github.com/rokokol/MolvAI &amp;&amp; cd MolvAI &amp;&amp; ./install.sh"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
 <p data-ru="Проверь, что &lt;code&gt;~/.local/bin&lt;/code&gt; есть в &lt;code&gt;PATH&lt;/code&gt;, и что бинарник отвечает">Check that <code>~/.local/bin</code> is in <code>PATH</code>, then check the binary</p>
-<div class="cmd"><code>molva --version</code><button class="copy" type="button" data-copy="molva --version" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>molva --version</code><button class="copy-button" type="button" data-copy="molva --version"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
 <p data-ru="Установщик умеет создать запись в автозапуске, а удаляет он по манифесту">The installer can also create an autostart entry, and it removes what it installed through a manifest</p>
-<div class="cmd"><code>./install.sh --autostart</code><button class="copy" type="button" data-copy="./install.sh --autostart" data-ru="Скопировать">Copy</button></div>
-<div class="cmd"><code>./install.sh --uninstall --purge</code><button class="copy" type="button" data-copy="./install.sh --uninstall --purge" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>./install.sh --autostart</code><button class="copy-button" type="button" data-copy="./install.sh --autostart"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
+<div class="cmd"><code>./install.sh --uninstall --purge</code><button class="copy-button" type="button" data-copy="./install.sh --uninstall --purge"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
 
 <h2 data-ru="Установка из релиза">Install from a release</h2>
 <p data-ru="На &lt;a href=&quot;https://github.com/rokokol/MolvAI/releases&quot;&gt;странице релизов&lt;/a&gt; лежит архив CLI для каждой системы, AppImage, deb, dmg и установщик для Windows. У каждого файла есть сумма SHA-256 в &lt;code&gt;sha256sums.txt&lt;/code&gt;">The <a href="https://github.com/rokokol/MolvAI/releases">releases page</a> carries a CLI archive for each system, an AppImage, a deb, a dmg and a Windows installer. Every file has a SHA-256 sum in <code>sha256sums.txt</code></p>
@@ -146,24 +146,24 @@ programs.molvai.showSettings = true;</code></pre>
 <ol>
   <li>
     <p data-ru="Запусти диагностику. Она проверяет сессию, композитор, инструменты вставки, права, сокет демона, веса и провайдера модели">Run the diagnostics. They check the session, the compositor, the paste tools, the permissions, the daemon socket, the weights and the model provider</p>
-    <div class="cmd"><code>molva doctor</code><button class="copy" type="button" data-copy="molva doctor" data-ru="Скопировать">Copy</button></div>
+    <div class="cmd"><code>molva doctor</code><button class="copy-button" type="button" data-copy="molva doctor"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
   </li>
   <li>
     <p data-ru="Выбери микрофон из списка и запиши его имя в &lt;code&gt;audio.device&lt;/code&gt;. Нулевой уровень во время речи значит неверное устройство или замьюченный канал, а не тихий голос">Choose the microphone from the list, then write its name to <code>audio.device</code>. A zero level while you speak means a wrong device or a muted channel, not a quiet voice</p>
-    <div class="cmd"><code>molva devices</code><button class="copy" type="button" data-copy="molva devices" data-ru="Скопировать">Copy</button></div>
+    <div class="cmd"><code>molva devices</code><button class="copy-button" type="button" data-copy="molva devices"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
   </li>
   <li>
     <p data-ru="Запусти демон. По умолчанию он скачивает веса GigaAM при старте, показывает прогресс в stderr и сверяет SHA-256. Можно скачать их заранее">Start the daemon. By default it downloads the GigaAM weights at start, shows progress in stderr and checks the SHA-256. You can pull them first instead</p>
-    <div class="cmd"><code>molva models pull gigaam-v3-e2e-rnnt-q4_k_m</code><button class="copy" type="button" data-copy="molva models pull gigaam-v3-e2e-rnnt-q4_k_m" data-ru="Скопировать">Copy</button></div>
-    <div class="cmd"><code>molva daemon</code><button class="copy" type="button" data-copy="molva daemon" data-ru="Скопировать">Copy</button></div>
+    <div class="cmd"><code>molva models pull gigaam-v3-e2e-rnnt-q4_k_m</code><button class="copy-button" type="button" data-copy="molva models pull gigaam-v3-e2e-rnnt-q4_k_m"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
+    <div class="cmd"><code>molva daemon</code><button class="copy-button" type="button" data-copy="molva daemon"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
   </li>
   <li>
     <p data-ru="Поставь курсор в текстовое поле и проверь вставку. Команда печатает, какой способ дошёл до поля">Put the cursor in a text field and check the paste. The command prints which method reached the field</p>
-    <div class="cmd"><code>molva test-inject</code><button class="copy" type="button" data-copy="molva test-inject" data-ru="Скопировать">Copy</button></div>
+    <div class="cmd"><code>molva test-inject</code><button class="copy-button" type="button" data-copy="molva test-inject"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
   </li>
   <li>
     <p data-ru="Подключи горячие клавиши. В Hyprland 0.55 и новее конфиг на Lua, и одна команда пишет привязки из твоих настроек">Attach the hotkeys. On Hyprland 0.55 and later the config is Lua, and one command writes the binds from your settings</p>
-    <div class="cmd"><code>molva setup hyprland --write</code><button class="copy" type="button" data-copy="molva setup hyprland --write" data-ru="Скопировать">Copy</button></div>
+    <div class="cmd"><code>molva setup hyprland --write</code><button class="copy-button" type="button" data-copy="molva setup hyprland --write"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
     <p data-ru="Потом добавь напечатанную строку include в &lt;code&gt;~/.config/hypr/hyprland.lua&lt;/code&gt; и перезагрузи Hyprland. В GNOME и KDE те же команды добавляют как пользовательские сочетания; в Windows и macOS приложение регистрирует сочетание само">Then add the include line it prints to <code>~/.config/hypr/hyprland.lua</code>, and reload Hyprland. On GNOME and KDE you add the same commands as custom shortcuts; on Windows and macOS the application registers the combination itself</p>
   </li>
 </ol>

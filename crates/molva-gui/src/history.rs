@@ -142,7 +142,6 @@ mod tests {
             text_final: Some(text.to_string()),
             audio_path: None,
             segments: Vec::new(),
-            translation: None,
         }
     }
 

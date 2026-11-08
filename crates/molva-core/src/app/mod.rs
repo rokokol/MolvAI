@@ -26,5 +26,4 @@ pub mod search;
 pub mod secrets;
 pub mod stats;
 pub mod styles;
-pub mod translate;
 pub mod wer;

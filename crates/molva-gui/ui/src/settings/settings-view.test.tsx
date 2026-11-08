@@ -110,7 +110,6 @@ function config(change: (draft: Config) => void = () => undefined): Config {
       double_tap_ms: 350,
     },
     command_mode: { enabled: true, system_prompt: "" },
-    translation: { enabled: false, target: "en" },
     journal: {
       path: "",
       enabled: true,

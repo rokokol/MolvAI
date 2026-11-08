@@ -1276,6 +1276,13 @@ th.num {
   color: var(--ddlc-window-control-live);
 }
 
+/* The kit's chip sets a horizontal padding for a word; an icon button has no word, and that
+   padding otherwise pushes the mark off the centre */
+.copy-row button.copy-button {
+  padding: 0;
+  min-width: 0;
+}
+
 
 
 

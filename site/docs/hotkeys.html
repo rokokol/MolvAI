@@ -116,7 +116,7 @@
 
 <h2 data-ru="Hyprland 0.55 и новее">Hyprland 0.55 and later</h2>
 <p data-ru="С 0.55 конфиг Hyprland на Lua. MolvAI пишет свои привязки в отдельный файл, а твой конфиг подключает его один раз">Since 0.55 the Hyprland config is Lua. MolvAI writes its binds to a file of their own, and your config includes it once</p>
-<div class="cmd"><code>molva setup hyprland --write</code><button class="copy" type="button" data-copy="molva setup hyprland --write" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>molva setup hyprland --write</code><button class="copy-button" type="button" data-copy="molva setup hyprland --write"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
 <pre data-lang="lua"><code>-- ~/.config/hypr/hyprland.lua
 dofile(os.getenv("HOME") .. "/.config/hypr/molvai.lua")</code></pre>
 <p data-ru="Сгенерированный файл содержит пару для удержания и привязки для переключения, режима команды и отмены. Привязка отмены не поглощает клавишу, поэтому она доходит до приложения и обычный Escape работает в других местах">The generated file holds a pair for the hold and binds for the toggle, command mode and cancel. The cancel bind is non-consuming, so the key still reaches the application and a bare Escape keeps working elsewhere</p>
@@ -154,7 +154,7 @@ gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$pa
 
 <h2 data-ru="Если привязка не срабатывает">If a bind does not fire</h2>
 <p data-ru="Запусти &lt;code&gt;molva doctor&lt;/code&gt;. Он печатает сессию, композитор, найденные утилиты вставки, доступность &lt;code&gt;/dev/uinput&lt;/code&gt; и &lt;code&gt;/dev/input&lt;/code&gt; и отвечает ли демон на сокете. Самая частая причина молчащей привязки в NixOS — отсутствие &lt;code&gt;molva&lt;/code&gt; в &lt;code&gt;PATH&lt;/code&gt; того окружения, которое запускает привязку">Run <code>molva doctor</code>. It prints the session, the compositor, the paste utilities it found, the availability of <code>/dev/uinput</code> and <code>/dev/input</code>, and whether the daemon answers on the socket. The most common cause of a silent bind on NixOS is a <code>molva</code> missing from the <code>PATH</code> of the environment that starts the bind</p>
-<div class="cmd"><code>molva doctor</code><button class="copy" type="button" data-copy="molva doctor" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>molva doctor</code><button class="copy-button" type="button" data-copy="molva doctor"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
 
 <p class="to-top"><a href="./settings.html" data-ru="Дальше: настройки и режим Nix →">Next: settings and Nix mode →</a> · <a href="#main" data-ru="К началу">Back to top</a></p>
   </article>

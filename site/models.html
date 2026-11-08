@@ -82,7 +82,7 @@
           <span class="chip">transcribe-cpp</span>
           <span class="chip">Sber GigaAM-v3</span>
         </p>
-        <div class="cmd"><code>molva models pull gigaam-v3-e2e-rnnt-q4_k_m</code><button class="copy" type="button" data-copy="molva models pull gigaam-v3-e2e-rnnt-q4_k_m" data-ru="Скопировать">Copy</button></div>
+        <div class="cmd"><code>molva models pull gigaam-v3-e2e-rnnt-q4_k_m</code><button class="copy-button" type="button" data-copy="molva models pull gigaam-v3-e2e-rnnt-q4_k_m"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
       </article>
       <article class="card">
         <h2 data-ru="Почему по умолчанию именно она">Why this model is the default</h2>
@@ -142,13 +142,13 @@
     <div class="grid grid-2">
       <article class="card">
         <h3 data-ru="Для диктовки">For dictation</h3>
-        <div class="cmd"><code>molva models pull large-v3-turbo</code><button class="copy" type="button" data-copy="molva models pull large-v3-turbo" data-ru="Скопировать">Copy</button></div>
-        <div class="cmd"><code>molva config set stt.model large-v3-turbo</code><button class="copy" type="button" data-copy="molva config set stt.model large-v3-turbo" data-ru="Скопировать">Copy</button></div>
+        <div class="cmd"><code>molva models pull large-v3-turbo</code><button class="copy-button" type="button" data-copy="molva models pull large-v3-turbo"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
+        <div class="cmd"><code>molva config set stt.model large-v3-turbo</code><button class="copy-button" type="button" data-copy="molva config set stt.model large-v3-turbo"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
         <p class="muted" data-ru="Движок остаётся &lt;code&gt;auto&lt;/code&gt; и следует записи каталога для новой модели. Распознаватель собирается при старте демона, поэтому для других весов перезапусти демон">The engine stays <code>auto</code> and follows the catalog entry of the new model. The recognizer is built at daemon start, so restart the daemon to load different weights</p>
       </article>
       <article class="card">
         <h3 data-ru="Для одного файла">For one file</h3>
-        <div class="cmd"><code>molva transcribe talk.m4a --model large-v3-turbo</code><button class="copy" type="button" data-copy="molva transcribe talk.m4a --model large-v3-turbo" data-ru="Скопировать">Copy</button></div>
+        <div class="cmd"><code>molva transcribe talk.m4a --model large-v3-turbo</code><button class="copy-button" type="button" data-copy="molva transcribe talk.m4a --model large-v3-turbo"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
         <p class="muted" data-ru="Переопределение действует на этот запуск. Свои веса тоже подходят: укажи каталог в &lt;code&gt;stt.model_path&lt;/code&gt;, а имя файла — в &lt;code&gt;stt.model&lt;/code&gt;">The override applies to that run. Your own weights fit too: point <code>stt.model_path</code> at the directory and name the file in <code>stt.model</code></p>
       </article>
       <article class="card">

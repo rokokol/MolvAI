@@ -1036,11 +1036,10 @@ fn command_name(cmd: &Command) -> String {
 mod tests {
     use super::*;
     use crate::domain::fakes::{
-        FakeAudioSource, FakeClock, FakeLlm, FakeStt, MemJournal, RecordingNotifier,
-        RecordingSoundCue,
+        FakeAudioSource, FakeClock, FakeStt, MemJournal, RecordingNotifier, RecordingSoundCue,
     };
     use crate::domain::inject::{InjectError, InjectReport, OutputMode, TextInjector};
-    use crate::domain::llm::{ChatResponse, LlmClient};
+    use crate::domain::llm::LlmClient;
     use crate::infra::audio::level::ZERO_LEVEL_MESSAGE;
     use std::time::Duration;
 
@@ -1886,70 +1885,6 @@ mod tests {
             lower(entry.text_raw.as_deref().unwrap_or_default()),
             "the streamed phrase lost a tail word: {final_text:?} against {:?}",
             entry.text_raw
-        );
-        drop(h.daemon);
-    }
-
-    #[test]
-    fn the_whole_phrase_is_translated_once_after_the_release() {
-        let llm = Arc::new(FakeLlm::new(|request| {
-            Ok(ChatResponse {
-                text: format!("[{}]", request.user),
-                prompt_tokens: None,
-                completion_tokens: None,
-            })
-        }));
-        let mut config = Config::default();
-        config.llm.enabled = true;
-        config.translation.enabled = true;
-        config.translation.target = "en".into();
-        // The words are checked literally, not after the number rule turns them into digits
-        config.rules.numbers_as_digits = false;
-        // Live typing stays off, as it is shipped: the chunks type nothing, and the field gets
-        // the whole phrase once, translated
-        assert!(!config.stt.streaming_inject);
-        let h = streaming_harness_with(
-            &["раз", "два", "три", "четыре", "пять"],
-            config,
-            Some(llm.clone()),
-        );
-
-        let (drafts, entry) = record(&h);
-
-        assert!(
-            drafts.iter().all(|draft| !draft.contains('[')),
-            "a draft carried a translation: {drafts:?}"
-        );
-        assert_eq!(llm.calls(), 1, "the phrase was translated more than once");
-        let raw = entry.text_raw.clone().unwrap_or_default();
-        let request = llm.last_request.lock().unwrap().clone().unwrap();
-        assert!(
-            raw.split_whitespace().count() >= 2,
-            "the phrase was recognized as one word: {raw:?}"
-        );
-        assert_eq!(
-            request.user.split_whitespace().count(),
-            raw.split_whitespace().count(),
-            "the model saw a part of the phrase: {:?} against {raw:?}",
-            request.user
-        );
-        let final_text = entry.text_final.clone().unwrap_or_default();
-        assert!(
-            !raw.contains('['),
-            "the raw text holds the translation: {raw:?}"
-        );
-        assert!(
-            final_text.contains('['),
-            "the journal does not hold the translation: {final_text:?}"
-        );
-        assert_eq!(
-            entry.translation.map(|info| info.target),
-            Some("en".to_string())
-        );
-        assert_eq!(
-            h.injected.lock().unwrap().len(),
-            1,
-            "the field got more than one paste"
         );
         drop(h.daemon);
     }

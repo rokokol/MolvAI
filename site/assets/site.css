@@ -493,6 +493,13 @@ a.card:hover {
   margin: 0;
 }
 
+/* The Files screenshot is the third one: it gets its own row and a wider mount */
+.shots .ddlc-snap:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+  justify-self: center;
+  width: min(72%, 58rem);
+}
+
 /* ---------- the quote and the announcement ---------- */
 
 /* A principle, taped on. The tape and the board are the report sheet's blockquote */
@@ -679,57 +686,14 @@ a.card:hover {
   white-space: nowrap;
 }
 
-.cmd .copy {
-  --copy-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='square'%3E%3Crect x='9' y='9' width='12' height='12'/%3E%3Cpath d='M16 9V3H3v13h6'/%3E%3C/svg%3E");
-  --check-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.8' stroke-linecap='square'%3E%3Cpath d='M4 12l6 6L20 6'/%3E%3C/svg%3E");
-  --alert-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='square'%3E%3Cpath d='M12 3L22 21H2zM12 9v5M12 17v1'/%3E%3C/svg%3E");
+/* The mark, its states and its hit area come from the vendored ddlc copy button; the terminal
+   row only places it at the right edge */
+.cmd .copy-button {
   flex: none;
-  display: inline-grid;
-  place-items: center;
-  width: 30px;
-  height: 26px;
   margin-left: auto;
-  padding: 0;
-  border: 2px solid var(--ddlc-window-border);
+  border-color: var(--ddlc-window-border);
   background: var(--ddlc-window-bar);
   color: var(--ddlc-window-title);
-  font: inherit;
-  font-size: 0;
-  cursor: pointer;
-}
-
-.cmd .copy::before {
-  content: "";
-  width: 14px;
-  height: 14px;
-  background: currentColor;
-  -webkit-mask: var(--copy-icon) center / contain no-repeat;
-  mask: var(--copy-icon) center / contain no-repeat;
-}
-
-.cmd .copy:hover {
-  border-color: var(--ddlc-window-control-live);
-  color: var(--ddlc-window-control-live);
-}
-
-.cmd .copy[data-state="copied"] {
-  border-color: var(--ddlc-ok);
-  color: var(--ddlc-ok);
-}
-
-.cmd .copy[data-state="copied"]::before {
-  -webkit-mask-image: var(--check-icon);
-  mask-image: var(--check-icon);
-}
-
-.cmd .copy[data-state="failed"] {
-  border-color: var(--ddlc-danger);
-  color: var(--ddlc-danger);
-}
-
-.cmd .copy[data-state="failed"]::before {
-  -webkit-mask-image: var(--alert-icon);
-  mask-image: var(--alert-icon);
 }
 
 /* The kitty window of the report sheet scrolls sideways rather than wrapping */

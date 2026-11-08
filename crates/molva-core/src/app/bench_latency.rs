@@ -90,7 +90,7 @@ fn sample(root: u32, rss: &AtomicU64, vram: &AtomicU64, known: &AtomicBool) {
     }
 }
 
-/// The process and every descendant that currently lives under it
+/// The process and every descendant under it
 fn descendants(root: u32) -> HashSet<u32> {
     let mut found = HashSet::from([root]);
     loop {

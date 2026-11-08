@@ -11,9 +11,9 @@ scripts/markers/ rokokol/tests-skill markers/ f82cadb0c1a297a37f322cb03a5b13f0d5
 scripts/check-comments.sh rokokol/code-comments-skill check-comments.sh 8ccc6f74dd074afae844c94692d90685686199c0 0f4b375fe91b86a1ddfe1b447667ad98133afcb6
 scripts/check-prose.sh rokokol/create-readme-skill check-prose.sh 613639eb6ec2a73209bb1f7d1ba103e9d1c90db7 0438eca6ca155baf2b5fbbd8157747ec3619b579
 scripts/check-sh.sh rokokol/bash-best-practices-skill check-sh.sh 1045482d25b5f2ec63655c62a45ca3961317c00d 37cb4b54dc245288c711b9665c9b4aedc496b1ce
-site/assets/vendor/ddlc/ddlc-ui.css rokokol/ddlc-themes dist/ddlc-ui.css a6cbcdfffb8b92bb4cde11896a0f1f40fea98044 bb6f04bb3a1da94a9efce3865123d65cd9450db0
+site/assets/vendor/ddlc/ddlc-ui.css rokokol/ddlc-themes dist/ddlc-ui.css 94abec98d34230ab2474d2ca73e4b0c462f6e761 643313cca466b98cc269c08efbc4c4d7f90cca80
 site/assets/vendor/ddlc/ddlc-tokens.css rokokol/ddlc-themes dist/ddlc-tokens.css 5dcc8907c67cf60287349d8085992e4edd3a86bc b23d4ef1456ed7743fdb44a13f6dc3d78d26efad
-site/assets/vendor/ddlc/ddlc-report.css rokokol/ddlc-themes dist/ddlc-report.css a6cbcdfffb8b92bb4cde11896a0f1f40fea98044 90be4510744596b59726f4527f6599604f1f12cb
+site/assets/vendor/ddlc/ddlc-report.css rokokol/ddlc-themes dist/ddlc-report.css 94abec98d34230ab2474d2ca73e4b0c462f6e761 1c7ddeaca5001316457774198e0ec56543ed4ebc
 site/assets/vendor/ddlc/ddlc-theme.js rokokol/ddlc-themes dist/ddlc-theme.js 5dcc8907c67cf60287349d8085992e4edd3a86bc 12ec9eda878a5794061bb7bd21d71dd4feddd045
 site/assets/vendor/ddlc/ddlc-cloud.js rokokol/ddlc-themes dist/ddlc-cloud.js 5dcc8907c67cf60287349d8085992e4edd3a86bc 981b9b58d7b5be7a61f2b7b4ab06c6d3b5a9fdf8
 site/assets/vendor/ddlc/DepartureMono-Regular.woff2 rokokol/ddlc-themes dist/DepartureMono-Regular.woff2 5dcc8907c67cf60287349d8085992e4edd3a86bc b4a23dc1dad1c934005d0862e62c0294636afb08

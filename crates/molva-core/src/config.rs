@@ -79,7 +79,6 @@ pub struct Config {
     pub output: OutputConfig,
     pub hotkeys: HotkeysConfig,
     pub command_mode: CommandModeConfig,
-    pub translation: TranslationConfig,
     pub journal: JournalConfig,
     pub stats: StatsConfig,
     pub privacy: PrivacyConfig,
@@ -102,7 +101,6 @@ impl Default for Config {
             output: OutputConfig::default(),
             hotkeys: HotkeysConfig::default(),
             command_mode: CommandModeConfig::default(),
-            translation: TranslationConfig::default(),
             journal: JournalConfig::default(),
             stats: StatsConfig::default(),
             privacy: PrivacyConfig::default(),
@@ -551,27 +549,6 @@ impl Default for JournalConfig {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct TranslationConfig {
-    /// Translate the finished dictation into `target`
-    ///
-    /// Off by default: the text of a phrase leaves the machine for the model. The dictionary
-    /// and the rules work in the recognized language, and the finished phrase is translated once
-    pub enabled: bool,
-    /// Target language, ISO 639-1; there is no `auto`, because a translation needs a target
-    pub target: String,
-}
-
-impl Default for TranslationConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            target: "en".into(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
 pub struct StatsConfig {
     /// Baseline for the "saved time" against typing on a keyboard
     pub typing_baseline_wpm: u32,
@@ -884,7 +861,6 @@ impl Config {
         self.validate_stt(&mut issues);
         self.validate_output(&mut issues);
         self.validate_llm(&mut issues);
-        self.validate_translation(&mut issues);
         self.validate_styles(&mut issues);
         self.validate_limits(&mut issues);
 
@@ -1070,18 +1046,6 @@ impl Config {
                 "llm.base_url",
                 "",
                 "post-processing is on, but the model URL is not set",
-            ));
-        }
-    }
-
-    /// Translation: the target must be a language code that a model can act on
-    fn validate_translation(&self, issues: &mut Vec<ConfigIssue>) {
-        let target = self.translation.target.trim();
-        if target.chars().count() != 2 || !target.chars().all(|c| c.is_ascii_alphabetic()) {
-            issues.push(ConfigIssue::new(
-                "translation.target",
-                target,
-                "expected a two-letter ISO 639-1 language code, for example `en`",
             ));
         }
     }
@@ -1528,33 +1492,6 @@ mod tests {
     }
 
     #[test]
-    fn translation_is_off_out_of_the_box() {
-        let config = Config::default();
-        assert!(
-            !config.translation.enabled,
-            "a phrase must not leave the machine for the model without a choice"
-        );
-        assert_eq!(config.translation.target, "en");
-        assert!(config.validate().is_ok());
-    }
-
-    #[test]
-    fn a_target_language_that_is_not_a_code_is_refused() {
-        for (target, allowed) in [
-            ("en", true),
-            (" RU ", true),
-            ("auto", false),
-            ("english", false),
-            ("", false),
-            ("e1", false),
-        ] {
-            let mut config = Config::default();
-            config.translation.target = target.into();
-            assert_eq!(config.validate().is_ok(), allowed, "{target:?}");
-        }
-    }
-
-    #[test]
     fn an_impossible_chunk_pause_is_refused() {
         let mut config = Config::default();
         config.stt.chunk_pause_ms = 10;
@@ -1788,8 +1725,8 @@ mod tests {
         assert!(config.migrate());
         assert_eq!(config.command_mode.system_prompt, "");
         assert_eq!(config.version, CONFIG_VERSION);
-        // A Russian instruction gets exactly the prompt the file had: nothing changes for it
-        assert_eq!(
+        // The old default is gone: the built-in prompt follows the current wording
+        assert_ne!(
             crate::app::command_mode::system_prompt(&config.command_mode.system_prompt, "ru"),
             LEGACY_COMMAND_PROMPT
         );

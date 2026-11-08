@@ -220,13 +220,13 @@
   each(document.querySelectorAll("[data-copy]"), function (button) {
     button.addEventListener("click", function () {
       var text = button.getAttribute("data-copy") || "";
-      var label = button.textContent;
+      var label = button.getAttribute("aria-label") || "Copy";
       copy(text).then(function (ok) {
         var words = stateWords();
-        button.textContent = ok ? words.copied : words.failed;
+        button.setAttribute("aria-label", ok ? words.copied : words.failed);
         button.setAttribute("data-state", ok ? "copied" : "failed");
         window.setTimeout(function () {
-          button.textContent = label;
+          button.setAttribute("aria-label", label);
           button.removeAttribute("data-state");
         }, 1800);
       });

@@ -197,7 +197,6 @@ fn every_mcp_tool_answers_through_a_daemon_the_server_starts_itself() {
     // A notification has no answer: the next line must belong to the next request
     mcp.send(&json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }));
 
-    // 2. tools/list
     mcp.send(&json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {} }));
     let list = mcp.answer();
     let names: Vec<String> = list["result"]["tools"]

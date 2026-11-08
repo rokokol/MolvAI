@@ -19,9 +19,7 @@ use molva_core::app::llm_output::sanitize_llm_output;
 use molva_core::app::rules::RuleSet;
 use molva_core::app::secrets;
 use molva_core::app::styles::Styles;
-use molva_core::domain::entry::{
-    Entry, LatencyMs, Mode, Source, Tokens, TranslationInfo, SCHEMA_VERSION,
-};
+use molva_core::domain::entry::{Entry, LatencyMs, Mode, Source, Tokens, SCHEMA_VERSION};
 use molva_core::domain::journal::Journal;
 use molva_core::domain::llm::{ChatRequest, LlmClient};
 use molva_core::domain::stt::{LanguageHint, SttEngine, SttOptions};
@@ -50,7 +48,6 @@ pub(crate) struct Postprocessed {
     pub text: String,
     pub dict_hits: u32,
     pub llm: Option<LlmTrace>,
-    pub translation: Option<TranslationInfo>,
 }
 
 #[cfg(test)]
@@ -61,7 +58,6 @@ impl Postprocessed {
             text: text.into(),
             dict_hits: 0,
             llm: None,
-            translation: None,
         }
     }
 }
@@ -87,10 +83,6 @@ pub(crate) struct FilePostprocessor {
     llm_min_words: u32,
     temperature: f32,
     max_tokens: u32,
-    llm_config: molva_core::config::LlmConfig,
-    translation_enabled: bool,
-    translation_target: String,
-    send_to_llm: bool,
 }
 
 impl FilePostprocessor {
@@ -141,11 +133,6 @@ impl FilePostprocessor {
             llm_min_words: cfg.rules.llm_min_words,
             temperature: cfg.llm.temperature,
             max_tokens: cfg.llm.max_tokens,
-            llm_config: cfg.llm.clone(),
-            translation_enabled: cfg.translation.enabled
-                && !cfg.translation.target.trim().is_empty(),
-            translation_target: cfg.translation.target.trim().to_lowercase(),
-            send_to_llm: cfg.privacy.send_to_llm,
         }
     }
 
@@ -153,57 +140,11 @@ impl FilePostprocessor {
     pub(crate) fn apply(&self, raw: &str, language: &str) -> Postprocessed {
         let (after_dictionary, dict_hits) = self.dictionary.apply(raw);
         let after_rules = self.rules.apply(&after_dictionary, language);
-        if self.translation_enabled {
-            let Some(llm) = self.llm.as_deref() else {
-                return Postprocessed {
-                    text: after_rules,
-                    dict_hits,
-                    llm: None,
-                    translation: Some(TranslationInfo {
-                        target: self.translation_target.clone(),
-                        translated: 0,
-                        fallbacks: 1,
-                        fallback: Some(if self.send_to_llm {
-                            "unavailable".into()
-                        } else {
-                            "privacy".into()
-                        }),
-                    }),
-                };
-            };
-            let started = Instant::now();
-            let piece = molva_core::app::translate::whole_text(
-                llm,
-                &self.llm_config,
-                &self.translation_target,
-                &after_rules,
-            );
-            let translation = TranslationInfo {
-                target: self.translation_target.clone(),
-                translated: u32::from(piece.translated),
-                fallbacks: u32::from(!piece.translated),
-                fallback: piece.fallback.map(|reason| reason.as_str().to_string()),
-            };
-            let llm = piece.translated.then(|| LlmTrace {
-                provider: self.llm_provider.clone(),
-                model: self.llm_model.clone(),
-                local: self.llm_local,
-                tokens: None,
-                elapsed_ms: started.elapsed().as_millis() as u32,
-            });
-            return Postprocessed {
-                text: piece.text,
-                dict_hits,
-                llm,
-                translation: Some(translation),
-            };
-        }
         let Some(llm) = self.llm.as_deref() else {
             return Postprocessed {
                 text: after_rules,
                 dict_hits,
                 llm: None,
-                translation: None,
             };
         };
         if !self.style.uses_llm || word_count(&after_rules) <= self.llm_min_words {
@@ -211,7 +152,6 @@ impl FilePostprocessor {
                 text: after_rules,
                 dict_hits,
                 llm: None,
-                translation: None,
             };
         }
         let request = ChatRequest {
@@ -235,7 +175,6 @@ impl FilePostprocessor {
                         text: after_rules,
                         dict_hits,
                         llm: None,
-                        translation: None,
                     };
                 }
                 let tokens = match (response.prompt_tokens, response.completion_tokens) {
@@ -245,7 +184,6 @@ impl FilePostprocessor {
                 Postprocessed {
                     text,
                     dict_hits,
-                    translation: None,
                     llm: Some(LlmTrace {
                         provider: self.llm_provider.clone(),
                         model: self.llm_model.clone(),
@@ -263,7 +201,6 @@ impl FilePostprocessor {
                     text: after_rules,
                     dict_hits,
                     llm: None,
-                    translation: None,
                 }
             }
         }
@@ -543,7 +480,6 @@ pub(crate) fn transcribe_jobs_as(
             text_raw: Some(raw),
             text_final: Some(text.clone()),
             audio_path: matches!(job.source, JobSource::File(_)).then(|| job.label.clone()),
-            translation: processed.translation.clone(),
             segments: transcript.segments.clone(),
         };
         if let Err(e) = journal.append(&entry) {
@@ -1075,36 +1011,6 @@ mod tests {
     }
 
     #[test]
-    fn a_file_translation_is_one_whole_text_call() {
-        let mut cfg = Config::default();
-        cfg.translation.enabled = true;
-        cfg.translation.target = "en".into();
-        let llm = molva_core::domain::fakes::FakeLlm::echoing("hello file");
-        let postprocessor = FilePostprocessor::assemble(
-            &cfg,
-            Dictionary::empty(),
-            llm_style(),
-            Some(Box::new(llm)),
-        );
-
-        let processed = postprocessor.apply("привет файл", "ru");
-
-        assert_eq!(processed.text, "hello file");
-        assert_eq!(
-            processed
-                .translation
-                .as_ref()
-                .map(|info| info.target.as_str()),
-            Some("en")
-        );
-        assert_eq!(
-            processed.translation.as_ref().map(|info| info.translated),
-            Some(1)
-        );
-        assert!(processed.llm.is_some());
-    }
-
-    #[test]
     fn a_failing_model_leaves_the_text_after_the_rules() {
         let mut cfg = Config::default();
         cfg.rules.llm_min_words = 0;
@@ -1195,7 +1101,6 @@ mod tests {
             &|text, _| Postprocessed {
                 text: text.to_string(),
                 dict_hits: 2,
-                translation: None,
                 llm: Some(LlmTrace {
                     provider: "ollama".into(),
                     model: "qwen3.5:4b".into(),

@@ -4,6 +4,8 @@
 [![deny](https://github.com/rokokol/MolvAI/actions/workflows/deny.yml/badge.svg)](https://github.com/rokokol/MolvAI/actions/workflows/deny.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
+![MolvAI: hold a key, speak, release, and the text is already in the field](docs/img/preview.png)
+
 System-wide voice input that runs on your computer: hold a key, speak, release, and the text appears in the active field of any application. Russian speech uses the Sber GigaAM-v3 model by default, at the same Q4_K_M quantization as the agent on the station, and the model is fast enough on a processor for speech to be typed while you are still talking
 
 > [!NOTE]
@@ -28,6 +30,8 @@ More about the arrangement: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The jo
 | ![The MolvAI statistics: words, pace, streak and saved time](docs/img/panel-idle-2026.png) | ![The panel during recording: the indicator, the signal level and the stop buttons](docs/img/panel-recording-2026.png) |
 
 The panel shows the daemon state, the live signal level, the style, the last phrase with its pace and the statistics for today. The History, Files (with transcript search) and Stats tabs read the same journal as the CLI
+
+![The Files tab: a queue of finished videos, a searchable transcript with timecodes and per-segment copy](docs/img/panel-files-2026.png)
 
 ## Installation
 
@@ -152,11 +156,9 @@ The weights are not part of the repository, and the project license does not cov
 
 ## Real-time dictation
 
-Live typing while you speak is disabled in this build. The phrase is recognized as chunks for the draft, but the text reaches the active field as one piece after the key release; the same whole phrase is what the model sees for post-processing or translation. This removes the ordering and duplication problems that the per-chunk path showed
+Live typing while you speak is disabled in this build. The phrase is recognized as chunks for the draft, but the text reaches the active field as one piece after the key release; the same whole phrase is what the model sees for post-processing. This removes the ordering and duplication problems that the per-chunk path showed
 
-The old streaming translator is gone. Whole-file and whole-phrase translation now go through one `whole_text` function, and a translation that keeps context between chunks is a later task
-
-`stt.streaming_preview` keeps the draft in the panel, `stt.chunked = false` turns chunk recognition off, and `stt.chunk_pause_ms` changes the pause that cuts a chunk. `stt.streaming_inject = false` is the shipped default; the live typing and streaming translation path has its own roadmap item
+`stt.streaming_preview` keeps the draft in the panel, `stt.chunked = false` turns chunk recognition off, and `stt.chunk_pause_ms` changes the pause that cuts a chunk. `stt.streaming_inject = false` is the shipped default; live chunk typing has its own roadmap item
 
 ## Hotkeys
 
@@ -176,7 +178,7 @@ The journal is a local JSONL file. Its texts can be encrypted with XChaCha20-Pol
 
 The language model is off by default and works through any OpenAI-compatible API. It is called only for phrases longer than `rules.llm_min_words` words and only by styles that need it; a failure returns the text after the rules instead of losing the phrase
 
-A local model stays serial: one request at a time, because two at once answer slower and worse. A cloud provider answers up to four calls beside each other, and one executor holds that policy, so no stage decides on its own to wait beside another. The post-processing of a phrase runs on the daemon worker, the translation calls belong to the executor, and one finished text is one call today
+A local model stays serial: one request at a time, because two at once answer slower and worse. A cloud provider answers up to four calls beside each other, and one executor holds that policy, so no stage decides on its own to wait beside another. The post-processing of a phrase runs on the daemon worker, and a style can ask the same model to translate the text
 
 ```sh
 molva config set llm.enabled true

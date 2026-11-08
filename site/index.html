@@ -5,6 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title data-ru="MolvAI — открытый голосовой ввод по всей системе, на твоей машине">MolvAI — open-source system-wide voice input that runs on your machine</title>
 <meta name="description" content="Hold a key, speak, release: MolvAI types into any application. Local recognition with GigaAM-v3 for Russian, a searchable transcript journal, audio and video transcription with timecodes. MIT, Linux, Windows and macOS" data-ru-content="Зажми клавишу, говори, отпусти: MolvAI печатает в любом приложении. Локальное распознавание GigaAM-v3 для русского, журнал расшифровок с поиском, расшифровка аудио и видео с таймкодами. MIT, Linux, Windows и macOS">
+<meta property="og:type" content="website">
+<meta property="og:title" content="MolvAI — system-wide voice input, on your machine">
+<meta property="og:description" content="Hold a key, speak, release: local speech recognition types into any application, with a searchable transcript journal and timecoded files">
+<meta property="og:image" content="https://molvai.rokokol.art/docs/img/preview.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="MolvAI: hold a key, speak, release, and the text is already in the field">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://molvai.rokokol.art/docs/img/preview.png">
 <meta name="color-scheme" content="dark light">
 <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#222222" media="(prefers-color-scheme: dark)">
@@ -165,14 +174,14 @@
         <div>
           <h3 data-ru="Установи через Nix или скриптом">Install with Nix, or with the script</h3>
           <p data-ru="С Nix в систему ничего не попадает. Без Nix &lt;code&gt;install.sh&lt;/code&gt; проверяет зависимости и сам ничего не устанавливает">With Nix nothing enters the system. Without Nix, <code>install.sh</code> checks the dependencies and installs nothing itself</p>
-          <div class="cmd"><code>nix run github:rokokol/MolvAI -- --help</code><button class="copy" type="button" data-copy="nix run github:rokokol/MolvAI -- --help" data-ru="Скопировать">Copy</button></div>
+          <div class="cmd"><code>nix run github:rokokol/MolvAI -- --help</code><button class="copy-button" type="button" data-copy="nix run github:rokokol/MolvAI -- --help"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
         </div>
       </li>
       <li class="step">
         <div>
           <h3 data-ru="Запусти демон">Start the daemon</h3>
           <p data-ru="Он открывает сокет, загружает модель GigaAM по умолчанию и ждёт горячих клавиш. Модуль Home Manager запускает ту же команду как пользовательский сервис">It opens the socket, loads the default GigaAM model and listens for the hotkeys. The Home Manager module runs the same command as a user service</p>
-          <div class="cmd"><code>molva daemon</code><button class="copy" type="button" data-copy="molva daemon" data-ru="Скопировать">Copy</button></div>
+          <div class="cmd"><code>molva daemon</code><button class="copy-button" type="button" data-copy="molva daemon"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
         </div>
       </li>
       <li class="step">
@@ -185,7 +194,7 @@
         <div>
           <h3 data-ru="Отпусти — и текст в поле">Release, and the text is in the field</h3>
           <p data-ru="Способ вставки выбирается сам, а фраза уходит в журнал. &lt;code&gt;molva history --last&lt;/code&gt; вернёт её без повторной диктовки">The paste method is chosen automatically and the phrase goes to the journal. <code>molva history --last</code> brings it back without dictating it again</p>
-          <div class="cmd"><code>molva history paste --last</code><button class="copy" type="button" data-copy="molva history paste --last" data-ru="Скопировать">Copy</button></div>
+          <div class="cmd"><code>molva history paste --last</code><button class="copy-button" type="button" data-copy="molva history paste --last"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
         </div>
       </li>
     </ol>
@@ -197,7 +206,7 @@
     <div class="section-head">
       <span class="kicker" data-ru="Тот самый интерфейс">The actual window</span>
       <h2 data-ru="Не макет: панель и журнал">Not a mockup: the panel and the journal</h2>
-      <p data-ru="Это скриншоты окна на Tauri: панель с живым сигналом и черновиком и статистика по всем репликам">These are screenshots of the Tauri window: the panel with the live signal and the draft, and the statistics for every phrase</p>
+      <p data-ru="Это скриншоты окна на Tauri: панель с живым сигналом, статистика и файлы с таймкодами, поиском и очередью">These are screenshots of the Tauri window: the live panel, the statistics, and Files with timecodes, search and the queue</p>
     </div>
     <div class="shots">
       <figure class="ddlc-snap ddlc-snap-left">
@@ -207,6 +216,10 @@
       <figure class="ddlc-snap ddlc-snap-right">
         <img src="./docs/img/panel-idle-2026.png" alt="The MolvAI statistics: words, pace, streak and saved time" data-ru-alt="Статистика MolvAI: слова, темп, серия и сэкономленное время" width="1917" height="1080">
         <figcaption data-ru="Панель и статистика за всё время">The panel and the statistics for all time</figcaption>
+      </figure>
+      <figure class="ddlc-snap">
+        <img src="./docs/img/panel-files-2026.png" alt="The Files tab: a queue of two finished videos, a searchable transcript with timecodes and per-segment copy" data-ru-alt="Вкладка «Файлы»: очередь из двух готовых видео, расшифровка с таймкодами и поиском и копирование по фрагментам" width="1915" height="1080">
+        <figcaption data-ru="Файлы: очередь, таймкоды, поиск и копирование по фрагментам">Files: the queue, timecodes, search and per-segment copy</figcaption>
       </figure>
     </div>
   </div>
@@ -381,7 +394,7 @@
         </div>
         <div class="tabpanel" role="tabpanel" id="panel-nix" aria-labelledby="tab-nix" tabindex="0">
           <h3 data-ru="Собрать и запустить без клонирования">Build and run without cloning</h3>
-          <div class="cmd"><code>nix run github:rokokol/MolvAI -- --help</code><button class="copy" type="button" data-copy="nix run github:rokokol/MolvAI -- --help" data-ru="Скопировать">Copy</button></div>
+          <div class="cmd"><code>nix run github:rokokol/MolvAI -- --help</code><button class="copy-button" type="button" data-copy="nix run github:rokokol/MolvAI -- --help"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
           <p data-ru="С Home Manager модуль флейка ставит &lt;code&gt;molva&lt;/code&gt;, запускает демон как пользовательский сервис и пишет привязки Hyprland из твоих настроек">With Home Manager, the flake module installs <code>molva</code>, runs the daemon as a user service and writes the Hyprland binds from your settings</p>
           <pre data-lang="nix"><code># flake inputs: molvai.url = "github:rokokol/MolvAI";
 imports = [ inputs.molvai.homeModules.default ];
@@ -389,9 +402,9 @@ programs.molvai.enable = true;</code></pre>
         </div>
         <div class="tabpanel" role="tabpanel" id="panel-script" aria-labelledby="tab-script" tabindex="0">
           <h3 data-ru="Клонируй, проверь, установи">Clone, check, install</h3>
-          <div class="cmd"><code>git clone https://github.com/rokokol/MolvAI &amp;&amp; cd MolvAI &amp;&amp; ./install.sh</code><button class="copy" type="button" data-copy="git clone https://github.com/rokokol/MolvAI &amp;&amp; cd MolvAI &amp;&amp; ./install.sh" data-ru="Скопировать">Copy</button></div>
+          <div class="cmd"><code>git clone https://github.com/rokokol/MolvAI &amp;&amp; cd MolvAI &amp;&amp; ./install.sh</code><button class="copy-button" type="button" data-copy="git clone https://github.com/rokokol/MolvAI &amp;&amp; cd MolvAI &amp;&amp; ./install.sh"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
           <p data-ru="Бинарник попадает в &lt;code&gt;~/.local/bin&lt;/code&gt; и не требует прав администратора. &lt;code&gt;./install.sh --check&lt;/code&gt; печатает команды для зависимостей в Debian, Fedora, Arch, openSUSE, macOS и Windows, и сам скрипт не устанавливает ни одну из них">The binary goes to <code>~/.local/bin</code> and needs no administrator rights. <code>./install.sh --check</code> prints the dependency commands for Debian, Fedora, Arch, openSUSE, macOS and Windows, and the script installs none of them itself</p>
-          <div class="cmd"><code>./install.sh --uninstall</code><button class="copy" type="button" data-copy="./install.sh --uninstall" data-ru="Скопировать">Copy</button></div>
+          <div class="cmd"><code>./install.sh --uninstall</code><button class="copy-button" type="button" data-copy="./install.sh --uninstall"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
           <p data-ru="Удаление идёт по манифесту, поэтому забирает ровно то, что установило">Removal follows the manifest, so it takes exactly what was installed</p>
         </div>
         <div class="tabpanel" role="tabpanel" id="panel-release" aria-labelledby="tab-release" tabindex="0">

@@ -11,9 +11,6 @@
 //! is on, privacy allows it, and the phrase has more than `rules.llm_min_words` words. Short
 //! phrases go through the rules only, which is both faster and cheaper in tokens
 //!
-//! With `translation.enabled` the model instead translates the finished phrase in one call, and
-//! the style post-processing stands aside: its prompt would translate the translation a second
-//! time. See [`super::translate`]
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -25,13 +22,11 @@ use uuid::Uuid;
 use crate::app::command_mode;
 use crate::config::{
     CommandModeConfig, Config, DictionaryConfig, LlmConfig, OutputConfig, PrivacyConfig,
-    RulesConfig, SttConfig, StyleConfig, TranslationConfig,
+    RulesConfig, SttConfig, StyleConfig,
 };
 use crate::domain::audio::PcmAudio;
 use crate::domain::clock::Clock;
-use crate::domain::entry::{
-    Entry, LatencyMs, Mode, Source, Tokens, TranslationInfo, SCHEMA_VERSION,
-};
+use crate::domain::entry::{Entry, LatencyMs, Mode, Source, Tokens, SCHEMA_VERSION};
 use crate::domain::inject::{OutputMode, TextInjector};
 use crate::domain::journal::{Journal, JournalError};
 use crate::domain::llm::{ChatRequest, LlmClient, LlmError};
@@ -46,7 +41,6 @@ use super::llm_executor::LlmExecutor;
 use super::llm_output::sanitize_llm_output;
 use super::rules::RuleSet;
 use super::styles::Styles;
-use super::translate::{self, Fallback, Piece};
 use crate::infra::audio::decode;
 use crate::infra::stt::{is_silence_hallucination, transcribe_with_language_policy};
 
@@ -76,7 +70,6 @@ pub struct PipelineConfig {
     pub style: StyleConfig,
     pub output: OutputConfig,
     pub command_mode: CommandModeConfig,
-    pub translation: TranslationConfig,
     pub privacy: PrivacyConfig,
 }
 
@@ -96,7 +89,6 @@ impl PipelineConfig {
             style: cfg.style.clone(),
             output: cfg.output.clone(),
             command_mode: cfg.command_mode.clone(),
-            translation: cfg.translation.clone(),
             privacy: cfg.privacy.clone(),
         }
     }
@@ -312,8 +304,6 @@ impl Pipeline {
     /// and the model — so a file gets the text a dictation of the same sound would get. A failed
     /// file is a line of the report, not a lost batch: the caller sees which input failed and why
     ///
-    /// Translation applies to a file as well: one text, one call, and the translated text is what
-    /// the report carries
     pub fn transcribe_file(&mut self, request: &FileTranscriptionRequest) -> FileReport {
         let mut report = FileReport::default();
         // The daemon has its own working directory: a relative path would name a different file
@@ -414,14 +404,11 @@ impl Pipeline {
             text_raw: Some(text_raw),
             text_final: None,
             audio_path: Some(label.clone()),
-            translation: None,
             segments: transcript.segments.clone(),
         };
 
         let text = if request.no_llm {
             after_rules
-        } else if self.translating() {
-            self.translate_whole(&mut entry, &after_rules)
         } else {
             self.run_dictation(&mut entry, &style, after_rules)
         };
@@ -569,21 +556,14 @@ impl Pipeline {
             text_raw: Some(text_raw),
             text_final: None,
             audio_path: None,
-            translation: None,
             segments: Vec::new(),
         };
 
-        let mut tail_typed = streamed_tail.clone();
+        let tail_typed = streamed_tail.clone();
         let text = match mode {
             Mode::Command => {
                 let selection = selection.unwrap_or_default();
                 self.run_command(&mut entry, &selection, &after_rules)?
-            }
-            // The phrase is translated after the whole recording: one call for the whole text
-            Mode::Dictation if self.translating() => {
-                let translated = self.translate_whole(&mut entry, &after_rules);
-                tail_typed.clone_from(&translated);
-                translated
             }
             // The text of the prefix is already in the user's field: a model answer on the
             // whole phrase would rewrite what cannot be rewritten
@@ -716,18 +696,12 @@ impl Pipeline {
     /// The rules apply to the chunk alone: no model sees the phrase, because its answer would
     /// rewrite text that is already in the user's field. A failure leaves the typed prefix in
     /// place and stops further streaming for this phrase.
-    ///
-    /// A phrase that translates types nothing here: the translation replaces the whole text, so
-    /// the field waits for the key release and gets the phrase once
     pub fn stream_chunk(
         &mut self,
         chunk: &ChunkText,
         app_hint: Option<&str>,
     ) -> Result<StreamProgress, PipelineError> {
-        if !self.config.stt.streaming_inject
-            || self.streamed_failed
-            || self.translating()
-            || chunk.text.trim().is_empty()
+        if !self.config.stt.streaming_inject || self.streamed_failed || chunk.text.trim().is_empty()
         {
             return Ok(StreamProgress::default());
         }
@@ -746,14 +720,6 @@ impl Pipeline {
         Ok(StreamProgress {
             typed: self.streamed.clone(),
         })
-    }
-
-    /// Whether the phrase goes to the model for a translation
-    ///
-    /// The setting decides. Only dictation asks for a translation: a command already says what
-    /// to do with the selected text, and `run` never sends a command here
-    pub fn translating(&self) -> bool {
-        self.config.translation.enabled && !self.config.translation.target.trim().is_empty()
     }
 
     /// Type one piece of text and remember what the field got
@@ -877,41 +843,6 @@ impl Pipeline {
             && self.config.privacy.send_to_llm
             && self.llm.is_some()
             && word_count(text) > self.config.rules.llm_min_words
-    }
-
-    /// Translate a whole phrase or file: one call, one function for every caller
-    ///
-    /// This is the only translation path. The original is kept in the entry, and the translation
-    /// is what reaches the field or the file
-    fn translate_whole(&mut self, entry: &mut Entry, text: &str) -> String {
-        let target = self.config.translation.target.trim().to_lowercase();
-        let obstacle = translate::obstacle(
-            self.config.llm.enabled,
-            self.llm.is_some(),
-            self.config.privacy.send_to_llm,
-        );
-        let piece = if let Some(reason) = obstacle {
-            Piece::kept(text, &target, reason)
-        } else if let Some(llm) = self.llm.as_ref() {
-            translate::whole_text(&**llm, &self.config.llm, &target, text)
-        } else {
-            Piece::kept(text, &target, Fallback::Unavailable)
-        };
-        if piece.translated {
-            entry.llm_used = true;
-            entry.llm_provider = self.llm.as_ref().map(|llm| llm.id().to_string());
-            entry.llm_model = Some(self.config.llm.model.clone());
-            entry.local_llm = self.llm.as_ref().is_some_and(|llm| llm.is_local());
-        }
-        if !text.trim().is_empty() {
-            entry.translation = Some(TranslationInfo {
-                target: target.clone(),
-                translated: u32::from(piece.translated),
-                fallbacks: u32::from(!piece.translated),
-                fallback: piece.fallback.map(|reason| reason.as_str().to_string()),
-            });
-        }
-        piece.text
     }
 
     /// Dictation: the rules plus, if needed, the model
@@ -1041,7 +972,6 @@ mod tests {
     use crate::domain::fakes::{FakeClock, FakeLlm, FakeStt, MemJournal, RecordingInjector};
     use crate::domain::inject::{InjectError, InjectReport};
     use crate::domain::journal::Journal as JournalTrait;
-    use crate::domain::llm::ChatResponse;
     use crate::domain::stt::Transcript;
 
     /// A fake that the test can still reach after it is passed to the pipeline
@@ -1830,257 +1760,6 @@ mod tests {
                 .contains("утром"),
             "the raw text lost the tail"
         );
-    }
-
-    /// Settings with the translation into `target` and the model on
-    fn with_translation(target: &str) -> PipelineConfig {
-        let mut config = with_llm();
-        config.translation.enabled = true;
-        config.translation.target = target.into();
-        config
-    }
-
-    /// A model that wraps every piece in brackets: a text translated twice would show two pairs
-    fn marking_llm() -> Arc<FakeLlm> {
-        Arc::new(FakeLlm::new(|request| {
-            Ok(ChatResponse {
-                text: format!("[{}]", request.user),
-                prompt_tokens: Some(1),
-                completion_tokens: Some(1),
-            })
-        }))
-    }
-
-    fn chunk_text(text: &str) -> ChunkText {
-        ChunkText {
-            text: text.into(),
-            language: Some("ru".into()),
-            stt_ms: 0,
-        }
-    }
-
-    /// The text of the phrase that reached the field, joined
-    fn typed(harness: &Harness) -> String {
-        injected(harness).join("").trim().to_string()
-    }
-
-    #[test]
-    fn a_phrase_without_chunks_is_translated_whole_instead_of_cleaned_up() {
-        let llm = marking_llm();
-        let mut harness = build("привет мир", Some(Arc::clone(&llm)), with_translation("en"));
-
-        let entry = harness
-            .pipeline
-            .run(audio(4.0), Mode::Dictation, None, None)
-            .expect("the phrase is processed");
-
-        assert_eq!(llm.calls(), 1, "the model translated the phrase twice");
-        assert_eq!(entry.text_raw.as_deref(), Some("привет мир"));
-        let final_text = entry.text_final.clone().unwrap_or_default();
-        assert_eq!(final_text, "[Привет мир]");
-        assert_eq!(typed(&harness), final_text);
-        let info = entry
-            .translation
-            .clone()
-            .expect("the journal has no record");
-        assert_eq!(info.target, "en");
-        assert_eq!(info.translated, 1);
-        assert_eq!(info.fallbacks, 0);
-        assert_eq!(info.fallback, None);
-        assert!(entry.llm_used, "the model translated the phrase");
-    }
-
-    #[test]
-    fn switched_off_translation_types_the_chunk_and_asks_no_model() {
-        let llm = marking_llm();
-        let mut config = with_translation("en");
-        config.translation.enabled = false;
-        let mut harness = build("привет", Some(Arc::clone(&llm)), config);
-
-        let progress = harness
-            .pipeline
-            .stream_chunk(&chunk_text("мама мыла раму"), None)
-            .expect("the chunk is processed");
-
-        assert_eq!(llm.calls(), 0);
-        assert_eq!(injected(&harness).len(), 1, "the chunk must still be typed");
-        assert_eq!(progress.typed, "Мама мыла раму");
-    }
-
-    #[test]
-    fn a_translating_phrase_types_no_chunk_and_arrives_whole() {
-        // A chunk typed into the field could not be replaced by the translation of the whole
-        // phrase: the field waits for the release and gets the phrase once
-        let llm = marking_llm();
-        let mut harness = build("хвост", Some(Arc::clone(&llm)), with_translation("en"));
-
-        let progress = harness
-            .pipeline
-            .stream_chunk(&chunk_text("первый кусок"), None)
-            .expect("the chunk is processed");
-
-        assert_eq!(llm.calls(), 0, "the model saw a chunk alone");
-        assert!(progress.typed.is_empty(), "a chunk reached the field");
-        assert!(injected(&harness).is_empty(), "the field got a chunk");
-
-        harness.pipeline.set_chunk_prefix(ChunkPrefix {
-            text: "первый кусок".into(),
-            language: Some("ru".into()),
-            audio_secs: Some(20.0),
-            ..ChunkPrefix::default()
-        });
-        let entry = harness
-            .pipeline
-            .run(audio(2.0), Mode::Dictation, None, None)
-            .expect("the phrase is processed");
-
-        let final_text = entry.text_final.clone().unwrap_or_default();
-        assert_eq!(llm.calls(), 1, "the phrase was translated piece by piece");
-        assert!(
-            final_text.starts_with('[') && final_text.ends_with(']'),
-            "the phrase was not translated as a whole: {final_text:?}"
-        );
-        assert!(
-            final_text.contains("Первый") && final_text.to_lowercase().contains("хвост"),
-            "the translation lost a part of the phrase: {final_text:?}"
-        );
-        assert_eq!(
-            injected(&harness),
-            vec![final_text.clone()],
-            "the field got more than the whole translation"
-        );
-    }
-
-    #[test]
-    fn a_switched_off_model_keeps_the_recognized_text() {
-        let llm = marking_llm();
-        let mut config = with_translation("en");
-        config.llm.enabled = false;
-        let mut harness = build("мама мыла раму", Some(Arc::clone(&llm)), config);
-
-        let entry = harness
-            .pipeline
-            .run(audio(4.0), Mode::Dictation, None, None)
-            .expect("the phrase is processed");
-
-        assert_eq!(llm.calls(), 0, "a switched-off model was still asked");
-        assert_eq!(entry.text_final.as_deref(), Some("Мама мыла раму"));
-        let info = entry
-            .translation
-            .clone()
-            .expect("the journal has no record");
-        assert_eq!(info.translated, 0);
-        assert_eq!(info.fallbacks, 1);
-        assert_eq!(info.fallback.as_deref(), Some("unavailable"));
-    }
-
-    #[test]
-    fn privacy_keeps_the_recognized_text() {
-        let llm = marking_llm();
-        let mut config = with_translation("en");
-        config.privacy.send_to_llm = false;
-        let mut harness = build("мама мыла раму", Some(Arc::clone(&llm)), config);
-
-        let entry = harness
-            .pipeline
-            .run(audio(4.0), Mode::Dictation, None, None)
-            .expect("the phrase is processed");
-
-        assert_eq!(llm.calls(), 0, "privacy let the text out");
-        assert_eq!(entry.text_final.as_deref(), Some("Мама мыла раму"));
-        let info = entry
-            .translation
-            .clone()
-            .expect("the journal has no record");
-        assert_eq!(info.fallback.as_deref(), Some("privacy"));
-    }
-
-    #[test]
-    fn a_failing_model_keeps_the_recognized_text() {
-        let llm = Arc::new(FakeLlm::failing(LlmError::Timeout(20)));
-        let mut harness = build(
-            "мама мыла раму",
-            Some(Arc::clone(&llm)),
-            with_translation("en"),
-        );
-
-        let entry = harness
-            .pipeline
-            .run(audio(4.0), Mode::Dictation, None, None)
-            .expect("the phrase is processed");
-
-        assert_eq!(llm.calls(), 1);
-        assert_eq!(
-            injected(&harness),
-            vec!["Мама мыла раму".to_string()],
-            "the phrase stopped on a failure"
-        );
-        let info = entry
-            .translation
-            .clone()
-            .expect("the journal has no record");
-        assert_eq!(info.fallback.as_deref(), Some("failed"));
-    }
-
-    #[test]
-    fn a_model_that_returns_nothing_keeps_the_recognized_text() {
-        let llm = Arc::new(FakeLlm::echoing("<think>перевожу</think>"));
-        let mut harness = build(
-            "мама мыла раму",
-            Some(Arc::clone(&llm)),
-            with_translation("en"),
-        );
-
-        let entry = harness
-            .pipeline
-            .run(audio(4.0), Mode::Dictation, None, None)
-            .expect("the phrase is processed");
-
-        assert_eq!(entry.text_final.as_deref(), Some("Мама мыла раму"));
-        let info = entry
-            .translation
-            .clone()
-            .expect("the journal has no record");
-        assert_eq!(info.fallback.as_deref(), Some("empty"));
-    }
-
-    #[test]
-    fn the_journal_keeps_the_recognized_and_the_translated_text_apart() {
-        let llm = marking_llm();
-        let mut harness = build(
-            "мама мыла раму",
-            Some(Arc::clone(&llm)),
-            with_translation("en"),
-        );
-
-        let entry = harness
-            .pipeline
-            .run(audio(4.0), Mode::Dictation, None, None)
-            .expect("the phrase is processed");
-
-        assert_eq!(entry.text_raw.as_deref(), Some("мама мыла раму"));
-        assert_eq!(entry.text_final.as_deref(), Some("[Мама мыла раму]"));
-        let stored = harness.journal.lock().unwrap().entries.clone();
-        assert_eq!(stored.len(), 1);
-        assert_eq!(stored[0].text_raw, entry.text_raw);
-        assert_eq!(stored[0].text_final, entry.text_final);
-        assert_eq!(stored[0].translation, entry.translation);
-    }
-
-    #[test]
-    fn a_command_is_not_translated() {
-        let llm = Arc::new(FakeLlm::echoing("Готово."));
-        let mut harness = build("покороче", Some(Arc::clone(&llm)), with_translation("en"));
-        harness.injector.lock().unwrap().selection = Some("длинный текст".into());
-
-        let entry = harness
-            .pipeline
-            .run(audio(2.0), Mode::Command, None, None)
-            .expect("the command is processed");
-
-        assert_eq!(llm.calls(), 1, "the command took more than one call");
-        assert_eq!(entry.translation, None);
-        assert_eq!(injected(&harness), vec!["Готово."]);
     }
 
     #[test]

@@ -147,7 +147,6 @@ mod tests {
             text_raw: Some(text.into()),
             text_final: Some(text.into()),
             audio_path: Some(format!("lecture-{id}.mp4")),
-            translation: None,
             segments,
         }
     }

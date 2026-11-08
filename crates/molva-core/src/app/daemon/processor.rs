@@ -364,7 +364,6 @@ impl<I: TextInjector, J: Journal> Processor for SimpleProcessor<I, J> {
             text_raw: Some(transcript.text.clone()),
             text_final: Some(text),
             audio_path: None,
-            translation: None,
             segments: Vec::new(),
         };
 

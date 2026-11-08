@@ -356,7 +356,6 @@ export interface Config {
     double_tap_ms: number;
   };
   command_mode: { enabled: boolean; system_prompt: string };
-  translation: { enabled: boolean; target: string };
   journal: {
     path: string;
     enabled: boolean;

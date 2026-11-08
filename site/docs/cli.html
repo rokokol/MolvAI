@@ -91,48 +91,48 @@
 
 <h2 data-ru="Диктовать без горячей клавиши">Dictate without a hotkey</h2>
 <p data-ru="Демон должен работать. Это те же команды, что вызывает привязка композитора, и возвращаются они раньше, чем фраза готова">The daemon must be running. The commands are the same ones a compositor bind calls, and they return before the phrase is finished</p>
-<div class="cmd"><code>molva record start</code><button class="copy" type="button" data-copy="molva record start" data-ru="Скопировать">Copy</button></div>
-<div class="cmd"><code>molva record stop</code><button class="copy" type="button" data-copy="molva record stop" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>molva record start</code><button class="copy-button" type="button" data-copy="molva record start"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
+<div class="cmd"><code>molva record stop</code><button class="copy-button" type="button" data-copy="molva record stop"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
 <p data-ru="Отмена выбрасывает звук и не создаёт строку в журнале">A cancel throws the audio away and creates no journal line</p>
-<div class="cmd"><code>molva record cancel</code><button class="copy" type="button" data-copy="molva record cancel" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>molva record cancel</code><button class="copy-button" type="button" data-copy="molva record cancel"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
 <p data-ru="&lt;code&gt;molva record toggle --mode command&lt;/code&gt; правит выделенный текст, а не диктует в позицию курсора"><code>molva record toggle --mode command</code> edits the selected text instead of dictating at the cursor</p>
 
 <h2 data-ru="Вернуть последнюю фразу в поле">Put the last phrase into a field again</h2>
 <p data-ru="Без второй диктовки и без ручной возни с буфером обмена">No second dictation and no clipboard trip by hand</p>
-<div class="cmd"><code>molva history paste --last</code><button class="copy" type="button" data-copy="molva history paste --last" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>molva history paste --last</code><button class="copy-button" type="button" data-copy="molva history paste --last"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
 <p data-ru="Вместо &lt;code&gt;--last&lt;/code&gt; подойдёт идентификатор из &lt;code&gt;molva history&lt;/code&gt;, и достаточно его начала">An identifier from <code>molva history</code> works in place of <code>--last</code>, and its beginning is enough</p>
 
 <h2 data-ru="Расшифровать папку с записями">Transcribe a folder of recordings</h2>
 <p data-ru="На входе может быть аудио или видео. Один нечитаемый файл не отменяет пакет; код возврата 6 сообщает, что прошло не всё. Команда работает без демона: она загружает свой движок, поэтому это путь для офлайн-пакетов">The input may be audio or video. One unreadable file does not cancel the batch; the exit code 6 reports that not everything went through. The command works without a daemon: it loads its own engine, which makes it the path for offline batches</p>
-<div class="cmd"><code>molva transcribe talks/ --recursive --timecodes -o talks/transcripts/</code><button class="copy" type="button" data-copy="molva transcribe talks/ --recursive --timecodes -o talks/transcripts/" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>molva transcribe talks/ --recursive --timecodes -o talks/transcripts/</code><button class="copy-button" type="button" data-copy="molva transcribe talks/ --recursive --timecodes -o talks/transcripts/"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
 <p data-ru="Для конвейера проси JSON в stdout. Подсказка формата помогает потоку, у которого нет имени файла">For a pipeline, ask for JSON on stdout. The format hint helps with a stream that has no file name</p>
-<div class="cmd"><code>cat recording.opus | molva transcribe - --stdin-format ogg --json</code><button class="copy" type="button" data-copy="cat recording.opus | molva transcribe - --stdin-format ogg --json" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>cat recording.opus | molva transcribe - --stdin-format ogg --json</code><button class="copy-button" type="button" data-copy="cat recording.opus | molva transcribe - --stdin-format ogg --json"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
 <p data-ru="Результат ещё и попадает в журнал — именно поэтому поиск потом работает">The result also enters the journal, which is what makes the search work later</p>
 
 <h2 data-ru="Найти то, что записал">Find something you recorded</h2>
-<div class="cmd"><code>molva search &quot;release date&quot; --since 7d</code><button class="copy" type="button" data-copy="molva search &quot;release date&quot; --since 7d" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>molva search &quot;release date&quot; --since 7d</code><button class="copy-button" type="button" data-copy="molva search &quot;release date&quot; --since 7d"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
 <p data-ru="Совпадение печатает исходный файл и таймкод отрезка, где оно нашлось. &lt;code&gt;--json&lt;/code&gt; отдаёт то же массивом для скрипта, а пустой запрос перечисляет самые свежие расшифровки">A hit prints the source file and the timecode of the segment that holds the match. <code>--json</code> gives the same as an array for a script, and an empty query lists the newest transcriptions</p>
 
 <h2 data-ru="Прочитать и выгрузить историю">Read and export the history</h2>
-<div class="cmd"><code>molva history --limit 5 --format plain</code><button class="copy" type="button" data-copy="molva history --limit 5 --format plain" data-ru="Скопировать">Copy</button></div>
-<div class="cmd"><code>molva history export history.csv</code><button class="copy" type="button" data-copy="molva history export history.csv" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>molva history --limit 5 --format plain</code><button class="copy-button" type="button" data-copy="molva history --limit 5 --format plain"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
+<div class="cmd"><code>molva history export history.csv</code><button class="copy-button" type="button" data-copy="molva history export history.csv"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
 <p data-ru="&lt;code&gt;--app&lt;/code&gt; и окно времени сужают список, &lt;code&gt;--search&lt;/code&gt; смотрит внутрь текста. Выгрузка CSV открывается в таблице, а выгрузка JSONL — это сам журнал"><code>--app</code> and the time window narrow the list, <code>--search</code> looks inside the text. A CSV export opens in a spreadsheet, and a JSONL export is the journal itself</p>
 
 <h2 data-ru="Управлять весами">Manage the weights</h2>
-<div class="cmd"><code>molva models list</code><button class="copy" type="button" data-copy="molva models list" data-ru="Скопировать">Copy</button></div>
-<div class="cmd"><code>molva models pull gigaam-v3-e2e-rnnt-q4_k_m</code><button class="copy" type="button" data-copy="molva models pull gigaam-v3-e2e-rnnt-q4_k_m" data-ru="Скопировать">Copy</button></div>
-<div class="cmd"><code>molva models verify gigaam-v3-e2e-rnnt-q4_k_m</code><button class="copy" type="button" data-copy="molva models verify gigaam-v3-e2e-rnnt-q4_k_m" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>molva models list</code><button class="copy-button" type="button" data-copy="molva models list"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
+<div class="cmd"><code>molva models pull gigaam-v3-e2e-rnnt-q4_k_m</code><button class="copy-button" type="button" data-copy="molva models pull gigaam-v3-e2e-rnnt-q4_k_m"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
+<div class="cmd"><code>molva models verify gigaam-v3-e2e-rnnt-q4_k_m</code><button class="copy-button" type="button" data-copy="molva models verify gigaam-v3-e2e-rnnt-q4_k_m"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
 <p data-ru="Список отмечает, что уже лежит на диске. &lt;code&gt;verify&lt;/code&gt; пересчитывает сумму, &lt;code&gt;path&lt;/code&gt; печатает путь к файлу, а &lt;code&gt;remove&lt;/code&gt; удаляет один файл">The list marks what is already on disk. <code>verify</code> rechecks the checksum, <code>path</code> prints the file location, and <code>remove</code> deletes one file</p>
 
 <h2 data-ru="Диагностировать тихую машину">Diagnose a quiet machine</h2>
-<div class="cmd"><code>molva doctor</code><button class="copy" type="button" data-copy="molva doctor" data-ru="Скопировать">Copy</button></div>
-<div class="cmd"><code>molva status --json</code><button class="copy" type="button" data-copy="molva status --json" data-ru="Скопировать">Copy</button></div>
-<div class="cmd"><code>molva test-inject</code><button class="copy" type="button" data-copy="molva test-inject" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>molva doctor</code><button class="copy-button" type="button" data-copy="molva doctor"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
+<div class="cmd"><code>molva status --json</code><button class="copy-button" type="button" data-copy="molva status --json"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
+<div class="cmd"><code>molva test-inject</code><button class="copy-button" type="button" data-copy="molva test-inject"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
 <p data-ru="Doctor объясняет находки строка за строкой. &lt;code&gt;status --watch&lt;/code&gt; следит за событиями демона, когда фраза будто исчезает">The doctor explains its findings line by line. <code>status --watch</code> follows the daemon events when a phrase seems to vanish</p>
 
 <h2 data-ru="Изменить настройку">Change a setting</h2>
-<div class="cmd"><code>molva config set output.mode clipboard</code><button class="copy" type="button" data-copy="molva config set output.mode clipboard" data-ru="Скопировать">Copy</button></div>
-<div class="cmd"><code>molva config reload</code><button class="copy" type="button" data-copy="molva config reload" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>molva config set output.mode clipboard</code><button class="copy-button" type="button" data-copy="molva config set output.mode clipboard"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
+<div class="cmd"><code>molva config reload</code><button class="copy-button" type="button" data-copy="molva config reload"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
 <p data-ru="Выгрузка и импорт профиля переносят рабочую настройку на другую машину. Модель, движок и цепочка вставки требуют перезапуска демона, потому что собираются при старте">Profile export and import move a working setup to another machine. The model, the engine and the paste chain need a daemon restart, because they are built at start</p>
 
 <h2 data-ru="Скрипты против CLI">Script against it</h2>

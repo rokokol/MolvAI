@@ -250,6 +250,8 @@ mark {
   background: none;
   color: var(--ddlc-text);
   cursor: pointer;
+  line-height: 0;
+  align-self: center;
 }
 
 .copy-button:hover {
@@ -257,10 +259,32 @@ mark {
   color: var(--ddlc-accent);
 }
 
-.copy-button svg {
+/* The mark is a mask so the button takes its colour from the page: the copy mark, the
+   check after a successful copy and the alert after a failure */
+.copy-button {
+  --copy-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='square'%3E%3Crect x='9' y='9' width='12' height='12'/%3E%3Cpath d='M16 9V3H3v13h6'/%3E%3C/svg%3E");
+  --check-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.8' stroke-linecap='square'%3E%3Cpath d='M4 12l6 6L20 6'/%3E%3C/svg%3E");
+  --alert-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='square'%3E%3Cpath d='M12 3L22 21H2zM12 9v5M12 17v1'/%3E%3C/svg%3E");
+}
+
+.copy-button::before {
+  content: "";
+  display: block;
   width: 1.15em;
   height: 1.15em;
-  fill: none;
+  background: currentColor;
+  -webkit-mask: var(--copy-icon) center / contain no-repeat;
+  mask: var(--copy-icon) center / contain no-repeat;
+}
+
+.copy-button[data-state="copied"]::before {
+  -webkit-mask-image: var(--check-icon);
+  mask-image: var(--check-icon);
+}
+
+.copy-button[data-state="failed"]::before {
+  -webkit-mask-image: var(--alert-icon);
+  mask-image: var(--alert-icon);
 }
 
 /* Text for a screen reader only; the same utility a page uses for an icon-only control */

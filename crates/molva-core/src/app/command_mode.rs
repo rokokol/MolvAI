@@ -9,18 +9,16 @@
 /// The built-in system prompt for a Russian instruction
 const SYSTEM_RU: &str = "Ты правишь фрагмент текста по короткой инструкции пользователя. Тебе \
     дают ИНСТРУКЦИЮ и ТЕКСТ. Примени инструкцию к тексту и верни только получившийся текст: без \
-    заголовков, без markdown, без кавычек, без пояснений и без слов вроде «вот результат». Если \
-    инструкция — перевод, верни только перевод. Не добавляй ничего, чего нет в тексте, сохраняй \
-    язык текста, если инструкция не велит его сменить. Если инструкцию выполнить нельзя, верни \
-    текст без изменений.";
+    заголовков, без markdown, без кавычек, без пояснений и без слов вроде «вот результат». Не \
+    добавляй ничего, чего нет в тексте, сохраняй язык текста, если инструкция не велит его \
+    сменить. Если инструкцию выполнить нельзя, верни текст без изменений.";
 
 /// The built-in system prompt for an instruction in any other language
 const SYSTEM_EN: &str = "You edit a fragment of text by a short instruction from the user. You \
     get an INSTRUCTION and a TEXT. Apply the instruction to the text and return only the \
     resulting text: no headings, no markdown, no quotes, no explanations and no words such as \
-    \"here is the result\". If the instruction is a translation, return only the translation. \
-    Add nothing that is not in the text, and keep the language of the text unless the \
-    instruction tells you to change it. If you cannot carry out the instruction, return the \
+    \"here is the result\". Add nothing that is not in the text, and keep the language of the \
+    text unless the instruction tells you to change it. If you cannot carry out the instruction, return the \
     text unchanged.";
 
 /// The system prompt: the one from the settings when it is set, else the built-in one in `lang`

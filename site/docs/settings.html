@@ -90,8 +90,8 @@
 <h2 data-ru="Файл">The file</h2>
 <p data-ru="Настройки — это один файл TOML в &lt;code&gt;~/.config/molva/config.toml&lt;/code&gt;, либо в соответствующем каталоге настроек в Windows и macOS. Он создаётся при первом запуске и остаётся читаемым человеком">The settings are one TOML file at <code>~/.config/molva/config.toml</code>, or the matching settings directory on Windows and macOS. It is created at the first start and stays readable by a human</p>
 <p data-ru="Пустой файл допустим. Каждое пропущенное поле берётся из значений по умолчанию, поэтому файл читается как диф к ним. Неверное значение падает с путём к файлу и именем ключа">An empty file is valid. Every skipped field comes from the defaults, so the file makes sense as a diff against them. A wrong value fails with the path of the file and the name of the key</p>
-<div class="cmd"><code>molva config path</code><button class="copy" type="button" data-copy="molva config path" data-ru="Скопировать">Copy</button></div>
-<div class="cmd"><code>molva config validate</code><button class="copy" type="button" data-copy="molva config validate" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>molva config path</code><button class="copy-button" type="button" data-copy="molva config path"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
+<div class="cmd"><code>molva config validate</code><button class="copy-button" type="button" data-copy="molva config validate"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
 
 <h2 data-ru="Ключи, которые стоит знать">Keys worth knowing</h2>
 <p data-ru="Значения ниже — те, на которые опираются страницы этого сайта. README перечисляет все поля; в таблице — небольшой набор, который меняет заметное поведение">The defaults below are the ones this site's pages assume. The README lists every field; this table is the small set that changes the behaviour people notice</p>
@@ -131,9 +131,9 @@
 <p data-ru="Провайдер модели задаёт и порядок вызовов. Облачному разрешено до четырёх одновременных вызовов, локальная модель получает запросы по одному">The model provider also decides how calls run. A cloud provider may answer up to four calls at once, and a local model takes requests one at a time</p>
 
 <h2 data-ru="Изменить и применить">Edit and apply</h2>
-<div class="cmd"><code>molva config set stt.language auto</code><button class="copy" type="button" data-copy="molva config set stt.language auto" data-ru="Скопировать">Copy</button></div>
-<div class="cmd"><code>molva config edit</code><button class="copy" type="button" data-copy="molva config edit" data-ru="Скопировать">Copy</button></div>
-<div class="cmd"><code>molva config reload</code><button class="copy" type="button" data-copy="molva config reload" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>molva config set stt.language auto</code><button class="copy-button" type="button" data-copy="molva config set stt.language auto"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
+<div class="cmd"><code>molva config edit</code><button class="copy-button" type="button" data-copy="molva config edit"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
+<div class="cmd"><code>molva config reload</code><button class="copy-button" type="button" data-copy="molva config reload"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
 <p data-ru="Перезагрузка передаёт новые настройки запущенному демону. Распознаватель и цепочка вставки собираются при старте демона, поэтому смена модели, движка или способа вывода требует перезапуска. &lt;code&gt;molva doctor&lt;/code&gt; показывает, что демон на самом деле загрузил">The reload passes the new settings to the running daemon. The recognizer and the paste chain are built when the daemon starts, so a changed model, engine or output method needs a restart. <code>molva doctor</code> shows what the daemon actually loaded</p>
 
 <h2 data-ru="Страница настроек в интерфейсе">The settings page in the GUI</h2>
@@ -151,8 +151,8 @@
 
 <h2 data-ru="Ключи никогда не лежат в файле">Keys never live in the file</h2>
 <p data-ru="Ключ облачной модели читается из хранилища ОС, из файла с правами только для владельца или из переменной окружения — это задаёт &lt;code&gt;llm.api_key_source&lt;/code&gt;. Ключ журнала устроен так же через &lt;code&gt;journal.key_source&lt;/code&gt;. Значения пишутся через stdin, поэтому в историю команд они не попадают">A cloud model key is read from the OS store, from a file with owner-only permissions, or from an environment variable, by <code>llm.api_key_source</code>. The journal key follows the same idea with <code>journal.key_source</code>. Values are written through stdin, so they never enter the shell history</p>
-<div class="cmd"><code>printf '%s' &quot;$KEY&quot; | molva secret set llm</code><button class="copy" type="button" data-copy="printf '%s' &quot;$KEY&quot; | molva secret set llm" data-ru="Скопировать">Copy</button></div>
-<div class="cmd"><code>molva secret status</code><button class="copy" type="button" data-copy="molva secret status" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>printf '%s' &quot;$KEY&quot; | molva secret set llm</code><button class="copy-button" type="button" data-copy="printf '%s' &quot;$KEY&quot; | molva secret set llm"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
+<div class="cmd"><code>molva secret status</code><button class="copy-button" type="button" data-copy="molva secret status"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
 
 <h2 data-ru="Режим под управлением Nix">The Nix-managed mode</h2>
 <p data-ru="Модуль Home Manager не правит тот же файл во время работы. Он рендерит настройки и веса в хранилище Nix, и меняет их только переключение">The Home Manager module does not edit the same file at runtime. It renders the settings and the weights into the Nix store, and a switch is the only thing that changes them</p>

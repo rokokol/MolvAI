@@ -16,9 +16,8 @@ One section per checkpoint, the newest on top. A section has four items: what st
 - `molva transcribe` stays the standalone CLI entry for offline batched use: it loads its own engine and talks to no daemon, which is what a script or CI needs
 - The GUI starts the daemon when a recording or a file needs it and nobody answers on the socket, with the same config and the same socket. The daemon is a shared process: Quit stops only the one this window started, and a daemon from the Home Manager service or from a terminal keeps running
 - A file job sets `job = "file"` while the state stays `idle`, and `molva status` and the panel read that pair as "transcribing a file". A recording during a file is accepted, waits in the queue behind it and is processed right after; a file is refused with `busy` while a phrase records or processes, and a second file waits for the first
-- Cloud model calls run up to four at once (`CLOUD_SLOTS`), and a local model stays serial behind one mutex. Phrase post-processing still runs on the daemon worker, and the model executor owns the translation calls. One finished text is one `whole_text` call
+- Cloud model calls run up to four at once (`CLOUD_SLOTS`), and a local model stays serial behind one mutex. Phrase post-processing still runs on the daemon worker; a style can ask the same model to translate the text
 - MCP is a stdio client of the daemon: no port, no URL and no autostart, and `mcp.enabled` gates it. The server starts the daemon when it is absent and reuses its recognizer. Six tools: `transcribe`, `search_transcripts`, `stats_summary`, `history_list`, `models_list` and `search_docs`
-- Whole-file and whole-phrase translation go through one `whole_text` function. The old streaming translator is deleted
 - The GUI settings page covers the recognition provider, the key source of each secret, custom styles, a hotkey recorder, a retry for the device list and an MCP section
 - The release workflow publishes CUDA archives for Linux and Windows beside the Vulkan builds
 - `molva bench --latency` measures one audio file: recognition, the post-processing stage, and the peak RAM and VRAM of the process tree. On a Ryzen 7 5700X a 15.0 s GigaAM clip takes 3.6 s without post-processing, 9.4 s with the `cleanup` style, and 252 MiB of RAM; GigaAM runs on the CPU, so its VRAM peak is zero
@@ -26,7 +25,7 @@ One section per checkpoint, the newest on top. A section has four items: what st
 **Cut or not ready**
 
 - Media preview and the audio spectrogram in Files stay off: WebKit and GStreamer hung the window. The transcript, the timecodes, the search, the copy and opening the file in the system player work, the timecodes button hides them, and the queue and the history persist
-- Live chunk typing is off by default (`stt.streaming_inject = false`). A translation that keeps context between chunks does not exist until the streaming translator is rewritten
+- Live chunk typing is off by default (`stt.streaming_inject = false`)
 - The public site is not deployed: the working tree is not committed and the Pages workflow has not run
 - The GUI memory use is not measured or optimized: its peak RSS, the copies of history and media, and the pages WebKit keeps after a tab closes are a roadmap item
 - The GUI's GPU use is not measured or optimized either: the open window keeps the video card busy, and the idle VRAM, the cost of tab switches and the background animations are a roadmap item
@@ -41,7 +40,7 @@ One section per checkpoint, the newest on top. A section has four items: what st
 
 - The Files tab keeps its queue and loaded history above the tabs, so leaving and returning does not clear them; completed jobs survive a window restart and an interrupted job is labelled as interrupted. The queue shows a phase and real elapsed time, the transcript has search, per-segment copy and a timecodes on/off button, and path input has directory/file suggestions. `cargo test -p molva-core` has 629 tests and the GUI has 97 frontend tests, `typecheck` and `build`
 - Media preview and the audio spectrogram are intentionally off: WebKit/GStreamer hung the window on H.264 and on the spectrogram. The transcript, timecodes, search, copy and opening the file in the system player still work
-- Live chunk typing is off by default (`stt.streaming_inject = false`); a phrase reaches the field as one piece after the release. The chunk draft stays available. The live-typing and streaming-translation path is a separate roadmap item
+- Live chunk typing is off by default (`stt.streaming_inject = false`); a phrase reaches the field as one piece after the release. The chunk draft stays available. The live-typing path is a separate roadmap item
 - The site comparison table is filled for Wispr Flow, OS dictation and Cloud Whisper API, includes an MCP row and sources; positive verdicts use the green `verdict-yes` style
 - The release workflow now has an optional Linux x86_64 CUDA archive beside the Windows one, with the CUDA runtime and an rpath; the free packages stay on Vulkan/CPU
 - The GUI has a separate GUI autostart option in the Home Manager module, with `guiPackage`/`guiAutostart.command`; no HTTP MCP listener is added
@@ -49,7 +48,6 @@ One section per checkpoint, the newest on top. A section has four items: what st
 **Cut or not ready**
 
 - The GUI settings redesign (providers, keys, single language field, hotkey recorder, device retry, MCP toggle) is in progress
-- MCP file transcription through the daemon and whole-file translation through one function are in progress; the old streaming translation path is not the target
 - Video preview and the audio spectrogram await their own tasks; live chunk typing awaits its own task
 - Cloud speech recognition is not implemented: `stt.engine = "remote-openai"` is rejected by this build, and the remote option is disabled in Settings
 - LLM spending is not tracked: token counts exist in the journal, but there is no price table and no money total

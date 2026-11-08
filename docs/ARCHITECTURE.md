@@ -43,6 +43,18 @@ hotkey ──▶ RecordStart ──▶ microphone open, level shown in the GUI
                        ──▶ Journal.append: one JSONL line
 ```
 
+The rules are never skipped when the model is on: the model receives the text after the dictionary and the rules, and a short phrase, a style without the model or an unavailable model keeps that text unchanged. Command mode has a separate order:
+
+```
+selection ──▶ Ctrl+C through the compositor
+          ──▶ spoken instruction ──▶ SttEngine
+          ──▶ dictionary (the rules would distort the instruction)
+          ──▶ LlmClient with the instruction and the selection
+          ──▶ replace the selection with the answer
+```
+
+Command mode is the voice-edit path: select a paragraph, hold the command hotkey, and say what to do with it, for example "сделай короче" or "переведи на английский". The normal dictation path types into the active field; command mode edits the selected text instead
+
 The chunks (`stt.chunked`) are recognized while the person speaks. So after the key release only the tail is left, not the whole phrase. `latency_ms.total` counts from the release, and `latency_ms.first_hypothesis` counts from the start of the recording to the first chunk. There can be no chunks at all, for example a short phrase or a source without streaming capture. Then the path is the same as it always was: the whole recording in one run
 
 A chunk boundary always falls in the middle of a pause, never on a timer, because a cut inside a syllable makes the model print a wrong word. The pause that counts is `stt.chunk_pause_ms`, 700 ms by default. After ten seconds of one chunk the requirement relaxes to 200 ms: a long sentence may hold no pause of 700 ms, and the wait for one then costs more than a less ideal boundary. There is no forced cut, so a stream without an acceptable pause keeps growing, and such a phrase pays for it with memory and a late first hypothesis
@@ -51,7 +63,7 @@ Neighbouring chunks overlap by 150 ms, so a quiet consonant at the boundary reac
 
 If the post-processing model fails, the daemon returns the text after the rules. If the paste fails, the text stays in the clipboard and the daemon notifies the user. The phrase goes to the journal in any case, with the `error` field on a failure
 
-Model calls go through one policy (`app::llm_executor`). A local provider takes one request at a time behind a mutex, and a cloud provider answers up to four calls at once. Post-processing of a phrase stays on the worker thread, and the translation calls belong to the executor. Translation itself is one `whole_text` call for one finished text, and a translator that keeps context between chunks is a later task
+Model calls go through one policy (`app::llm_executor`). A local provider takes one request at a time behind a mutex, and a cloud provider answers up to four calls at once. Post-processing of a phrase stays on the worker thread. A style whose prompt asks for a translation gets it from the same model stage: translation is a style, not a second pipeline
 
 ## Daemon states
 

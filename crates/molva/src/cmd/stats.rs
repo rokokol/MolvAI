@@ -287,7 +287,6 @@ mod tests {
             text_raw: None,
             text_final: Some("текст".into()),
             audio_path: None,
-            translation: None,
             segments: Vec::new(),
         }
     }
