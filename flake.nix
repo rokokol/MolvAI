@@ -216,6 +216,9 @@
 
             shellHook = pkgs.lib.optionalString isLinux ''
               export XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:$XDG_DATA_DIRS"
+              # The GTK file chooser reads GSettings before it draws; the schemas are not in
+              # the shell's default data path on every host
+              export GSETTINGS_SCHEMA_DIR="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}/glib-2.0/schemas"
             '';
           };
         in
