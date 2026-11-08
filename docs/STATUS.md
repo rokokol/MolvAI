@@ -44,7 +44,7 @@ One section per checkpoint, the newest on top. A section has four items: what st
 - The Files tab keeps its queue and loaded history above the tabs, so leaving and returning does not clear them; completed jobs survive a window restart and an interrupted job is labelled as interrupted. The queue shows a phase and real elapsed time, the transcript has search, per-segment copy and a timecodes on/off button, and path input has directory/file suggestions. `cargo test -p molva-core` has 629 tests and the GUI has 97 frontend tests, `typecheck` and `build`
 - Media preview and the audio spectrogram are intentionally off: WebKit/GStreamer hung the window on H.264 and on the spectrogram. The transcript, timecodes, search, copy and opening the file in the system player still work
 - Live chunk typing is off by default (`stt.streaming_inject = false`); a phrase reaches the field as one piece after the release. The chunk draft stays available. The live-typing path is a separate roadmap item
-- The site comparison table is filled for Wispr Flow, OS dictation and Cloud Whisper API, includes an MCP row and sources; positive verdicts use the green `verdict-yes` style
+- The site comparison table is filled for Wispr Flow, OS dictation and Cloud Whisper API, includes snippets and MCP rows and sources; positive verdicts use the green `verdict-yes` style
 - The release workflow now has an optional Linux x86_64 CUDA archive beside the Windows one, with the CUDA runtime and an rpath; the free packages stay on Vulkan/CPU
 - The GUI has a separate GUI autostart option in the Home Manager module, with `guiPackage`/`guiAutostart.command`; no HTTP MCP listener is added
 
