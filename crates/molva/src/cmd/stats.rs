@@ -262,6 +262,7 @@ mod tests {
             session_id: Uuid::nil(),
             mode: Mode::Dictation,
             source: Source::Mic,
+            snippet: false,
             app: Some(app.into()),
             language: Some("ru".into()),
             audio_secs: 4.0,

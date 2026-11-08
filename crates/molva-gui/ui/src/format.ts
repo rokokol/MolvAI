@@ -90,6 +90,14 @@ export function sourceLabelKey(source: string): string | null {
   return null;
 }
 
+/** Badge of a journal entry: a snippet wins over the source of the phrase */
+export function entryTag(entry: { source: string; snippet?: boolean }): string | null {
+  if (entry.snippet) {
+    return "history.snippet";
+  }
+  return sourceLabelKey(entry.source);
+}
+
 /** Short label of a day for the chart axis: "05.09" from "2026-09-05" */
 export function formatDayTick(day: string): string {
   const parts = day.split("-");

@@ -495,6 +495,7 @@ pub(crate) fn test_entry(ts: &str, words: u32, audio_secs: f32, app: &str) -> En
         session_id: Uuid::nil(),
         mode: Mode::Dictation,
         source: Source::Mic,
+        snippet: false,
         app: Some(app.to_string()),
         language: Some("ru".into()),
         audio_secs,

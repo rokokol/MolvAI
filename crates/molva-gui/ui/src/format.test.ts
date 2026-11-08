@@ -7,6 +7,7 @@ import {
   axisTicks,
   chartGeometry,
   downloadPercent,
+  entryTag,
   formatCount,
   formatDayTick,
   formatElapsed,
@@ -246,5 +247,17 @@ describe("sourceLabelKey", () => {
     expect(sourceLabelKey("file")).toBe("history.files");
     expect(sourceLabelKey("mcp")).toBe("history.mcp");
     expect(sourceLabelKey("mic")).toBeNull();
+  });
+});
+
+describe("entryTag", () => {
+  it("marks a snippet before its source", () => {
+    expect(entryTag({ source: "mic", snippet: true })).toBe("history.snippet");
+    expect(entryTag({ source: "file", snippet: true })).toBe("history.snippet");
+  });
+
+  it("keeps the source tag for other entries", () => {
+    expect(entryTag({ source: "mcp" })).toBe("history.mcp");
+    expect(entryTag({ source: "mic" })).toBeNull();
   });
 });

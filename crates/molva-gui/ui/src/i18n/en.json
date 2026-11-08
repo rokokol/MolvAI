@@ -490,5 +490,6 @@
   "settings.sttTest.testFailed": "The recognition test failed",
   "settings.llm.reasoningNone": "none — answer without thinking",
   "history.files": "Files",
-  "history.mcp": "MCP"
+  "history.mcp": "MCP",
+  "history.snippet": "Snippet"
 }

@@ -10,7 +10,7 @@ import {
   formatMegabytes,
   formatMinutes,
   formatWpm,
-  sourceLabelKey,
+  entryTag,
 } from "../format";
 import { useI18n } from "../i18n";
 import type { ViewProps } from "../App";
@@ -40,7 +40,7 @@ export default function Dashboard({
   const [styles, setStyles] = useState<StyleOption[]>([]);
   const [today, setToday] = useState<StatsSummary | null>(null);
   const [copied, setCopied] = useState(false);
-  const lastSource = lastEntry ? sourceLabelKey(lastEntry.source) : null;
+  const lastSource = lastEntry ? entryTag(lastEntry) : null;
 
   const running = status?.daemon_running ?? false;
   const recording = status?.state === "recording";

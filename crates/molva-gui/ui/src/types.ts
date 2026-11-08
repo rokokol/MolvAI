@@ -38,6 +38,8 @@ export interface Entry {
   session_id: string;
   mode: Mode;
   source: "mic" | "file" | "mcp";
+  /** The phrase was replaced by a snippet before the model */
+  snippet?: boolean;
   app?: string | null;
   language?: string | null;
   audio_secs: number;

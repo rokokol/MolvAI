@@ -13,7 +13,8 @@ The reference for the type is `crates/molva-core/src/domain/entry.rs` (`Entry`)
 | `ts` | string | yes | the moment the phrase finished, RFC 3339, UTC (`2026-09-05T12:00:00Z`) |
 | `session_id` | uuid | yes | the daemon run that the phrase belongs to |
 | `mode` | `dictation` \| `command` | yes | dictation or editing of the selected text |
-| `source` | `mic` \| `file` | yes | microphone or a loaded audio file |
+| `source` | `mic` \| `file` \| `mcp` | yes | microphone, a loaded audio file, or a transcription requested by an MCP client |
+| `snippet` | bool | no | the phrase was replaced by a snippet before the model; `true` is omitted from the file only when false |
 | `app` | string | no | class or name of the active application at the moment of the paste |
 | `language` | string | no | language of the phrase (ISO-639-1), detected or set |
 | `audio_secs` | float | yes | audio duration after the silence is trimmed at the edges |
@@ -62,5 +63,5 @@ With `journal.include_text = false` the line is written without `text_raw`, `tex
 ## Example
 
 ```json
-{"schema":1,"id":"6f1c…","ts":"2026-09-05T12:00:00Z","session_id":"a1b2…","mode":"dictation","source":"mic","app":"kitty","language":"ru","audio_secs":4.0,"words":10,"wpm":150.0,"style":"cleanup","stt_engine":"whisper-cpp","stt_model":"small","llm_used":false,"local_llm":true,"dict_hits":0,"inject_method":"hyprctl-paste","latency_ms":{"stt":540,"rules":2,"inject":120,"total":700},"text_raw":"привет мир","text_final":"Привет, мир."}
+{"schema":1,"id":"6f1c…","ts":"2026-09-05T12:00:00Z","session_id":"a1b2…","mode":"dictation","source":"mic","snippet":true,"app":"kitty","language":"ru","audio_secs":4.0,"words":10,"wpm":150.0,"style":"cleanup","stt_engine":"whisper-cpp","stt_model":"small","llm_used":false,"local_llm":true,"dict_hits":0,"inject_method":"hyprctl-paste","latency_ms":{"stt":540,"rules":2,"inject":120,"total":700},"text_raw":"привет мир","text_final":"Привет, мир."}
 ```

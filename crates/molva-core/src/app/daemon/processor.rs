@@ -336,6 +336,7 @@ impl<I: TextInjector, J: Journal> Processor for SimpleProcessor<I, J> {
             session_id: self.config.session_id,
             mode,
             source: Source::Mic,
+            snippet: false,
             app: app_hint.map(str::to_string),
             language: transcript.detected_language.clone(),
             audio_secs,

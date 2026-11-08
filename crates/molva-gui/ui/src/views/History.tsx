@@ -5,7 +5,7 @@
 import { useEffect } from "react";
 
 import { api, copyToClipboard } from "../api";
-import { formatLatency, formatTimestamp, formatWpm, sourceLabelKey } from "../format";
+import { entryTag, formatLatency, formatTimestamp, formatWpm } from "../format";
 import { useHistoryState } from "../history/HistoryProvider";
 import { useI18n } from "../i18n";
 
@@ -125,7 +125,7 @@ export default function History() {
         <ul className="entry-list">
           {entries.map((entry) => {
             const text = entry.text_final ?? entry.text_raw ?? null;
-            const source = sourceLabelKey(entry.source);
+            const source = entryTag(entry);
             return (
               <li key={entry.id} className="entry">
                 <div className="meta">

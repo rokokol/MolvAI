@@ -449,6 +449,7 @@ pub(crate) fn transcribe_jobs_as(
             // The source is a file and not the microphone: by this field the statistics
             // separate a batch transcription from a live dictation
             source,
+            snippet: false,
             app: None,
             language: language.clone(),
             audio_secs,

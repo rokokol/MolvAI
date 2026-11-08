@@ -64,6 +64,9 @@ pub struct Entry {
     pub session_id: Uuid,
     pub mode: Mode,
     pub source: Source,
+    /// The phrase came from a snippet and the journal holds the prepared replacement
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub snippet: bool,
     /// Class or name of the active application, if it could be found
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub app: Option<String>,
@@ -122,6 +125,11 @@ impl Entry {
     }
 }
 
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -136,6 +144,7 @@ mod tests {
             session_id: Uuid::nil(),
             mode: Mode::Dictation,
             source: Source::Mic,
+            snippet: false,
             app: Some("kitty".into()),
             language: Some("ru".into()),
             audio_secs: 4.0,
@@ -191,7 +200,18 @@ mod tests {
         let line = serde_json::to_string(&sample()).unwrap();
         assert!(!line.contains("\"llm_provider\""));
         assert!(!line.contains("\"tokens\""));
+        assert!(!line.contains("\"snippet\""));
         assert!(line.contains("\"stt\":500"));
+    }
+
+    #[test]
+    fn a_snippet_entry_carries_its_mark_through_json() {
+        let mut entry = sample();
+        entry.snippet = true;
+        let line = serde_json::to_string(&entry).unwrap();
+        assert!(line.contains("\"snippet\":true"));
+        let back: Entry = serde_json::from_str(&line).unwrap();
+        assert!(back.snippet);
     }
 
     #[test]

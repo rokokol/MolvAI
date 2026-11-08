@@ -490,5 +490,6 @@
   "settings.sttTest.testFailed": "Проверка распознавания не удалась",
   "settings.llm.reasoningNone": "none — отвечать без рассуждения",
   "history.files": "Файлы",
-  "history.mcp": "MCP"
+  "history.mcp": "MCP",
+  "history.snippet": "Сниппет"
 }

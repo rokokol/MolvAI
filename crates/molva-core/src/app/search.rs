@@ -127,6 +127,7 @@ mod tests {
             session_id: Uuid::nil(),
             mode: Mode::Dictation,
             source: Source::File,
+            snippet: false,
             app: None,
             language: Some("ru".into()),
             audio_secs: 10.0,

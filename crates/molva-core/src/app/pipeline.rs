@@ -390,6 +390,7 @@ impl Pipeline {
             session_id: self.session_id,
             mode: Mode::Dictation,
             source: request.source,
+            snippet: false,
             app: None,
             language: language.clone(),
             audio_secs,
@@ -540,6 +541,7 @@ impl Pipeline {
             session_id: self.session_id,
             mode,
             source: Source::Mic,
+            snippet: false,
             app: app_hint.map(ToString::to_string),
             language,
             audio_secs,
@@ -581,7 +583,10 @@ impl Pipeline {
             // A snippet replaces the whole phrase and returns before the model: a prepared
             // answer must not wait for a call and must not be rewritten by a style
             Mode::Dictation => match self.snippets.replacement(&after_rules) {
-                Some(replacement) => replacement.to_string(),
+                Some(replacement) => {
+                    entry.snippet = true;
+                    replacement.to_string()
+                }
                 None => self.run_dictation(&mut entry, &style, after_rules),
             },
         };
@@ -1412,6 +1417,7 @@ mod tests {
         );
         assert_eq!(llm.calls(), 0);
         assert!(!entry.llm_used);
+        assert!(entry.snippet);
         assert_eq!(
             entry.text_final.as_deref(),
             Some("Добрый день! Уже подготовил ответ.")
@@ -1436,6 +1442,7 @@ mod tests {
         assert_eq!(injected(&harness), vec!["Добрый день!"]);
         assert_eq!(llm.calls(), 0);
         assert!(!entry.llm_used);
+        assert!(entry.snippet);
     }
 
     #[test]
@@ -1455,6 +1462,7 @@ mod tests {
 
         assert_eq!(injected(&harness), vec![entry.text_final.clone().unwrap()]);
         assert!(!entry.llm_used);
+        assert!(!entry.snippet);
         assert_ne!(entry.text_final.as_deref(), Some("Добрый день!"));
     }
 
