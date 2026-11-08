@@ -16,7 +16,7 @@ use evdev::{AttributeSet, EventType, InputEvent, KeyCode};
 use serde_json::Value;
 
 use crate::domain::inject::{InjectError, InjectReport, OutputMode, TextInjector};
-use crate::infra::inject::clipboard::{ClipboardGuard, SystemClipboard};
+use crate::infra::inject::clipboard::{copy_selection_with, ClipboardGuard, SystemClipboard};
 use crate::infra::inject::wayland_tools::PasteShortcut;
 use crate::infra::platform::{self, Compositor, Platform};
 
@@ -226,6 +226,7 @@ fn switch_gnome(index: usize) {
 
 const KEY_LEFTCTRL: u16 = 29;
 const KEY_LEFTSHIFT: u16 = 42;
+const KEY_C: u16 = 46;
 const KEY_V: u16 = 47;
 
 /// Letters of the US layout: character → key code
@@ -441,8 +442,7 @@ impl UinputInjector {
         Ok(())
     }
 
-    fn send_paste(&mut self) -> Result<(), InjectError> {
-        let shift = self.shortcut == PasteShortcut::CtrlShiftV;
+    fn send_combo(&mut self, key: u16, shift: bool) -> Result<(), InjectError> {
         // Read the physical layout before the device exists: Hyprland may make the new device
         // main as soon as it appears
         let guard = LayoutGuard::prepare();
@@ -455,8 +455,8 @@ impl UinputInjector {
             if shift {
                 Self::emit(device, &[Self::key(KEY_LEFTSHIFT, 1)])?;
             }
-            Self::emit(device, &[Self::key(KEY_V, 1)])?;
-            Self::emit(device, &[Self::key(KEY_V, 0)])?;
+            Self::emit(device, &[Self::key(key, 1)])?;
+            Self::emit(device, &[Self::key(key, 0)])?;
             if shift {
                 Self::emit(device, &[Self::key(KEY_LEFTSHIFT, 0)])?;
             }
@@ -467,6 +467,11 @@ impl UinputInjector {
             guard.after();
         }
         result
+    }
+
+    fn send_paste(&mut self) -> Result<(), InjectError> {
+        let shift = self.shortcut == PasteShortcut::CtrlShiftV;
+        self.send_combo(KEY_V, shift)
     }
 }
 
@@ -506,6 +511,15 @@ impl TextInjector for UinputInjector {
             }
             _ => Err(InjectError::Unsupported),
         }
+    }
+
+    /// Command mode: copy the selection with Ctrl+C and take it from the clipboard
+    ///
+    /// This path needs neither a compositor command nor a third-party utility, so it is the
+    /// fallback for a session where `hyprctl` refuses the shortcut. The layout guard is the same
+    /// as for a paste: the device may become main, and its group would reach the client
+    fn copy_selection(&mut self) -> Result<String, InjectError> {
+        copy_selection_with(|| self.send_combo(KEY_C, false))
     }
 }
 
@@ -599,7 +613,17 @@ mod tests {
         let keys = declared_keys();
         assert!(keys.iter().count() > 40, "the device must declare all keys");
         assert!(keys.contains(KeyCode(KEY_V)));
+        assert!(keys.contains(KeyCode(KEY_C)));
         assert!(keys.contains(KeyCode(KEY_LEFTCTRL)));
+    }
+
+    #[test]
+    fn the_copy_key_is_the_physical_c_of_the_us_layout() {
+        // The device sends key codes and the compositor applies the layout: 46 is C in any
+        // layout, so command mode copies with the Russian layout active too
+        assert_eq!(KEY_C, 46);
+        assert_eq!(key_for('c'), Some((KEY_C, false)));
+        assert_ne!(KEY_C, KEY_V);
     }
 
     #[test]

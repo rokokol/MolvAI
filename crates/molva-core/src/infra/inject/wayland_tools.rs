@@ -10,7 +10,7 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use crate::domain::inject::{InjectError, InjectReport, OutputMode, TextInjector};
-use crate::infra::inject::clipboard::{ClipboardGuard, SystemClipboard};
+use crate::infra::inject::clipboard::{copy_selection_with, ClipboardGuard, SystemClipboard};
 
 /// Which paste key combination the window needs
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,6 +41,65 @@ fn run(program: &str, args: &[&str]) -> Result<(), InjectError> {
             stderr
         }
     )))
+}
+
+/// Reply of a successful `hyprctl dispatch`. Hyprland writes it to stdout, not stderr
+const DISPATCH_OK: &str = "ok";
+
+/// Run `hyprctl dispatch <arg>` and accept only the compositor's `ok`
+///
+/// The exit code alone decides nothing: an older Hyprland answers an unknown dispatcher with
+/// `unknown request` and exit 0, and the Lua dispatcher of 0.56 answers a refused action with a
+/// warning and exit 0. Both would pass as a paste that never happened. `Err` carries what the
+/// compositor said, for the attempts of the chain
+fn hyprctl_dispatch(program: &str, arg: &str) -> Result<(), String> {
+    let output = Command::new(program)
+        .args(["dispatch", arg])
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("{program} did not start: {e}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let reply = stdout.trim();
+    if output.status.success() && reply == DISPATCH_OK {
+        return Ok(());
+    }
+    if !reply.is_empty() {
+        return Err(format!("{program} dispatch {arg}: {reply}"));
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stderr = stderr.trim();
+    if !stderr.is_empty() {
+        return Err(format!("{program} dispatch {arg}: {stderr}"));
+    }
+    Err(format!("{program} dispatch {arg}: non-zero exit code"))
+}
+
+/// Which `hyprctl dispatch` dialect the running compositor understands
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Dialect {
+    /// Hyprland 0.55 and later, where the config is Lua and the argument is a Lua expression
+    Lua,
+    /// An older Hyprland, or a hyprlang config: `dispatch <name> <arguments>`
+    Legacy,
+}
+
+/// Send one shortcut in the dialect the compositor understands
+///
+/// The Lua form goes first and the old one is the fallback for an older compositor or a hyprlang
+/// config. A refused attempt sends no keys, so the second one costs a process rather than a
+/// doubled shortcut. The dialect comes back because the old form leaves the modifier pressed and
+/// the Lua one does not
+fn send_shortcut(program: &str, lua: &str, legacy_arg: &str) -> Result<Dialect, InjectError> {
+    let lua_error = match hyprctl_dispatch(program, lua) {
+        Ok(()) => return Ok(Dialect::Lua),
+        Err(error) => error,
+    };
+    match hyprctl_dispatch(program, &format!("sendshortcut {legacy_arg}")) {
+        Ok(()) => Ok(Dialect::Legacy),
+        Err(legacy_error) => Err(InjectError::Failed(format!(
+            "{lua_error}; the old form: {legacy_error}"
+        ))),
+    }
 }
 
 /// Common sequence for all "paste" methods: clipboard → key combination → clipboard back
@@ -106,6 +165,17 @@ impl HyprctlInjector {
             PasteShortcut::CtrlShiftV => "CTRL SHIFT, code:55, activewindow",
         }
     }
+
+    /// The same shortcut in the Lua dialect of Hyprland 0.55 and later: a table, and no window
+    /// field — without it the dispatcher sends to the focused window
+    fn lua_arg(&self) -> &'static str {
+        match self.shortcut {
+            PasteShortcut::CtrlV => r#"hl.dsp.send_shortcut({mods = "CTRL", key = "code:55"})"#,
+            PasteShortcut::CtrlShiftV => {
+                r#"hl.dsp.send_shortcut({mods = "CTRL SHIFT", key = "code:55"})"#
+            }
+        }
+    }
 }
 
 impl TextInjector for HyprctlInjector {
@@ -124,15 +194,17 @@ impl TextInjector for HyprctlInjector {
             return Err(InjectError::Unsupported);
         }
         let arg = self.shortcut_arg();
+        let lua = self.lua_arg();
         paste_via_clipboard(&mut self.clipboard, text, || {
-            run("hyprctl", &["dispatch", "sendshortcut", arg])?;
-            // Hyprland leaves the modifier pressed after sendshortcut (issue #6407), and the client
-            // handles the combination only when the modifier is released. So the "release" is
-            // not a cleanup after the fact but a required step of the paste. The pause between
-            // them was tested on 0.56.2: without it the compositor merges the events and the paste
-            // does not happen
-            std::thread::sleep(MODIFIER_RELEASE_DELAY);
-            release_modifiers();
+            if send_shortcut("hyprctl", lua, arg)? == Dialect::Legacy {
+                // The old form leaves the modifier pressed (issue #6407), and the client handles
+                // the combination only when the modifier is released. So the "release" is not a
+                // cleanup after the fact but a required step of the paste. The pause between them
+                // was tested on 0.56.2: without it the compositor merges the events and the paste
+                // does not happen. The Lua form releases the modifier itself
+                std::thread::sleep(MODIFIER_RELEASE_DELAY);
+                release_legacy_modifiers();
+            }
             Ok(())
         })?;
         Ok(InjectReport {
@@ -145,60 +217,31 @@ impl TextInjector for HyprctlInjector {
     /// from the clipboard. The clipboard is not restored on purpose — a plain Ctrl+C behaves the
     /// same way
     fn copy_selection(&mut self) -> Result<String, InjectError> {
-        use crate::infra::inject::clipboard::{wl_clear, wl_paste};
-        // The clipboard is cleared before Ctrl+C. An application that is slow to put out the
-        // selection leaves the old content in place, and that content reaches the model. The
-        // result of the previous edit is one such case, and each next command then builds on the
-        // old text. If the clear is not available, only content that differs from the old one
-        // counts as fresh
-        let before = wl_paste();
-        let cleared = wl_clear().is_ok();
-        // The code 54 is the physical C key: the keysym `C` is not found with the Russian layout
-        run(
-            "hyprctl",
-            &["dispatch", "sendshortcut", "CTRL, code:54, activewindow"],
-        )?;
-        std::thread::sleep(MODIFIER_RELEASE_DELAY);
-        release_modifiers();
-        // The application answers Ctrl+C with a delay, so the loop waits until a clipboard
-        // selection appears that was not there before the copy
-        let deadline = std::time::Instant::now() + SELECTION_SETTLE_TIMEOUT;
-        while std::time::Instant::now() < deadline {
-            std::thread::sleep(SELECTION_POLL_INTERVAL);
-            let Some(selection) = wl_paste() else {
-                continue;
-            };
-            if selection.trim().is_empty() {
-                continue;
+        copy_selection_with(|| {
+            if send_shortcut("hyprctl", LUA_COPY, LEGACY_COPY)? == Dialect::Legacy {
+                std::thread::sleep(MODIFIER_RELEASE_DELAY);
+                release_legacy_modifiers();
             }
-            if cleared || before.as_deref() != Some(selection.as_str()) {
-                return Ok(selection);
-            }
-        }
-        Err(InjectError::Failed(
-            "no selection: the clipboard did not change after Ctrl+C".into(),
-        ))
+            Ok(())
+        })
     }
 }
 
-/// How long to wait for the application to put the selection in the clipboard after Ctrl+C
-const SELECTION_SETTLE_TIMEOUT: Duration = Duration::from_millis(600);
-/// Polling step of the clipboard during that time
-const SELECTION_POLL_INTERVAL: Duration = Duration::from_millis(50);
+/// The copy shortcut in the Lua dialect of Hyprland 0.55 and later. The code `54` is the
+/// physical C key: the keysym `C` is not found with the Russian layout
+const LUA_COPY: &str = r#"hl.dsp.send_shortcut({mods = "CTRL", key = "code:54"})"#;
+/// The same shortcut in the old dialect: `sendshortcut MODIFIERS, KEY, window`
+const LEGACY_COPY: &str = "CTRL, code:54, activewindow";
 
 /// Pause between the key combination and the release of the modifiers
 const MODIFIER_RELEASE_DELAY: Duration = Duration::from_millis(80);
 
-/// Release the modifiers that `sendshortcut` may have left pressed
-fn release_modifiers() {
+/// Release the modifiers that the old `sendshortcut` may have left pressed
+fn release_legacy_modifiers() {
     for mods in ["CTRL", "SHIFT"] {
-        let _ = run(
+        let _ = hyprctl_dispatch(
             "hyprctl",
-            &[
-                "dispatch",
-                "sendkeystate",
-                &format!("{mods}, {mods}_L, up, activewindow"),
-            ],
+            &format!("sendkeystate {mods}, {mods}_L, up, activewindow"),
         );
     }
 }
@@ -368,6 +411,88 @@ mod tests {
         // Russian layout
         assert_eq!(plain.shortcut_arg(), "CTRL, code:55, activewindow");
         assert_eq!(terminal.shortcut_arg(), "CTRL SHIFT, code:55, activewindow");
+    }
+
+    #[test]
+    fn the_lua_dialect_names_the_same_keys_and_modifiers() {
+        let plain = HyprctlInjector::new(true, 0, PasteShortcut::CtrlV);
+        let terminal = HyprctlInjector::new(true, 0, PasteShortcut::CtrlShiftV);
+        assert_eq!(
+            plain.lua_arg(),
+            r#"hl.dsp.send_shortcut({mods = "CTRL", key = "code:55"})"#
+        );
+        assert_eq!(
+            terminal.lua_arg(),
+            r#"hl.dsp.send_shortcut({mods = "CTRL SHIFT", key = "code:55"})"#
+        );
+        // The copy shortcut has its own constants; the key code is the physical C in both
+        assert!(LUA_COPY.contains("code:54"), "{LUA_COPY}");
+        assert!(LEGACY_COPY.contains("code:54"), "{LEGACY_COPY}");
+    }
+
+    #[test]
+    fn a_missing_hyprctl_is_reported_not_a_panic() {
+        let error = send_shortcut("/nonexistent/hyprctl", LUA_COPY, LEGACY_COPY).unwrap_err();
+        assert!(error.to_string().contains("did not start"), "{error}");
+    }
+
+    /// A `hyprctl` on the disk that answers like one of the two compositors. The real command
+    /// writes its reply to stdout, so the fake does the same
+    #[cfg(unix)]
+    mod fake_hyprctl {
+        use super::*;
+        use std::os::unix::fs::PermissionsExt;
+        use std::path::{Path, PathBuf};
+
+        fn script(dir: &Path, lua_reply: &str, legacy_reply: &str) -> PathBuf {
+            let path = dir.join("hyprctl");
+            let text = format!(
+                "#!/bin/sh\ncase \"$2\" in\n  hl.dsp.*) echo '{lua_reply}' ;;\n  *) echo '{legacy_reply}' ;;\nesac\n"
+            );
+            std::fs::write(&path, text).expect("the fake hyprctl is written");
+            let mut mode = std::fs::metadata(&path)
+                .expect("the fake exists")
+                .permissions();
+            mode.set_mode(0o755);
+            std::fs::set_permissions(&path, mode).expect("the fake is executable");
+            path
+        }
+
+        fn run_fake(lua_reply: &str, legacy_reply: &str) -> Result<Dialect, InjectError> {
+            let dir = tempfile::tempdir().expect("a temporary directory");
+            let program = script(dir.path(), lua_reply, legacy_reply);
+            send_shortcut(
+                program.to_str().expect("the path is UTF-8"),
+                LUA_COPY,
+                LEGACY_COPY,
+            )
+        }
+
+        #[test]
+        fn a_lua_compositor_takes_the_lua_form() {
+            assert_eq!(run_fake("ok", "unknown request").unwrap(), Dialect::Lua);
+        }
+
+        #[test]
+        fn an_old_compositor_gets_the_old_form() {
+            assert_eq!(run_fake("unknown request", "ok").unwrap(), Dialect::Legacy);
+        }
+
+        #[test]
+        fn an_unknown_request_with_exit_zero_is_not_a_success() {
+            // The trap of an old Hyprland: it answers "unknown request" and still exits 0
+            let error = run_fake("unknown request", "unknown request").unwrap_err();
+            assert!(matches!(error, InjectError::Failed(_)), "{error}");
+            assert!(error.to_string().contains("unknown request"), "{error}");
+        }
+
+        #[test]
+        fn a_warning_with_exit_zero_is_not_a_success() {
+            // The Lua dispatcher of 0.56 prints a warning and exits 0 when it refuses
+            let error =
+                run_fake("warning: window not found", "warning: window not found").unwrap_err();
+            assert!(error.to_string().contains("window not found"), "{error}");
+        }
     }
 
     #[test]
