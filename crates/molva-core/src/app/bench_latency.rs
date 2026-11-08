@@ -183,7 +183,13 @@ mod tests {
     #[test]
     fn a_probe_reports_the_current_process() {
         let peak = MemoryProbe::start().stop();
-        assert!(peak.rss_bytes > 0);
+        // The RSS probe reads /proc, which only Linux has. Other platforms still start,
+        // sample and stop the probe, but report zero rather than a measured number
+        if cfg!(target_os = "linux") {
+            assert!(peak.rss_bytes > 0);
+        } else {
+            assert_eq!(peak.rss_bytes, 0);
+        }
     }
 
     #[test]

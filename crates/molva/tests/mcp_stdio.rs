@@ -122,10 +122,15 @@ fn write_wav(path: &Path) {
     writer.finalize().expect("the wav is complete");
 }
 
+/// A path as a TOML string: Windows backslashes are escape characters, so they are doubled
+fn toml_path(path: &Path) -> String {
+    path.display().to_string().replace('\\', "\\\\")
+}
+
 /// The settings of the live test: the fake engine, a journal in the temporary directory
 fn write_config(directory: &Path) -> PathBuf {
-    let journal = directory.join("journal.jsonl");
-    let dictionary = directory.join("dictionary.toml");
+    let journal = toml_path(&directory.join("journal.jsonl"));
+    let dictionary = toml_path(&directory.join("dictionary.toml"));
     std::fs::write(&dictionary, "").expect("an empty dictionary");
     let config = format!(
         r#"version = 1
@@ -160,9 +165,7 @@ warn_zero_level = false
 
 [hotkeys]
 backend = "none"
-"#,
-        journal = journal.display(),
-        dictionary = dictionary.display(),
+"#
     );
     let path = directory.join("config.toml");
     std::fs::write(&path, config).expect("the settings are written");

@@ -6,6 +6,13 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ## Unreleased
 
+## [0.2.1] - 2026-11-08
+
+### Fixed
+
+- The macOS and Windows gates now pass: the memory probe test accepts a zero RSS where `/proc` is absent, the Windows MCP fixture escapes backslashes in TOML, and the path tests use the native separator
+- `async-executor` is 1.14.1 instead of the yanked 1.14.0
+
 ## [0.2.0] - 2026-11-08
 
 ### Added
@@ -189,7 +196,8 @@ Nightly snapshot of the hackathon: all tracks merged and CI green on three opera
 - A term dictionary with exact and fuzzy match
 - A file journal of phrases in JSONL
 
-[Unreleased]: https://github.com/rokokol/MolvAI/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/rokokol/MolvAI/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/rokokol/MolvAI/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/rokokol/MolvAI/compare/v0.1.9...v0.2.0
 [0.1.9]: https://github.com/rokokol/MolvAI/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/rokokol/MolvAI/compare/v0.1.7...v0.1.8

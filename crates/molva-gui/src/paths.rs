@@ -209,7 +209,7 @@ mod tests {
     #[test]
     fn directories_come_first_and_end_with_a_separator() {
         let root = temp_tree();
-        let input = format!("{}/", root.path().display());
+        let input = format!("{}{}", root.path().display(), std::path::MAIN_SEPARATOR);
         let found = suggest_paths_with(&input, None, 10);
         let names: Vec<&str> = found.iter().map(|s| s.name.as_str()).collect();
         assert_eq!(names, vec!["Movies", "Music", "notes.txt"]);
@@ -222,7 +222,7 @@ mod tests {
     #[test]
     fn the_typed_prefix_filters_case_insensitively() {
         let root = temp_tree();
-        let input = format!("{}/m", root.path().display());
+        let input = format!("{}{}m", root.path().display(), std::path::MAIN_SEPARATOR);
         let found = suggest_paths_with(&input, None, 10);
         let names: Vec<&str> = found.iter().map(|s| s.name.as_str()).collect();
         assert_eq!(names, vec!["Movies", "Music"]);
@@ -231,9 +231,17 @@ mod tests {
     #[test]
     fn hidden_entries_need_a_dot_in_the_prefix() {
         let root = temp_tree();
-        let all = suggest_paths_with(&format!("{}/", root.path().display()), None, 10);
+        let all = suggest_paths_with(
+            &format!("{}{}", root.path().display(), std::path::MAIN_SEPARATOR),
+            None,
+            10,
+        );
         assert!(!all.iter().any(|s| s.name == ".secret"));
-        let hidden = suggest_paths_with(&format!("{}/.", root.path().display()), None, 10);
+        let hidden = suggest_paths_with(
+            &format!("{}{}.", root.path().display(), std::path::MAIN_SEPARATOR),
+            None,
+            10,
+        );
         assert_eq!(hidden.len(), 1);
         assert_eq!(hidden[0].name, ".secret");
     }
@@ -247,7 +255,7 @@ mod tests {
     #[test]
     fn the_limit_is_respected_and_bounded() {
         let root = temp_tree();
-        let input = format!("{}/", root.path().display());
+        let input = format!("{}{}", root.path().display(), std::path::MAIN_SEPARATOR);
         assert_eq!(suggest_paths_with(&input, None, 2).len(), 2);
         // Zero is raised to one rather than returning everything or nothing
         assert_eq!(suggest_paths_with(&input, None, 0).len(), 1);
