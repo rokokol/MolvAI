@@ -361,6 +361,8 @@ mod tests {
         /// The method can paste but cannot type: this is how hyprctl and uinput behave
         /// on Cyrillic
         refuse_type: bool,
+        /// What `copy_selection` returns; `None` is the default "this method cannot copy"
+        selection: Option<String>,
         seen: Arc<Mutex<Vec<(String, OutputMode)>>>,
     }
 
@@ -372,6 +374,7 @@ mod tests {
                 available: true,
                 error: None,
                 refuse_type: false,
+                selection: None,
                 seen,
             }
         }
@@ -407,6 +410,14 @@ mod tests {
                 ..Self::new(id, seen)
             })
         }
+
+        /// A method that can copy the current selection
+        fn copying(id: &'static str, selection: &str) -> Box<dyn TextInjector> {
+            Box::new(Self {
+                selection: Some(selection.to_string()),
+                ..Self::new(id, Arc::new(Mutex::new(Vec::new())))
+            })
+        }
     }
 
     impl TextInjector for FakeInjector {
@@ -428,6 +439,13 @@ mod tests {
                 method: self.id.to_string(),
                 attempts: Vec::new(),
             })
+        }
+
+        fn copy_selection(&mut self) -> Result<String, InjectError> {
+            if let Some(err) = &self.error {
+                return Err(err.clone());
+            }
+            self.selection.clone().ok_or(InjectError::Unsupported)
         }
     }
 
@@ -557,6 +575,58 @@ mod tests {
     }
 
     #[test]
+    fn the_first_backend_that_can_copy_the_selection_wins() {
+        let (mut chain, _clip, _n) = chain(vec![
+            FakeInjector::copying("hyprctl", "выделенный текст"),
+            FakeInjector::copying("uinput", "другой текст"),
+        ]);
+        assert_eq!(chain.copy_selection().unwrap(), "выделенный текст");
+    }
+
+    #[test]
+    fn a_refused_copy_hands_over_to_the_next_backend() {
+        // The reason command mode died: hyprctl was the only method that could copy, and its
+        // refusal ended the whole chain
+        let (mut chain, _clip, _n) = chain(vec![
+            FakeInjector::failing("hyprctl", InjectError::Failed("non-zero exit code".into())),
+            FakeInjector::copying("uinput", "выделенный текст"),
+        ]);
+        assert_eq!(chain.copy_selection().unwrap(), "выделенный текст");
+    }
+
+    #[test]
+    fn a_backend_without_copy_support_is_not_a_reason_for_the_error() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let (mut chain, _clip, _n) = chain(vec![
+            FakeInjector::failing("hyprctl", InjectError::Failed("exit 7".into())),
+            FakeInjector::working("uinput", seen),
+        ]);
+        let error = chain.copy_selection().unwrap_err();
+        assert_eq!(
+            error,
+            InjectError::Failed("hyprctl: paste failed: exit 7".into())
+        );
+    }
+
+    #[test]
+    fn every_refused_copy_is_reported_in_one_message() {
+        let (mut chain, _clip, _n) = chain(vec![
+            FakeInjector::failing("hyprctl", InjectError::Failed("exit 7".into())),
+            FakeInjector::failing("uinput", InjectError::Failed("no /dev/uinput".into())),
+        ]);
+        let error = chain.copy_selection().unwrap_err().to_string();
+        assert!(error.contains("hyprctl"), "{error}");
+        assert!(error.contains("uinput"), "{error}");
+    }
+
+    #[test]
+    fn a_chain_with_no_copy_method_is_unsupported() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let (mut chain, _clip, _n) = chain(vec![FakeInjector::working("wtype", seen)]);
+        assert_eq!(chain.copy_selection(), Err(InjectError::Unsupported));
+    }
+
+    #[test]
     fn the_terminal_shortcut_is_on_by_default() {
         // Criterion AM-08: paste into a terminal works out of the box, with no settings change
         let notifier = Arc::new(RecordingNotifier::default());
@@ -607,6 +677,25 @@ mod tests {
             ids.iter().position(|id| *id == "wtype") < ids.iter().position(|id| *id == "hyprctl"),
             "{ids:?}"
         );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_hyprland_chain_keeps_a_copy_path_that_needs_no_compositor() {
+        // Command mode must not depend on the compositor alone: when `sendshortcut` is refused,
+        // the virtual keyboard has to be able to press Ctrl+C itself
+        let notifier = Arc::new(RecordingNotifier::default());
+        let mut chain = ChainInjector::for_platform(
+            &OutputConfig::default(),
+            &Platform::Wayland(Compositor::Hyprland),
+            notifier,
+        );
+        let ids: Vec<&str> = chain
+            .backends
+            .iter_mut()
+            .map(|b| b.as_injector().id())
+            .collect();
+        assert!(ids.contains(&"uinput"), "{ids:?}");
     }
 
     #[test]

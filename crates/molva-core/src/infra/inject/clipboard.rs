@@ -7,7 +7,7 @@
 //! phrase
 
 use std::process::{Command, Stdio};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::domain::inject::InjectError;
 
@@ -215,6 +215,47 @@ pub(crate) fn wl_paste() -> Option<String> {
     }
     String::from_utf8(output.stdout).ok()
 }
+
+/// Copy the selection: clear the clipboard, press the copy keys, wait for the text
+///
+/// Command mode has more than one way to press the keys — the compositor and the virtual device
+/// — and the clipboard around them is the same, so it lives here once. The clipboard is not
+/// restored on purpose: a plain Ctrl+C behaves the same way
+///
+/// The clipboard is cleared before the keys. An application that is slow to put out the
+/// selection leaves the old content in place, and that content reaches the model. The result of
+/// the previous edit is one such case, and each next command then builds on the old text. If the
+/// clear is not available, only content that differs from the old one counts as fresh
+pub(crate) fn copy_selection_with(
+    send: impl FnOnce() -> Result<(), InjectError>,
+) -> Result<String, InjectError> {
+    let before = wl_paste();
+    let cleared = wl_clear().is_ok();
+    send()?;
+    // The application answers Ctrl+C with a delay, so the loop waits until a clipboard selection
+    // appears that was not there before the copy
+    let deadline = Instant::now() + SELECTION_SETTLE_TIMEOUT;
+    while Instant::now() < deadline {
+        std::thread::sleep(SELECTION_POLL_INTERVAL);
+        let Some(selection) = wl_paste() else {
+            continue;
+        };
+        if selection.trim().is_empty() {
+            continue;
+        }
+        if cleared || before.as_deref() != Some(selection.as_str()) {
+            return Ok(selection);
+        }
+    }
+    Err(InjectError::Failed(
+        "no selection: the clipboard did not change after Ctrl+C".into(),
+    ))
+}
+
+/// How long to wait for the application to put the selection in the clipboard after Ctrl+C
+const SELECTION_SETTLE_TIMEOUT: Duration = Duration::from_millis(600);
+/// Polling step of the clipboard during that time
+const SELECTION_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 fn wl_copy(text: &str) -> Result<(), InjectError> {
     // wl-copy goes to the background by itself and stays the owner of the selection; it returns

@@ -6,6 +6,14 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ## Unreleased
 
+## Unreleased
+
+### Fixed
+
+- Command mode sends Ctrl+C with the Lua dispatcher of a Hyprland Lua config, and keeps the old `dispatch sendshortcut` form for an older compositor
+- A refused copy shortcut no longer ends command mode: the uinput virtual keyboard copies the selection when the compositor does not
+
+
 ## [0.2.3] - 2026-11-08
 
 ### Changed
