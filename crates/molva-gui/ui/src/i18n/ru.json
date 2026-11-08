@@ -489,5 +489,6 @@
   "settings.llm.testCloudNote": "Ответ пришёл из облака.",
   "settings.sttTest.testFailed": "Проверка распознавания не удалась",
   "settings.llm.reasoningNone": "none — отвечать без рассуждения",
-  "history.files": "Файлы"
+  "history.files": "Файлы",
+  "history.mcp": "MCP"
 }

@@ -79,6 +79,17 @@ export function formatTimestamp(iso: string, lang: string): string {
   });
 }
 
+/** Badge of a journal entry that did not come from the microphone, or null */
+export function sourceLabelKey(source: string): string | null {
+  if (source === "file") {
+    return "history.files";
+  }
+  if (source === "mcp") {
+    return "history.mcp";
+  }
+  return null;
+}
+
 /** Short label of a day for the chart axis: "05.09" from "2026-09-05" */
 export function formatDayTick(day: string): string {
   const parts = day.split("-");

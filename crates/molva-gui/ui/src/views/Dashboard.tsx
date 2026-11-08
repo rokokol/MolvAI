@@ -10,6 +10,7 @@ import {
   formatMegabytes,
   formatMinutes,
   formatWpm,
+  sourceLabelKey,
 } from "../format";
 import { useI18n } from "../i18n";
 import type { ViewProps } from "../App";
@@ -39,6 +40,7 @@ export default function Dashboard({
   const [styles, setStyles] = useState<StyleOption[]>([]);
   const [today, setToday] = useState<StatsSummary | null>(null);
   const [copied, setCopied] = useState(false);
+  const lastSource = lastEntry ? sourceLabelKey(lastEntry.source) : null;
 
   const running = status?.daemon_running ?? false;
   const recording = status?.state === "recording";
@@ -247,8 +249,8 @@ export default function Dashboard({
                 {t("dashboard.latency")}: {formatLatency(lastEntry.latency_ms.total)}
               </span>
               <span>{lastEntry.style}</span>
-              {lastEntry.source === "file" ? (
-                <span className="badge">{t("history.files")}</span>
+              {lastSource ? (
+                <span className="badge">{t(lastSource)}</span>
               ) : (
                 lastEntry.llm_used && (
                   <span className="badge">

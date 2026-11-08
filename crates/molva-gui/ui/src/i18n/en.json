@@ -489,5 +489,6 @@
   "settings.llm.testCloudNote": "The answer came from a cloud provider.",
   "settings.sttTest.testFailed": "The recognition test failed",
   "settings.llm.reasoningNone": "none — answer without thinking",
-  "history.files": "Files"
+  "history.files": "Files",
+  "history.mcp": "MCP"
 }

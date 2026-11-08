@@ -5,7 +5,7 @@
 import { useEffect } from "react";
 
 import { api, copyToClipboard } from "../api";
-import { formatLatency, formatTimestamp, formatWpm } from "../format";
+import { formatLatency, formatTimestamp, formatWpm, sourceLabelKey } from "../format";
 import { useHistoryState } from "../history/HistoryProvider";
 import { useI18n } from "../i18n";
 
@@ -125,6 +125,7 @@ export default function History() {
         <ul className="entry-list">
           {entries.map((entry) => {
             const text = entry.text_final ?? entry.text_raw ?? null;
+            const source = sourceLabelKey(entry.source);
             return (
               <li key={entry.id} className="entry">
                 <div className="meta">
@@ -138,8 +139,8 @@ export default function History() {
                   <span>
                     {entry.words} {t("common.words")}
                   </span>
-                  {entry.source === "file" ? (
-                    <span className="badge">{t("history.files")}</span>
+                  {source ? (
+                    <span className="badge">{t(source)}</span>
                   ) : (
                     entry.llm_used && (
                       <span className="badge">

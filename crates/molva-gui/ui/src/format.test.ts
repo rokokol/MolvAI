@@ -18,6 +18,7 @@ import {
   GROUP_SEPARATOR,
   renderFileResult,
   renderSegment,
+  sourceLabelKey,
 } from "./format";
 import type { DayPoint, FileResult } from "./types";
 
@@ -237,5 +238,13 @@ describe("renderFileResult", () => {
     expect(renderFileResult({ ...result, segments: [] }, true)).toBe(
       "[00:00.000 → 00:04.000] привет мир",
     );
+  });
+});
+
+describe("sourceLabelKey", () => {
+  it("marks a file and an MCP transcription apart from dictation", () => {
+    expect(sourceLabelKey("file")).toBe("history.files");
+    expect(sourceLabelKey("mcp")).toBe("history.mcp");
+    expect(sourceLabelKey("mic")).toBeNull();
   });
 });

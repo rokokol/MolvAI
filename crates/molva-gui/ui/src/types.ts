@@ -37,7 +37,7 @@ export interface Entry {
   ts: string;
   session_id: string;
   mode: Mode;
-  source: "mic" | "file";
+  source: "mic" | "file" | "mcp";
   app?: string | null;
   language?: string | null;
   audio_secs: number;

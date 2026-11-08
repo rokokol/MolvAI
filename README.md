@@ -227,7 +227,7 @@ A transcription goes to the daemon: the server starts the daemon when nobody ans
 
 `search_docs` reads an index that the build writes into the binary from those same files. So the documentation has one copy, and the call reaches no network. A page the site translates is indexed once per language. A build that carries no documents answers with an empty index, and `indexed` says how many pages it searched
 
-An MCP transcription is a file in the journal with `source = "mcp"`, so search finds it and the statistics count it apart from dictation and from `molva transcribe`. Settings are not a tool: on NixOS they belong to `programs.molvai`, and elsewhere the user edits the file where they can see it
+An MCP transcription is a file in the journal with `source = "mcp"`, so search finds it and the statistics count it apart from dictation and from `molva transcribe`. History labels it MCP, while a file transcription keeps the Files label. Settings are not a tool: on NixOS they belong to `programs.molvai`, and elsewhere the user edits the file where they can see it
 
 ## Tests and development
 
