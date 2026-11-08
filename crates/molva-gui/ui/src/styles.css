@@ -1477,12 +1477,21 @@ button.job-expander:active:not(:disabled) {
 }
 
 .dropzone {
+  display: block;
+  width: 100%;
   padding: 1.2em 0.8em;
   border: 2px dashed var(--ddlc-grid);
   background: var(--ddlc-code-ground);
   color: var(--ddlc-muted);
   font: 500 var(--step-body) / 1.55 var(--ddlc-font-prose);
   text-align: center;
+  cursor: pointer;
+}
+
+.dropzone:hover,
+.dropzone:focus-visible {
+  border-color: var(--ddlc-accent);
+  color: var(--ddlc-text);
 }
 
 .dropzone.over {

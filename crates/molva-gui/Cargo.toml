@@ -29,6 +29,7 @@ tauri-plugin-shell = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-autostart = "2.5"
+tauri-plugin-dialog = "2"
 interprocess = "2.4"
 serde = { workspace = true }
 serde_json = { workspace = true }

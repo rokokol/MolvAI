@@ -7,6 +7,7 @@
 // here too, so the Files tab is the one place where transcriptions are reviewed.
 
 import { useEffect, useState } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 
 import { api, asCommandError } from "../api";
 import { formatElapsed } from "../format";
@@ -67,15 +68,55 @@ export default function Files({ onError }: ViewProps) {
     { status: "interrupted", count: summary.interrupted },
   ];
 
-  const open = (target: string) =>
+  const openTarget = (target: string) =>
     api.openPath(target).catch((err) => onError(asCommandError(err)));
+
+  const chooseFile = async () => {
+    const selected = await open({
+      multiple: false,
+      directory: false,
+      filters: [
+        {
+          name: t("files.fileFilter"),
+          extensions: [
+            "mp3",
+            "wav",
+            "m4a",
+            "m4b",
+            "aac",
+            "ogg",
+            "oga",
+            "opus",
+            "flac",
+            "mp4",
+            "m4v",
+            "mkv",
+            "webm",
+            "mov",
+            "avi",
+            "ts",
+          ],
+        },
+      ],
+    });
+    if (typeof selected === "string" && selected.trim() !== "") {
+      start(selected);
+    }
+  };
 
   return (
     <>
       <h1>{t("files.title")}</h1>
 
       <section className="card">
-        <div className={dragging ? "dropzone over" : "dropzone"}>{t("files.drop")}</div>
+        <button
+          type="button"
+          className={dragging ? "dropzone over" : "dropzone"}
+          onClick={() => void chooseFile()}
+          title={t("files.chooseFile")}
+        >
+          {t("files.drop")}
+        </button>
         <div className="row" style={{ marginTop: "0.75rem", alignItems: "flex-end" }}>
           <div className="field" style={{ marginBottom: 0, flex: "1 1 18rem" }}>
             <label htmlFor="files-path">{t("files.pathLabel")}</label>
@@ -171,7 +212,7 @@ export default function Files({ onError }: ViewProps) {
                   now={now}
                   timecodes={timecodes}
                   onTimecodesChange={setTimecodes}
-                  onOpen={open}
+                  onOpen={openTarget}
                 />
               ))}
             </ul>

@@ -129,6 +129,8 @@
   "stats.legendWords": "Words",
   "stats.legendWpm": "Pace",
   "files.title": "Files",
+  "files.chooseFile": "Choose an audio or video file",
+  "files.fileFilter": "Audio and video",
   "files.drop": "Drop an audio or video file here or type a path",
   "files.pathLabel": "File or directory path",
   "files.add": "Transcribe",

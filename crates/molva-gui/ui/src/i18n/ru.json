@@ -129,6 +129,8 @@
   "stats.legendWords": "Слова",
   "stats.legendWpm": "Темп",
   "files.title": "Файлы",
+  "files.chooseFile": "Выбрать аудио- или видеофайл",
+  "files.fileFilter": "Аудио и видео",
   "files.drop": "Перетащите сюда аудио- или видеофайл либо укажите путь",
   "files.pathLabel": "Путь к файлу или каталогу",
   "files.add": "Разобрать",
