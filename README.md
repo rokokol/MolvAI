@@ -15,7 +15,7 @@ System-wide voice input that runs on your computer: hold a key, speak, release, 
 
 - **Dictation anywhere**: the text goes to the active window through the keyboard or the clipboard, and the method is chosen by the application
 - **Real-time chunks**: a phrase is cut at pauses during the recording, each chunk is recognized at once for the draft, and the text reaches the field as one piece after the key release
-- **Voice editing**: select text, say "сделай официальнее" ("make it more formal"), and the answer replaces the selection
+- **Voice editing**: select text, say "make it more formal", and the answer replaces the selection
 - **Snippets**: a phrase such as "reply to a client" returns a prepared reply at once. A `*` in the phrase matches any text, the whole phrase must match after the dictionary and the rules, and the replacement bypasses the model entirely
 - **Audio and video to text**: the Files tab hands a file to the daemon over IPC, and the daemon recognizes it with the recognizer and the model that dictation already holds; `molva transcribe` stays the standalone entry for an offline batch and prints timecodes
 - **Search over transcripts**: `molva search` and the search inside the Files tab find a phrase across every transcribed file and show the file and the timecode
@@ -26,8 +26,8 @@ More about the arrangement: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The jo
 
 ## What it looks like
 
-| The statistics | Recording is on |
-| --- | --- |
+| The statistics                                                                             | Recording is on                                                                                                            |
+| ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
 | ![The MolvAI statistics: words, pace, streak and saved time](docs/img/panel-idle-2026.png) | ![The panel during recording: the live signal, the streamed draft and the stop buttons](docs/img/panel-recording-2026.png) |
 
 The panel shows the daemon state, the live signal level, the style, the last phrase with its pace and the statistics for today. The History, Files (with transcript search) and Stats tabs read the same journal as the CLI
@@ -145,11 +145,11 @@ Media preview and the audio spectrogram are temporarily off: WebKit and GStreame
 
 The catalog is [models.toml](models.toml); `molva models list` shows what is in it and what is on disk. Each file is checked against its SHA-256 before it reaches the disk, and an interrupted download resumes with a `Range` request
 
-| Model | Engine | Language | Size | When to choose it |
-| --- | --- | --- | --- | --- |
-| `gigaam-v3-e2e-rnnt-q4_k_m` | `transcribe-cpp` | Russian | 175 MiB | the default: cased and punctuated Russian, fast on a processor |
-| `small` | `whisper-cpp` | multilingual | 465 MiB | English, mixed speech, or a machine without `transcribe-cli` |
-| `large-v3-turbo` | `whisper-cpp` | multilingual | 1.5 GiB | the most accurate whisper option, needs more memory |
+| Model                       | Engine           | Language     | Size    | When to choose it                                              |
+| --------------------------- | ---------------- | ------------ | ------- | -------------------------------------------------------------- |
+| `gigaam-v3-e2e-rnnt-q4_k_m` | `transcribe-cpp` | Russian      | 175 MiB | the default: cased and punctuated Russian, fast on a processor |
+| `small`                     | `whisper-cpp`    | multilingual | 465 MiB | English, mixed speech, or a machine without `transcribe-cli`   |
+| `large-v3-turbo`            | `whisper-cpp`    | multilingual | 1.5 GiB | the most accurate whisper option, needs more memory            |
 
 `stt.engine = "auto"` follows the catalog: the model says which runtime can load it, so choosing GigaAM does not require knowing that it is not a whisper file. A custom `stt.model_path` points at a directory with the weights; the catalog decides the file name inside it
 
@@ -192,15 +192,15 @@ By default the key never enters the settings file: `llm.api_key_source` chooses 
 
 ## Exit codes
 
-| Code | What it means |
-| --- | --- |
-| `0` | everything worked |
-| `2` | wrong arguments or an unknown name |
-| `3` | the daemon is not running or does not answer |
-| `4` | the daemon is busy with the previous phrase |
-| `5` | error of the recognition engine |
-| `6` | could not read or write a file |
-| `7` | the daemon is already running |
+| Code | What it means                                |
+| ---- | -------------------------------------------- |
+| `0`  | everything worked                            |
+| `2`  | wrong arguments or an unknown name           |
+| `3`  | the daemon is not running or does not answer |
+| `4`  | the daemon is busy with the previous phrase  |
+| `5`  | error of the recognition engine              |
+| `6`  | could not read or write a file               |
+| `7`  | the daemon is already running                |
 
 ## Settings
 
@@ -216,14 +216,14 @@ The GUI settings page edits the same file. It covers the recognition provider, t
 
 A transcription goes to the daemon: the server starts the daemon when nobody answers on the socket and reuses its recognizer and model, so an MCP call does not load a second copy of the weights. `mcp.enabled` gates the server, and the GUI settings page turns it off without touching the harness configuration
 
-| Tool | What it returns |
-| --- | --- |
-| `transcribe` | the text, segments with timecodes, language and duration of an audio or video file; an optional `model` overrides the configured one for this run |
-| `search_transcripts` | hits with the file, the timecode and the matched text |
-| `stats_summary` | words, speed, latency and the count of MCP transcriptions |
-| `history_list` | journal entries filtered by text, application and time |
-| `models_list` | the catalog and the weights on disk |
-| `search_docs` | hits in this README, `docs/` and the site pages: the path, title, language, a snippet and a URL; `lang` keeps one language |
+| Tool                 | What it returns                                                                                                                                   |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `transcribe`         | the text, segments with timecodes, language and duration of an audio or video file; an optional `model` overrides the configured one for this run |
+| `search_transcripts` | hits with the file, the timecode and the matched text                                                                                             |
+| `stats_summary`      | words, speed, latency and the count of MCP transcriptions                                                                                         |
+| `history_list`       | journal entries filtered by text, application and time                                                                                            |
+| `models_list`        | the catalog and the weights on disk                                                                                                               |
+| `search_docs`        | hits in this README, `docs/` and the site pages: the path, title, language, a snippet and a URL; `lang` keeps one language                        |
 
 `search_docs` reads an index that the build writes into the binary from those same files. So the documentation has one copy, and the call reaches no network. A page the site translates is indexed once per language. A build that carries no documents answers with an empty index, and `indexed` says how many pages it searched
 
