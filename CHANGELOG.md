@@ -6,6 +6,13 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ## Unreleased
 
+## [0.2.3] - 2026-11-08
+
+### Changed
+
+- Update the GUI dependencies to the versions from the Dependabot minor-and-patch group
+- Update `jakoch/install-vulkan-sdk-action` to 1.8.1, `Jimver/cuda-toolkit` to 0.2.36 and `softprops/action-gh-release` to 3
+
 ## [0.2.2] - 2026-11-08
 
 ### Fixed
@@ -202,7 +209,8 @@ Nightly snapshot of the hackathon: all tracks merged and CI green on three opera
 - A term dictionary with exact and fuzzy match
 - A file journal of phrases in JSONL
 
-[Unreleased]: https://github.com/rokokol/MolvAI/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/rokokol/MolvAI/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/rokokol/MolvAI/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/rokokol/MolvAI/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/rokokol/MolvAI/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/rokokol/MolvAI/compare/v0.1.9...v0.2.0
