@@ -91,7 +91,7 @@ jobs:
 
       # The ggml-vulkan shaders are compiled by glslc from the Vulkan SDK: Ubuntu 22.04 has no
       # glslc package
-      - uses: jakoch/install-vulkan-sdk-action@v1.7.0
+      - uses: jakoch/install-vulkan-sdk-action@v1.8.1
         if: contains(matrix.features, 'vulkan')
         with:
           vulkan_version: 1.4.363.0
