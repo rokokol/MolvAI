@@ -128,6 +128,16 @@ fn inject_method_for(method: &str, app_hint: Option<&str>) -> String {
     method.to_string()
 }
 
+/// The window that will receive the text: the one focused now, not the one that was focused
+/// when the key went down
+///
+/// A phrase takes time to recognize and to process, and the user may switch while it runs. The
+/// class decides only the paste shortcut, but a terminal with Ctrl+V or a browser with
+/// Ctrl+Shift+V silently receives nothing, so the class is asked again right before the paste
+fn target_window(app_hint: Option<&str>) -> Option<String> {
+    crate::infra::platform::active_window_class().or_else(|| app_hint.map(str::to_string))
+}
+
 fn millis_since(start: Instant, now: Instant) -> u32 {
     now.saturating_duration_since(start)
         .as_millis()
@@ -651,13 +661,16 @@ impl Pipeline {
         } else {
             let resolved = output_mode(&self.config.output.mode)
                 .resolve(text, self.config.output.auto_type_max_chars as usize);
-            // The paste method must know the window class: terminals paste with Ctrl+Shift+V
-            self.injector.set_window(app_hint);
             self.wait_before_inject();
+            let target = target_window(app_hint);
+            let target = target.as_deref();
+            // The class decides the paste shortcut: a terminal needs Ctrl+Shift+V, and a
+            // browser needs Ctrl+V. Ask after the focus settles, not at the key press
+            self.injector.set_window(target);
             let inject_started = self.clock.instant();
             match self.injector.inject(text, resolved) {
                 Ok(report) => {
-                    entry.inject_method = Some(inject_method_for(&report.method, app_hint));
+                    entry.inject_method = Some(inject_method_for(&report.method, target));
                     entry.latency_ms.inject =
                         Some(millis_since(inject_started, self.clock.instant()));
                 }
@@ -797,11 +810,16 @@ impl Pipeline {
         let piece = format!("{separator}{tail}");
         let resolved = output_mode(&self.config.output.mode)
             .resolve(&piece, self.config.output.auto_type_max_chars as usize);
-        self.injector.set_window(app_hint);
+        let target = target_window(app_hint);
+        let target = target.as_deref();
+        self.injector.set_window(target);
+        if let Some(class) = target {
+            entry.app = Some(class.to_string());
+        }
         let started = self.clock.instant();
         match self.injector.inject(&piece, resolved) {
             Ok(report) => {
-                entry.inject_method = Some(inject_method_for(&report.method, app_hint));
+                entry.inject_method = Some(inject_method_for(&report.method, target));
                 entry.latency_ms.inject = Some(millis_since(started, self.clock.instant()));
             }
             Err(err) => {

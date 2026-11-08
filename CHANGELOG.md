@@ -6,6 +6,8 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ## Unreleased
 
+## [0.2.0] - 2026-11-08
+
 ### Added
 
 - The GUI tray menu, its tooltip, system notices and setting errors follow the interface language, Russian or English
@@ -38,6 +40,11 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 - rustls 0.23.46 in place of 0.23.45 fixes RUSTSEC-2026-0346, RUSTSEC-2026-0347, RUSTSEC-2026-0348 and RUSTSEC-2026-0349
 - ctutils 0.4.6, rustls-webpki 0.103.16, webpki-root-certs 1.0.11 and webpki-roots 1.0.11 fix RUSTSEC-2026-0385, RUSTSEC-2026-0382, RUSTSEC-2026-0383 and RUSTSEC-2026-0381
+
+### Fixed
+
+- Paste through the uinput virtual keyboard keeps the physical keyboard layout: the device is switched to the US group for Ctrl+V and back to the group of the real keyboard after the paste. Hyprland is verified; Sway, KDE and GNOME use their own best-effort layout commands
+- The window class is read again immediately before the paste, so a terminal receives Ctrl+Shift+V even when the user switches windows during recognition
 
 ## [0.1.9] - 2026-10-13
 
@@ -182,7 +189,8 @@ Nightly snapshot of the hackathon: all tracks merged and CI green on three opera
 - A term dictionary with exact and fuzzy match
 - A file journal of phrases in JSONL
 
-[Unreleased]: https://github.com/rokokol/MolvAI/compare/v0.1.9...HEAD
+[Unreleased]: https://github.com/rokokol/MolvAI/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/rokokol/MolvAI/compare/v0.1.9...v0.2.0
 [0.1.9]: https://github.com/rokokol/MolvAI/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/rokokol/MolvAI/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/rokokol/MolvAI/compare/v0.1.6...v0.1.7

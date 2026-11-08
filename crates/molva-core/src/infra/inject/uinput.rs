@@ -8,16 +8,221 @@
 //! clipboard
 
 use std::path::Path;
+use std::process::Command;
 use std::time::Duration;
 
 use evdev::uinput::VirtualDevice;
 use evdev::{AttributeSet, EventType, InputEvent, KeyCode};
+use serde_json::Value;
 
 use crate::domain::inject::{InjectError, InjectReport, OutputMode, TextInjector};
 use crate::infra::inject::clipboard::{ClipboardGuard, SystemClipboard};
 use crate::infra::inject::wayland_tools::PasteShortcut;
+use crate::infra::platform::{self, Compositor, Platform};
 
 const UINPUT_PATH: &str = "/dev/uinput";
+
+/// The keyboard layout that the virtual device has to wear around a paste
+///
+/// A compositor may give the client the layout group of the keyboard that pressed the modifier.
+/// The virtual device starts on group 0, so a paste can publish the US layout and leave it
+/// active. The guard puts the compositor on group 0 for the shortcut and back on the user's
+/// group afterwards. Each desktop is handled by the command its own session exposes; an
+/// unsupported session simply has no guard
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum LayoutTarget {
+    Hyprland { device: String, restore: u32 },
+    Sway { device: String, restore: u32 },
+    Kde { restore: u32 },
+    Gnome { restore: usize },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LayoutGuard {
+    target: LayoutTarget,
+}
+
+impl LayoutGuard {
+    fn prepare() -> Option<Self> {
+        let target = match platform::detect() {
+            Platform::Wayland(Compositor::Hyprland) => hyprland_target()?,
+            Platform::Wayland(Compositor::Sway) => sway_target()?,
+            Platform::Wayland(Compositor::Kde) => kde_target()?,
+            Platform::Wayland(Compositor::Gnome) => gnome_target()?,
+            _ => return None,
+        };
+        Some(Self { target })
+    }
+
+    fn before(&self) {
+        match &self.target {
+            LayoutTarget::Hyprland { device, .. } => switch_hyprland(device, 0),
+            LayoutTarget::Sway { device, .. } => switch_sway(device, 0),
+            LayoutTarget::Kde { .. } => switch_kde(0),
+            LayoutTarget::Gnome { .. } => switch_gnome(0),
+        }
+    }
+
+    fn after(&self) {
+        match &self.target {
+            LayoutTarget::Hyprland { device, restore } => switch_hyprland(device, *restore),
+            LayoutTarget::Sway { device, restore } => switch_sway(device, *restore),
+            LayoutTarget::Kde { restore } => switch_kde(*restore),
+            LayoutTarget::Gnome { restore } => switch_gnome(*restore),
+        }
+    }
+}
+
+fn output_of(command: &str, args: &[&str]) -> Option<String> {
+    let output = Command::new(command).args(args).output().ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8(output.stdout).ok())
+        .flatten()
+}
+
+fn hyprland_target() -> Option<LayoutTarget> {
+    let text = output_of("hyprctl", &["devices", "-j"])?;
+    let json: Value = serde_json::from_str(&text).ok()?;
+    let keyboards = json.get("keyboards")?.as_array()?;
+    let is_virtual = |keyboard: &&Value| {
+        keyboard
+            .get("name")
+            .and_then(Value::as_str)
+            .is_some_and(|name| name.to_ascii_lowercase().contains("molvai"))
+    };
+    // Hyprland marks the last device that sent a key as main, and that may be the virtual one.
+    // The layout to restore belongs to a real keyboard
+    let main = keyboards
+        .iter()
+        .filter(|keyboard| !is_virtual(keyboard))
+        .find(|keyboard| keyboard.get("main").and_then(Value::as_bool) == Some(true))
+        .or_else(|| keyboards.iter().find(|keyboard| !is_virtual(keyboard)))?;
+    let restore = u32::try_from(main.get("active_layout_index")?.as_u64()?).ok()?;
+    let device = keyboards
+        .iter()
+        .find(|keyboard| is_virtual(keyboard))
+        .and_then(|keyboard| keyboard.get("name")?.as_str().map(str::to_string))
+        .unwrap_or_else(|| "molvai-virtual-keyboard".to_string());
+    Some(LayoutTarget::Hyprland { device, restore })
+}
+
+fn switch_hyprland(device: &str, index: u32) {
+    let _ = Command::new("hyprctl")
+        .args(["switchxkblayout", device, &index.to_string()])
+        .status();
+}
+
+fn sway_target() -> Option<LayoutTarget> {
+    let text = output_of("swaymsg", &["-t", "get_inputs", "-r"])?;
+    let inputs: Value = serde_json::from_str(&text).ok()?;
+    let inputs = inputs.as_array()?;
+    let is_virtual = |input: &&Value| {
+        input
+            .get("name")
+            .and_then(Value::as_str)
+            .is_some_and(|name| name.to_ascii_lowercase().contains("molvai"))
+    };
+    let physical = inputs.iter().find(|input| {
+        !is_virtual(input) && input.get("type").and_then(Value::as_str) == Some("keyboard")
+    })?;
+    let restore = u32::try_from(physical.get("xkb_active_layout_index")?.as_u64()?).ok()?;
+    let device = inputs
+        .iter()
+        .find(|input| is_virtual(input))
+        .and_then(|input| input.get("identifier")?.as_str().map(str::to_string))
+        .unwrap_or_else(|| "molvai-virtual-keyboard".to_string());
+    Some(LayoutTarget::Sway { device, restore })
+}
+
+fn switch_sway(device: &str, index: u32) {
+    let _ = Command::new("swaymsg")
+        .args(["input", device, "xkb_switch_layout", &index.to_string()])
+        .status();
+}
+
+fn kde_output(method: &str) -> Option<String> {
+    for command in ["qdbus6", "qdbus"] {
+        if let Some(text) = output_of(command, &["org.kde.keyboard", "/Layouts", method]) {
+            return Some(text.trim().to_string());
+        }
+    }
+    None
+}
+
+fn kde_target() -> Option<LayoutTarget> {
+    let restore = kde_output("org.kde.KeyboardLayouts.getLayout")?
+        .parse()
+        .ok()?;
+    Some(LayoutTarget::Kde { restore })
+}
+
+fn switch_kde(index: u32) {
+    for command in ["qdbus6", "qdbus"] {
+        if Command::new(command)
+            .args([
+                "org.kde.keyboard",
+                "/Layouts",
+                "org.kde.KeyboardLayouts.setLayout",
+                &index.to_string(),
+            ])
+            .status()
+            .is_ok_and(|status| status.success())
+        {
+            break;
+        }
+    }
+}
+
+/// Entries of a GNOME input-source list, from the textual form of `gsettings`
+fn xkb_entries(raw: &str) -> Vec<String> {
+    let mut entries = Vec::new();
+    let mut rest = raw;
+    while let Some(start) = rest.find("('xkb'") {
+        let tail = &rest[start..];
+        let Some(end) = tail.find(')') else { break };
+        entries.push(tail[..=end].to_string());
+        rest = &tail[end + 1..];
+    }
+    entries
+}
+
+fn gnome_target() -> Option<LayoutTarget> {
+    let sources = output_of(
+        "gsettings",
+        &["get", "org.gnome.desktop.input-sources", "sources"],
+    )?;
+    let mru = output_of(
+        "gsettings",
+        &["get", "org.gnome.desktop.input-sources", "mru-sources"],
+    )?;
+    let entries = xkb_entries(&sources);
+    let active = xkb_entries(&mru).into_iter().next();
+    let restore = active
+        .and_then(|active| entries.iter().position(|entry| *entry == active))
+        .unwrap_or(0);
+    Some(LayoutTarget::Gnome { restore })
+}
+
+fn switch_gnome(index: usize) {
+    let script = format!(
+        "imports.ui.status.keyboard.getInputSourceManager().inputSources[{index}].activate()"
+    );
+    let _ = Command::new("gdbus")
+        .args([
+            "call",
+            "--session",
+            "--dest",
+            "org.gnome.Shell",
+            "--object-path",
+            "/org/gnome/Shell",
+            "--method",
+            "org.gnome.Shell.Eval",
+            &script,
+        ])
+        .status();
+}
 
 const KEY_LEFTCTRL: u16 = 29;
 const KEY_LEFTSHIFT: u16 = 42;
@@ -238,18 +443,30 @@ impl UinputInjector {
 
     fn send_paste(&mut self) -> Result<(), InjectError> {
         let shift = self.shortcut == PasteShortcut::CtrlShiftV;
+        // Read the physical layout before the device exists: Hyprland may make the new device
+        // main as soon as it appears
+        let guard = LayoutGuard::prepare();
         let device = self.device()?;
-        Self::emit(device, &[Self::key(KEY_LEFTCTRL, 1)])?;
-        if shift {
-            Self::emit(device, &[Self::key(KEY_LEFTSHIFT, 1)])?;
+        if let Some(guard) = &guard {
+            guard.before();
         }
-        Self::emit(device, &[Self::key(KEY_V, 1)])?;
-        Self::emit(device, &[Self::key(KEY_V, 0)])?;
-        if shift {
-            Self::emit(device, &[Self::key(KEY_LEFTSHIFT, 0)])?;
+        let result = (|| {
+            Self::emit(device, &[Self::key(KEY_LEFTCTRL, 1)])?;
+            if shift {
+                Self::emit(device, &[Self::key(KEY_LEFTSHIFT, 1)])?;
+            }
+            Self::emit(device, &[Self::key(KEY_V, 1)])?;
+            Self::emit(device, &[Self::key(KEY_V, 0)])?;
+            if shift {
+                Self::emit(device, &[Self::key(KEY_LEFTSHIFT, 0)])?;
+            }
+            Self::emit(device, &[Self::key(KEY_LEFTCTRL, 0)])?;
+            Ok::<(), InjectError>(())
+        })();
+        if let Some(guard) = &guard {
+            guard.after();
         }
-        Self::emit(device, &[Self::key(KEY_LEFTCTRL, 0)])?;
-        Ok(())
+        result
     }
 }
 
@@ -295,6 +512,18 @@ impl TextInjector for UinputInjector {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gnome_sources_are_read_from_the_gsettings_form() {
+        assert_eq!(
+            xkb_entries("@as [('xkb', 'us'), ('xkb', 'ru')]"),
+            vec!["('xkb', 'us')".to_string(), "('xkb', 'ru')".to_string()]
+        );
+        assert_eq!(
+            xkb_entries("[('xkb', 'ru'), ('xkb', 'de')]"),
+            vec!["('xkb', 'ru')".to_string(), "('xkb', 'de')".to_string()]
+        );
+    }
 
     #[test]
     fn ascii_letters_map_to_us_layout_codes() {
