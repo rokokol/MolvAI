@@ -363,7 +363,7 @@ jobs:
         with:
           cuda: "12.6.0"
           method: network
-          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev"]'
+          sub-packages: '["nvcc", "cudart", "libcublas", "libcublas-dev"]'
 
       - name: System dependencies (Linux CUDA)
         run: |
