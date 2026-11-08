@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
-// Progressive enhancement only: the theme choice, the mobile menu, copy buttons and the
-// install tabs. Every page stays usable with this file blocked
+// The site's own behaviour: the language switch, the copy buttons and the install tabs.
+// Progressive enhancement: with this file blocked every page keeps its English text, the
+// tabs render as stacked panels and no copy button appears. The kit's own behaviour — the
+// clouds, the theme button and the spectrogram — lives in kit.js
 
 (function () {
   "use strict";
@@ -9,109 +11,178 @@
   root.classList.remove("no-js");
   root.classList.add("js");
 
-  var STORAGE_KEY = "molvai-theme";
-  var toggle = document.querySelector("[data-theme-toggle]");
+  // ---------- the language ----------
+  //
+  // English is in the markup and Russian lives beside it: an element carries data-ru with
+  // the Russian HTML, and data-ru-<attribute> with the Russian of an aria-label, an alt, a
+  // title or a meta description. The first pass remembers the English, so a switch is a
+  // swap in both directions. With this file blocked nothing swaps and English stands
 
-  function stored() {
+  var LANG_KEY = "molvai-lang";
+  var ATTRS = ["aria-label", "alt", "title", "content"];
+  var texts = [];
+  var attributes = [];
+
+  function each(list, fn) {
+    Array.prototype.forEach.call(list, fn);
+  }
+
+  function collect() {
+    each(document.querySelectorAll("[data-ru]"), function (el) {
+      texts.push({
+        el: el,
+        isTitle: el.tagName === "TITLE",
+        html: el.tagName === "TITLE" ? el.textContent : el.innerHTML,
+      });
+    });
+    each(
+      document.querySelectorAll(
+        ATTRS.map(function (name) {
+          return "[data-ru-" + name + "]";
+        }).join(",")
+      ),
+      function (el) {
+        ATTRS.forEach(function (name) {
+          if (!el.hasAttribute("data-ru-" + name)) {
+            return;
+          }
+          attributes.push({ el: el, name: name, value: el.getAttribute(name) || "" });
+        });
+      }
+    );
+  }
+
+  function apply(lang) {
+    var ru = lang === "ru";
+    root.lang = ru ? "ru" : "en";
+    root.setAttribute("data-lang", lang);
+
+    texts.forEach(function (item) {
+      var value = ru ? item.el.getAttribute("data-ru") : item.html;
+      if (item.isTitle) {
+        item.el.textContent = value;
+      } else {
+        item.el.innerHTML = value;
+      }
+    });
+
+    attributes.forEach(function (item) {
+      var value = ru ? item.el.getAttribute("data-ru-" + item.name) : item.value;
+      if (value !== null) {
+        item.el.setAttribute(item.name, value);
+      }
+    });
+
+    each(document.querySelectorAll("[data-lang-set]"), function (button) {
+      button.setAttribute(
+        "aria-pressed",
+        button.getAttribute("data-lang-set") === lang ? "true" : "false"
+      );
+    });
+
+    var event;
     try {
-      return window.localStorage.getItem(STORAGE_KEY);
+      event = new CustomEvent("molvai:lang", { detail: lang });
+    } catch (error) {
+      return;
+    }
+    document.dispatchEvent(event);
+  }
+
+  function stored(key) {
+    try {
+      return window.localStorage.getItem(key);
     } catch (error) {
       return null;
     }
   }
 
-  function store(value) {
+  function store(key, value) {
     try {
-      window.localStorage.setItem(STORAGE_KEY, value);
+      window.localStorage.setItem(key, value);
     } catch (error) {
       /* A blocked storage must not break the page */
     }
   }
 
-  function systemTheme() {
-    return window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches
-      ? "light"
-      : "dark";
-  }
-
-  function currentTheme() {
-    return root.getAttribute("data-theme") || stored() || systemTheme();
-  }
-
-  function applyTheme(theme) {
-    if (theme === "light" || theme === "dark") {
-      root.setAttribute("data-theme", theme);
+  function queryLang() {
+    var value;
+    try {
+      value = new URLSearchParams(window.location.search).get("lang");
+    } catch (error) {
+      return null;
     }
+    return value === "ru" || value === "en" ? value : null;
   }
 
-  applyTheme(stored());
-
-  if (toggle) {
-    toggle.addEventListener("click", function () {
-      var next = currentTheme() === "dark" ? "light" : "dark";
-      applyTheme(next);
-      store(next);
-    });
+  function storedLang() {
+    var value = stored(LANG_KEY);
+    return value === "ru" || value === "en" ? value : null;
   }
 
-  if (window.matchMedia) {
-    var media = window.matchMedia("(prefers-color-scheme: light)");
-    var onChange = function () {
-      if (!stored()) {
-        root.removeAttribute("data-theme");
+  // The first supported language in the system preference wins: a system set to
+  // en-US with Russian second opens in English, not in Russian. English is the fallback
+  // when the list holds neither of the two languages the site has
+  function browserLang() {
+    var list = navigator.languages && navigator.languages.length
+      ? navigator.languages
+      : [navigator.language || "en"];
+    for (var i = 0; i < list.length; i++) {
+      var tag = String(list[i]).toLowerCase();
+      if (/^ru\b/.test(tag)) {
+        return "ru";
       }
-    };
-    if (media.addEventListener) {
-      media.addEventListener("change", onChange);
-    } else if (media.addListener) {
-      media.addListener(onChange);
+      if (/^en\b/.test(tag)) {
+        return "en";
+      }
     }
+    return "en";
   }
 
-  var menuButton = document.querySelector("[data-menu-toggle]");
-  var nav = document.getElementById("site-nav");
-
-  function closeMenu() {
-    if (!nav || !menuButton) {
-      return;
-    }
-    nav.classList.remove("is-open");
-    menuButton.setAttribute("aria-expanded", "false");
-  }
-
-  if (menuButton && nav) {
-    menuButton.addEventListener("click", function () {
-      var open = nav.classList.toggle("is-open");
-      menuButton.setAttribute("aria-expanded", open ? "true" : "false");
-    });
-
-    nav.addEventListener("click", function (event) {
-      if (event.target.closest("a")) {
-        closeMenu();
-      }
-    });
-
-    document.addEventListener("keydown", function (event) {
-      if (event.key === "Escape" && nav.classList.contains("is-open")) {
-        closeMenu();
-        menuButton.focus();
-      }
-    });
-
-    document.addEventListener("click", function (event) {
-      if (!nav.classList.contains("is-open")) {
+  function syncUrl(lang) {
+    try {
+      var url = new URL(window.location.href);
+      if (url.searchParams.get("lang") === lang) {
         return;
       }
-      if (!nav.contains(event.target) && !menuButton.contains(event.target)) {
-        closeMenu();
-      }
-    });
+      url.searchParams.set("lang", lang);
+      window.history.replaceState(null, "", url);
+    } catch (error) {
+      /* file:// and a blocked history must not break the page */
+    }
+  }
 
-    window.addEventListener("resize", function () {
-      if (window.innerWidth > 900) {
-        closeMenu();
+  var lang = queryLang() || storedLang() || browserLang();
+  collect();
+  apply(lang);
+  if (queryLang()) {
+    store(LANG_KEY, lang);
+  }
+
+  each(document.querySelectorAll("[data-lang-set]"), function (button) {
+    button.addEventListener("click", function () {
+      var next = button.getAttribute("data-lang-set");
+      if (next !== "en" && next !== "ru") {
+        return;
       }
+      apply(next);
+      store(LANG_KEY, next);
+      syncUrl(next);
     });
+  });
+
+  // ---------- the copy buttons ----------
+
+  // The button label is in the markup, so it is already in the chosen language when the
+  // click arrives. The two state labels are the only strings that live here
+
+  var WORDS = {
+    en: { copied: "Copied", failed: "Press Ctrl+C" },
+    ru: { copied: "Скопировано", failed: "Нажмите Ctrl+C" },
+  };
+
+  function stateWords() {
+    return WORDS[root.lang === "ru" ? "ru" : "en"];
   }
 
   function legacyCopy(text) {
@@ -146,12 +217,13 @@
     return Promise.resolve(legacyCopy(text));
   }
 
-  Array.prototype.forEach.call(document.querySelectorAll("[data-copy]"), function (button) {
+  each(document.querySelectorAll("[data-copy]"), function (button) {
     button.addEventListener("click", function () {
       var text = button.getAttribute("data-copy") || "";
       var label = button.textContent;
       copy(text).then(function (ok) {
-        button.textContent = ok ? "Copied" : "Press Ctrl+C";
+        var words = stateWords();
+        button.textContent = ok ? words.copied : words.failed;
         button.setAttribute("data-state", ok ? "copied" : "failed");
         window.setTimeout(function () {
           button.textContent = label;
@@ -161,7 +233,9 @@
     });
   });
 
-  Array.prototype.forEach.call(document.querySelectorAll("[data-tabs]"), function (group) {
+  // ---------- the install tabs ----------
+
+  each(document.querySelectorAll("[data-tabs]"), function (group) {
     var tabs = Array.prototype.slice.call(group.querySelectorAll('[role="tab"]'));
     var panels = Array.prototype.slice.call(group.querySelectorAll('[role="tabpanel"]'));
     if (!tabs.length || !panels.length) {

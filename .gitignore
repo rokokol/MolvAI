@@ -29,6 +29,11 @@ sbom/
 *.sqlite
 journal.jsonl
 
+# The site shows the screenshots from docs/img, which .github/workflows/pages.yml copies into
+# the artifact. A link inside site/ would be committed and would break that copy, so a local
+# preview assembles the same tree in /tmp instead (see site/README.md)
+/site/docs/img
+
 # Worktrees of Claude Code agents
 .claude/worktrees/
 

@@ -1,212 +1,232 @@
 <!DOCTYPE html>
-<html lang="en" class="no-js">
+<html lang="en" class="no-js" data-ddlc-heading="plain">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Install and first run — MolvAI documentation</title>
-<meta name="description" content="Install MolvAI with Nix, with install.sh or from a release, then set up the microphone, the model and the hotkeys. Includes the dependency check and removal">
+<title data-ru="Установка и первый запуск — документация MolvAI">Install and first run — MolvAI documentation</title>
+<meta name="description" content="Install MolvAI with Nix, with install.sh or from a release, then set up the microphone, the model and the hotkeys. Includes the dependency check and removal" data-ru-content="Как поставить MolvAI через Nix, скриптом install.sh или из релиза, а потом настроить микрофон, модель и горячие клавиши. Включая проверку зависимостей и удаление">
 <meta name="color-scheme" content="dark light">
-<meta name="theme-color" content="#0a0c12">
-<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#222222" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="../assets/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/vendor/ddlc/ddlc-tokens.css">
+<link rel="stylesheet" href="../assets/vendor/ddlc/ddlc-ui.css">
+<link rel="stylesheet" href="../assets/vendor/ddlc/ddlc-report.css">
 <link rel="stylesheet" href="../assets/site.css">
-<script src="../assets/site.js" defer></script>
+<script>
+  (function () {
+    try {
+      var q = new URLSearchParams(location.search)
+      var pinned = q.get("theme")
+      var theme = pinned === "light" || pinned === "dark" ? pinned : localStorage.getItem("molvai-theme")
+      if (pinned === "light" || pinned === "dark") localStorage.setItem("molvai-theme", pinned)
+      if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme
+      var lang = q.get("lang")
+      var stored = localStorage.getItem("molvai-lang")
+      if (lang === "ru" || (lang !== "en" && stored === "ru")) document.documentElement.lang = "ru"
+    } catch (e) {}
+  })()
+</script>
+<script type="module" src="../assets/kit.js"></script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
-
-<header class="site-header">
-  <div class="wrap header-inner">
-    <a class="brand" href="../index.html" aria-label="MolvAI home">
-      <img src="../assets/logo.svg" alt="" width="26" height="26">
-      <span>Molv<span class="brand-ai">AI</span></span>
+<canvas class="cloud" id="cloud" aria-hidden="true"></canvas>
+<a class="skip" href="#main" data-ru="К содержанию">Skip to content</a>
+<header class="site-bar">
+  <div class="bar wrap bar-row">
+    <a class="brand" href="../index.html" aria-label="MolvAI home" data-ru-aria-label="MolvAI — главная">
+      <img src="../assets/logo.svg" alt="" width="22" height="22">
+      <span>MolvAI</span>
     </a>
-    <nav class="site-nav" id="site-nav" aria-label="Main">
-      <a href="../index.html">Home</a>
-      <a href="../features.html">Features</a>
-      <a href="../models.html">Models</a>
-      <a href="../cli.html">CLI</a>
-      <a href="./index.html" aria-current="page">Docs</a>
-      <a href="../faq.html">FAQ</a>
-      <a href="./status.html">Status</a>
-      <a class="nav-github" href="https://github.com/rokokol/MolvAI"><img src="../assets/icon-github.svg" alt="" width="15" height="15">GitHub</a>
+    <p class="tagline" data-ru="Голосовой ввод во все приложения">System-wide voice input, on your machine</p>
+    <nav class="tabs" aria-label="Main" data-ru-aria-label="Основное">
+      <a href="../index.html" data-ru="Главная">Home</a>
+      <a href="../features.html" data-ru="Возможности">Features</a>
+      <a href="../models.html" data-ru="Модели">Models</a>
+      <a href="../cli.html" data-ru="CLI">CLI</a>
+      <a href="../docs/index.html" aria-current="page" data-ru="Документация">Docs</a>
+      <a href="../faq.html" data-ru="FAQ">FAQ</a>
+      <a href="../docs/status.html" data-ru="Статус">Status</a>
     </nav>
-    <div class="header-tools">
-      <button class="icon-btn theme-toggle" type="button" data-theme-toggle aria-label="Switch between dark and light theme">
-        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8">
-          <circle cx="12" cy="12" r="8"></circle>
-          <path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"></path>
-        </svg>
+    <div class="bar-end">
+      <div class="segmented lang-switch" role="group" aria-label="Language" data-ru-aria-label="Язык">
+        <button type="button" data-lang-set="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang-set="ru" aria-pressed="false">RU</button>
+      </div>
+      <button class="icon-button" id="theme" type="button" aria-label="Theme: system" data-ru-aria-label="Тема">
+        <svg class="pixel" viewBox="0 0 8 8" aria-hidden="true"><path id="theme-icon"/></svg>
       </button>
-      <button class="icon-btn menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="site-nav">
-        <span class="menu-bars" aria-hidden="true"></span>
-        <span class="visually-hidden">Menu</span>
-      </button>
+      <a class="icon-button" href="https://github.com/rokokol/MolvAI" aria-label="MolvAI on GitHub" data-ru-aria-label="MolvAI на GitHub">
+        <img src="../assets/icon-github.svg" alt="" width="16" height="16">
+      </a>
     </div>
   </div>
 </header>
-
 <main id="main" class="wrap doc-layout">
-  <aside class="doc-nav" aria-label="Documentation">
-    <p class="doc-nav-title">Documentation</p>
+  <aside class="doc-nav" aria-label="Documentation" data-ru-aria-label="Документация">
+    <p class="doc-nav-title" data-ru="Документация">Documentation</p>
     <ul>
-      <li><a href="./index.html">Overview</a></li>
-      <li><a href="./install.html" aria-current="page">Install and first run</a></li>
-      <li><a href="./models.html">Models and GigaAM</a></li>
-      <li><a href="./hotkeys.html">Hotkeys and compositors</a></li>
-      <li><a href="./settings.html">Settings and Nix mode</a></li>
-      <li><a href="./cli.html">CLI guide</a></li>
-      <li><a href="./privacy.html">Privacy and journal</a></li>
-      <li><a href="./troubleshooting.html">Troubleshooting</a></li>
-      <li><a href="./status.html">Status and roadmap</a></li>
+      <li><a href="./index.html" data-ru="Обзор">Overview</a></li>
+      <li><a href="./install.html" aria-current="page" data-ru="Установка и первый запуск">Install and first run</a></li>
+      <li><a href="./models.html" data-ru="Модели и GigaAM">Models and GigaAM</a></li>
+      <li><a href="./hotkeys.html" data-ru="Клавиши и композиторы">Hotkeys and compositors</a></li>
+      <li><a href="./settings.html" data-ru="Настройки и режим Nix">Settings and Nix mode</a></li>
+      <li><a href="./cli.html" data-ru="Руководство по CLI">CLI guide</a></li>
+      <li><a href="./privacy.html" data-ru="Приватность и журнал">Privacy and journal</a></li>
+      <li><a href="./troubleshooting.html" data-ru="Если что-то не работает">Troubleshooting</a></li>
+      <li><a href="./status.html" data-ru="Статус и планы">Status and roadmap</a></li>
     </ul>
-    <p class="doc-nav-title">Elsewhere</p>
+    <p class="doc-nav-title" data-ru="Ещё">Elsewhere</p>
     <ul>
-      <li><a href="../cli.html">CLI reference</a></li>
-      <li><a href="../models.html">Model catalog</a></li>
-      <li><a href="../index.html">Home</a></li>
+      <li><a href="../cli.html" data-ru="Справочник CLI">CLI reference</a></li>
+      <li><a href="../models.html" data-ru="Каталог моделей">Model catalog</a></li>
+      <li><a href="../index.html" data-ru="Главная">Home</a></li>
     </ul>
   </aside>
-
   <article class="doc-body prose">
-    <h1>Install and first run</h1>
-    <p class="canonical">Canonical source: <a href="https://github.com/rokokol/MolvAI/blob/main/docs/install.md">docs/install.md</a></p>
+<h1 data-ru="Установка и первый запуск">Install and first run</h1>
+<p class="canonical" data-ru="Канонический источник: &lt;a href=&quot;https://github.com/rokokol/MolvAI/blob/main/docs/install.md&quot;&gt;docs/install.md&lt;/a&gt;">Canonical source: <a href="https://github.com/rokokol/MolvAI/blob/main/docs/install.md">docs/install.md</a></p>
 
-    <p>The full guide is written as a prompt for an AI agent. Open an agent in the repository and say "read docs/install.md and install MolvAI". This page is the same path without the agent, in fewer words</p>
+<p data-ru="Полное руководство написано как промпт для ИИ-агента. Открой агента в репозитории и скажи «прочитай docs/install.md и установи MolvAI». Эта страница — тот же путь без агента и короче">The full guide is written as a prompt for an AI agent. Open an agent in the repository and say "read docs/install.md and install MolvAI". This page is the same path without the agent, in fewer words</p>
 
-    <h2>Before you start</h2>
-    <div class="table-wrap">
-      <table>
-        <caption>What the machine needs, by session type</caption>
-        <thead><tr><th scope="col">Part</th><th scope="col">What to install</th></tr></thead>
-        <tbody>
-          <tr><th scope="row">Build tools</th><td><code>cmake</code>, <code>pkg-config</code>, a C++ compiler, ALSA headers, <code>libxkbcommon</code>. <code>./install.sh --check</code> prints the exact package names for Debian, Fedora, Arch, openSUSE, macOS and Windows</td></tr>
-          <tr><th scope="row">Wayland paste</th><td><code>wtype</code> and <code>wl-clipboard</code></td></tr>
-          <tr><th scope="row">X11 paste</th><td><code>xdotool</code> and <code>xclip</code></td></tr>
-          <tr><th scope="row">GUI only</th><td>WebKitGTK, GTK 3, the AppIndicator library, librsvg. The CLI and the daemon do not need them</td></tr>
-          <tr><th scope="row">Sound</th><td>PipeWire or PulseAudio. <code>molva doctor</code> names what it found</td></tr>
-        </tbody>
-      </table>
-    </div>
+<h2 data-ru="Что нужно заранее">Before you start</h2>
+<div class="table-wrap">
+  <table>
+    <caption data-ru="Что нужно машине, по частям">What the machine needs, by part</caption>
+    <thead><tr><th scope="col" data-ru="Часть">Part</th><th scope="col" data-ru="Что поставить">What to install</th></tr></thead>
+    <tbody>
+            <tr><th scope="row" data-ru="Инструменты сборки">Build tools</th><td data-ru="&lt;code&gt;cmake&lt;/code&gt;, &lt;code&gt;pkg-config&lt;/code&gt;, компилятор C++, заголовки ALSA, &lt;code&gt;libxkbcommon&lt;/code&gt;. &lt;code&gt;./install.sh --check&lt;/code&gt; печатает точные имена пакетов для Debian, Fedora, Arch, openSUSE, macOS и Windows"><code>cmake</code>, <code>pkg-config</code>, a C++ compiler, ALSA headers, <code>libxkbcommon</code>. <code>./install.sh --check</code> prints the exact package names for Debian, Fedora, Arch, openSUSE, macOS and Windows</td></tr>
+            <tr><th scope="row" data-ru="Вставка в Wayland">Wayland paste</th><td data-ru="&lt;code&gt;wtype&lt;/code&gt; и &lt;code&gt;wl-clipboard&lt;/code&gt;"><code>wtype</code> and <code>wl-clipboard</code></td></tr>
+            <tr><th scope="row" data-ru="Вставка в X11">X11 paste</th><td data-ru="&lt;code&gt;xdotool&lt;/code&gt; и &lt;code&gt;xclip&lt;/code&gt;"><code>xdotool</code> and <code>xclip</code></td></tr>
+            <tr><th scope="row" data-ru="Только для интерфейса">GUI only</th><td data-ru="WebKitGTK, GTK 3, библиотека AppIndicator, librsvg. CLI и демону они не нужны">WebKitGTK, GTK 3, the AppIndicator library, librsvg. The CLI and the daemon do not need them</td></tr>
+            <tr><th scope="row" data-ru="Звук">Sound</th><td data-ru="PipeWire или PulseAudio. &lt;code&gt;molva doctor&lt;/code&gt; называет, что нашёл">PipeWire or PulseAudio. <code>molva doctor</code> names what it found</td></tr>
+    </tbody>
+  </table>
+</div>
 
-    <h2>Install with Nix</h2>
-    <p>Nothing enters the system. The flake gives a package, a dev shell and a Home Manager module</p>
-    <div class="cmd"><code>nix run github:rokokol/MolvAI -- --help</code><button class="copy" type="button" data-copy="nix run github:rokokol/MolvAI -- --help">Copy</button></div>
-<pre class="code"><code><span class="c"># a development shell with the toolchain and the system libraries</span>
+<h2 data-ru="Установка с Nix">Install with Nix</h2>
+<p data-ru="В систему ничего не попадает. Флейк даёт пакет, dev-shell и модуль Home Manager">Nothing enters the system. The flake gives a package, a dev shell and a Home Manager module</p>
+<div class="cmd"><code>nix run github:rokokol/MolvAI -- --help</code><button class="copy" type="button" data-copy="nix run github:rokokol/MolvAI -- --help" data-ru="Скопировать">Copy</button></div>
+<pre data-lang="sh"><code># a development shell with the toolchain and the system libraries
 nix develop
 cargo build --release --bin molva
 ./install.sh</code></pre>
-    <p>With Home Manager the module installs <code>molva</code> and runs <code>molva daemon</code> as a user service of the graphical session. Under Hyprland with a Lua config it also writes and includes the hotkey binds</p>
-<pre class="code"><code><span class="c"># flake inputs: molvai.url = "github:rokokol/MolvAI";</span>
+<p data-ru="С Home Manager модуль ставит &lt;code&gt;molva&lt;/code&gt; и запускает &lt;code&gt;molva daemon&lt;/code&gt; как пользовательский сервис графической сессии. Под Hyprland с конфигом на Lua он ещё пишет и подключает привязки клавиш">With Home Manager the module installs <code>molva</code> and runs <code>molva daemon</code> as a user service of the graphical session. Under Hyprland with a Lua config it also writes and includes the hotkey binds</p>
+<pre data-lang="nix"><code># flake inputs: molvai.url = "github:rokokol/MolvAI";
 imports = [ inputs.molvai.homeModules.default ];
-programs.molvai.enable = true;</code></pre>
-    <p>In this mode the settings file and the weights are rendered into the store. The <a href="./settings.html">settings page</a> explains what that changes</p>
+programs.molvai.enable = true;
+# показать страницу настроек только для просмотра; запись всё равно запрещена
+programs.molvai.showSettings = true;</code></pre>
+<p data-ru="В этом режиме файл настроек и веса рендерятся в хранилище. Что именно это меняет, объясняет &lt;a href=&quot;./settings.html&quot;&gt;страница настроек&lt;/a&gt;">In this mode the settings file and the weights are rendered into the store. The <a href="./settings.html">settings page</a> explains what that changes</p>
 
-    <h2>Install without Nix</h2>
-    <p>The script installs nothing by itself. It finds the missing dependencies, prints the commands for your distribution, and leaves the decision to you</p>
-    <div class="cmd"><code>./install.sh --check</code><button class="copy" type="button" data-copy="./install.sh --check">Copy</button></div>
-    <p>After you install what it lists, run the installer. The binary goes to <code>~/.local/bin</code> and needs no administrator rights</p>
-    <div class="cmd"><code>git clone https://github.com/rokokol/MolvAI &amp;&amp; cd MolvAI &amp;&amp; ./install.sh</code><button class="copy" type="button" data-copy="git clone https://github.com/rokokol/MolvAI && cd MolvAI && ./install.sh">Copy</button></div>
-    <p>Check that <code>~/.local/bin</code> is in <code>PATH</code>, then check the binary</p>
-    <div class="cmd"><code>molva --version</code><button class="copy" type="button" data-copy="molva --version">Copy</button></div>
-    <p>The installer can also create an autostart entry, and it removes what it installed through a manifest</p>
-    <div class="cmd"><code>./install.sh --autostart</code><button class="copy" type="button" data-copy="./install.sh --autostart">Copy</button></div>
-    <div class="cmd"><code>./install.sh --uninstall --purge</code><button class="copy" type="button" data-copy="./install.sh --uninstall --purge">Copy</button></div>
+<h2 data-ru="Установка без Nix">Install without Nix</h2>
+<p data-ru="Скрипт сам ничего не устанавливает. Он находит недостающие зависимости, печатает команды для твоего дистрибутива, а решение оставляет тебе">The script installs nothing by itself. It finds the missing dependencies, prints the commands for your distribution, and leaves the decision to you</p>
+<div class="cmd"><code>./install.sh --check</code><button class="copy" type="button" data-copy="./install.sh --check" data-ru="Скопировать">Copy</button></div>
+<p data-ru="После того как поставишь всё из списка, запусти установщик. Бинарник попадает в &lt;code&gt;~/.local/bin&lt;/code&gt; и не требует прав администратора">After you install what it lists, run the installer. The binary goes to <code>~/.local/bin</code> and needs no administrator rights</p>
+<div class="cmd"><code>git clone https://github.com/rokokol/MolvAI &amp;&amp; cd MolvAI &amp;&amp; ./install.sh</code><button class="copy" type="button" data-copy="git clone https://github.com/rokokol/MolvAI &amp;&amp; cd MolvAI &amp;&amp; ./install.sh" data-ru="Скопировать">Copy</button></div>
+<p data-ru="Проверь, что &lt;code&gt;~/.local/bin&lt;/code&gt; есть в &lt;code&gt;PATH&lt;/code&gt;, и что бинарник отвечает">Check that <code>~/.local/bin</code> is in <code>PATH</code>, then check the binary</p>
+<div class="cmd"><code>molva --version</code><button class="copy" type="button" data-copy="molva --version" data-ru="Скопировать">Copy</button></div>
+<p data-ru="Установщик умеет создать запись в автозапуске, а удаляет он по манифесту">The installer can also create an autostart entry, and it removes what it installed through a manifest</p>
+<div class="cmd"><code>./install.sh --autostart</code><button class="copy" type="button" data-copy="./install.sh --autostart" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>./install.sh --uninstall --purge</code><button class="copy" type="button" data-copy="./install.sh --uninstall --purge" data-ru="Скопировать">Copy</button></div>
 
-    <h2>Install from a release</h2>
-    <p>The <a href="https://github.com/rokokol/MolvAI/releases">releases page</a> carries a CLI archive for each system, an AppImage, a deb, a dmg and a Windows installer. Every file has a SHA-256 sum in <code>sha256sums.txt</code></p>
-    <ul>
-      <li>The Linux and Windows builds run whisper models through Vulkan, one build for NVIDIA, AMD and Intel. They fall back to the CPU when no Vulkan device exists, and the transcribe.cpp build in the flake keeps GigaAM on the CPU</li>
-      <li>The macOS build computes on the processor</li>
-      <li>On Windows the free packages sit apart from the CUDA archive, which carries the NVIDIA runtime</li>
-    </ul>
-    <div class="callout warn">
-      <span class="callout-title">Check the release notes for the GUI packages</span>
-      <p>The GUI packages of <code>v0.1.0</code> shipped without the CLI, so the window asked you to build <code>molva</code>. If that happens, unpack the CLI archive of the same release and put the binary next to the application. The notes of the release you downloaded say whether the fix is in it</p>
-    </div>
+<h2 data-ru="Установка из релиза">Install from a release</h2>
+<p data-ru="На &lt;a href=&quot;https://github.com/rokokol/MolvAI/releases&quot;&gt;странице релизов&lt;/a&gt; лежит архив CLI для каждой системы, AppImage, deb, dmg и установщик для Windows. У каждого файла есть сумма SHA-256 в &lt;code&gt;sha256sums.txt&lt;/code&gt;">The <a href="https://github.com/rokokol/MolvAI/releases">releases page</a> carries a CLI archive for each system, an AppImage, a deb, a dmg and a Windows installer. Every file has a SHA-256 sum in <code>sha256sums.txt</code></p>
+<ul>
+  <li data-ru="Сборки для Linux и Windows гоняют модели whisper через Vulkan — одна сборка для NVIDIA, AMD и Intel. Без устройства Vulkan они откатываются на процессор, а сборка transcribe.cpp во флейке держит GigaAM на процессоре">The Linux and Windows builds run whisper models through Vulkan, one build for NVIDIA, AMD and Intel. They fall back to the CPU when no Vulkan device exists, and the transcribe.cpp build in the flake keeps GigaAM on the CPU</li>
+  <li data-ru="Сборка для macOS считает на процессоре">The macOS build computes on the processor</li>
+  <li data-ru="Обычные пакеты отдельно от CUDA-архива: в нём лежит рантайм NVIDIA, и он есть для Windows и Linux">The free packages sit apart from the CUDA archive, which carries the NVIDIA runtime and ships for Windows and Linux</li>
+</ul>
+<div class="callout warn">
+  <span class="callout-title" data-ru="Проверь заметки к релизу про пакеты с интерфейсом">Check the release notes for the GUI packages</span>
+  <p data-ru="Пакеты с интерфейсом из &lt;code&gt;v0.1.0&lt;/code&gt; вышли без CLI, поэтому окно просило собрать &lt;code&gt;molva&lt;/code&gt;. Если это случилось, распакуй архив CLI того же релиза и положи бинарник рядом с приложением. В заметках к скачанному релизу сказано, есть ли там исправление">The GUI packages of <code>v0.1.0</code> shipped without the CLI, so the window asked you to build <code>molva</code>. If that happens, unpack the CLI archive of the same release and put the binary next to the application. The notes of the release you downloaded say whether the fix is in it</p>
+</div>
 
-    <h2>First run</h2>
-    <ol>
-      <li>
-        <p>Run the diagnostics. They check the session, the compositor, the paste tools, the permissions, the daemon socket, the weights and the model provider</p>
-        <div class="cmd"><code>molva doctor</code><button class="copy" type="button" data-copy="molva doctor">Copy</button></div>
-      </li>
-      <li>
-        <p>Choose the microphone from the list, then write its name to <code>audio.device</code>. A zero level while you speak means a wrong device or a muted channel, not a quiet voice</p>
-        <div class="cmd"><code>molva devices</code><button class="copy" type="button" data-copy="molva devices">Copy</button></div>
-      </li>
-      <li>
-        <p>Start the daemon. By default it downloads the GigaAM weights at start, shows progress in stderr and checks the SHA-256. You can pull them first instead</p>
-        <div class="cmd"><code>molva models pull gigaam-v3-e2e-rnnt-q4_k_m</code><button class="copy" type="button" data-copy="molva models pull gigaam-v3-e2e-rnnt-q4_k_m">Copy</button></div>
-        <div class="cmd"><code>molva daemon</code><button class="copy" type="button" data-copy="molva daemon">Copy</button></div>
-      </li>
-      <li>
-        <p>Put the cursor in a text field and check the paste. The command prints which method reached the field</p>
-        <div class="cmd"><code>molva test-inject</code><button class="copy" type="button" data-copy="molva test-inject">Copy</button></div>
-      </li>
-      <li>
-        <p>Attach the hotkeys. On Hyprland 0.55 and later the config is Lua, and one command writes the binds from your settings</p>
-        <div class="cmd"><code>molva setup hyprland --write</code><button class="copy" type="button" data-copy="molva setup hyprland --write">Copy</button></div>
-        <p>Then add the include line it prints to <code>~/.config/hypr/hyprland.lua</code>, and reload Hyprland. On GNOME and KDE you add the same commands as custom shortcuts; on Windows and macOS the application registers the combination itself</p>
-      </li>
-    </ol>
+<h2 data-ru="Первый запуск">First run</h2>
+<ol>
+  <li>
+    <p data-ru="Запусти диагностику. Она проверяет сессию, композитор, инструменты вставки, права, сокет демона, веса и провайдера модели">Run the diagnostics. They check the session, the compositor, the paste tools, the permissions, the daemon socket, the weights and the model provider</p>
+    <div class="cmd"><code>molva doctor</code><button class="copy" type="button" data-copy="molva doctor" data-ru="Скопировать">Copy</button></div>
+  </li>
+  <li>
+    <p data-ru="Выбери микрофон из списка и запиши его имя в &lt;code&gt;audio.device&lt;/code&gt;. Нулевой уровень во время речи значит неверное устройство или замьюченный канал, а не тихий голос">Choose the microphone from the list, then write its name to <code>audio.device</code>. A zero level while you speak means a wrong device or a muted channel, not a quiet voice</p>
+    <div class="cmd"><code>molva devices</code><button class="copy" type="button" data-copy="molva devices" data-ru="Скопировать">Copy</button></div>
+  </li>
+  <li>
+    <p data-ru="Запусти демон. По умолчанию он скачивает веса GigaAM при старте, показывает прогресс в stderr и сверяет SHA-256. Можно скачать их заранее">Start the daemon. By default it downloads the GigaAM weights at start, shows progress in stderr and checks the SHA-256. You can pull them first instead</p>
+    <div class="cmd"><code>molva models pull gigaam-v3-e2e-rnnt-q4_k_m</code><button class="copy" type="button" data-copy="molva models pull gigaam-v3-e2e-rnnt-q4_k_m" data-ru="Скопировать">Copy</button></div>
+    <div class="cmd"><code>molva daemon</code><button class="copy" type="button" data-copy="molva daemon" data-ru="Скопировать">Copy</button></div>
+  </li>
+  <li>
+    <p data-ru="Поставь курсор в текстовое поле и проверь вставку. Команда печатает, какой способ дошёл до поля">Put the cursor in a text field and check the paste. The command prints which method reached the field</p>
+    <div class="cmd"><code>molva test-inject</code><button class="copy" type="button" data-copy="molva test-inject" data-ru="Скопировать">Copy</button></div>
+  </li>
+  <li>
+    <p data-ru="Подключи горячие клавиши. В Hyprland 0.55 и новее конфиг на Lua, и одна команда пишет привязки из твоих настроек">Attach the hotkeys. On Hyprland 0.55 and later the config is Lua, and one command writes the binds from your settings</p>
+    <div class="cmd"><code>molva setup hyprland --write</code><button class="copy" type="button" data-copy="molva setup hyprland --write" data-ru="Скопировать">Copy</button></div>
+    <p data-ru="Потом добавь напечатанную строку include в &lt;code&gt;~/.config/hypr/hyprland.lua&lt;/code&gt; и перезагрузи Hyprland. В GNOME и KDE те же команды добавляют как пользовательские сочетания; в Windows и macOS приложение регистрирует сочетание само">Then add the include line it prints to <code>~/.config/hypr/hyprland.lua</code>, and reload Hyprland. On GNOME and KDE you add the same commands as custom shortcuts; on Windows and macOS the application registers the combination itself</p>
+  </li>
+</ol>
 
-    <div class="callout">
-      <span class="callout-title">macOS permissions</span>
-      <p>The system asks for microphone access, and the paste needs the Accessibility and Input Monitoring rights in the security settings. Without them the app runs and writes nothing into other applications</p>
-    </div>
+<div class="callout">
+  <span class="callout-title" data-ru="Права в macOS">macOS permissions</span>
+  <p data-ru="Система спросит доступ к микрофону, а для вставки нужны права Accessibility и Input Monitoring в настройках безопасности. Без них приложение работает, но ничего не пишет в другие приложения">The system asks for microphone access, and the paste needs the Accessibility and Input Monitoring rights in the security settings. Without them the app runs and writes nothing into other applications</p>
+</div>
 
-    <h2>Where things live</h2>
-    <div class="table-wrap">
-      <table>
-        <caption>Paths on a Linux machine, with the platform equivalents</caption>
-        <thead><tr><th scope="col">What</th><th scope="col">Path</th></tr></thead>
-        <tbody>
-          <tr><th scope="row">Binary</th><td><code>~/.local/bin/molva</code> after <code>install.sh</code></td></tr>
-          <tr><th scope="row">Settings</th><td><code>~/.config/molva/config.toml</code>, or the platform settings directory</td></tr>
-          <tr><th scope="row">Journal</th><td><code>$XDG_DATA_HOME/molva/journal.jsonl</code>, by default under <code>~/.local/share/molva/</code></td></tr>
-          <tr><th scope="row">Weights</th><td>The default models directory, or <code>stt.model_path</code> when you set it</td></tr>
-          <tr><th scope="row">Socket</th><td><code>$XDG_RUNTIME_DIR/molva.sock</code></td></tr>
-        </tbody>
-      </table>
-    </div>
+<h2 data-ru="Где что лежит">Where things live</h2>
+<div class="table-wrap">
+  <table>
+    <caption data-ru="Пути на машине с Linux и их аналоги на других системах">Paths on a Linux machine, with the platform equivalents</caption>
+    <thead><tr><th scope="col" data-ru="Что">What</th><th scope="col" data-ru="Путь">Path</th></tr></thead>
+    <tbody>
+            <tr><th scope="row" data-ru="Бинарник">Binary</th><td data-ru="&lt;code&gt;~/.local/bin/molva&lt;/code&gt; после &lt;code&gt;install.sh&lt;/code&gt;"><code>~/.local/bin/molva</code> after <code>install.sh</code></td></tr>
+            <tr><th scope="row" data-ru="Настройки">Settings</th><td data-ru="&lt;code&gt;~/.config/molva/config.toml&lt;/code&gt; или каталог настроек платформы"><code>~/.config/molva/config.toml</code>, or the platform settings directory</td></tr>
+            <tr><th scope="row" data-ru="Журнал">Journal</th><td data-ru="&lt;code&gt;$XDG_DATA_HOME/molva/journal.jsonl&lt;/code&gt;, по умолчанию в &lt;code&gt;~/.local/share/molva/&lt;/code&gt;"><code>$XDG_DATA_HOME/molva/journal.jsonl</code>, by default under <code>~/.local/share/molva/</code></td></tr>
+            <tr><th scope="row" data-ru="Веса">Weights</th><td data-ru="Каталог моделей по умолчанию или &lt;code&gt;stt.model_path&lt;/code&gt;, если он задан">The default models directory, or <code>stt.model_path</code> when you set it</td></tr>
+            <tr><th scope="row" data-ru="Сокет">Socket</th><td data-ru="&lt;code&gt;$XDG_RUNTIME_DIR/molva.sock&lt;/code&gt;"><code>$XDG_RUNTIME_DIR/molva.sock</code></td></tr>
+    </tbody>
+  </table>
+</div>
 
-    <p class="to-top"><a href="./hotkeys.html">Next: hotkeys and compositors →</a> · <a href="#main">Back to top</a></p>
+<p class="to-top"><a href="./hotkeys.html" data-ru="Дальше: клавиши и композиторы →">Next: hotkeys and compositors →</a> · <a href="#main" data-ru="К началу">Back to top</a></p>
   </article>
 </main>
-
 <footer class="site-footer">
-  <div class="wrap footer-grid">
-    <div class="footer-brand">
+  <div class="wrap footer-inner">
+    <div>
       <a class="brand" href="../index.html">
-        <img src="../assets/logo.svg" alt="" width="26" height="26">
-        <span>Molv<span class="brand-ai">AI</span></span>
+        <img src="../assets/logo.svg" alt="" width="22" height="22">
+        <span>MolvAI</span>
       </a>
-      <p>Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
-      <p class="footer-note">MIT licensed · no trackers · no external fonts</p>
+      <p data-ru="Открытый голосовой ввод во все приложения. Зажми клавишу, говори, отпусти — текст оказывается в активном поле">Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
+      <p class="footer-note" data-ru="MIT · без трекеров · без внешних шрифтов">MIT licensed · no trackers · no external fonts</p>
+      <p class="footer-note"><a href="../ASSETS.md" data-ru="Ассеты и лицензии">Assets and licences</a></p>
     </div>
-    <nav aria-label="Project links">
-      <p class="footer-title">Project</p>
+    <nav aria-label="Project links" data-ru-aria-label="Ссылки проекта">
+      <p class="footer-title" data-ru="Проект">Project</p>
       <ul>
         <li><a href="https://github.com/rokokol/MolvAI">GitHub</a></li>
-        <li><a href="https://github.com/rokokol/MolvAI/releases">Releases</a></li>
-        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE">License (MIT)</a></li>
-        <li><a href="https://github.com/rokokol/MolvAI/issues">Issues</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/releases" data-ru="Релизы">Releases</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE" data-ru="Лицензия (MIT)">License (MIT)</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/issues" data-ru="Задачи">Issues</a></li>
       </ul>
     </nav>
-    <nav aria-label="Site links">
-      <p class="footer-title">Site</p>
+    <nav aria-label="Site links" data-ru-aria-label="Страницы сайта">
+      <p class="footer-title" data-ru="Сайт">Site</p>
       <ul>
-        <li><a href="../features.html">Features</a></li>
-        <li><a href="../models.html">Models</a></li>
-        <li><a href="../cli.html">CLI reference</a></li>
-        <li><a href="./index.html">Documentation</a></li>
+        <li><a href="../features.html" data-ru="Возможности">Features</a></li>
+        <li><a href="../models.html" data-ru="Модели">Models</a></li>
+        <li><a href="../cli.html" data-ru="Справочник CLI">CLI reference</a></li>
+        <li><a href="../docs/index.html" data-ru="Документация">Documentation</a></li>
         <li><a href="../faq.html">FAQ</a></li>
-        <li><a href="./status.html">Status and roadmap</a></li>
+        <li><a href="../docs/status.html" data-ru="Статус и планы">Status and roadmap</a></li>
       </ul>
     </nav>
     <div>
-      <p class="footer-title">Canonical docs</p>
-      <p class="footer-note">The repository is the source of truth. These pages summarize it and link back</p>
+      <p class="footer-title" data-ru="Канонические документы">Canonical docs</p>
+      <p class="footer-note" data-ru="Источник истины — репозиторий. Эти страницы его пересказывают и дают ссылки">
+        The repository is the source of truth. These pages summarize it and link back
+      </p>
       <ul>
         <li><a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README</a></li>
         <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></li>
@@ -216,9 +236,10 @@ programs.molvai.enable = true;</code></pre>
     </div>
   </div>
   <div class="wrap footer-credit">
-    <p>MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
-    <p>This site runs without cookies, analytics or third-party assets</p>
+    <p data-ru="MolvAI сделан на хакатоне V0ICE (Казань, 2026) и находится в разработке">MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
+    <p data-ru="Сайт работает без cookies, аналитики и сторонних ассетов">This site runs without cookies, analytics or third-party assets</p>
   </div>
 </footer>
+<script src="../assets/site.js"></script>
 </body>
 </html>

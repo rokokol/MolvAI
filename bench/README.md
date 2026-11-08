@@ -18,6 +18,8 @@ molva bench --json               # the full report in JSON, for CI and charts
 molva bench --repeat 5           # five runs of each case: the latency spread is visible
 molva bench --engine fake        # a pipeline self-test without model weights
 molva bench --set my-set/        # another set
+molva bench --latency            # one 15 s file: recognition, post-processing and memory
+molva bench --latency --style cleanup --repeat 5 --audio bench/latency-15s.wav
 ```
 
 Data goes to stdout. Progress and warnings go to stderr, so `molva bench --json > report.json` gives clean JSON
@@ -51,3 +53,32 @@ The speech fixtures of the repository (`tests/fixtures/`) and `silence.wav`, one
 ## Repeatability
 
 The score (`wer_avg`, `cer_avg`, the number of failed cases) depends only on the audio, the references and the engine, so two runs in a row give the same number. The latencies, of course, vary from run to run and are not part of the score. Look at them separately, by p50/p95/p99
+
+
+## Latency and memory
+
+`--latency` measures one audio file instead of the WER set. It reports the median recognition
+time, the extra time of the post-processing stage, and the peak resident and video memory of
+the process tree. The recognizer may run in the process or in a child (`transcribe-cli`), and
+the probe covers both; `nvidia-smi` gives the VRAM when it is available, and the result says
+`n/a` rather than inventing a zero
+
+```sh
+molva bench --latency --audio bench/latency-15s.wav --repeat 5
+molva bench --latency --audio bench/latency-15s.wav --repeat 5 --no-postprocess
+molva bench --latency --audio bench/latency-15s.wav --repeat 5 --style cleanup
+```
+
+The checked-in `latency-15s.wav` is the short fixture repeated to 15 seconds. It measures time
+and memory, not quality: there is no reference and the repeated words do not matter. A result
+on a Ryzen 7 5700X, 16 threads, with the GigaAM Q4_K_M weights and the `cleanup` style:
+
+```text
+recognition p50 3625 ms  (4.14x realtime)
+post-processing p50 5798 ms  (total 9423 ms)
+peak RAM 252 MiB  peak VRAM 0 MiB
+```
+
+The cloud model decides the post-processing time, so it is not a constant. The CPU-only
+GigaAM build uses no VRAM; the field is `0 MiB` because no compute application from this process tree held a GPU
+allocation; a machine without `nvidia-smi` gets `n/a` instead.

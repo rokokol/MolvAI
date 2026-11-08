@@ -11,9 +11,16 @@ import type {
   Entry,
   FileResult,
   HyprlandBinds,
+  LlmProbeReport,
+  LlmProviderOption,
+  MediaInfo,
+  PathSuggestion,
+  ProviderKeyStatus,
   SearchHit,
   StatsSummary,
   Status,
+  SttModelOption,
+  SttProbeReport,
   StyleOption,
 } from "./types";
 
@@ -42,6 +49,25 @@ export const api = {
   recordCancel: () => invoke<void>("record_cancel"),
   setStyle: (style: string) => invoke<void>("set_style", { style }),
   availableStyles: () => invoke<StyleOption[]>("available_styles"),
+  builtinStyles: () => invoke<StyleOption[]>("builtin_styles"),
+  /** The catalog of `models.toml`, each entry with the engine that can load it */
+  sttModels: () => invoke<SttModelOption[]>("stt_models"),
+  /** Whether this build can recognize through a remote API */
+  sttRemoteAvailable: () => invoke<boolean>("stt_remote_available"),
+  /** Check the draft recognition settings: no recording, no microphone */
+  testStt: (config: Config) => invoke<SttProbeReport>("test_stt", { config }),
+  /** Send one short prompt through the draft model settings; nothing is saved */
+  testLlm: (config: Config) => invoke<LlmProbeReport>("test_llm", { config }),
+  llmProviders: () => invoke<LlmProviderOption[]>("llm_providers"),
+  /** Whether the store holds a key entry; the value never comes back */
+  providerKeyStatus: (provider: string, source: string) =>
+    invoke<ProviderKeyStatus>("provider_key_status", { provider, source }),
+  storeProviderKey: (provider: string, source: string, key: string) =>
+    invoke<ProviderKeyStatus>("store_provider_key", { provider, source, key }),
+  removeProviderKey: (provider: string, source: string) =>
+    invoke<ProviderKeyStatus>("remove_provider_key", { provider, source }),
+  /** Validate a captured combination with the parser the daemon uses */
+  checkHotkey: (value: string) => invoke<{ value: string }>("check_hotkey", { value }),
   listDevices: () => invoke<DeviceInfo[]>("list_devices"),
   injectText: (text: string, mode?: string) =>
     invoke<void>("inject_text", { text, mode }),
@@ -89,7 +115,13 @@ export const api = {
 
   transcribeFile: (id: string, path: string) =>
     invoke<FileResult[]>("transcribe_file", { id, path }),
-  transcribeCancel: (id: string) => invoke<boolean>("transcribe_cancel", { id }),
+
+  /** Widen the asset protocol scope for one file and get the URL that plays it */
+  prepareMedia: (path: string) => invoke<MediaInfo>("prepare_media", { path }),
+
+  /** Entries that complete the typed path; never throws on an unreadable directory */
+  pathSuggestions: (input: string, limit?: number) =>
+    invoke<PathSuggestion[]>("path_suggestions", { input, limit: limit ?? null }),
 
   /** Search the transcriptions of audio and video files, newest first */
   searchFiles: (query: string, limit: number) =>

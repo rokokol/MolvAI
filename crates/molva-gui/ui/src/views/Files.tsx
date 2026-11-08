@@ -1,119 +1,93 @@
 // SPDX-License-Identifier: MIT
-// Audio and video transcription: drag a file into the window or type a path, then read the
-// text with its timecodes and copy it. The CLI does the work; this view only shows its JSON.
+// Audio and video transcription: drag a file into the window or type a path, then review the
+// result by timecode with its player or spectrogram.
+//
+// The queue itself lives in FilesProvider, above the tabs: this view renders it and keeps only
+// what belongs to the input of the moment. Transcript search, global and inside one result, is
+// here too, so the Files tab is the one place where transcriptions are reviewed.
 
-import { useEffect, useRef, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { useEffect, useState } from "react";
 
-import { api, asCommandError, copyToClipboard } from "../api";
-import { formatTimecode, renderFileResult } from "../format";
+import { api, asCommandError } from "../api";
+import { formatElapsed } from "../format";
 import { useI18n } from "../i18n";
 import type { ViewProps } from "../App";
-import type { FileResult, TranscribeProgress } from "../types";
+import { useFilesQueue } from "../files/FilesProvider";
+import JobCell from "../files/JobCell";
+import { elapsedMs, queueSummary, statusKey, type JobStatus } from "../files/jobs";
+import PathInput from "../files/PathInput";
+import ProgressBar from "../files/ProgressBar";
+import TranscriptSearch from "../files/TranscriptSearch";
 
-type JobStatus = "running" | "done" | "failed" | "cancelled";
+/** The copy preference outlives the tab, because the review of a file does too */
+const TIMECODES_KEY = "molva.files.timecodes";
 
-interface Job {
-  id: string;
-  path: string;
-  status: JobStatus;
-  /** The last progress line from the CLI stderr */
-  progress: string;
-  results?: FileResult[];
-}
-
-/** Job identifier: the clock plus a counter, so it does not depend on crypto in the webview */
-function nextId(counter: number): string {
-  return `job-${Date.now()}-${counter}`;
+function storedTimecodes(): boolean {
+  try {
+    const stored = localStorage.getItem(TIMECODES_KEY);
+    return stored === null ? true : stored === "1";
+  } catch {
+    return true;
+  }
 }
 
 export default function Files({ onError }: ViewProps) {
   const { t } = useI18n();
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const { jobs, dragging, start, clearFinished } = useFilesQueue();
   const [path, setPath] = useState("");
-  const [over, setOver] = useState(false);
-  const [timecodes, setTimecodes] = useState(true);
-  const [copied, setCopied] = useState<string | null>(null);
-  const counter = useRef(0);
+  const [timecodes, setTimecodes] = useState(storedTimecodes);
 
-  const update = (id: string, patch: Partial<Job>) => {
-    setJobs((prev) => prev.map((job) => (job.id === id ? { ...job, ...patch } : job)));
-  };
-
-  const start = (target: string) => {
-    const trimmed = target.trim();
-    if (!trimmed) {
+  // The elapsed time of a running job ticks here; the cells only render it
+  const running = jobs.some((job) => job.status === "running");
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!running) {
+      setNow(Date.now());
       return;
     }
-    counter.current += 1;
-    const id = nextId(counter.current);
-    setJobs((prev) => [{ id, path: trimmed, status: "running", progress: "" }, ...prev]);
-    api
-      .transcribeFile(id, trimmed)
-      .then((results) => {
-        update(id, { status: "done", results });
-      })
-      .catch((err) => {
-        const error = asCommandError(err);
-        const cancelled = error.kind === "cancelled";
-        update(id, {
-          status: cancelled ? "cancelled" : "failed",
-          progress: error.message,
-        });
-        if (!cancelled) {
-          onError(error);
-        }
-      });
-  };
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [running]);
 
   useEffect(() => {
-    const progress = listen<TranscribeProgress>("molva://transcribe", (event) => {
-      update(event.payload.id, { progress: event.payload.line });
-    });
-    // The webview itself handles file drops: the paths arrive ready
-    const dropped = listen<{ paths: string[] }>("tauri://drag-drop", (event) => {
-      setOver(false);
-      event.payload.paths.forEach(start);
-    });
-    const hovered = listen("tauri://drag-enter", () => setOver(true));
-    const left = listen("tauri://drag-leave", () => setOver(false));
-    return () => {
-      void Promise.all([progress, dropped, hovered, left]).then((fns) =>
-        fns.forEach((fn) => fn()),
-      );
-    };
-    // The handlers are set once for the whole life of the tab: they depend
-    // only on setJobs and a ref with the counter, and these do not change between renders
-  }, []);
+    try {
+      localStorage.setItem(TIMECODES_KEY, timecodes ? "1" : "0");
+    } catch {
+      // The choice does not persist, but the toggle works for this session
+    }
+  }, [timecodes]);
 
-  const statusLabel = (status: JobStatus) =>
-    ({
-      running: t("files.statusRunning"),
-      done: t("files.statusDone"),
-      failed: t("files.statusFailed"),
-      cancelled: t("files.statusCancelled"),
-    })[status];
+  const summary = queueSummary(jobs);
+  const counts: { status: JobStatus; count: number }[] = [
+    { status: "running", count: summary.running },
+    { status: "queued", count: summary.queued },
+    { status: "done", count: summary.done },
+    { status: "failed", count: summary.failed },
+    { status: "cancelled", count: summary.cancelled },
+    { status: "interrupted", count: summary.interrupted },
+  ];
+
+  const open = (target: string) =>
+    api.openPath(target).catch((err) => onError(asCommandError(err)));
 
   return (
     <>
       <h1>{t("files.title")}</h1>
 
       <section className="card">
-        <div className={over ? "dropzone over" : "dropzone"}>{t("files.drop")}</div>
+        <div className={dragging ? "dropzone over" : "dropzone"}>{t("files.drop")}</div>
         <div className="row" style={{ marginTop: "0.75rem", alignItems: "flex-end" }}>
           <div className="field" style={{ marginBottom: 0, flex: "1 1 18rem" }}>
             <label htmlFor="files-path">{t("files.pathLabel")}</label>
-            <input
+            <PathInput
               id="files-path"
-              type="text"
               value={path}
-              onChange={(event) => setPath(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  start(path);
-                  setPath("");
-                }
+              onChange={setPath}
+              onStart={() => {
+                start(path);
+                setPath("");
               }}
+              suggest={(input) => api.pathSuggestions(input, 10)}
             />
           </div>
           <button
@@ -129,7 +103,7 @@ export default function Files({ onError }: ViewProps) {
           </button>
         </div>
         <div className="row spread">
-          <label className="check">
+          <label className="check" title={t("files.timecodesHint")}>
             <input
               type="checkbox"
               checked={timecodes}
@@ -139,78 +113,73 @@ export default function Files({ onError }: ViewProps) {
           </label>
           <span className="small muted">{t("files.hint")}</span>
         </div>
+        <p className="small muted">{t("files.suggestionHint")}</p>
       </section>
 
       <section className="card">
+        <div className="row spread">
+          <h2>{t("files.queue")}</h2>
+          <div className="row">
+            <button
+              type="button"
+              className="chip"
+              onClick={clearFinished}
+              disabled={summary.finished === 0}
+            >
+              {t("files.clearFinished")}
+            </button>
+          </div>
+        </div>
+
         {jobs.length === 0 ? (
-          <p className="muted">{t("files.queueEmpty")}</p>
+          <p className="empty">{t("files.queueEmpty")}</p>
         ) : (
-          <ul className="entry-list">
-            {jobs.map((job) => (
-              <li key={job.id} className="entry">
-                <div className="meta">
-                  <span>{statusLabel(job.status)}</span>
-                  <span className="mono">{job.path}</span>
-                </div>
-                {job.progress && job.status !== "done" && (
-                  <p className="small mono">{job.progress}</p>
+          <>
+            <div className="queue-progress">
+              <ProgressBar
+                percent={summary.percent}
+                tone={summary.done === summary.total ? "done" : "running"}
+                label={t("files.queuePercent", {
+                  percent: summary.percent,
+                  done: summary.done,
+                  total: summary.total,
+                })}
+              />
+              <span className="small muted mono">
+                {summary.done} / {summary.total} ·{" "}
+                {formatElapsed(
+                  jobs.reduce((total, job) => total + (elapsedMs(job, now) ?? 0), 0),
                 )}
-                {job.results?.map((result, index) => (
-                  <div className="transcript" key={`${job.id}-${index}`}>
-                    <div className="meta">
-                      <span className="mono">{result.file}</span>
-                      <span>{formatTimecode(result.audio_secs * 1000)}</span>
-                      {result.language && <span>{result.language}</span>}
-                      <span>
-                        {result.segments?.length ?? 0} {t("files.segments")}
-                      </span>
-                    </div>
-                    <pre className="transcript-text">
-                      {renderFileResult(result, timecodes)}
-                    </pre>
-                    <div className="row">
-                      <button
-                        type="button"
-                        className="chip"
-                        onClick={async () => {
-                          if (await copyToClipboard(renderFileResult(result, timecodes))) {
-                            setCopied(`${job.id}-${index}`);
-                          }
-                        }}
-                      >
-                        {copied === `${job.id}-${index}`
-                          ? t("common.copied")
-                          : t("common.copy")}
-                      </button>
-                      <button
-                        type="button"
-                        className="chip"
-                        onClick={() =>
-                          api.openPath(result.file).catch((err) => onError(asCommandError(err)))
-                        }
-                      >
-                        {t("files.open")}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                {job.status === "running" && (
-                  <button
-                    type="button"
-                    className="chip"
-                    onClick={() => {
-                      void api.transcribeCancel(job.id);
-                      update(job.id, { status: "cancelled" });
-                    }}
-                  >
-                    {t("files.cancel")}
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
+              </span>
+            </div>
+            <div className="row small muted queue-counts">
+              {counts.map(
+                (item) =>
+                  item.count > 0 && (
+                    <span key={item.status}>
+                      {item.count} {t(statusKey(item.status))}
+                    </span>
+                  ),
+              )}
+            </div>
+
+            <ul className="entry-list">
+              {jobs.map((job) => (
+                <JobCell
+                  key={job.id}
+                  job={job}
+                  now={now}
+                  timecodes={timecodes}
+                  onTimecodesChange={setTimecodes}
+                  onOpen={open}
+                />
+              ))}
+            </ul>
+          </>
         )}
       </section>
+
+      <TranscriptSearch onError={onError} />
     </>
   );
 }

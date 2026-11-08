@@ -188,7 +188,15 @@ impl Connection {
             match self.recv()? {
                 None => return Err(IpcClientError::Disconnected),
                 Some(Message::Event(_)) => {}
-                Some(Message::Response(resp)) if resp.id != id => {}
+                // A response belongs to one request. An id that does not match is not an
+                // event to skip: an older daemon that ignored the request id would make the
+                // client wait forever for its own answer
+                Some(Message::Response(resp)) if resp.id != id => {
+                    return Err(IpcClientError::Protocol(format!(
+                        "the daemon answered request {id} with the id {}",
+                        resp.id
+                    )));
+                }
                 Some(Message::Response(resp)) => return unwrap_response(resp),
             }
         }

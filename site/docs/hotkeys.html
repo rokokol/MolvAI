@@ -1,182 +1,200 @@
 <!DOCTYPE html>
-<html lang="en" class="no-js">
+<html lang="en" class="no-js" data-ddlc-heading="plain">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Hotkeys and compositors — MolvAI documentation</title>
-<meta name="description" content="Push-to-talk, toggle and cancel on Hyprland, Sway, KDE Plasma, GNOME and X11, the Lua binds that MolvAI writes, and the evdev fallback on Wayland">
+<title data-ru="Клавиши и композиторы — документация MolvAI">Hotkeys and compositors — MolvAI documentation</title>
+<meta name="description" content="Push-to-talk, toggle and cancel on Hyprland, Sway, KDE Plasma, GNOME and X11, the Lua binds that MolvAI writes, and the evdev fallback on Wayland" data-ru-content="Push-to-talk, переключение и отмена в Hyprland, Sway, KDE Plasma, GNOME и X11, привязки на Lua, которые пишет MolvAI, и запасной путь через evdev в Wayland">
 <meta name="color-scheme" content="dark light">
-<meta name="theme-color" content="#0a0c12">
-<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#222222" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="../assets/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/vendor/ddlc/ddlc-tokens.css">
+<link rel="stylesheet" href="../assets/vendor/ddlc/ddlc-ui.css">
+<link rel="stylesheet" href="../assets/vendor/ddlc/ddlc-report.css">
 <link rel="stylesheet" href="../assets/site.css">
-<script src="../assets/site.js" defer></script>
+<script>
+  (function () {
+    try {
+      var q = new URLSearchParams(location.search)
+      var pinned = q.get("theme")
+      var theme = pinned === "light" || pinned === "dark" ? pinned : localStorage.getItem("molvai-theme")
+      if (pinned === "light" || pinned === "dark") localStorage.setItem("molvai-theme", pinned)
+      if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme
+      var lang = q.get("lang")
+      var stored = localStorage.getItem("molvai-lang")
+      if (lang === "ru" || (lang !== "en" && stored === "ru")) document.documentElement.lang = "ru"
+    } catch (e) {}
+  })()
+</script>
+<script type="module" src="../assets/kit.js"></script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
-
-<header class="site-header">
-  <div class="wrap header-inner">
-    <a class="brand" href="../index.html" aria-label="MolvAI home">
-      <img src="../assets/logo.svg" alt="" width="26" height="26">
-      <span>Molv<span class="brand-ai">AI</span></span>
+<canvas class="cloud" id="cloud" aria-hidden="true"></canvas>
+<a class="skip" href="#main" data-ru="К содержанию">Skip to content</a>
+<header class="site-bar">
+  <div class="bar wrap bar-row">
+    <a class="brand" href="../index.html" aria-label="MolvAI home" data-ru-aria-label="MolvAI — главная">
+      <img src="../assets/logo.svg" alt="" width="22" height="22">
+      <span>MolvAI</span>
     </a>
-    <nav class="site-nav" id="site-nav" aria-label="Main">
-      <a href="../index.html">Home</a>
-      <a href="../features.html">Features</a>
-      <a href="../models.html">Models</a>
-      <a href="../cli.html">CLI</a>
-      <a href="./index.html" aria-current="page">Docs</a>
-      <a href="../faq.html">FAQ</a>
-      <a href="./status.html">Status</a>
-      <a class="nav-github" href="https://github.com/rokokol/MolvAI"><img src="../assets/icon-github.svg" alt="" width="15" height="15">GitHub</a>
+    <p class="tagline" data-ru="Голосовой ввод во все приложения">System-wide voice input, on your machine</p>
+    <nav class="tabs" aria-label="Main" data-ru-aria-label="Основное">
+      <a href="../index.html" data-ru="Главная">Home</a>
+      <a href="../features.html" data-ru="Возможности">Features</a>
+      <a href="../models.html" data-ru="Модели">Models</a>
+      <a href="../cli.html" data-ru="CLI">CLI</a>
+      <a href="../docs/index.html" aria-current="page" data-ru="Документация">Docs</a>
+      <a href="../faq.html" data-ru="FAQ">FAQ</a>
+      <a href="../docs/status.html" data-ru="Статус">Status</a>
     </nav>
-    <div class="header-tools">
-      <button class="icon-btn theme-toggle" type="button" data-theme-toggle aria-label="Switch between dark and light theme">
-        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8">
-          <circle cx="12" cy="12" r="8"></circle>
-          <path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"></path>
-        </svg>
+    <div class="bar-end">
+      <div class="segmented lang-switch" role="group" aria-label="Language" data-ru-aria-label="Язык">
+        <button type="button" data-lang-set="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang-set="ru" aria-pressed="false">RU</button>
+      </div>
+      <button class="icon-button" id="theme" type="button" aria-label="Theme: system" data-ru-aria-label="Тема">
+        <svg class="pixel" viewBox="0 0 8 8" aria-hidden="true"><path id="theme-icon"/></svg>
       </button>
-      <button class="icon-btn menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="site-nav">
-        <span class="menu-bars" aria-hidden="true"></span>
-        <span class="visually-hidden">Menu</span>
-      </button>
+      <a class="icon-button" href="https://github.com/rokokol/MolvAI" aria-label="MolvAI on GitHub" data-ru-aria-label="MolvAI на GitHub">
+        <img src="../assets/icon-github.svg" alt="" width="16" height="16">
+      </a>
     </div>
   </div>
 </header>
-
 <main id="main" class="wrap doc-layout">
-  <aside class="doc-nav" aria-label="Documentation">
-    <p class="doc-nav-title">Documentation</p>
+  <aside class="doc-nav" aria-label="Documentation" data-ru-aria-label="Документация">
+    <p class="doc-nav-title" data-ru="Документация">Documentation</p>
     <ul>
-      <li><a href="./index.html">Overview</a></li>
-      <li><a href="./install.html">Install and first run</a></li>
-      <li><a href="./models.html">Models and GigaAM</a></li>
-      <li><a href="./hotkeys.html" aria-current="page">Hotkeys and compositors</a></li>
-      <li><a href="./settings.html">Settings and Nix mode</a></li>
-      <li><a href="./cli.html">CLI guide</a></li>
-      <li><a href="./privacy.html">Privacy and journal</a></li>
-      <li><a href="./troubleshooting.html">Troubleshooting</a></li>
-      <li><a href="./status.html">Status and roadmap</a></li>
+      <li><a href="./index.html" data-ru="Обзор">Overview</a></li>
+      <li><a href="./install.html" data-ru="Установка и первый запуск">Install and first run</a></li>
+      <li><a href="./models.html" data-ru="Модели и GigaAM">Models and GigaAM</a></li>
+      <li><a href="./hotkeys.html" aria-current="page" data-ru="Клавиши и композиторы">Hotkeys and compositors</a></li>
+      <li><a href="./settings.html" data-ru="Настройки и режим Nix">Settings and Nix mode</a></li>
+      <li><a href="./cli.html" data-ru="Руководство по CLI">CLI guide</a></li>
+      <li><a href="./privacy.html" data-ru="Приватность и журнал">Privacy and journal</a></li>
+      <li><a href="./troubleshooting.html" data-ru="Если что-то не работает">Troubleshooting</a></li>
+      <li><a href="./status.html" data-ru="Статус и планы">Status and roadmap</a></li>
     </ul>
-    <p class="doc-nav-title">Elsewhere</p>
+    <p class="doc-nav-title" data-ru="Ещё">Elsewhere</p>
     <ul>
-      <li><a href="../cli.html">CLI reference</a></li>
-      <li><a href="../models.html">Model catalog</a></li>
-      <li><a href="../index.html">Home</a></li>
+      <li><a href="../cli.html" data-ru="Справочник CLI">CLI reference</a></li>
+      <li><a href="../models.html" data-ru="Каталог моделей">Model catalog</a></li>
+      <li><a href="../index.html" data-ru="Главная">Home</a></li>
     </ul>
   </aside>
-
   <article class="doc-body prose">
-    <h1>Hotkeys and compositors</h1>
-    <p class="canonical">Canonical source: <a href="https://github.com/rokokol/MolvAI/blob/main/docs/hotkeys-wayland.md">docs/hotkeys-wayland.md</a></p>
+<h1 data-ru="Клавиши и композиторы">Hotkeys and compositors</h1>
+<p class="canonical" data-ru="Канонический источник: &lt;a href=&quot;https://github.com/rokokol/MolvAI/blob/main/docs/hotkeys-wayland.md&quot;&gt;docs/hotkeys-wayland.md&lt;/a&gt;">Canonical source: <a href="https://github.com/rokokol/MolvAI/blob/main/docs/hotkeys-wayland.md">docs/hotkeys-wayland.md</a></p>
 
-    <h2>Why the compositor owns the key</h2>
-    <p>On Wayland no application can take a global hotkey. The compositor owns the keyboard focus completely, and a key combination cannot be intercepted past it. That is a protection, not a gap. So the main control path is a compositor bind that runs <code>molva record</code></p>
-    <p>The fallback reads <code>/dev/input/event*</code> through evdev and sees keys before the compositor does. It needs read permission on the input devices; on NixOS that means membership in the <code>input</code> group</p>
+<h2 data-ru="Почему клавишей владеет композитор">Why the compositor owns the key</h2>
+<p data-ru="В Wayland ни одно приложение не может занять глобальную горячую клавишу. Композитор полностью владеет фокусом клавиатуры, и сочетание нельзя перехватить в обход него. Это защита, а не пробел. Поэтому основной путь управления — привязка композитора, которая запускает &lt;code&gt;molva record&lt;/code&gt;">On Wayland no application can take a global hotkey. The compositor owns the keyboard focus completely, and a key combination cannot be intercepted past it. That is a protection, not a gap. So the main control path is a compositor bind that runs <code>molva record</code></p>
+<p data-ru="Запасной путь читает &lt;code&gt;/dev/input/event*&lt;/code&gt; через evdev и видит клавиши раньше композитора. Ему нужно право на чтение устройств ввода; в NixOS это членство в группе &lt;code&gt;input&lt;/code&gt;">The fallback reads <code>/dev/input/event*</code> through evdev and sees keys before the compositor does. It needs read permission on the input devices; on NixOS that means membership in the <code>input</code> group</p>
 
-    <h2>The defaults</h2>
-    <div class="table-wrap">
-      <table>
-        <caption>Values of the <code>[hotkeys]</code> section</caption>
-        <thead><tr><th scope="col">Key</th><th scope="col">Default</th><th scope="col">What it does</th></tr></thead>
-        <tbody>
-          <tr><th scope="row"><code>push_to_talk</code></th><td><kbd>F9</kbd></td><td>Records while the key is held</td></tr>
-          <tr><th scope="row"><code>toggle</code></th><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Z</kbd></td><td>Starts and stops a recording by a press, hands-free</td></tr>
-          <tr><th scope="row"><code>command</code></th><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>X</kbd></td><td>Command mode on the selected text</td></tr>
-          <tr><th scope="row"><code>cancel</code></th><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd></td><td>Throws the recording away without a phrase</td></tr>
-          <tr><th scope="row"><code>style_next</code></th><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd></td><td>The next post-processing style in a circle</td></tr>
-          <tr><th scope="row"><code>min_hold_ms</code></th><td>200</td><td>A shorter hold does not create a phrase</td></tr>
-          <tr><th scope="row"><code>tap_toggles</code></th><td>true</td><td>A short press latches the recording</td></tr>
-          <tr><th scope="row"><code>short_press_ms</code></th><td>250</td><td>Below this, a press counts as a tap</td></tr>
-          <tr><th scope="row"><code>double_tap_ms</code></th><td>350</td><td>A second press inside this window counts as a bounce</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p>The default combinations are deliberately plain: <kbd>F9</kbd> and <kbd>Ctrl</kbd>+<kbd>Alt</kbd> are free almost everywhere, so they work on a borrowed machine with no setup. Change them in <code>~/.config/molva/config.toml</code>, not in the generated bind file</p>
+<h2 data-ru="Значения по умолчанию">The defaults</h2>
+<div class="table-wrap">
+  <table>
+    <caption data-ru="Значения секции &lt;code&gt;[hotkeys]&lt;/code&gt;">Values of the <code>[hotkeys]</code> section</caption>
+    <thead><tr><th scope="col" data-ru="Ключ">Key</th><th scope="col" data-ru="По умолчанию">Default</th><th scope="col" data-ru="Что делает">What it does</th></tr></thead>
+    <tbody>
+            <tr><th scope="row" data-ru="&lt;code&gt;push_to_talk&lt;/code&gt;"><code>push_to_talk</code></th><td data-ru="&lt;kbd&gt;F9&lt;/kbd&gt;"><kbd>F9</kbd></td><td data-ru="Пишет, пока клавиша нажата">Records while the key is held</td></tr>
+            <tr><th scope="row" data-ru="&lt;code&gt;toggle&lt;/code&gt;"><code>toggle</code></th><td data-ru="&lt;kbd&gt;Ctrl&lt;/kbd&gt;+&lt;kbd&gt;Alt&lt;/kbd&gt;+&lt;kbd&gt;Z&lt;/kbd&gt;"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Z</kbd></td><td data-ru="Начинает и заканчивает запись нажатием, без рук">Starts and stops a recording by a press, hands-free</td></tr>
+            <tr><th scope="row" data-ru="&lt;code&gt;command&lt;/code&gt;"><code>command</code></th><td data-ru="&lt;kbd&gt;Ctrl&lt;/kbd&gt;+&lt;kbd&gt;Alt&lt;/kbd&gt;+&lt;kbd&gt;X&lt;/kbd&gt;"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>X</kbd></td><td data-ru="Режим команды над выделенным текстом">Command mode on the selected text</td></tr>
+            <tr><th scope="row" data-ru="&lt;code&gt;cancel&lt;/code&gt;"><code>cancel</code></th><td data-ru="&lt;kbd&gt;Ctrl&lt;/kbd&gt;+&lt;kbd&gt;Alt&lt;/kbd&gt;+&lt;kbd&gt;C&lt;/kbd&gt;"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd></td><td data-ru="Выбрасывает запись, не создавая фразу">Throws the recording away without a phrase</td></tr>
+            <tr><th scope="row" data-ru="&lt;code&gt;style_next&lt;/code&gt;"><code>style_next</code></th><td data-ru="&lt;kbd&gt;Ctrl&lt;/kbd&gt;+&lt;kbd&gt;Alt&lt;/kbd&gt;+&lt;kbd&gt;S&lt;/kbd&gt;"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd></td><td data-ru="Следующий стиль постобработки по кругу">The next post-processing style in a circle</td></tr>
+            <tr><th scope="row" data-ru="&lt;code&gt;min_hold_ms&lt;/code&gt;"><code>min_hold_ms</code></th><td data-ru="200">200</td><td data-ru="Более короткое удержание не создаёт фразу">A shorter hold does not create a phrase</td></tr>
+            <tr><th scope="row" data-ru="&lt;code&gt;tap_toggles&lt;/code&gt;"><code>tap_toggles</code></th><td data-ru="true">true</td><td data-ru="Короткое нажатие защёлкивает запись">A short press latches the recording</td></tr>
+            <tr><th scope="row" data-ru="&lt;code&gt;short_press_ms&lt;/code&gt;"><code>short_press_ms</code></th><td data-ru="250">250</td><td data-ru="Ниже этого нажатие считается кликом">Below this, a press counts as a tap</td></tr>
+            <tr><th scope="row" data-ru="&lt;code&gt;double_tap_ms&lt;/code&gt;"><code>double_tap_ms</code></th><td data-ru="350">350</td><td data-ru="Второе нажатие внутри этого окна считается дребезгом">A second press inside this window counts as a bounce</td></tr>
+    </tbody>
+  </table>
+</div>
+<p data-ru="Сочетания по умолчанию нарочно простые: &lt;kbd&gt;F9&lt;/kbd&gt; и &lt;kbd&gt;Ctrl&lt;/kbd&gt;+&lt;kbd&gt;Alt&lt;/kbd&gt; свободны почти везде, поэтому работают на чужой машине без настройки. Меняй их в &lt;code&gt;~/.config/molva/config.toml&lt;/code&gt;, а не в сгенерированном файле привязок">The default combinations are deliberately plain: <kbd>F9</kbd> and <kbd>Ctrl</kbd>+<kbd>Alt</kbd> are free almost everywhere, so they work on a borrowed machine with no setup. Change them in <code>~/.config/molva/config.toml</code>, not in the generated bind file</p>
 
-    <h2>Hold, tap, cancel</h2>
-    <p>Push-to-talk needs two events, the press and the release. Hyprland and Sway can send both. A hold shorter than <code>min_hold_ms</code> creates no phrase. A press shorter than <code>short_press_ms</code> with <code>tap_toggles = true</code> latches the recording, and the next press ends it</p>
+<h2 data-ru="Зажать, кликнуть, отменить">Hold, tap, cancel</h2>
+<p data-ru="Push-to-talk нужно два события: нажатие и отпускание. Hyprland и Sway умеют оба. Удержание короче &lt;code&gt;min_hold_ms&lt;/code&gt; не создаёт фразу. Нажатие короче &lt;code&gt;short_press_ms&lt;/code&gt; при &lt;code&gt;tap_toggles = true&lt;/code&gt; защёлкивает запись, и следующее нажатие её заканчивает">Push-to-talk needs two events, the press and the release. Hyprland and Sway can send both. A hold shorter than <code>min_hold_ms</code> creates no phrase. A press shorter than <code>short_press_ms</code> with <code>tap_toggles = true</code> latches the recording, and the next press ends it</p>
 
-    <h2>Hyprland 0.55 and later</h2>
-    <p>Since 0.55 the Hyprland config is Lua. MolvAI writes its binds to a file of their own, and your config includes it once</p>
-    <div class="cmd"><code>molva setup hyprland --write</code><button class="copy" type="button" data-copy="molva setup hyprland --write">Copy</button></div>
-<pre class="code"><code><span class="c">-- ~/.config/hypr/hyprland.lua</span>
+<h2 data-ru="Hyprland 0.55 и новее">Hyprland 0.55 and later</h2>
+<p data-ru="С 0.55 конфиг Hyprland на Lua. MolvAI пишет свои привязки в отдельный файл, а твой конфиг подключает его один раз">Since 0.55 the Hyprland config is Lua. MolvAI writes its binds to a file of their own, and your config includes it once</p>
+<div class="cmd"><code>molva setup hyprland --write</code><button class="copy" type="button" data-copy="molva setup hyprland --write" data-ru="Скопировать">Copy</button></div>
+<pre data-lang="lua"><code>-- ~/.config/hypr/hyprland.lua
 dofile(os.getenv("HOME") .. "/.config/hypr/molvai.lua")</code></pre>
-    <p>The generated file holds a pair for the hold and binds for the toggle, command mode and cancel. The cancel bind is non-consuming, so the key still reaches the application and a bare Escape keeps working elsewhere</p>
-<pre class="code"><code>hl.bind("F9", hl.dsp.exec_cmd("molva record start"), { description = "MolvAI: dictate while the key is held" })
+<p data-ru="Сгенерированный файл содержит пару для удержания и привязки для переключения, режима команды и отмены. Привязка отмены не поглощает клавишу, поэтому она доходит до приложения и обычный Escape работает в других местах">The generated file holds a pair for the hold and binds for the toggle, command mode and cancel. The cancel bind is non-consuming, so the key still reaches the application and a bare Escape keeps working elsewhere</p>
+<pre data-lang="lua"><code>hl.bind("F9", hl.dsp.exec_cmd("molva record start"), { description = "MolvAI: dictate while the key is held" })
 hl.bind("F9", hl.dsp.exec_cmd("molva record stop"), { release = true, description = "MolvAI: paste the text on release" })
 hl.bind("CTRL + ALT + Z", hl.dsp.exec_cmd("molva record toggle"), { description = "MolvAI: start or stop a recording" })</code></pre>
-    <p>The GUI rewrites the file and reloads Hyprland when you change the hotkeys. Without the GUI, start the daemon from Lua: <code>hl.on("hyprland.start", function() hl.exec_cmd("molva daemon") end)</code></p>
+<p data-ru="Интерфейс перезаписывает файл и перезагружает Hyprland, когда ты меняешь горячие клавиши. Без интерфейса запусти демон из Lua: &lt;code&gt;hl.on(&quot;hyprland.start&quot;, function() hl.exec_cmd(&quot;molva daemon&quot;) end)&lt;/code&gt;">The GUI rewrites the file and reloads Hyprland when you change the hotkeys. Without the GUI, start the daemon from Lua: <code>hl.on("hyprland.start", function() hl.exec_cmd("molva daemon") end)</code></p>
 
-    <h2>Hyprland before 0.55</h2>
-    <p>That version reads <code>~/.config/hypr/hyprland.conf</code>. The hold pair is two lines, and <code>bindr</code> fires on the release</p>
-<pre class="code"><code>bind = , F9, exec, molva record start
+<h2 data-ru="Hyprland до 0.55">Hyprland before 0.55</h2>
+<p data-ru="Эта версия читает &lt;code&gt;~/.config/hypr/hyprland.conf&lt;/code&gt;. Пара для удержания — две строки, а &lt;code&gt;bindr&lt;/code&gt; срабатывает при отпускании">That version reads <code>~/.config/hypr/hyprland.conf</code>. The hold pair is two lines, and <code>bindr</code> fires on the release</p>
+<pre data-lang="conf"><code>bind = , F9, exec, molva record start
 bindr = , F9, exec, molva record stop</code></pre>
 
-    <h2>Sway</h2>
-<pre class="code"><code><span class="c"># ~/.config/sway/config — --no-repeat stops auto-repeat from restarting the recording</span>
+<h2 data-ru="Sway">Sway</h2>
+<pre data-lang="conf"><code># ~/.config/sway/config — --no-repeat stops auto-repeat from restarting the recording
 bindsym --no-repeat F9 exec molva record start
 bindsym --release F9 exec molva record stop
 bindsym --no-repeat Ctrl+Shift+space exec molva record toggle
 bindsym --no-repeat Ctrl+Shift+Escape exec molva record cancel
 exec molva daemon</code></pre>
 
-    <h2>KDE Plasma and GNOME</h2>
-    <p>Neither reports the key release, so push-to-talk is impossible there and only the toggle works. Add <code>molva record toggle</code> as a custom shortcut in the system settings</p>
-<pre class="code"><code>path=/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/molva/
+<h2 data-ru="KDE Plasma и GNOME">KDE Plasma and GNOME</h2>
+<p data-ru="Ни тот, ни другой не сообщают об отпускании, поэтому push-to-talk там невозможен и работает только переключение. Добавь &lt;code&gt;molva record toggle&lt;/code&gt; как пользовательское сочетание в настройках системы">Neither reports the key release, so push-to-talk is impossible there and only the toggle works. Add <code>molva record toggle</code> as a custom shortcut in the system settings</p>
+<pre data-lang="sh"><code>path=/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/molva/
 gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "['$path']"
 gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$path name 'MolvAI toggle'
 gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$path command 'molva record toggle'
 gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$path binding '&lt;Ctrl&gt;&lt;Shift&gt;space'</code></pre>
 
-    <h2>X11 without a desktop</h2>
-    <p><code>sxhkd</code> works, and so does the built-in keyboard capture: <code>hotkeys.backend = "evdev"</code>. The evdev backend needs permission to read the input devices; after you add the group, log in again</p>
+<h2 data-ru="X11 без рабочего стола">X11 without a desktop</h2>
+<p data-ru="&lt;code&gt;sxhkd&lt;/code&gt; подходит, и встроенный перехват клавиатуры тоже: &lt;code&gt;hotkeys.backend = &quot;evdev&quot;&lt;/code&gt;. Бэкенду evdev нужно право читать устройства ввода; после добавления в группу войди заново"><code>sxhkd</code> works, and so does the built-in keyboard capture: <code>hotkeys.backend = "evdev"</code>. The evdev backend needs permission to read the input devices; after you add the group, log in again</p>
 
-    <h2>Windows and macOS</h2>
-    <p>The application registers the global combination itself, so the system needs no bind. On macOS grant the Accessibility and Input Monitoring rights, without which the global keys and the paste do not work</p>
+<h2 data-ru="Windows и macOS">Windows and macOS</h2>
+<p data-ru="Приложение само регистрирует глобальное сочетание, поэтому системе привязка не нужна. В macOS выдай права Accessibility и Input Monitoring, без них глобальные клавиши и вставка не работают">The application registers the global combination itself, so the system needs no bind. On macOS grant the Accessibility and Input Monitoring rights, without which the global keys and the paste do not work</p>
 
-    <h2>If a bind does not fire</h2>
-    <p>Run <code>molva doctor</code>. It prints the session, the compositor, the paste utilities it found, the availability of <code>/dev/uinput</code> and <code>/dev/input</code>, and whether the daemon answers on the socket. The most common cause of a silent bind on NixOS is a <code>molva</code> missing from the <code>PATH</code> of the environment that starts the bind</p>
-    <div class="cmd"><code>molva doctor</code><button class="copy" type="button" data-copy="molva doctor">Copy</button></div>
+<h2 data-ru="Если привязка не срабатывает">If a bind does not fire</h2>
+<p data-ru="Запусти &lt;code&gt;molva doctor&lt;/code&gt;. Он печатает сессию, композитор, найденные утилиты вставки, доступность &lt;code&gt;/dev/uinput&lt;/code&gt; и &lt;code&gt;/dev/input&lt;/code&gt; и отвечает ли демон на сокете. Самая частая причина молчащей привязки в NixOS — отсутствие &lt;code&gt;molva&lt;/code&gt; в &lt;code&gt;PATH&lt;/code&gt; того окружения, которое запускает привязку">Run <code>molva doctor</code>. It prints the session, the compositor, the paste utilities it found, the availability of <code>/dev/uinput</code> and <code>/dev/input</code>, and whether the daemon answers on the socket. The most common cause of a silent bind on NixOS is a <code>molva</code> missing from the <code>PATH</code> of the environment that starts the bind</p>
+<div class="cmd"><code>molva doctor</code><button class="copy" type="button" data-copy="molva doctor" data-ru="Скопировать">Copy</button></div>
 
-    <p class="to-top"><a href="./settings.html">Next: settings and Nix mode →</a> · <a href="#main">Back to top</a></p>
+<p class="to-top"><a href="./settings.html" data-ru="Дальше: настройки и режим Nix →">Next: settings and Nix mode →</a> · <a href="#main" data-ru="К началу">Back to top</a></p>
   </article>
 </main>
-
 <footer class="site-footer">
-  <div class="wrap footer-grid">
-    <div class="footer-brand">
+  <div class="wrap footer-inner">
+    <div>
       <a class="brand" href="../index.html">
-        <img src="../assets/logo.svg" alt="" width="26" height="26">
-        <span>Molv<span class="brand-ai">AI</span></span>
+        <img src="../assets/logo.svg" alt="" width="22" height="22">
+        <span>MolvAI</span>
       </a>
-      <p>Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
-      <p class="footer-note">MIT licensed · no trackers · no external fonts</p>
+      <p data-ru="Открытый голосовой ввод во все приложения. Зажми клавишу, говори, отпусти — текст оказывается в активном поле">Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
+      <p class="footer-note" data-ru="MIT · без трекеров · без внешних шрифтов">MIT licensed · no trackers · no external fonts</p>
+      <p class="footer-note"><a href="../ASSETS.md" data-ru="Ассеты и лицензии">Assets and licences</a></p>
     </div>
-    <nav aria-label="Project links">
-      <p class="footer-title">Project</p>
+    <nav aria-label="Project links" data-ru-aria-label="Ссылки проекта">
+      <p class="footer-title" data-ru="Проект">Project</p>
       <ul>
         <li><a href="https://github.com/rokokol/MolvAI">GitHub</a></li>
-        <li><a href="https://github.com/rokokol/MolvAI/releases">Releases</a></li>
-        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE">License (MIT)</a></li>
-        <li><a href="https://github.com/rokokol/MolvAI/issues">Issues</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/releases" data-ru="Релизы">Releases</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE" data-ru="Лицензия (MIT)">License (MIT)</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/issues" data-ru="Задачи">Issues</a></li>
       </ul>
     </nav>
-    <nav aria-label="Site links">
-      <p class="footer-title">Site</p>
+    <nav aria-label="Site links" data-ru-aria-label="Страницы сайта">
+      <p class="footer-title" data-ru="Сайт">Site</p>
       <ul>
-        <li><a href="../features.html">Features</a></li>
-        <li><a href="../models.html">Models</a></li>
-        <li><a href="../cli.html">CLI reference</a></li>
-        <li><a href="./index.html">Documentation</a></li>
+        <li><a href="../features.html" data-ru="Возможности">Features</a></li>
+        <li><a href="../models.html" data-ru="Модели">Models</a></li>
+        <li><a href="../cli.html" data-ru="Справочник CLI">CLI reference</a></li>
+        <li><a href="../docs/index.html" data-ru="Документация">Documentation</a></li>
         <li><a href="../faq.html">FAQ</a></li>
-        <li><a href="./status.html">Status and roadmap</a></li>
+        <li><a href="../docs/status.html" data-ru="Статус и планы">Status and roadmap</a></li>
       </ul>
     </nav>
     <div>
-      <p class="footer-title">Canonical docs</p>
-      <p class="footer-note">The repository is the source of truth. These pages summarize it and link back</p>
+      <p class="footer-title" data-ru="Канонические документы">Canonical docs</p>
+      <p class="footer-note" data-ru="Источник истины — репозиторий. Эти страницы его пересказывают и дают ссылки">
+        The repository is the source of truth. These pages summarize it and link back
+      </p>
       <ul>
         <li><a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README</a></li>
         <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></li>
@@ -186,9 +204,10 @@ gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$pa
     </div>
   </div>
   <div class="wrap footer-credit">
-    <p>MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
-    <p>This site runs without cookies, analytics or third-party assets</p>
+    <p data-ru="MolvAI сделан на хакатоне V0ICE (Казань, 2026) и находится в разработке">MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
+    <p data-ru="Сайт работает без cookies, аналитики и сторонних ассетов">This site runs without cookies, analytics or third-party assets</p>
   </div>
 </footer>
+<script src="../assets/site.js"></script>
 </body>
 </html>

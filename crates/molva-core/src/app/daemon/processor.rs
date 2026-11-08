@@ -34,6 +34,8 @@ pub enum ProcessError {
     Journal(#[from] JournalError),
     #[error("{0}")]
     Pipeline(String),
+    #[error("this processor cannot transcribe files, it has no recognition engine")]
+    FilesUnsupported,
 }
 
 impl From<crate::app::pipeline::PipelineError> for ProcessError {
@@ -83,7 +85,7 @@ impl Processor for crate::app::pipeline::Pipeline {
         &mut self,
         chunk: &ChunkText,
         app_hint: Option<&str>,
-    ) -> Option<Result<(), ProcessError>> {
+    ) -> Option<Result<crate::app::pipeline::StreamProgress, ProcessError>> {
         Some(
             crate::app::pipeline::Pipeline::stream_chunk(self, chunk, app_hint)
                 .map_err(ProcessError::from),
@@ -104,6 +106,15 @@ impl Processor for crate::app::pipeline::Pipeline {
     ) -> Result<Entry, ProcessError> {
         self.set_chunk_prefix(prefix);
         self.process(audio, mode, style, app_hint)
+    }
+
+    fn transcribe_file(
+        &mut self,
+        request: &crate::ipc::protocol::FileTranscriptionRequest,
+    ) -> Result<crate::ipc::protocol::FileReport, ProcessError> {
+        Ok(crate::app::pipeline::Pipeline::transcribe_file(
+            self, request,
+        ))
     }
 }
 
@@ -146,12 +157,13 @@ pub trait Processor: std::fmt::Debug + Send {
 
     /// Type one recognized chunk while the recording is still running
     ///
-    /// `None` means that the processor cannot stream: the phrase arrives whole at the end
+    /// `None` means that the processor cannot stream: the phrase arrives whole at the end. The
+    /// progress carries the text that reached the field so far, so a live view can show it
     fn stream_chunk(
         &mut self,
         _chunk: &ChunkText,
         _app_hint: Option<&str>,
-    ) -> Option<Result<(), ProcessError>> {
+    ) -> Option<Result<crate::app::pipeline::StreamProgress, ProcessError>> {
         None
     }
 
@@ -171,6 +183,18 @@ pub trait Processor: std::fmt::Debug + Send {
         app_hint: Option<&str>,
     ) -> Result<Entry, ProcessError> {
         self.process(audio, mode, style, app_hint)
+    }
+
+    /// Transcribe one audio or video file with the recognizer and the pipeline of the daemon
+    ///
+    /// The microphone and the paste take no part: the text goes back to the client as a
+    /// `FileResult`. The default implementation has no engine and says so, so a processor without
+    /// recognition fails with a clear error instead of silence
+    fn transcribe_file(
+        &mut self,
+        _request: &crate::ipc::protocol::FileTranscriptionRequest,
+    ) -> Result<crate::ipc::protocol::FileReport, ProcessError> {
+        Err(ProcessError::FilesUnsupported)
     }
 }
 
@@ -229,7 +253,7 @@ pub struct SimpleProcessor<I: TextInjector, J: Journal> {
     injector: I,
     journal: J,
     clock: Arc<dyn Clock>,
-    notifier: Arc<dyn Notifier>,
+    _notifier: Arc<dyn Notifier>,
     config: ProcessorConfig,
     /// Daemon measurement: from the key release to the close of the microphone stream
     stop_after_release_ms: Option<u32>,
@@ -249,7 +273,7 @@ impl<I: TextInjector, J: Journal> SimpleProcessor<I, J> {
             injector,
             journal,
             clock,
-            notifier,
+            _notifier: notifier,
             config,
             stop_after_release_ms: None,
         }
@@ -288,8 +312,6 @@ impl<I: TextInjector, J: Journal> Processor for SimpleProcessor<I, J> {
         if text.is_empty() {
             // Silence or a model failure: there is no phrase, but the entry stays in the journal
             error = Some("speech not recognized".to_string());
-            self.notifier
-                .notify("MolvAI", "speech not recognized, try again");
         } else {
             let resolved = parse_output_mode(&self.config.output.mode)
                 .resolve(&text, self.config.output.auto_type_max_chars as usize);
@@ -301,8 +323,6 @@ impl<I: TextInjector, J: Journal> Processor for SimpleProcessor<I, J> {
                 Err(err) => {
                     tracing::warn!(%err, "paste failed");
                     error = Some(err.to_string());
-                    self.notifier
-                        .notify("MolvAI", &inject_failure_hint(&err, &text));
                 }
             }
             t_inject = Some(ms_between(before_inject, self.clock.instant()));
@@ -344,6 +364,7 @@ impl<I: TextInjector, J: Journal> Processor for SimpleProcessor<I, J> {
             text_raw: Some(transcript.text.clone()),
             text_final: Some(text),
             audio_path: None,
+            translation: None,
             segments: Vec::new(),
         };
 
@@ -358,19 +379,6 @@ impl<I: TextInjector, J: Journal> Processor for SimpleProcessor<I, J> {
 
     fn set_stop_after_release(&mut self, ms: u32) {
         self.stop_after_release_ms = Some(ms);
-    }
-}
-
-/// What to tell the user when the paste failed
-fn inject_failure_hint(err: &InjectError, text: &str) -> String {
-    match err {
-        InjectError::UnsupportedCharacters => {
-            "the text cannot be typed this way; it is in the clipboard, press Ctrl+V".into()
-        }
-        _ => format!(
-            "cannot paste the text ({} chars); it is in the clipboard, press Ctrl+V",
-            text.chars().count()
-        ),
     }
 }
 
@@ -545,9 +553,7 @@ mod tests {
         );
         assert_eq!(entry.text_final.as_deref(), Some("текст"));
         assert_eq!(processor.journal.entries.len(), 1);
-        let messages = notifier.messages.lock().unwrap();
-        assert_eq!(messages.len(), 1);
-        assert!(messages[0].1.contains("Ctrl+V"), "{:?}", messages[0]);
+        assert!(notifier.messages.lock().unwrap().is_empty());
     }
 
     #[test]
@@ -599,7 +605,7 @@ mod tests {
         assert!(processor.injector.injected.is_empty());
         assert_eq!(entry.words, 0);
         assert!(entry.error.is_some());
-        assert_eq!(notifier.messages.lock().unwrap().len(), 1);
+        assert!(notifier.messages.lock().unwrap().is_empty());
     }
 
     #[test]

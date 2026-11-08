@@ -3,8 +3,9 @@
 # hyprland.lua: the one include line is offered by the GUI help and in the documentation.
 #
 # The settings and the weights are rendered into the Nix store. A switch is the only thing
-# that changes them. The GUI hides its settings page while the config is a store symlink,
-# and `molva config set` refuses to write it.
+# that changes them. The GUI hides its settings page while the config is a store symlink;
+# `showSettings` shows that page for inspection only, and `molva config set` still refuses
+# to write it.
 { self }:
 {
   config,
@@ -19,6 +20,17 @@ let
   # `configType` arrived with Hyprland's Lua config; an older Home Manager has no such option,
   # and its hyprlang config would break on a Lua line
   hyprlandLua = (hyprland.enable or false) && (hyprland.configType or "hyprlang") == "lua";
+
+  # The GUI is a separate binary: the module can install one when given a package, but it does
+  # not assume that a CLI-only NixOS host has one. The command keeps an AppImage or a desktop
+  # package usable without adding a second package source
+  guiCommand =
+    if cfg.guiAutostart.command != null then
+      cfg.guiAutostart.command
+    else if cfg.guiPackage != null then
+      lib.getExe cfg.guiPackage
+    else
+      "molva-gui";
 
   # The catalog is the same file the CLI reads: one list of weights, two consumers
   catalog = builtins.fromTOML (builtins.readFile (self + "/models.toml"));
@@ -67,13 +79,16 @@ let
   generated = {
     version = 2;
     ui_language = cfg.uiLanguage;
+    gui = {
+      show_managed_settings = cfg.showSettings;
+    };
     stt = {
       inherit engine;
       model = cfg.model;
       model_path = "${weights}";
       language = cfg.language;
       auto_pull = false;
-      streaming_inject = true;
+      streaming_inject = false;
       transcribe_cli = cli;
       transcribe_backend = cfg.transcribeBackend;
     };
@@ -183,6 +198,47 @@ in
       description = "Compute backend for transcribe.cpp: `auto`, `cpu`, `vulkan`, `cuda`…";
     };
 
+    showSettings = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Show the Settings tab while the configuration comes from the Nix store. The tab is
+        read-only: every save is refused and the values are changed in
+        {option}`programs.molvai` followed by a switch. It is off by default, because a form
+        that cannot change anything is misleading
+      '';
+    };
+
+    guiPackage = lib.mkOption {
+      type = lib.types.nullOr lib.types.package;
+      default = null;
+      description = ''
+        The MolvAI GUI package to install. When null, the module does not install a GUI and
+        `guiAutostart.command` must name one that is already on `PATH`, such as an AppImage
+      '';
+    };
+
+    guiAutostart = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = cfg.daemon.enable;
+        defaultText = lib.literalExpression "programs.molvai.daemon.enable";
+        description = ''
+          Start the GUI at login together with the daemon. The GUI owns the tray icon; the
+          daemon alone does not create one
+        '';
+      };
+
+      command = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = ''
+          The command an autostart entry runs. When null, the module uses the installed
+          {option}`guiPackage`, or `molva-gui` from `PATH` when no package is given
+        '';
+      };
+    };
+
     settings = lib.mkOption {
       type = lib.types.attrs;
       default = { };
@@ -208,7 +264,7 @@ in
           }
         ];
 
-        home.packages = [ cfg.package ];
+        home.packages = [ cfg.package ] ++ lib.optional (cfg.guiPackage != null) cfg.guiPackage;
 
         xdg.configFile."molva/config.toml" = {
           source = configFile;
@@ -233,11 +289,29 @@ in
         };
       })
 
+      (lib.mkIf cfg.guiAutostart.enable {
+        xdg.configFile."autostart/molvai-gui.desktop".text = ''
+          [Desktop Entry]
+          Type=Application
+          Name=MolvAI
+          Comment=System-wide voice input
+          Exec=${guiCommand}
+          Terminal=false
+          X-GNOME-Autostart-enabled=true
+        '';
+      })
+
       (lib.mkIf (cfg.hyprland.enable && hyprlandLua) {
         xdg.configFile."hypr/molvai.lua" = {
           source = hyprlandBinds;
           force = true;
         };
+        # The generated binds are a separate file only when hyprland.lua includes it. The
+        # option promises the include, so the module adds the one line; pcall keeps a home
+        # without the generated file working
+        wayland.windowManager.hyprland.extraConfig = lib.mkAfter ''
+          pcall(dofile, os.getenv("HOME") .. "/.config/hypr/molvai.lua")
+        '';
       })
     ]
   );

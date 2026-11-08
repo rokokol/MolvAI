@@ -65,22 +65,30 @@ pub fn build_stt(
     build_stt_with(cfg, &EngineChoice::default().with_model(override_model))
 }
 
+/// The engine that the settings resolve to, before any engine is built
+///
+/// `auto` follows the catalog: the model says which runtime can load it, and the user does not
+/// have to know that GigaAM is not a whisper file. The factory and a diagnostic both ask here,
+/// so the settings page never names an engine the factory would not build
+pub fn resolve_engine(cfg: &Config, choice: &EngineChoice) -> String {
+    let requested = choice.engine.as_deref().unwrap_or(&cfg.stt.engine).trim();
+    let model = choice.model.as_deref().unwrap_or(&cfg.stt.model).trim();
+    if requested == "auto" {
+        models::find(model).map_or_else(|_| "whisper-cpp".to_string(), |info| info.engine.clone())
+    } else {
+        requested.to_string()
+    }
+}
+
 /// Build the engine with the full set of overrides
 pub fn build_stt_with(
     cfg: &Config,
     choice: &EngineChoice,
 ) -> Result<Box<dyn SttEngine>, EngineError> {
-    let requested = choice.engine.as_deref().unwrap_or(&cfg.stt.engine).trim();
+    let engine = resolve_engine(cfg, choice);
     let model = choice.model.as_deref().unwrap_or(&cfg.stt.model).trim();
-    // `auto` follows the catalog. The model says which runtime can load it, and the user
-    // does not have to know that GigaAM is not a whisper file
-    let engine = if requested == "auto" {
-        models::find(model).map_or("whisper-cpp", |info| info.engine.as_str())
-    } else {
-        requested
-    };
 
-    match engine {
+    match engine.as_str() {
         FAKE_ENGINE => Ok(Box::new(FakeStt::returning(
             choice.fake_text.as_deref().unwrap_or(DEFAULT_FAKE_TEXT),
         ))),
@@ -211,5 +219,40 @@ mod tests {
         cfg.stt.model = "gigaam-v3-e2e-rnnt-q4_k_m".into();
         let engine = build_stt(&cfg, None).expect("the GigaAM weights are in place");
         assert_eq!(engine.id(), "transcribe-cpp");
+    }
+
+    #[test]
+    fn the_resolved_engine_is_named_without_building_it() {
+        // A diagnostic that reports the engine of a draft must not need the weights, and must
+        // not guess a name the factory would not build
+        let directory = tempfile::tempdir().unwrap();
+        let mut cfg = cfg_with_models_dir(directory.path());
+        cfg.stt.model = "gigaam-v3-e2e-rnnt-q4_k_m".into();
+        cfg.stt.engine = "auto".into();
+        assert_eq!(
+            resolve_engine(&cfg, &EngineChoice::default()),
+            "transcribe-cpp"
+        );
+
+        cfg.stt.model = "small".into();
+        assert_eq!(
+            resolve_engine(&cfg, &EngineChoice::default()),
+            "whisper-cpp"
+        );
+
+        cfg.stt.model = "no-such-model".into();
+        assert_eq!(
+            resolve_engine(&cfg, &EngineChoice::default()),
+            "whisper-cpp"
+        );
+
+        cfg.stt.engine = "transcribe-cpp".into();
+        assert_eq!(
+            resolve_engine(&cfg, &EngineChoice::default()),
+            "transcribe-cpp"
+        );
+
+        let choice = EngineChoice::fake();
+        assert_eq!(resolve_engine(&cfg, &choice), FAKE_ENGINE);
     }
 }

@@ -1,261 +1,209 @@
 <!DOCTYPE html>
-<html lang="en" class="no-js">
+<html lang="en" class="no-js" data-ddlc-heading="plain">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Models — MolvAI</title>
-<meta name="description" content="The MolvAI model catalog: GigaAM-v3 e2e RNNT Q4_K_M for Russian as the default, plus whisper.cpp models from tiny to large-v3. Sizes, engines, quantization and how to switch">
+<title data-ru="Модели — MolvAI">Models — MolvAI</title>
+<meta name="description" content="The MolvAI model catalog: GigaAM-v3 e2e RNNT Q4_K_M for Russian as the default, plus whisper.cpp models from tiny to large-v3. Sizes, engines, quantization and how to switch" data-ru-content="Каталог моделей MolvAI: GigaAM-v3 e2e RNNT Q4_K_M для русского по умолчанию плюс модели whisper.cpp от tiny до large-v3. Размеры, движки, квантование и как переключать">
 <meta name="color-scheme" content="dark light">
-<meta name="theme-color" content="#0a0c12">
-<link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#222222" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="./assets/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./assets/vendor/ddlc/ddlc-tokens.css">
+<link rel="stylesheet" href="./assets/vendor/ddlc/ddlc-ui.css">
+<link rel="stylesheet" href="./assets/vendor/ddlc/ddlc-report.css">
 <link rel="stylesheet" href="./assets/site.css">
-<script src="./assets/site.js" defer></script>
+<script>
+  (function () {
+    try {
+      var q = new URLSearchParams(location.search)
+      var pinned = q.get("theme")
+      var theme = pinned === "light" || pinned === "dark" ? pinned : localStorage.getItem("molvai-theme")
+      if (pinned === "light" || pinned === "dark") localStorage.setItem("molvai-theme", pinned)
+      if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme
+      var lang = q.get("lang")
+      var stored = localStorage.getItem("molvai-lang")
+      if (lang === "ru" || (lang !== "en" && stored === "ru")) document.documentElement.lang = "ru"
+    } catch (e) {}
+  })()
+</script>
+<script type="module" src="./assets/kit.js"></script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
-
-<header class="site-header">
-  <div class="wrap header-inner">
-    <a class="brand" href="./index.html" aria-label="MolvAI home">
-      <img src="./assets/logo.svg" alt="" width="26" height="26">
-      <span>Molv<span class="brand-ai">AI</span></span>
+<canvas class="cloud" id="cloud" aria-hidden="true"></canvas>
+<a class="skip" href="#main" data-ru="К содержанию">Skip to content</a>
+<header class="site-bar">
+  <div class="bar wrap bar-row">
+    <a class="brand" href="./index.html" aria-label="MolvAI home" data-ru-aria-label="MolvAI — главная">
+      <img src="./assets/logo.svg" alt="" width="22" height="22">
+      <span>MolvAI</span>
     </a>
-    <nav class="site-nav" id="site-nav" aria-label="Main">
-      <a href="./index.html">Home</a>
-      <a href="./features.html">Features</a>
-      <a href="./models.html" aria-current="page">Models</a>
-      <a href="./cli.html">CLI</a>
-      <a href="./docs/index.html">Docs</a>
-      <a href="./faq.html">FAQ</a>
-      <a href="./docs/status.html">Status</a>
-      <a class="nav-github" href="https://github.com/rokokol/MolvAI"><img src="./assets/icon-github.svg" alt="" width="15" height="15">GitHub</a>
+    <p class="tagline" data-ru="Голосовой ввод во все приложения">System-wide voice input, on your machine</p>
+    <nav class="tabs" aria-label="Main" data-ru-aria-label="Основное">
+      <a href="./index.html" data-ru="Главная">Home</a>
+      <a href="./features.html" data-ru="Возможности">Features</a>
+      <a href="./models.html" aria-current="page" data-ru="Модели">Models</a>
+      <a href="./cli.html" data-ru="CLI">CLI</a>
+      <a href="./docs/index.html" data-ru="Документация">Docs</a>
+      <a href="./faq.html" data-ru="FAQ">FAQ</a>
+      <a href="./docs/status.html" data-ru="Статус">Status</a>
     </nav>
-    <div class="header-tools">
-      <button class="icon-btn theme-toggle" type="button" data-theme-toggle aria-label="Switch between dark and light theme">
-        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8">
-          <circle cx="12" cy="12" r="8"></circle>
-          <path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"></path>
-        </svg>
+    <div class="bar-end">
+      <div class="segmented lang-switch" role="group" aria-label="Language" data-ru-aria-label="Язык">
+        <button type="button" data-lang-set="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang-set="ru" aria-pressed="false">RU</button>
+      </div>
+      <button class="icon-button" id="theme" type="button" aria-label="Theme: system" data-ru-aria-label="Тема">
+        <svg class="pixel" viewBox="0 0 8 8" aria-hidden="true"><path id="theme-icon"/></svg>
       </button>
-      <button class="icon-btn menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="site-nav">
-        <span class="menu-bars" aria-hidden="true"></span>
-        <span class="visually-hidden">Menu</span>
-      </button>
+      <a class="icon-button" href="https://github.com/rokokol/MolvAI" aria-label="MolvAI on GitHub" data-ru-aria-label="MolvAI на GitHub">
+        <img src="./assets/icon-github.svg" alt="" width="16" height="16">
+      </a>
     </div>
   </div>
 </header>
-
 <main id="main">
-
-  <section class="section">
-    <div class="wrap">
-      <div class="section-head">
-        <span class="kicker">Models</span>
-        <h1>One catalog, two recognizers</h1>
-        <p>A model is a weights file and a name in <code>models.toml</code>. The CLI, the GUI and the Nix module read that one file, so a name means the same thing everywhere</p>
-      </div>
-
-      <div class="grid grid-2">
-        <article class="card">
-          <span class="source-tag own">Default</span>
-          <h2 style="margin-top:.7rem">GigaAM-v3 e2e RNNT Q4_K_M</h2>
-          <p class="muted">Russian speech, recognized locally on the CPU. 175 MiB, engine <code>transcribe-cpp</code>, quantization Q4_K_M, license and terms in the model license document</p>
-          <p class="chips" style="margin-bottom:.9rem">
-            <span class="chip">ru</span>
-            <span class="chip">175 MiB</span>
-            <span class="chip">Q4_K_M</span>
-            <span class="chip">transcribe-cpp</span>
-            <span class="chip">Sber GigaAM-v3</span>
-          </p>
-          <div class="cmd"><code>molva models pull gigaam-v3-e2e-rnnt-q4_k_m</code><button class="copy" type="button" data-copy="molva models pull gigaam-v3-e2e-rnnt-q4_k_m">Copy</button></div>
-        </article>
-        <article class="card">
-          <h2>Why this model is the default</h2>
-          <p class="muted">Russian dictation is the main case, and the CPU is the hardware everyone has. GigaAM is a Russian-first family, and the Q4_K_M file keeps the model at 175 MiB, so it starts quickly and fits beside other work</p>
-          <p class="muted">The engine is <code>auto</code>: it follows the catalog entry, so you never have to know that a GigaAM file is not a whisper file. The transcribe.cpp runtime is the one that loads this format</p>
-          <p class="muted">A Ryzen 7 4750U ran 10.98 s of audio in 630 ms in transcribe.cpp's published benchmark, about 17× realtime. That is an upstream figure, not this project's</p>
-        </article>
-      </div>
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru="Модели">Models</span>
+      <h1 data-ru="Один каталог, два распознавателя">One catalog, two recognizers</h1>
+      <p data-ru="Модель — это файл весов и имя в &lt;code&gt;models.toml&lt;/code&gt;. CLI, интерфейс и модуль Nix читают один и тот же файл, поэтому имя значит одно и то же везде">A model is a weights file and a name in <code>models.toml</code>. The CLI, the GUI and the Nix module read that one file, so a name means the same thing everywhere</p>
     </div>
-  </section>
-
-  <section class="section" aria-labelledby="catalog">
-    <div class="wrap">
-      <div class="section-head">
-        <h2 id="catalog">The catalog</h2>
-        <p>Sizes are the file sizes from <code>models.toml</code>, in binary units. The SHA-256 of each file is checked before it reaches the disk</p>
-      </div>
-      <div class="table-wrap">
-        <table class="model-table">
-          <caption>Model weights known to <code>models.toml</code>, in catalog order</caption>
-          <thead>
-            <tr>
-              <th scope="col">Model</th>
-              <th scope="col">Language</th>
-              <th scope="col">Engine</th>
-              <th scope="col">Quantization</th>
-              <th scope="col" class="num">Size</th>
-              <th scope="col">Notes</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <th scope="row">gigaam-v3-e2e-rnnt-q4_k_m</th>
-              <td>ru</td>
-              <td>transcribe-cpp</td>
-              <td>Q4_K_M</td>
-              <td class="num">175 MiB</td>
-              <td><strong>Default.</strong> Russian-first, CPU friendly</td>
-            </tr>
-            <tr>
-              <th scope="row">tiny</th>
-              <td>multilingual</td>
-              <td>whisper-cpp</td>
-              <td>not stated</td>
-              <td class="num">74 MiB</td>
-              <td>The smallest whisper file. Fast and rough</td>
-            </tr>
-            <tr>
-              <th scope="row">base</th>
-              <td>multilingual</td>
-              <td>whisper-cpp</td>
-              <td>not stated</td>
-              <td class="num">141 MiB</td>
-              <td>Faster than <code>small</code>, clearly worse</td>
-            </tr>
-            <tr>
-              <th scope="row">small</th>
-              <td>multilingual</td>
-              <td>whisper-cpp</td>
-              <td>not stated</td>
-              <td class="num">465 MiB</td>
-              <td>The previous default and the compromise point of whisper.cpp</td>
-            </tr>
-            <tr>
-              <th scope="row">small-q5_1</th>
-              <td>multilingual</td>
-              <td>whisper-cpp</td>
-              <td>Q5_1</td>
-              <td class="num">181 MiB</td>
-              <td><code>small</code> at a quarter of the size, a little accuracy lost</td>
-            </tr>
-            <tr>
-              <th scope="row">medium</th>
-              <td>multilingual</td>
-              <td>whisper-cpp</td>
-              <td>not stated</td>
-              <td class="num">1.43 GiB</td>
-              <td>More accurate than <code>small</code>, much heavier</td>
-            </tr>
-            <tr>
-              <th scope="row">large-v3-turbo</th>
-              <td>multilingual</td>
-              <td>whisper-cpp</td>
-              <td>not stated</td>
-              <td class="num">1.51 GiB</td>
-              <td>Accurate and practical on a GPU</td>
-            </tr>
-            <tr>
-              <th scope="row">large-v3-turbo-q5_0</th>
-              <td>multilingual</td>
-              <td>whisper-cpp</td>
-              <td>Q5_0</td>
-              <td class="num">547 MiB</td>
-              <td>The turbo model squeezed into a third of the space</td>
-            </tr>
-            <tr>
-              <th scope="row">large-v3-turbo-q8_0</th>
-              <td>multilingual</td>
-              <td>whisper-cpp</td>
-              <td>Q8_0</td>
-              <td class="num">834 MiB</td>
-              <td>Turbo with little quantization loss</td>
-            </tr>
-            <tr>
-              <th scope="row">large-v3</th>
-              <td>multilingual</td>
-              <td>whisper-cpp</td>
-              <td>not stated</td>
-              <td class="num">2.88 GiB</td>
-              <td>The largest file in the catalog. Memory and time to match</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="footnote">"Not stated" means the catalog does not declare a quantization for that file; the name states it whenever the catalog carries a quantized variant. The languages of the whisper rows are described as multilingual by whisper.cpp, while <code>stt.language</code> and <code>allowed_languages</code> decide what MolvAI may choose</p>
+    <div class="grid grid-2">
+      <article class="card">
+        <span class="sticker" data-ru="По умолчанию">Default</span>
+        <h2 data-ru="GigaAM-v3 e2e RNNT Q4_K_M">GigaAM-v3 e2e RNNT Q4_K_M</h2>
+        <p data-ru="Русская речь, распознавание локально на процессоре. 175 МиБ, движок &lt;code&gt;transcribe-cpp&lt;/code&gt;, квантование Q4_K_M, лицензия и условия — в документе о лицензиях моделей">Russian speech, recognized locally on the CPU. 175 MiB, engine <code>transcribe-cpp</code>, quantization Q4_K_M, license and terms in the model license document</p>
+        <p class="chips">
+          <span class="chip">ru</span>
+          <span class="chip">175 MiB</span>
+          <span class="chip">Q4_K_M</span>
+          <span class="chip">transcribe-cpp</span>
+          <span class="chip">Sber GigaAM-v3</span>
+        </p>
+        <div class="cmd"><code>molva models pull gigaam-v3-e2e-rnnt-q4_k_m</code><button class="copy" type="button" data-copy="molva models pull gigaam-v3-e2e-rnnt-q4_k_m" data-ru="Скопировать">Copy</button></div>
+      </article>
+      <article class="card">
+        <h2 data-ru="Почему по умолчанию именно она">Why this model is the default</h2>
+        <p class="muted" data-ru="Диктовка по-русски — основной случай, а процессор есть у всех. GigaAM — семейство, сделанное прежде всего для русского, а файл Q4_K_M держит модель в 175 МиБ, поэтому она быстро стартует и уживается с другой работой">Russian dictation is the main case, and the CPU is the hardware everyone has. GigaAM is a Russian-first family, and the Q4_K_M file keeps the model at 175 MiB, so it starts quickly and fits beside other work</p>
+        <p class="muted" data-ru="Движок — &lt;code&gt;auto&lt;/code&gt;: он следует записи каталога, так что знать, что файл GigaAM не файл whisper, не нужно. Этот формат загружает рантайм transcribe.cpp">The engine is <code>auto</code>: it follows the catalog entry, so you never have to know that a GigaAM file is not a whisper file. The transcribe.cpp runtime is the one that loads this format</p>
+        <p class="muted" data-ru="Ryzen 7 4750U обработал 10,98 с звука за 630 мс в опубликованном бенчмарке transcribe.cpp — примерно 17× быстрее реального времени. Это цифра апстрима, а не проекта">A Ryzen 7 4750U ran 10.98 s of audio in 630 ms in transcribe.cpp's published benchmark, about 17× realtime. That is an upstream figure, not this project's</p>
+      </article>
     </div>
-  </section>
+  </div>
+</section>
 
-  <section class="section" aria-labelledby="switch">
-    <div class="wrap">
-      <div class="section-head">
-        <h2 id="switch">Switch a model</h2>
-        <p>One setting, or one flag for a single file. The daemon loads the recognizer when it starts, so a new dictation model takes effect after a restart</p>
-      </div>
-      <div class="grid grid-2">
-        <article class="card">
-          <h3>For dictation</h3>
-          <div class="cmd"><code>molva models pull large-v3-turbo</code><button class="copy" type="button" data-copy="molva models pull large-v3-turbo">Copy</button></div>
-          <div class="cmd"><code>molva config set stt.model large-v3-turbo</code><button class="copy" type="button" data-copy="molva config set stt.model large-v3-turbo">Copy</button></div>
-          <p class="muted">The engine stays <code>auto</code> and follows the catalog entry of the new model. The recognizer is built at daemon start, so restart the daemon to load different weights</p>
-        </article>
-        <article class="card">
-          <h3>For one file</h3>
-          <div class="cmd"><code>molva transcribe talk.m4a --model large-v3-turbo</code><button class="copy" type="button" data-copy="molva transcribe talk.m4a --model large-v3-turbo">Copy</button></div>
-          <p class="muted">The override applies to that run. Your own weights fit too: point <code>stt.model_path</code> at the directory and name the file in <code>stt.model</code></p>
-        </article>
-        <article class="card">
-          <h3>Where the weights come from</h3>
-          <p class="muted">Hugging Face by default, with a SHA-256 check from the catalog. <code>stt.models_mirror</code> points at a directory that serves the same file names. The checksum check still runs, so a plain <code>http://</code> mirror on a local network is fine</p>
-        </article>
-        <article class="card">
-          <h3>Licenses of the weights</h3>
-          <p class="muted">The repository is MIT. The weights are not covered by that license and carry their own terms, collected in <a href="https://github.com/rokokol/MolvAI/blob/main/docs/model-licenses.md">docs/model-licenses.md</a>. Read it before you redistribute a model</p>
-        </article>
-      </div>
-      <div class="callout">
-        <span class="callout-title">With Nix, the weights come from the store</span>
-        <p>The Home Manager module fetches the selected models at evaluation time and renders <code>stt.model_path</code> into the store. A switch is the only thing that changes a model, and the GUI hides its settings page because the file is read-only. Details in <a href="./docs/settings.html">settings and the Nix-managed mode</a></p>
-      </div>
-      <div class="to-top"><a href="#main">Back to top</a></div>
+<section class="section" aria-labelledby="catalog">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru=""></span>
+      <h2 data-ru="Каталог">The catalog</h2>
+      <p data-ru="Размеры берутся из &lt;code&gt;models.toml&lt;/code&gt;, в двоичных единицах. SHA-256 каждого файла сверяется до того, как он попадёт на диск">Sizes are the file sizes from <code>models.toml</code>, in binary units. The SHA-256 of each file is checked before it reaches the disk</p>
     </div>
-  </section>
+    <div class="table-wrap">
+      <table class="model-table">
+        <caption data-ru="Веса, известные &lt;code&gt;models.toml&lt;/code&gt;, в порядке каталога">Model weights known to <code>models.toml</code>, in catalog order</caption>
+        <thead>
+          <tr>
+            <th scope="col" data-ru="Модель">Model</th>
+            <th scope="col" data-ru="Язык">Language</th>
+            <th scope="col" data-ru="Движок">Engine</th>
+            <th scope="col" data-ru="Квантование">Quantization</th>
+            <th scope="col" class="num" data-ru="Размер">Size</th>
+            <th scope="col" data-ru="Заметки">Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+                  <tr><th scope="row" data-ru="gigaam-v3-e2e-rnnt-q4_k_m">gigaam-v3-e2e-rnnt-q4_k_m</th><td data-ru="ru">ru</td><td data-ru="transcribe-cpp">transcribe-cpp</td><td class="num" style="text-align:left" data-ru="Q4_K_M">Q4_K_M</td><td class="num" data-ru="175 MiB">175 MiB</td><td data-ru="&lt;strong&gt;По умолчанию.&lt;/strong&gt; Сначала русский, дружит с CPU"><strong>Default.</strong> Russian-first, CPU friendly</td></tr>
+                  <tr><th scope="row" data-ru="tiny">tiny</th><td data-ru="multilingual">multilingual</td><td data-ru="whisper-cpp">whisper-cpp</td><td class="num" style="text-align:left" data-ru="не указано">not stated</td><td class="num" data-ru="74 MiB">74 MiB</td><td data-ru="Самый маленький файл whisper. Быстрый и грубый">The smallest whisper file. Fast and rough</td></tr>
+                  <tr><th scope="row" data-ru="base">base</th><td data-ru="multilingual">multilingual</td><td data-ru="whisper-cpp">whisper-cpp</td><td class="num" style="text-align:left" data-ru="не указано">not stated</td><td class="num" data-ru="141 MiB">141 MiB</td><td data-ru="Быстрее &lt;code&gt;small&lt;/code&gt;, заметно хуже">Faster than <code>small</code>, clearly worse</td></tr>
+                  <tr><th scope="row" data-ru="small">small</th><td data-ru="multilingual">multilingual</td><td data-ru="whisper-cpp">whisper-cpp</td><td class="num" style="text-align:left" data-ru="не указано">not stated</td><td class="num" data-ru="465 MiB">465 MiB</td><td data-ru="Прежний выбор по умолчанию и компромиссная точка whisper.cpp">The previous default and the compromise point of whisper.cpp</td></tr>
+                  <tr><th scope="row" data-ru="small-q5_1">small-q5_1</th><td data-ru="multilingual">multilingual</td><td data-ru="whisper-cpp">whisper-cpp</td><td class="num" style="text-align:left" data-ru="Q5_1">Q5_1</td><td class="num" data-ru="181 MiB">181 MiB</td><td data-ru="&lt;code&gt;small&lt;/code&gt; вчетверо меньше, немного точности в минус"><code>small</code> at a quarter of the size, a little accuracy lost</td></tr>
+                  <tr><th scope="row" data-ru="medium">medium</th><td data-ru="multilingual">multilingual</td><td data-ru="whisper-cpp">whisper-cpp</td><td class="num" style="text-align:left" data-ru="не указано">not stated</td><td class="num" data-ru="1.43 GiB">1.43 GiB</td><td data-ru="Точнее &lt;code&gt;small&lt;/code&gt;, заметно тяжелее">More accurate than <code>small</code>, much heavier</td></tr>
+                  <tr><th scope="row" data-ru="large-v3-turbo">large-v3-turbo</th><td data-ru="multilingual">multilingual</td><td data-ru="whisper-cpp">whisper-cpp</td><td class="num" style="text-align:left" data-ru="не указано">not stated</td><td class="num" data-ru="1.51 GiB">1.51 GiB</td><td data-ru="Точная и практичная на GPU">Accurate and practical on a GPU</td></tr>
+                  <tr><th scope="row" data-ru="large-v3-turbo-q5_0">large-v3-turbo-q5_0</th><td data-ru="multilingual">multilingual</td><td data-ru="whisper-cpp">whisper-cpp</td><td class="num" style="text-align:left" data-ru="Q5_0">Q5_0</td><td class="num" data-ru="547 MiB">547 MiB</td><td data-ru="Turbo-модель, сжатая до трети размера">The turbo model squeezed into a third of the space</td></tr>
+                  <tr><th scope="row" data-ru="large-v3-turbo-q8_0">large-v3-turbo-q8_0</th><td data-ru="multilingual">multilingual</td><td data-ru="whisper-cpp">whisper-cpp</td><td class="num" style="text-align:left" data-ru="Q8_0">Q8_0</td><td class="num" data-ru="834 MiB">834 MiB</td><td data-ru="Turbo почти без потерь от квантования">Turbo with little quantization loss</td></tr>
+                  <tr><th scope="row" data-ru="large-v3">large-v3</th><td data-ru="multilingual">multilingual</td><td data-ru="whisper-cpp">whisper-cpp</td><td class="num" style="text-align:left" data-ru="не указано">not stated</td><td class="num" data-ru="2.88 GiB">2.88 GiB</td><td data-ru="Самый большой файл каталога. Память и время под стать">The largest file in the catalog. Memory and time to match</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="footnote" data-ru="«Не указано» значит, что каталог не объявляет квантование для этого файла; имя говорит о нём, когда каталог несёт квантованный вариант. Языки строк whisper описаны как многоязычные самим whisper.cpp, а что может выбрать MolvAI, решают &lt;code&gt;stt.language&lt;/code&gt; и &lt;code&gt;allowed_languages&lt;/code&gt;">"Not stated" means the catalog does not declare a quantization for that file; the name states it whenever the catalog carries a quantized variant. The languages of the whisper rows are described as multilingual by whisper.cpp, while <code>stt.language</code> and <code>allowed_languages</code> decide what MolvAI may choose</p>
+  </div>
+</section>
 
+<section class="section" aria-labelledby="switch">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru=""></span>
+      <h2 data-ru="Переключить модель">Switch a model</h2>
+      <p data-ru="Одна настройка или один флаг для отдельного файла. Демон загружает распознаватель при старте, поэтому новая модель для диктовки заработает после перезапуска">One setting, or one flag for a single file. The daemon loads the recognizer when it starts, so a new dictation model takes effect after a restart</p>
+    </div>
+    <div class="grid grid-2">
+      <article class="card">
+        <h3 data-ru="Для диктовки">For dictation</h3>
+        <div class="cmd"><code>molva models pull large-v3-turbo</code><button class="copy" type="button" data-copy="molva models pull large-v3-turbo" data-ru="Скопировать">Copy</button></div>
+        <div class="cmd"><code>molva config set stt.model large-v3-turbo</code><button class="copy" type="button" data-copy="molva config set stt.model large-v3-turbo" data-ru="Скопировать">Copy</button></div>
+        <p class="muted" data-ru="Движок остаётся &lt;code&gt;auto&lt;/code&gt; и следует записи каталога для новой модели. Распознаватель собирается при старте демона, поэтому для других весов перезапусти демон">The engine stays <code>auto</code> and follows the catalog entry of the new model. The recognizer is built at daemon start, so restart the daemon to load different weights</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Для одного файла">For one file</h3>
+        <div class="cmd"><code>molva transcribe talk.m4a --model large-v3-turbo</code><button class="copy" type="button" data-copy="molva transcribe talk.m4a --model large-v3-turbo" data-ru="Скопировать">Copy</button></div>
+        <p class="muted" data-ru="Переопределение действует на этот запуск. Свои веса тоже подходят: укажи каталог в &lt;code&gt;stt.model_path&lt;/code&gt;, а имя файла — в &lt;code&gt;stt.model&lt;/code&gt;">The override applies to that run. Your own weights fit too: point <code>stt.model_path</code> at the directory and name the file in <code>stt.model</code></p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Откуда берутся веса">Where the weights come from</h3>
+        <p class="muted" data-ru="По умолчанию Hugging Face, со сверкой SHA-256 из каталога. &lt;code&gt;stt.models_mirror&lt;/code&gt; указывает на каталог, который отдаёт те же имена файлов. Сверка суммы при этом работает, поэтому простой &lt;code&gt;http://&lt;/code&gt;-миррор в локальной сети годится">Hugging Face by default, with a SHA-256 check from the catalog. <code>stt.models_mirror</code> points at a directory that serves the same file names. The checksum check still runs, so a plain <code>http://</code> mirror on a local network is fine</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Лицензии весов">Licenses of the weights</h3>
+        <p class="muted" data-ru="Репозиторий под MIT. На веса эта лицензия не распространяется, у них свои условия — они собраны в &lt;a href=&quot;https://github.com/rokokol/MolvAI/blob/main/docs/model-licenses.md&quot;&gt;docs/model-licenses.md&lt;/a&gt;. Прочитай их, прежде чем распространять модель">The repository is MIT. The weights are not covered by that license and carry their own terms, collected in <a href="https://github.com/rokokol/MolvAI/blob/main/docs/model-licenses.md">docs/model-licenses.md</a>. Read it before you redistribute a model</p>
+      </article>
+    </div>
+    <div class="callout">
+  <span class="callout-title" data-ru="С Nix веса приходят из хранилища">With Nix, the weights come from the store</span>
+  <p data-ru="Модуль Home Manager скачивает выбранные модели во время вычисления конфигурации и рендерит &lt;code&gt;stt.model_path&lt;/code&gt; в хранилище. Модель меняет только переключение, а интерфейс прячет страницу настроек, потому что файл только для чтения. Подробности — в разделе &lt;a href=&quot;./docs/settings.html&quot;&gt;«Настройки и режим Nix»&lt;/a&gt;">The Home Manager module fetches the selected models at evaluation time and renders <code>stt.model_path</code> into the store. A switch is the only thing that changes a model, and the GUI hides its settings page because the file is read-only. Details in <a href="./docs/settings.html">settings and the Nix-managed mode</a></p>
+</div>
+    <p class="to-top"><a href="#main" data-ru="К началу">Back to top</a></p>
+  </div>
+</section>
 </main>
-
 <footer class="site-footer">
-  <div class="wrap footer-grid">
-    <div class="footer-brand">
+  <div class="wrap footer-inner">
+    <div>
       <a class="brand" href="./index.html">
-        <img src="./assets/logo.svg" alt="" width="26" height="26">
-        <span>Molv<span class="brand-ai">AI</span></span>
+        <img src="./assets/logo.svg" alt="" width="22" height="22">
+        <span>MolvAI</span>
       </a>
-      <p>Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
-      <p class="footer-note">MIT licensed · no trackers · no external fonts</p>
+      <p data-ru="Открытый голосовой ввод во все приложения. Зажми клавишу, говори, отпусти — текст оказывается в активном поле">Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
+      <p class="footer-note" data-ru="MIT · без трекеров · без внешних шрифтов">MIT licensed · no trackers · no external fonts</p>
+      <p class="footer-note"><a href="./ASSETS.md" data-ru="Ассеты и лицензии">Assets and licences</a></p>
     </div>
-    <nav aria-label="Project links">
-      <p class="footer-title">Project</p>
+    <nav aria-label="Project links" data-ru-aria-label="Ссылки проекта">
+      <p class="footer-title" data-ru="Проект">Project</p>
       <ul>
         <li><a href="https://github.com/rokokol/MolvAI">GitHub</a></li>
-        <li><a href="https://github.com/rokokol/MolvAI/releases">Releases</a></li>
-        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE">License (MIT)</a></li>
-        <li><a href="https://github.com/rokokol/MolvAI/issues">Issues</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/releases" data-ru="Релизы">Releases</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE" data-ru="Лицензия (MIT)">License (MIT)</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/issues" data-ru="Задачи">Issues</a></li>
       </ul>
     </nav>
-    <nav aria-label="Site links">
-      <p class="footer-title">Site</p>
+    <nav aria-label="Site links" data-ru-aria-label="Страницы сайта">
+      <p class="footer-title" data-ru="Сайт">Site</p>
       <ul>
-        <li><a href="./features.html">Features</a></li>
-        <li><a href="./models.html">Models</a></li>
-        <li><a href="./cli.html">CLI reference</a></li>
-        <li><a href="./docs/index.html">Documentation</a></li>
+        <li><a href="./features.html" data-ru="Возможности">Features</a></li>
+        <li><a href="./models.html" data-ru="Модели">Models</a></li>
+        <li><a href="./cli.html" data-ru="Справочник CLI">CLI reference</a></li>
+        <li><a href="./docs/index.html" data-ru="Документация">Documentation</a></li>
         <li><a href="./faq.html">FAQ</a></li>
-        <li><a href="./docs/status.html">Status and roadmap</a></li>
+        <li><a href="./docs/status.html" data-ru="Статус и планы">Status and roadmap</a></li>
       </ul>
     </nav>
     <div>
-      <p class="footer-title">Canonical docs</p>
-      <p class="footer-note">The repository is the source of truth. These pages summarize it and link back</p>
+      <p class="footer-title" data-ru="Канонические документы">Canonical docs</p>
+      <p class="footer-note" data-ru="Источник истины — репозиторий. Эти страницы его пересказывают и дают ссылки">
+        The repository is the source of truth. These pages summarize it and link back
+      </p>
       <ul>
         <li><a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README</a></li>
         <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></li>
@@ -265,9 +213,10 @@
     </div>
   </div>
   <div class="wrap footer-credit">
-    <p>MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
-    <p>This site runs without cookies, analytics or third-party assets</p>
+    <p data-ru="MolvAI сделан на хакатоне V0ICE (Казань, 2026) и находится в разработке">MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
+    <p data-ru="Сайт работает без cookies, аналитики и сторонних ассетов">This site runs without cookies, analytics or third-party assets</p>
   </div>
 </footer>
+<script src="./assets/site.js"></script>
 </body>
 </html>

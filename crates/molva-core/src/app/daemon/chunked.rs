@@ -9,7 +9,10 @@
 //! The chunks go in one queue to one worker thread, so the order of the texts is the order of
 //! the chunks, and they cannot get mixed up by construction. The context between chunks passes
 //! as a hint: the `initial_prompt` of the next chunk is the tail of the text already recognized
-//! together with the dictionary hint, so whisper keeps the style, the terms and the word forms
+//! together with the dictionary hint, so whisper keeps the style, the terms and the word forms.
+//! The hint and the overlapping sound both pull the model into saying the last word of the
+//! previous chunk again, so a chunk drops one leading word that repeats it, see
+//! [`strip_repeated_head`]
 //!
 //! The language is chosen by the first chunk of the phrase and applies to all the others.
 //! Whisper does not split mixed speech inside one phrase anyway: it chooses one language for the
@@ -232,7 +235,11 @@ impl ChunkFeeder {
 /// The language is fixed by the first chunk: whisper reads a fragment in one language anyway,
 /// and a language that jumps from chunk to chunk would give one sentence in two readings.
 /// Text that looks like a hallucination on silence does not reach the draft. Otherwise
-/// "Продолжение следует" would grow in the middle of a phrase
+/// "Продолжение следует" would grow in the middle of a phrase. The echo of the previous text
+/// does not reach it either, see [`strip_repeated_head`]
+///
+/// The hint is what makes the echo likely, so the hint stays and the text is cleaned after the
+/// recognition: the model needs the hint, and the field does not need a doubled word
 pub fn transcribe_chunk(
     engine: &mut dyn SttEngine,
     audio: &PcmAudio,
@@ -245,7 +252,7 @@ pub fn transcribe_chunk(
     let text = if is_silence_hallucination(&transcript, no_speech_threshold) {
         String::new()
     } else {
-        transcript.text.trim().to_string()
+        strip_repeated_head(&transcript.text, &context.previous_text)
     };
     Ok(ChunkText {
         text,
@@ -281,9 +288,15 @@ pub fn tail_options(options: &SttOptions, prefix: &ChunkPrefix) -> SttOptions {
 }
 
 /// Join the start of a phrase, made of chunks, with the recognized tail
+///
+/// The tail also begins with the overlap of the last chunk, so it drops the echo of that chunk the
+/// same way a chunk does
 pub fn merge(prefix: &ChunkPrefix, tail: Option<Transcript>) -> Transcript {
     let (tail_text, tail_language) = match tail {
-        Some(tail) => (tail.text.trim().to_string(), tail.detected_language),
+        Some(tail) => (
+            strip_repeated_head(&tail.text, &prefix.text),
+            tail.detected_language,
+        ),
         None => (String::new(), None),
     };
     Transcript {
@@ -324,6 +337,46 @@ pub fn tail_context(text: &str) -> String {
         Some(space) => tail[space + 1..].to_string(),
         None => tail,
     }
+}
+
+/// Text of a chunk without the echo of the previous one
+///
+/// The overlap of the sound and the hint of the previous text both pull the model into saying the
+/// last word of the previous chunk again. The phrase would then read "слово слово". At most one
+/// leading word goes, and only when it repeats the last word of the previous text. That
+/// comparison ignores the case and the punctuation around the word. A word repeated inside a
+/// chunk stays: the overlap cannot explain it, so the person said it
+///
+/// The cost is one lost word in the rare case where the person really repeats the last word
+/// across a pause. A chunk that only echoed that word becomes empty. The alternative, a shorter
+/// overlap, loses the protection against a quiet consonant that the silence detector swallowed.
+/// It also does not touch the echo: the hint alone makes the model repeat the word
+pub fn strip_repeated_head(text: &str, previous: &str) -> String {
+    let text = text.trim();
+    let Some(echo) = last_word(previous) else {
+        return text.to_string();
+    };
+    let Some(head) = text.split_whitespace().next() else {
+        return String::new();
+    };
+    if normalize_word(head) != echo {
+        return text.to_string();
+    }
+    // After the trim the text begins with `head`, so the rest starts right after it
+    text[head.len()..].trim().to_string()
+}
+
+/// Last word of a text, lowercased and without the punctuation around it
+fn last_word(text: &str) -> Option<String> {
+    text.split_whitespace()
+        .rev()
+        .map(normalize_word)
+        .find(|word| !word.is_empty())
+}
+
+fn normalize_word(word: &str) -> String {
+    word.trim_matches(|c: char| !c.is_alphanumeric())
+        .to_lowercase()
 }
 
 /// Join of texts: a space between chunks, and empty ones are skipped
@@ -413,6 +466,77 @@ mod tests {
             chunk.text, "",
             "a subtitle tail would land in the middle of a phrase"
         );
+    }
+
+    #[test]
+    fn a_word_echoed_from_the_previous_chunk_is_not_doubled() {
+        let mut engine = FakeStt::returning("слово и дальше");
+        let chunk = transcribe_chunk(
+            &mut engine,
+            &audio(2.0),
+            &SttOptions::default(),
+            &context("это было сказано раньше, слово", None),
+            0.6,
+        )
+        .expect("the chunk is recognized");
+
+        assert_eq!(
+            chunk.text, "и дальше",
+            "the repeated boundary word was not dropped"
+        );
+    }
+
+    #[test]
+    fn two_chunks_that_hear_the_same_word_do_not_double_it_in_the_draft() {
+        let mut acc = ChunkAccumulator::default();
+        let mut engine = FakeStt::returning("конец");
+
+        // The second chunk holds the overlap of the first one, so the fake hears the same word
+        for _ in 0..2 {
+            let context = acc.context();
+            let chunk = transcribe_chunk(
+                &mut engine,
+                &audio(2.0),
+                &SttOptions::default(),
+                &context,
+                0.6,
+            )
+            .expect("the chunk is recognized");
+            acc.push(chunk, 1_000);
+        }
+
+        assert_eq!(acc.draft(), "конец", "the boundary word was doubled");
+    }
+
+    #[test]
+    fn an_echo_is_dropped_whatever_its_case_and_punctuation() {
+        assert_eq!(
+            strip_repeated_head("«Слово», дальше", "… одно слово"),
+            "дальше"
+        );
+        assert_eq!(strip_repeated_head("СЛОВО и дальше", "слово"), "и дальше");
+    }
+
+    #[test]
+    fn a_word_repeated_inside_a_chunk_stays() {
+        // The overlap cannot explain a repetition in the middle: the person said it
+        assert_eq!(
+            strip_repeated_head("да да нет", "он сказал слово"),
+            "да да нет"
+        );
+        assert_eq!(strip_repeated_head("очень очень", "и слово"), "очень очень");
+    }
+
+    #[test]
+    fn a_chunk_that_repeats_only_the_last_word_becomes_empty() {
+        assert_eq!(strip_repeated_head("Слово.", "последнее слово"), "");
+        assert_eq!(strip_repeated_head("", "последнее слово"), "");
+    }
+
+    #[test]
+    fn nothing_is_dropped_without_a_previous_text() {
+        assert_eq!(strip_repeated_head("  привет мир ", ""), "привет мир");
+        assert_eq!(strip_repeated_head("привет мир", "…"), "привет мир");
     }
 
     #[test]
@@ -508,6 +632,21 @@ mod tests {
         assert_eq!(
             merged.no_speech_prob, None,
             "the speech was already found in chunks: silence in the tail does not cancel the phrase"
+        );
+    }
+
+    #[test]
+    fn the_tail_does_not_repeat_the_last_word_of_the_prefix() {
+        let prefix = ChunkPrefix {
+            text: "начало реплики закончилось словом".into(),
+            language: Some("ru".into()),
+            ..ChunkPrefix::default()
+        };
+        let merged = merge(&prefix, Some(Transcript::text_only("словом и хвост")));
+
+        assert_eq!(
+            merged.text, "начало реплики закончилось словом и хвост",
+            "the tail repeated the boundary word of the last chunk"
         );
     }
 

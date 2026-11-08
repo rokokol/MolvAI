@@ -2,7 +2,7 @@
 // Pure presentation functions and chart geometry.
 // The core in Rust computes everything it can compute. Here we only format
 
-import type { DayPoint, DownloadProgress, FileResult } from "./types";
+import type { DayPoint, DownloadProgress, FileResult, Segment } from "./types";
 
 /** Pace with one decimal digit; a missing value becomes a dash */
 export function formatWpm(value: number | null | undefined, dash = "—"): string {
@@ -178,6 +178,28 @@ export function formatTimecode(ms: number): string {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(Math.floor(ms) % 1000).padStart(3, "0")}`;
 }
 
+/** A span of time as minutes and seconds: 65 000 becomes "1:05" */
+export function formatElapsed(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined || !Number.isFinite(ms) || ms < 0) {
+    return "—";
+  }
+  const total = Math.floor(ms / 1000);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  const tail = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  return hours > 0 ? `${hours}:${tail}` : tail;
+}
+
+/** One segment as copied text: with its timecodes when they are asked for */
+export function renderSegment(segment: Segment, timecodes: boolean): string {
+  const text = segment.text.trim();
+  if (!timecodes) {
+    return text;
+  }
+  return `[${formatTimecode(segment.start_ms)} → ${formatTimecode(segment.end_ms)}] ${text}`;
+}
+
 /** The text of a file transcription, with a timecode per segment when asked */
 export function renderFileResult(result: FileResult, timecodes: boolean): string {
   if (!timecodes) {
@@ -186,10 +208,5 @@ export function renderFileResult(result: FileResult, timecodes: boolean): string
   if (!result.segments || result.segments.length === 0) {
     return `[${formatTimecode(0)} → ${formatTimecode(result.audio_secs * 1000)}] ${result.text}`;
   }
-  return result.segments
-    .map(
-      (segment) =>
-        `[${formatTimecode(segment.start_ms)} → ${formatTimecode(segment.end_ms)}] ${segment.text.trim()}`,
-    )
-    .join("\n");
+  return result.segments.map((segment) => renderSegment(segment, timecodes)).join("\n");
 }

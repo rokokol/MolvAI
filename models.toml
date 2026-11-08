@@ -79,12 +79,13 @@ engine = "whisper-cpp"
 
 # The same weights and the same quantization that the agent on the station uses for
 # Russian speech. The revision is pinned: a re-upload upstream must not change what a
-# hash in this file means.
+# hash in this file means. The hash below was checked against the LFS oid that the Hugging
+# Face API reports for this revision, not copied from a local download.
 [[model]]
 name = "gigaam-v3-e2e-rnnt-q4_k_m"
 file_name = "gigaam-v3-e2e-rnnt-Q4_K_M.gguf"
 url = "https://huggingface.co/handy-computer/gigaam-v3-e2e-rnnt-gguf/resolve/ba40c6e9a02d6a29b7a88fcb8736e451e79f4b3e/gigaam-v3-e2e-rnnt-Q4_K_M.gguf"
 size_bytes = 183948704
-sha256 = "7d69952fb431a8d7800ed9910dc61fea37d84066fe96d10bf24c8bd4b7c68623"
+sha256 = "7d69952fb431a8d7800ed9910dc61fea37d8406bfe96d10bf24c8bd4b7c68623"
 engine = "transcribe-cpp"
 language = "ru"

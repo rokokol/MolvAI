@@ -1,241 +1,295 @@
 <!DOCTYPE html>
-<html lang="en" class="no-js">
+<html lang="en" class="no-js" data-ddlc-heading="plain">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Features — MolvAI</title>
-<meta name="description" content="What MolvAI does: push-to-talk and toggle dictation, streaming text while you speak, local cleanup rules, optional local language model, voice editing of a selection, file transcription with timecodes, transcript search and a private journal">
+<title data-ru="Возможности — MolvAI">Features — MolvAI</title>
+<meta name="description" content="What MolvAI does: push-to-talk and toggle dictation, chunk recognition with a live draft, local cleanup rules, optional local language model, voice editing of a selection, file transcription with timecodes, transcript search and a private journal" data-ru-content="Что делает MolvAI: диктовка по удержанию и переключению, текст по мере речи, локальные правила чистки, необязательная локальная языковая модель, голосовая правка выделения, расшифровка файлов с таймкодами, поиск по расшифровкам и приватный журнал">
 <meta name="color-scheme" content="dark light">
-<meta name="theme-color" content="#0a0c12">
-<link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#222222" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="./assets/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./assets/vendor/ddlc/ddlc-tokens.css">
+<link rel="stylesheet" href="./assets/vendor/ddlc/ddlc-ui.css">
+<link rel="stylesheet" href="./assets/vendor/ddlc/ddlc-report.css">
 <link rel="stylesheet" href="./assets/site.css">
-<script src="./assets/site.js" defer></script>
+<script>
+  (function () {
+    try {
+      var q = new URLSearchParams(location.search)
+      var pinned = q.get("theme")
+      var theme = pinned === "light" || pinned === "dark" ? pinned : localStorage.getItem("molvai-theme")
+      if (pinned === "light" || pinned === "dark") localStorage.setItem("molvai-theme", pinned)
+      if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme
+      var lang = q.get("lang")
+      var stored = localStorage.getItem("molvai-lang")
+      if (lang === "ru" || (lang !== "en" && stored === "ru")) document.documentElement.lang = "ru"
+    } catch (e) {}
+  })()
+</script>
+<script type="module" src="./assets/kit.js"></script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
-
-<header class="site-header">
-  <div class="wrap header-inner">
-    <a class="brand" href="./index.html" aria-label="MolvAI home">
-      <img src="./assets/logo.svg" alt="" width="26" height="26">
-      <span>Molv<span class="brand-ai">AI</span></span>
+<canvas class="cloud" id="cloud" aria-hidden="true"></canvas>
+<a class="skip" href="#main" data-ru="К содержанию">Skip to content</a>
+<header class="site-bar">
+  <div class="bar wrap bar-row">
+    <a class="brand" href="./index.html" aria-label="MolvAI home" data-ru-aria-label="MolvAI — главная">
+      <img src="./assets/logo.svg" alt="" width="22" height="22">
+      <span>MolvAI</span>
     </a>
-    <nav class="site-nav" id="site-nav" aria-label="Main">
-      <a href="./index.html">Home</a>
-      <a href="./features.html" aria-current="page">Features</a>
-      <a href="./models.html">Models</a>
-      <a href="./cli.html">CLI</a>
-      <a href="./docs/index.html">Docs</a>
-      <a href="./faq.html">FAQ</a>
-      <a href="./docs/status.html">Status</a>
-      <a class="nav-github" href="https://github.com/rokokol/MolvAI"><img src="./assets/icon-github.svg" alt="" width="15" height="15">GitHub</a>
+    <p class="tagline" data-ru="Голосовой ввод во все приложения">System-wide voice input, on your machine</p>
+    <nav class="tabs" aria-label="Main" data-ru-aria-label="Основное">
+      <a href="./index.html" data-ru="Главная">Home</a>
+      <a href="./features.html" aria-current="page" data-ru="Возможности">Features</a>
+      <a href="./models.html" data-ru="Модели">Models</a>
+      <a href="./cli.html" data-ru="CLI">CLI</a>
+      <a href="./docs/index.html" data-ru="Документация">Docs</a>
+      <a href="./faq.html" data-ru="FAQ">FAQ</a>
+      <a href="./docs/status.html" data-ru="Статус">Status</a>
     </nav>
-    <div class="header-tools">
-      <button class="icon-btn theme-toggle" type="button" data-theme-toggle aria-label="Switch between dark and light theme">
-        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8">
-          <circle cx="12" cy="12" r="8"></circle>
-          <path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"></path>
-        </svg>
+    <div class="bar-end">
+      <div class="segmented lang-switch" role="group" aria-label="Language" data-ru-aria-label="Язык">
+        <button type="button" data-lang-set="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang-set="ru" aria-pressed="false">RU</button>
+      </div>
+      <button class="icon-button" id="theme" type="button" aria-label="Theme: system" data-ru-aria-label="Тема">
+        <svg class="pixel" viewBox="0 0 8 8" aria-hidden="true"><path id="theme-icon"/></svg>
       </button>
-      <button class="icon-btn menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="site-nav">
-        <span class="menu-bars" aria-hidden="true"></span>
-        <span class="visually-hidden">Menu</span>
-      </button>
+      <a class="icon-button" href="https://github.com/rokokol/MolvAI" aria-label="MolvAI on GitHub" data-ru-aria-label="MolvAI на GitHub">
+        <img src="./assets/icon-github.svg" alt="" width="16" height="16">
+      </a>
     </div>
   </div>
 </header>
-
 <main id="main">
-
-  <section class="section">
-    <div class="wrap">
-      <div class="section-head">
-        <span class="kicker">Features</span>
-        <h1>Dictation first, and the small things around it</h1>
-        <p>MolvAI is one pipeline with one storage file. Each feature below is a setting of that pipeline, not a separate service. Where a feature has a limit, the limit is named too</p>
-      </div>
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru="Возможности">Features</span>
+      <h1 data-ru="Сначала диктовка, а потом мелочи вокруг неё">Dictation first, and the small things around it</h1>
+      <p data-ru="MolvAI — один конвейер и один файл хранения. Каждая возможность ниже это настройка конвейера, а не отдельный сервис. Где у возможности есть предел, предел назван">MolvAI is one pipeline with one storage file. Each feature below is a setting of that pipeline, not a separate service. Where a feature has a limit, the limit is named too</p>
     </div>
-  </section>
+    <p class="chips">
+      <span class="sticker" data-ru="MIT">MIT</span>
+      <span class="sticker alt" data-ru="Локально">Local</span>
+      <span class="sticker quiet" data-ru="Сначала CPU">CPU first</span>
+      <span class="sticker alt" data-ru="Wayland · X11">Wayland · X11</span>
+    </p>
+  </div>
+</section>
 
-  <section class="section" aria-labelledby="dictation">
-    <div class="wrap">
-      <div class="section-head">
-        <span class="kicker">Dictation</span>
-        <h2 id="dictation">From a held key to a finished sentence</h2>
-      </div>
-      <div class="grid grid-2">
-        <article class="card">
-          <h3>Any application</h3>
-          <p class="muted">The text goes into the field that has the focus: an editor, a chat, a terminal, a browser form. The paste method is chosen automatically and the journal records which one worked. In a terminal the shortcut switches to Ctrl+Shift+V</p>
-        </article>
-        <article class="card">
-          <h3>Hold, tap or cancel</h3>
-          <p class="muted">Hold <kbd>F9</kbd> to dictate while the key is down. A short tap latches the recording, and the next tap ends it. <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Z</kbd> toggles from anywhere, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd> throws the recording away. Every combination is a setting</p>
-        </article>
-        <article class="card">
-          <h3>Text while you speak</h3>
-          <p class="muted">With <code>stt.chunked</code> the phrase is cut at short pauses and each chunk goes to the model during the recording. With <code>stt.streaming_inject</code> the finished chunks are typed as they arrive, so a long paragraph is mostly on screen before you release the key</p>
-        </article>
-        <article class="card">
-          <h3>Two recordings never collide</h3>
-          <p class="muted">The next phrase records while the previous one is recognized. The daemon counts the phrases in processing and goes back to ready after the last one. Exit code 4 appears only when the previous phrase truly blocks the request</p>
-        </article>
-      </div>
+<section class="section" aria-labelledby="dictation">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru="Диктовка">Dictation</span>
+      <h2 data-ru="От зажатой клавиши до готового предложения">From a held key to a finished sentence</h2>
+      <p data-ru="Микрофон — самая сложная часть инструмента диктовки, и почти всё в этом списке про то, чтобы закрыть его вовремя">The microphone is the hard part of a dictation tool, and most of this list is about closing it at the right moment</p>
     </div>
-  </section>
-
-  <section class="section" aria-labelledby="text">
-    <div class="wrap">
-      <div class="section-head">
-        <span class="kicker">Text quality</span>
-        <h2 id="text">Cleanup without a model, a model when you want one</h2>
-        <p>The default pipeline is deterministic: a term dictionary and a rule set. No token leaves the machine unless you turn the model on</p>
-      </div>
-      <div class="grid grid-2">
-        <article class="card">
-          <h3>Dictionary and rules</h3>
-          <p class="muted">Your names and product terms are substituted fuzzily. Spoken punctuation becomes punctuation, filler words disappear, repeats collapse, numerals become digits. The rules run in milliseconds and are covered by the same tests as the rest</p>
-        </article>
-        <article class="card">
-          <h3>Styles per application</h3>
-          <p class="muted">Verbatim, Cleanup, Messenger, Email, Code and Formal. One is the default, and <code>style.by_app</code> gives a window class its own style: terse in a messenger, formal in mail</p>
-        </article>
-        <article class="card">
-          <h3>Optional language model</h3>
-          <p class="muted">Off by default. When on, it speaks the OpenAI-compatible protocol and Ollama is the default provider. It runs only for phrases longer than <code>rules.llm_min_words</code> and only for styles that need it. A timeout returns the text after the rules, never an empty field</p>
-        </article>
-        <article class="card">
-          <h3>Command mode</h3>
-          <p class="muted">Select a paragraph, press <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>X</kbd>, say "make it shorter" or "translate to English", press again. The selection is replaced in place. This is the project's original feature, and it needs a model</p>
-        </article>
-      </div>
+    <div class="grid grid-2">
+      <article class="card">
+        <h3 data-ru="Любое приложение">Any application</h3>
+        <p class="muted" data-ru="Текст попадает в поле с фокусом: редактор, чат, терминал, форма в браузере. Способ вставки выбирается автоматически, а журнал записывает, какой сработал. В терминале сочетание переключается на Ctrl+Shift+V">The text goes into the field that has the focus: an editor, a chat, a terminal, a browser form. The paste method is chosen automatically and the journal records which one worked. In a terminal the shortcut switches to Ctrl+Shift+V</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Зажми, кликни или отмени">Hold, tap or cancel</h3>
+        <p class="muted" data-ru="Зажми &lt;kbd&gt;F9&lt;/kbd&gt;, чтобы диктовать, пока клавиша нажата. Короткое нажатие защёлкивает запись, следующее — заканчивает. &lt;kbd&gt;Ctrl&lt;/kbd&gt;+&lt;kbd&gt;Alt&lt;/kbd&gt;+&lt;kbd&gt;Z&lt;/kbd&gt; переключает откуда угодно, &lt;kbd&gt;Ctrl&lt;/kbd&gt;+&lt;kbd&gt;Alt&lt;/kbd&gt;+&lt;kbd&gt;C&lt;/kbd&gt; выбрасывает запись. Любое сочетание — настройка">Hold <kbd>F9</kbd> to dictate while the key is down. A short tap latches the recording, and the next tap ends it. <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Z</kbd> toggles from anywhere, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd> throws the recording away. Every combination is a setting</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Текст по мере речи">Text while you speak</h3>
+        <p class="muted" data-ru="С &lt;code&gt;stt.chunked&lt;/code&gt; фраза режется на коротких паузах, и каждый кусок распознаётся прямо во время записи для черновика. В поле текст приходит одним куском после отпускания: живое написание по кускам выключено до отдельной доработки">With <code>stt.chunked</code> the phrase is cut at short pauses and each chunk is recognized during the recording for the draft. The field receives the text as one piece after the release: live chunk typing is off until its own follow-up work</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Две записи не сталкиваются">Two recordings never collide</h3>
+        <p class="muted" data-ru="Следующая фраза записывается, пока распознаётся предыдущая. Демон считает фразы в обработке и возвращается в готовность после последней. Код возврата 4 появляется, только когда предыдущая фраза действительно блокирует запрос">The next phrase records while the previous one is recognized. The daemon counts the phrases in processing and goes back to ready after the last one. Exit code 4 appears only when the previous phrase truly blocks the request</p>
+      </article>
     </div>
-  </section>
+  </div>
+</section>
 
-  <section class="section" aria-labelledby="files">
-    <div class="wrap">
-      <div class="section-head">
-        <span class="kicker">Files and search</span>
-        <h2 id="files">Your recordings become text you can search</h2>
-      </div>
-      <div class="grid grid-2">
-        <article class="card">
-          <h3>Audio and video, with timecodes</h3>
-          <p class="muted">A single path, a directory, a nested tree or a stream on stdin. <code>molva transcribe --timecodes</code> prints segments with their start and end, <code>--json</code> gives a machine array, and one bad file does not cancel the batch</p>
-          <div class="cmd"><code>molva transcribe talks/ --recursive --timecodes</code><button class="copy" type="button" data-copy="molva transcribe talks/ --recursive --timecodes">Copy</button></div>
-        </article>
-        <article class="card">
-          <h3>Search across transcripts</h3>
-          <p class="muted">Every transcription lands in the same journal. <code>molva search</code> finds a phrase in any of them and prints the source file with a <code>MM:SS.mmm</code> timecode. There is no second index to fall out of date</p>
-          <div class="cmd"><code>molva search "release date" --since 7d</code><button class="copy" type="button" data-copy="molva search &quot;release date&quot; --since 7d">Copy</button></div>
-        </article>
-        <article class="card">
-          <h3>Journal and statistics</h3>
-          <p class="muted">One JSON line per phrase: text, words, words per minute, style, engine, model, dictionary hits, the paste method and the latency of every stage. <code>molva stats</code> turns it into averages, a personal record and a daily picture</p>
-        </article>
-        <article class="card">
-          <h3>History that comes back</h3>
-          <p class="muted"><code>molva history paste --last</code> puts the previous phrase into the field again without a second dictation. Filters by app and time, export to JSONL or CSV, delete one line or clear all of it</p>
-        </article>
-      </div>
+<section class="section" aria-labelledby="text">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru="Качество текста">Text quality</span>
+      <h2 data-ru="Чистка без модели, модель — когда захочешь">Cleanup without a model, a model when you want one</h2>
+      <p data-ru="Конвейер по умолчанию детерминированный: словарь терминов и набор правил. Ни один токен не покидает машину, пока ты не включишь модель">The default pipeline is deterministic: a term dictionary and a rule set. No token leaves the machine unless you turn the model on</p>
     </div>
-  </section>
-
-  <section class="section" aria-labelledby="privacy-feature">
-    <div class="wrap">
-      <div class="section-head">
-        <span class="kicker">Privacy and portability</span>
-        <h2 id="privacy-feature">Local by construction, not by a setting</h2>
-      </div>
-      <div class="grid grid-3">
-        <article class="card">
-          <h3>Microphone discipline</h3>
-          <p class="muted">The device opens on the press and closes on the release. The close does not depend on how the phrase ended, and its delay is measured and journaled</p>
-        </article>
-        <article class="card">
-          <h3>Encryption and no-record mode</h3>
-          <p class="muted">The journal texts can be sealed with XChaCha20-Poly1305 and a key in the OS store or a 0600 file. The statistics keep working without the key. No-record mode writes nothing at all</p>
-        </article>
-        <article class="card">
-          <h3>Offline</h3>
-          <p class="muted">Only the weight download and a cloud model provider use the network, and both wait for your command or your configuration. Everything else works with the cable out</p>
-        </article>
-        <article class="card">
-          <h3>Nix first</h3>
-          <p class="muted">The flake gives a dev shell, a package and a Home Manager module. The module renders the settings file and the weights into the store, runs the daemon as a user service and writes the Hyprland binds</p>
-        </article>
-        <article class="card">
-          <h3>Other systems</h3>
-          <p class="muted">Ready builds exist for Linux, Windows and macOS, and the installer checks dependencies instead of installing them. The paste chain falls back to the clipboard when the compositor refuses</p>
-        </article>
-        <article class="card">
-          <h3>Model choice</h3>
-          <p class="muted">GigaAM-v3 by default, whisper.cpp models when you want them. Downloads are checked against a SHA-256 from the catalog, and <code>stt.models_mirror</code> serves the same file from a local network</p>
-        </article>
-      </div>
+    <div class="grid grid-2">
+      <article class="card">
+        <h3 data-ru="Словарь и правила">Dictionary and rules</h3>
+        <p class="muted" data-ru="Твои имена и названия продуктов подставляются с нечётким совпадением. Проговорённые знаки становятся знаками, слова-заполнители исчезают, повторы схлопываются, числительные превращаются в цифры. Правила работают за миллисекунды и покрыты теми же тестами, что и всё остальное">Your names and product terms are substituted fuzzily. Spoken punctuation becomes punctuation, filler words disappear, repeats collapse, numerals become digits. The rules run in milliseconds and are covered by the same tests as the rest</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Стили под приложение">Styles per application</h3>
+        <p class="muted" data-ru="Дословно, Чистка, Мессенджер, Почта, Код и Формально. Один из них по умолчанию, а &lt;code&gt;style.by_app&lt;/code&gt; даёт классу окна свой стиль: коротко в мессенджере, формально в почте">Verbatim, Cleanup, Messenger, Email, Code and Formal. One is the default, and <code>style.by_app</code> gives a window class its own style: terse in a messenger, formal in mail</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Языковая модель по желанию">Optional language model</h3>
+        <p class="muted" data-ru="По умолчанию выключена. Если включить — говорит по протоколу, совместимому с OpenAI, а провайдер по умолчанию Ollama. Работает только для фраз длиннее &lt;code&gt;rules.llm_min_words&lt;/code&gt; и только для стилей, которым нужна. Таймаут возвращает текст после правил, но никогда пустое поле">Off by default. When on, it speaks the OpenAI-compatible protocol and Ollama is the default provider. It runs only for phrases longer than <code>rules.llm_min_words</code> and only for styles that need it. A timeout returns the text after the rules, never an empty field</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Режим команды">Command mode</h3>
+        <p class="muted" data-ru="Выдели абзац, нажми &lt;kbd&gt;Ctrl&lt;/kbd&gt;+&lt;kbd&gt;Alt&lt;/kbd&gt;+&lt;kbd&gt;X&lt;/kbd&gt;, скажи «сделай короче» или «переведи на английский», нажми ещё раз. Выделение заменяется на месте. Это исходная возможность проекта, и ей нужна модель">Select a paragraph, press <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>X</kbd>, say "make it shorter" or "translate to English", press again. The selection is replaced in place. This is the project's original feature, and it needs a model</p>
+      </article>
     </div>
-  </section>
+  </div>
+</section>
 
-  <section class="section" aria-labelledby="limits">
-    <div class="wrap">
-      <div class="section-head">
-        <span class="kicker">Limits</span>
-        <h2 id="limits">What it does not do yet</h2>
-        <p>The project is in development. A feature list without a cut list is marketing, so the cut list lives in the open</p>
-      </div>
-      <div class="callout warn">
-        <span class="callout-title">Read the status page before you rely on a feature</span>
-        <p>Known gaps include the Windows and macOS checks on live hardware, which the status log lists as unverified. The releases carry CUDA builds for Windows only. The canonical list is <a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a>, summarized on the <a href="./docs/status.html">status page</a></p>
-      </div>
-      <div class="grid grid-2">
-        <article class="card">
-          <h3>Speech in the middle of a phrase</h3>
-          <p class="muted">A whole English sentence inside a Russian phrase is not read as English. Latin insertions and terms work, and the language is chosen once per phrase</p>
-        </article>
-        <article class="card">
-          <h3>Pre-roll audio</h3>
-          <p class="muted">The first syllable you say before the microphone opens is lost. A pre-roll needs a permanently open stream, and this project keeps the microphone closed</p>
-        </article>
-      </div>
-      <div class="to-top"><a href="#main">Back to top</a></div>
+<section class="section" aria-labelledby="files">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru="Файлы и поиск">Files and search</span>
+      <h2 data-ru="Твои записи становятся текстом, который можно искать">Your recordings become text you can search</h2>
+      <p data-ru="Расшифровка файла попадает в тот же журнал, что и надиктованная фраза, поэтому один поиск смотрит и туда, и туда">A transcription of a file lands in the same journal as a dictated phrase, so one search looks at both</p>
     </div>
-  </section>
+    <div class="grid grid-2">
+      <article class="card">
+        <h3 data-ru="Аудио и видео с таймкодами">Audio and video, with timecodes</h3>
+        <p class="muted" data-ru="Окно отправляет файл демону по IPC и получает текст с таймкодами того же распознавателя, что и диктовка. У &lt;code&gt;molva transcribe --timecodes&lt;/code&gt; своя работа: офлайн-пакет из одного пути, каталога, вложенного дерева или потока stdin, &lt;code&gt;--json&lt;/code&gt; для машин, и один плохой файл не отменяет пакет">The window sends the file to the daemon over IPC and gets the text with timecodes from the same recognizer as dictation. <code>molva transcribe --timecodes</code> has its own job: an offline batch from a path, a directory, a nested tree or a stream on stdin, <code>--json</code> for machines, and one bad file does not cancel the batch</p>
+        <div class="cmd"><code>molva transcribe talks/ --recursive --timecodes</code><button class="copy" type="button" data-copy="molva transcribe talks/ --recursive --timecodes" data-ru="Скопировать">Copy</button></div>
+      </article>
+      <article class="card">
+        <h3 data-ru="Поиск по расшифровкам">Search across transcripts</h3>
+        <p class="muted" data-ru="Каждая расшифровка попадает в тот же журнал. &lt;code&gt;molva search&lt;/code&gt; находит фразу в любой из них и печатает исходный файл с таймкодом &lt;code&gt;MM:SS.mmm&lt;/code&gt;. Второго индекса, который устаревает, нет">Every transcription lands in the same journal. <code>molva search</code> finds a phrase in any of them and prints the source file with a <code>MM:SS.mmm</code> timecode. There is no second index to fall out of date</p>
+        <div class="cmd"><code>molva search &quot;release date&quot; --since 7d</code><button class="copy" type="button" data-copy="molva search &quot;release date&quot; --since 7d" data-ru="Скопировать">Copy</button></div>
+      </article>
+      <article class="card">
+        <h3 data-ru="Журнал и статистика">Journal and statistics</h3>
+        <p class="muted" data-ru="Одна строка JSON на фразу: текст, слова, слов в минуту, стиль, движок, модель, попадания в словарь, способ вставки и задержка каждой стадии. &lt;code&gt;molva stats&lt;/code&gt; превращает это в средние, личный рекорд и картину дня">One JSON line per phrase: text, words, words per minute, style, engine, model, dictionary hits, the paste method and the latency of every stage. <code>molva stats</code> turns it into averages, a personal record and a daily picture</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="История, которая возвращается">History that comes back</h3>
+        <p class="muted" data-ru="&lt;code&gt;molva history paste --last&lt;/code&gt; возвращает предыдущую фразу в поле без повторной диктовки. Фильтры по приложению и времени, экспорт в JSONL или CSV, удаление одной строки или всей истории"><code>molva history paste --last</code> puts the previous phrase into the field again without a second dictation. Filters by app and time, export to JSONL or CSV, delete one line or clear all of it</p>
+      </article>
+    </div>
+  </div>
+</section>
 
+<section class="section" aria-labelledby="daemon">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru="Один процесс">One process</span>
+      <h2 data-ru="Демон один, клиентов сколько угодно">One daemon, any number of clients</h2>
+      <p data-ru="Диктовка, расшифровка файлов и MCP-сервер делят один распознаватель, поэтому второй копии весов в памяти нет">Dictation, file transcription and the MCP server share one recognizer, so no second copy of the weights sits in memory</p>
+    </div>
+    <div class="grid grid-2">
+      <article class="card">
+        <h3 data-ru="Горячий распознаватель для файла">A warm recognizer for a file</h3>
+        <p class="muted" data-ru="Files отправляет запрос &lt;code&gt;file.transcribe&lt;/code&gt; демону по IPC. Модель, язык, словарь и правила те же, что у диктовки, и окно не запускает второй процесс. &lt;code&gt;molva transcribe&lt;/code&gt; остаётся отдельной командой для офлайн-пакета">Files sends a <code>file.transcribe</code> request to the daemon over IPC. The model, the language, the dictionary and the rules are the ones dictation uses, and the window starts no second process. <code>molva transcribe</code> stays a separate command for an offline batch</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Файл не отнимает микрофон">A file never takes the microphone</h3>
+        <p class="muted" data-ru="Пока идёт файл, состояние остаётся &lt;code&gt;idle&lt;/code&gt;, а поле задачи говорит &lt;code&gt;file&lt;/code&gt;: панель и &lt;code&gt;molva status&lt;/code&gt; пишут, что идёт расшифровка файла. Запись во время файла принимается и ждёт в очереди. Файл во время записи получает отказ &lt;code&gt;busy&lt;/code&gt;: у CLI это код 4, а окно переспрашивает до получаса">While a file runs, the state stays <code>idle</code> and the job field says <code>file</code>, which the panel and <code>molva status</code> report as a file transcription. A recording during a file is accepted and waits in the queue. A file during a recording gets a <code>busy</code> answer: the CLI reports exit code 4, and the window keeps asking for up to half an hour</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="MCP без порта">MCP without a port</h3>
+        <p class="muted" data-ru="&lt;code&gt;molva mcp&lt;/code&gt; говорит по stdio: ни URL, ни автозапуска. Он поднимает демон, когда тот не отвечает, и дальше пользуется его моделью. &lt;code&gt;mcp.enabled&lt;/code&gt; выключает сервер целиком"><code>molva mcp</code> speaks over stdio: no URL and no autostart. It starts the daemon when nobody answers and then uses its model. <code>mcp.enabled</code> turns the server off</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Облако параллельно, локально по очереди">Cloud in parallel, local in turn</h3>
+        <p class="muted" data-ru="Облачному провайдеру разрешено четыре вызова одновременно, локальная модель получает запросы по одному, потому что два сразу отвечают хуже. Решает одно место, поэтому ни одна стадия не ждёт рядом с другой по своему усмотрению">A cloud provider may answer four calls at once, and a local model takes requests one by one, because two at once answer worse. One place holds that policy, so no stage waits beside another on its own</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="privacy-feature">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru="Приватность и переносимость">Privacy and portability</span>
+      <h2 data-ru="Локальность из конструкции, а не из настройки">Local by construction, not by a setting</h2>
+      <p data-ru="Там, где понадобился бы сервер, первым выбором стоит локальный вариант">The parts that would need a server are the parts that have a local first choice</p>
+    </div>
+    <div class="grid grid-3">
+      <article class="card">
+        <h3 data-ru="Дисциплина микрофона">Microphone discipline</h3>
+        <p class="muted" data-ru="Устройство открывается по нажатию и закрывается по отпусканию. Закрытие не зависит от того, чем закончилась фраза, а его задержка измеряется и пишется в журнал">The device opens on the press and closes on the release. The close does not depend on how the phrase ended, and its delay is measured and journaled</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Шифрование и режим без записи">Encryption and no-record mode</h3>
+        <p class="muted" data-ru="Тексты журнала можно запечатать XChaCha20-Poly1305 с ключом в хранилище ОС или в файле 0600. Статистика работает и без ключа. Режим без записи не пишет вообще ничего">The journal texts can be sealed with XChaCha20-Poly1305 and a key in the OS store or a 0600 file. The statistics keep working without the key. No-record mode writes nothing at all</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Офлайн">Offline</h3>
+        <p class="muted" data-ru="Сеть нужна только для скачивания весов и облачному провайдеру модели, и оба ждут твоей команды или твоей настройки. Всё остальное работает с выдернутым кабелем">Only the weight download and a cloud model provider use the network, and both wait for your command or your configuration. Everything else works with the cable out</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Сначала Nix">Nix first</h3>
+        <p class="muted" data-ru="Флейк даёт dev-shell, пакет и модуль Home Manager. Модуль рендерит файл настроек и веса в хранилище, запускает демон как пользовательский сервис и пишет привязки Hyprland">The flake gives a dev shell, a package and a Home Manager module. The module renders the settings file and the weights into the store, runs the daemon as a user service and writes the Hyprland binds</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Другие системы">Other systems</h3>
+        <p class="muted" data-ru="Готовые сборки есть для Linux, Windows и macOS, а установщик проверяет зависимости, а не ставит их. Цепочка вставки откатывается на буфер обмена, когда композитор отказывает">Ready builds exist for Linux, Windows and macOS, and the installer checks dependencies instead of installing them. The paste chain falls back to the clipboard when the compositor refuses</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Выбор модели">Model choice</h3>
+        <p class="muted" data-ru="GigaAM-v3 по умолчанию, модели whisper.cpp — когда захочешь. Загрузки сверяются с SHA-256 из каталога, а &lt;code&gt;stt.models_mirror&lt;/code&gt; отдаёт тот же файл из локальной сети">GigaAM-v3 by default, whisper.cpp models when you want them. Downloads are checked against a SHA-256 from the catalog, and <code>stt.models_mirror</code> serves the same file from a local network</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="limits">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru="Пределы">Limits</span>
+      <h2 data-ru="Чего пока нет">What it does not do yet</h2>
+      <p data-ru="Проект в разработке. Список возможностей без списка вырезанного — это маркетинг, поэтому вырезанное лежит открыто">The project is in development. A feature list without a cut list is marketing, so the cut list lives in the open</p>
+    </div>
+    <div class="callout warn">
+  <span class="callout-title" data-ru="Прежде чем опираться на возможность, прочитай страницу статуса">Read the status page before you rely on a feature</span>
+  <p data-ru="Известные пробелы — проверки Windows и macOS на живом железе, в журнале статуса они отмечены как непроверенные. CUDA-сборки выходят отдельными архивами для Windows и Linux. Канонический список — &lt;a href=&quot;https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md&quot;&gt;docs/STATUS.md&lt;/a&gt;, кратко на &lt;a href=&quot;./docs/status.html&quot;&gt;странице статуса&lt;/a&gt;">Known gaps include the Windows and macOS checks on live hardware, which the status log lists as unverified. The releases carry optional CUDA archives for Windows and Linux. The canonical list is <a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a>, summarized on the <a href="./docs/status.html">status page</a></p>
+</div>
+    <div class="grid grid-2">
+      <article class="card">
+        <h3 data-ru="Речь посреди фразы">Speech in the middle of a phrase</h3>
+        <p class="muted" data-ru="Целое английское предложение внутри русской фразы не читается как английское. Латинские вставки и термины работают, а язык выбирается один раз на фразу">A whole English sentence inside a Russian phrase is not read as English. Latin insertions and terms work, and the language is chosen once per phrase</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Звук до нажатия">Pre-roll audio</h3>
+        <p class="muted" data-ru="Первый слог, сказанный до открытия микрофона, теряется. Для пре-ролла нужен постоянно открытый поток, а этот проект держит микрофон закрытым">The first syllable you say before the microphone opens is lost. A pre-roll needs a permanently open stream, and this project keeps the microphone closed</p>
+      </article>
+    </div>
+    <p class="to-top"><a href="#main" data-ru="К началу">Back to top</a></p>
+  </div>
+</section>
 </main>
-
 <footer class="site-footer">
-  <div class="wrap footer-grid">
-    <div class="footer-brand">
+  <div class="wrap footer-inner">
+    <div>
       <a class="brand" href="./index.html">
-        <img src="./assets/logo.svg" alt="" width="26" height="26">
-        <span>Molv<span class="brand-ai">AI</span></span>
+        <img src="./assets/logo.svg" alt="" width="22" height="22">
+        <span>MolvAI</span>
       </a>
-      <p>Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
-      <p class="footer-note">MIT licensed · no trackers · no external fonts</p>
+      <p data-ru="Открытый голосовой ввод во все приложения. Зажми клавишу, говори, отпусти — текст оказывается в активном поле">Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
+      <p class="footer-note" data-ru="MIT · без трекеров · без внешних шрифтов">MIT licensed · no trackers · no external fonts</p>
+      <p class="footer-note"><a href="./ASSETS.md" data-ru="Ассеты и лицензии">Assets and licences</a></p>
     </div>
-    <nav aria-label="Project links">
-      <p class="footer-title">Project</p>
+    <nav aria-label="Project links" data-ru-aria-label="Ссылки проекта">
+      <p class="footer-title" data-ru="Проект">Project</p>
       <ul>
         <li><a href="https://github.com/rokokol/MolvAI">GitHub</a></li>
-        <li><a href="https://github.com/rokokol/MolvAI/releases">Releases</a></li>
-        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE">License (MIT)</a></li>
-        <li><a href="https://github.com/rokokol/MolvAI/issues">Issues</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/releases" data-ru="Релизы">Releases</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE" data-ru="Лицензия (MIT)">License (MIT)</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/issues" data-ru="Задачи">Issues</a></li>
       </ul>
     </nav>
-    <nav aria-label="Site links">
-      <p class="footer-title">Site</p>
+    <nav aria-label="Site links" data-ru-aria-label="Страницы сайта">
+      <p class="footer-title" data-ru="Сайт">Site</p>
       <ul>
-        <li><a href="./features.html">Features</a></li>
-        <li><a href="./models.html">Models</a></li>
-        <li><a href="./cli.html">CLI reference</a></li>
-        <li><a href="./docs/index.html">Documentation</a></li>
+        <li><a href="./features.html" data-ru="Возможности">Features</a></li>
+        <li><a href="./models.html" data-ru="Модели">Models</a></li>
+        <li><a href="./cli.html" data-ru="Справочник CLI">CLI reference</a></li>
+        <li><a href="./docs/index.html" data-ru="Документация">Documentation</a></li>
         <li><a href="./faq.html">FAQ</a></li>
-        <li><a href="./docs/status.html">Status and roadmap</a></li>
+        <li><a href="./docs/status.html" data-ru="Статус и планы">Status and roadmap</a></li>
       </ul>
     </nav>
     <div>
-      <p class="footer-title">Canonical docs</p>
-      <p class="footer-note">The repository is the source of truth. These pages summarize it and link back</p>
+      <p class="footer-title" data-ru="Канонические документы">Canonical docs</p>
+      <p class="footer-note" data-ru="Источник истины — репозиторий. Эти страницы его пересказывают и дают ссылки">
+        The repository is the source of truth. These pages summarize it and link back
+      </p>
       <ul>
         <li><a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README</a></li>
         <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></li>
@@ -245,9 +299,10 @@
     </div>
   </div>
   <div class="wrap footer-credit">
-    <p>MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
-    <p>This site runs without cookies, analytics or third-party assets</p>
+    <p data-ru="MolvAI сделан на хакатоне V0ICE (Казань, 2026) и находится в разработке">MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
+    <p data-ru="Сайт работает без cookies, аналитики и сторонних ассетов">This site runs without cookies, analytics or third-party assets</p>
   </div>
 </footer>
+<script src="./assets/site.js"></script>
 </body>
 </html>

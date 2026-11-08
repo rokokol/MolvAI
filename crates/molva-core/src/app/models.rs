@@ -506,7 +506,7 @@ mod tests {
         assert_eq!(info.size_bytes, 183_948_704);
         assert_eq!(
             info.sha256,
-            "7d69952fb431a8d7800ed9910dc61fea37d84066fe96d10bf24c8bd4b7c68623"
+            "7d69952fb431a8d7800ed9910dc61fea37d8406bfe96d10bf24c8bd4b7c68623"
         );
         assert!(info.file_name.ends_with("-Q4_K_M.gguf"));
     }

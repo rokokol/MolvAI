@@ -1,199 +1,214 @@
 <!DOCTYPE html>
-<html lang="en" class="no-js">
+<html lang="en" class="no-js" data-ddlc-heading="plain">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FAQ — MolvAI</title>
-<meta name="description" content="Short answers about MolvAI: hardware, privacy, the default GigaAM model, languages, Linux desktops, Windows and macOS, Nix, offline use and the project status">
+<title data-ru="Вопросы и ответы — MolvAI">FAQ — MolvAI</title>
+<meta name="description" content="Short answers about MolvAI: hardware, privacy, the default GigaAM model, languages, Linux desktops, Windows and macOS, Nix, offline use and the project status" data-ru-content="Короткие ответы про MolvAI: железо, приватность, модель GigaAM по умолчанию, языки, рабочие столы Linux, Windows и macOS, Nix, работа офлайн и статус проекта">
 <meta name="color-scheme" content="dark light">
-<meta name="theme-color" content="#0a0c12">
-<link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#222222" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="./assets/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./assets/vendor/ddlc/ddlc-tokens.css">
+<link rel="stylesheet" href="./assets/vendor/ddlc/ddlc-ui.css">
+<link rel="stylesheet" href="./assets/vendor/ddlc/ddlc-report.css">
 <link rel="stylesheet" href="./assets/site.css">
-<script src="./assets/site.js" defer></script>
+<script>
+  (function () {
+    try {
+      var q = new URLSearchParams(location.search)
+      var pinned = q.get("theme")
+      var theme = pinned === "light" || pinned === "dark" ? pinned : localStorage.getItem("molvai-theme")
+      if (pinned === "light" || pinned === "dark") localStorage.setItem("molvai-theme", pinned)
+      if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme
+      var lang = q.get("lang")
+      var stored = localStorage.getItem("molvai-lang")
+      if (lang === "ru" || (lang !== "en" && stored === "ru")) document.documentElement.lang = "ru"
+    } catch (e) {}
+  })()
+</script>
+<script type="module" src="./assets/kit.js"></script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
-
-<header class="site-header">
-  <div class="wrap header-inner">
-    <a class="brand" href="./index.html" aria-label="MolvAI home">
-      <img src="./assets/logo.svg" alt="" width="26" height="26">
-      <span>Molv<span class="brand-ai">AI</span></span>
+<canvas class="cloud" id="cloud" aria-hidden="true"></canvas>
+<a class="skip" href="#main" data-ru="К содержанию">Skip to content</a>
+<header class="site-bar">
+  <div class="bar wrap bar-row">
+    <a class="brand" href="./index.html" aria-label="MolvAI home" data-ru-aria-label="MolvAI — главная">
+      <img src="./assets/logo.svg" alt="" width="22" height="22">
+      <span>MolvAI</span>
     </a>
-    <nav class="site-nav" id="site-nav" aria-label="Main">
-      <a href="./index.html">Home</a>
-      <a href="./features.html">Features</a>
-      <a href="./models.html">Models</a>
-      <a href="./cli.html">CLI</a>
-      <a href="./docs/index.html">Docs</a>
-      <a href="./faq.html" aria-current="page">FAQ</a>
-      <a href="./docs/status.html">Status</a>
-      <a class="nav-github" href="https://github.com/rokokol/MolvAI"><img src="./assets/icon-github.svg" alt="" width="15" height="15">GitHub</a>
+    <p class="tagline" data-ru="Голосовой ввод во все приложения">System-wide voice input, on your machine</p>
+    <nav class="tabs" aria-label="Main" data-ru-aria-label="Основное">
+      <a href="./index.html" data-ru="Главная">Home</a>
+      <a href="./features.html" data-ru="Возможности">Features</a>
+      <a href="./models.html" data-ru="Модели">Models</a>
+      <a href="./cli.html" data-ru="CLI">CLI</a>
+      <a href="./docs/index.html" data-ru="Документация">Docs</a>
+      <a href="./faq.html" aria-current="page" data-ru="FAQ">FAQ</a>
+      <a href="./docs/status.html" data-ru="Статус">Status</a>
     </nav>
-    <div class="header-tools">
-      <button class="icon-btn theme-toggle" type="button" data-theme-toggle aria-label="Switch between dark and light theme">
-        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8">
-          <circle cx="12" cy="12" r="8"></circle>
-          <path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"></path>
-        </svg>
+    <div class="bar-end">
+      <div class="segmented lang-switch" role="group" aria-label="Language" data-ru-aria-label="Язык">
+        <button type="button" data-lang-set="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang-set="ru" aria-pressed="false">RU</button>
+      </div>
+      <button class="icon-button" id="theme" type="button" aria-label="Theme: system" data-ru-aria-label="Тема">
+        <svg class="pixel" viewBox="0 0 8 8" aria-hidden="true"><path id="theme-icon"/></svg>
       </button>
-      <button class="icon-btn menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="site-nav">
-        <span class="menu-bars" aria-hidden="true"></span>
-        <span class="visually-hidden">Menu</span>
-      </button>
+      <a class="icon-button" href="https://github.com/rokokol/MolvAI" aria-label="MolvAI on GitHub" data-ru-aria-label="MolvAI на GitHub">
+        <img src="./assets/icon-github.svg" alt="" width="16" height="16">
+      </a>
     </div>
   </div>
 </header>
-
 <main id="main">
-
-  <section class="section">
-    <div class="wrap">
-      <div class="section-head">
-        <span class="kicker">FAQ</span>
-        <h1>Questions a careful person asks</h1>
-        <p>Short answers, each with the place where the repository says the same thing at length</p>
-      </div>
-
-      <div class="faq">
-        <details>
-          <summary>What exactly is MolvAI?</summary>
-          <div class="answer">
-            <p>System-wide voice input: hold a key, speak, release, and the text appears in the active field of any application. Recognition, the dictionary, the rules and the paste run on your computer. It is MIT licensed and written in Rust</p>
-          </div>
-        </details>
-
-        <details>
-          <summary>Do I need a video card?</summary>
-          <div class="answer">
-            <p>No. The default model, GigaAM-v3 Q4_K_M, is built for the CPU and weighs 175 MiB. Linux and Windows builds can use Vulkan when a device exists, and macOS uses the processor. A GPU makes whisper models faster, and the released Linux and Windows builds pick it up without a setting</p>
-          </div>
-        </details>
-
-        <details>
-          <summary>Where does my voice go?</summary>
-          <div class="answer">
-            <p>Into the local recognizer, and then a JSON line in your journal. Nothing is uploaded by default. The network is used for the weight download and for a cloud language model provider that you configure yourself. The full list of addresses is in <a href="https://github.com/rokokol/MolvAI/blob/main/docs/outgoing-endpoints.md">docs/outgoing-endpoints.md</a></p>
-          </div>
-        </details>
-
-        <details>
-          <summary>Is the microphone always listening?</summary>
-          <div class="answer">
-            <p>No. The stream opens on the key press and closes after the release, on a cancel and on an error. The delay between the release and the close is measured and written to the journal, so the claim is checkable</p>
-          </div>
-        </details>
-
-        <details>
-          <summary>Which model is the default, and how do I change it?</summary>
-          <div class="answer">
-            <p>GigaAM-v3 e2e RNNT at Q4_K_M, a Russian model from Sber, and the engine is <code>auto</code>, which follows the catalog entry of that model. <code>molva models list</code> shows the alternatives, <code>molva models pull &lt;name&gt;</code> downloads one, and <code>molva config set stt.model &lt;name&gt;</code> selects it. Restart the daemon to load different weights</p>
-          </div>
-        </details>
-
-        <details>
-          <summary>Does it understand English?</summary>
-          <div class="answer">
-            <p>The language is fixed to Russian by default, which is the fastest path. <code>stt.language = "auto"</code> with <code>allowed_languages = ["ru", "en"]</code> adds bilingual dictation. The language is chosen once per phrase, so a whole English sentence inside a Russian phrase is not read as English</p>
-          </div>
-        </details>
-
-        <details>
-          <summary>Does it work on GNOME or KDE?</summary>
-          <div class="answer">
-            <p>Yes, in toggle mode. Those desktops do not report a key release to the application, so push-to-talk is impossible there. Hyprland and Sway report both events. On X11 without a desktop, the evdev backend reads the keys directly and needs membership in the <code>input</code> group</p>
-          </div>
-        </details>
-
-        <details>
-          <summary>Are Windows and macOS as well tested as Linux?</summary>
-          <div class="answer">
-            <p>No, and the repository says so. CI builds all three systems and releases carry an installer for Windows, a dmg for Apple silicon and a CLI archive for macOS. Some live checks, such as pasting in the Russian layout on Windows, are listed as not verified in <a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></p>
-          </div>
-        </details>
-
-        <details>
-          <summary>Do I have to use Nix?</summary>
-          <div class="answer">
-            <p>No. <code>install.sh</code> installs a built binary into <code>~/.local/bin</code> without administrator rights, and it prints the dependency commands for your distribution instead of running them. Ready builds are on the releases page. Nix gives a dev shell, a package and a Home Manager module with the settings and weights taken from the store</p>
-          </div>
-        </details>
-
-        <details>
-          <summary>What does the Nix-managed mode change?</summary>
-          <div class="answer">
-            <p>The Home Manager module renders the settings file and the model weights into the Nix store. A switch is the only thing that changes them, and the GUI hides its settings page because the file is read-only. The daemon runs as a user service and the Hyprland binds are written from your configuration. Details in <a href="./docs/settings.html">settings</a></p>
-          </div>
-        </details>
-
-        <details>
-          <summary>Can I transcribe a video file?</summary>
-          <div class="answer">
-            <p>Yes. <code>molva transcribe film.mp4 --timecodes</code> prints segments with their start and end, and <code>--json</code> gives a machine array. A directory, a nested tree and a stream on stdin work too. The result goes to the journal, so <code>molva search</code> finds it later</p>
-          </div>
-        </details>
-
-        <details>
-          <summary>Can I edit text by voice instead of dictating new text?</summary>
-          <div class="answer">
-            <p>Yes, that is command mode: select a paragraph, press <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>X</kbd>, say what to do, press again, and the selection is replaced in place. It needs a language model, local or cloud, and the model is enabled with <code>llm.enabled = true</code></p>
-          </div>
-        </details>
-
-        <details>
-          <summary>Is there telemetry or an account?</summary>
-          <div class="answer">
-            <p>Neither. There is no sign-up, no analytics on this site and no telemetry in the application. The configuration carries a <code>privacy.telemetry</code> key that exists to be <code>false</code> and to state this explicitly</p>
-          </div>
-        </details>
-
-        <details>
-          <summary>Is the project finished?</summary>
-          <div class="answer">
-            <p>No. It started at the V0ICE hackathon in Kazan in September 2026 and is in development. The status page lists what works and what is cut, and it links the canonical file in the repository</p>
-          </div>
-        </details>
-      </div>
-
-      <div class="to-top"><a href="#main">Back to top</a></div>
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru="Вопросы">FAQ</span>
+      <h1 data-ru="Вопросы, которые задаёт внимательный человек">Questions a careful person asks</h1>
+      <p data-ru="Короткие ответы, и у каждого — место, где репозиторий говорит то же самое подробно">Short answers, each with the place where the repository says the same thing at length</p>
     </div>
-  </section>
+    <div class="faq">
+        <details>
+          <summary data-ru="Что такое MolvAI?">What exactly is MolvAI?</summary>
+          <div class="answer">
+            <p data-ru="Голосовой ввод по всей системе: зажми клавишу, говори, отпусти — и текст появляется в активном поле любого приложения. Распознавание, словарь, правила и вставка идут на твоём компьютере. Лицензия MIT, написан на Rust">System-wide voice input: hold a key, speak, release, and the text appears in the active field of any application. Recognition, the dictionary, the rules and the paste run on your computer. It is MIT licensed and written in Rust</p>
+          </div>
+        </details>
 
+        <details>
+          <summary data-ru="Нужна ли видеокарта?">Do I need a video card?</summary>
+          <div class="answer">
+            <p data-ru="Нет. Модель по умолчанию, GigaAM-v3 Q4_K_M, рассчитана на процессор и весит 175 МиБ. Сборки для Linux и Windows умеют Vulkan, если устройство есть, а macOS считает на процессоре. GPU ускоряет модели whisper, и выпущенные сборки для Linux и Windows подхватывают его без настройки">No. The default model, GigaAM-v3 Q4_K_M, is built for the CPU and weighs 175 MiB. Linux and Windows builds can use Vulkan when a device exists, and macOS uses the processor. A GPU makes whisper models faster, and the released Linux and Windows builds pick it up without a setting</p>
+          </div>
+        </details>
+
+        <details>
+          <summary data-ru="Куда уходит мой голос?">Where does my voice go?</summary>
+          <div class="answer">
+            <p data-ru="В локальный распознаватель, а потом строкой JSON в твой журнал. По умолчанию ничего не загружается. Сеть нужна для скачивания весов и для облачного провайдера языковой модели, которого ты настроил сам. Полный список адресов — в &lt;a href=&quot;https://github.com/rokokol/MolvAI/blob/main/docs/outgoing-endpoints.md&quot;&gt;docs/outgoing-endpoints.md&lt;/a&gt;">Into the local recognizer, and then a JSON line in your journal. Nothing is uploaded by default. The network is used for the weight download and for a cloud language model provider that you configure yourself. The full list of addresses is in <a href="https://github.com/rokokol/MolvAI/blob/main/docs/outgoing-endpoints.md">docs/outgoing-endpoints.md</a></p>
+          </div>
+        </details>
+
+        <details>
+          <summary data-ru="Микрофон слушает постоянно?">Is the microphone always listening?</summary>
+          <div class="answer">
+            <p data-ru="Нет. Поток открывается по нажатию и закрывается после отпускания, при отмене и при ошибке. Задержка между отпусканием и закрытием измеряется и пишется в журнал, так что утверждение можно проверить">No. The stream opens on the key press and closes after the release, on a cancel and on an error. The delay between the release and the close is measured and written to the journal, so the claim is checkable</p>
+          </div>
+        </details>
+
+        <details>
+          <summary data-ru="Какая модель по умолчанию и как её сменить?">Which model is the default, and how do I change it?</summary>
+          <div class="answer">
+            <p data-ru="GigaAM-v3 e2e RNNT в Q4_K_M, русская модель от Сбера, движок — &lt;code&gt;auto&lt;/code&gt;, он следует записи каталога для этой модели. &lt;code&gt;molva models list&lt;/code&gt; показывает альтернативы, &lt;code&gt;molva models pull &amp;lt;name&amp;gt;&lt;/code&gt; скачивает одну, &lt;code&gt;molva config set stt.model &amp;lt;name&amp;gt;&lt;/code&gt; выбирает её. Чтобы загрузить другие веса, перезапусти демон">GigaAM-v3 e2e RNNT at Q4_K_M, a Russian model from Sber, and the engine is <code>auto</code>, which follows the catalog entry of that model. <code>molva models list</code> shows the alternatives, <code>molva models pull &lt;name&gt;</code> downloads one, and <code>molva config set stt.model &lt;name&gt;</code> selects it. Restart the daemon to load different weights</p>
+          </div>
+        </details>
+
+        <details>
+          <summary data-ru="Понимает ли он мой язык?">Does it understand my language?</summary>
+          <div class="answer">
+            <p data-ru="Русский — язык речи по умолчанию и самый быстрый путь: GigaAM понимает только русский. Английская диктовка — ручное переключение на многоязычную whisper: &lt;code&gt;molva config set stt.engine whisper-cpp&lt;/code&gt;, &lt;code&gt;molva config set stt.model small&lt;/code&gt;, &lt;code&gt;molva config set stt.language auto&lt;/code&gt;. Обратно — &lt;code&gt;stt.engine auto&lt;/code&gt; и &lt;code&gt;stt.model gigaam-v3-e2e-rnnt-q4_k_m&lt;/code&gt;. Автоматической маршрутизации между моделями нет. Язык интерфейса следует системе (&lt;code&gt;ui_language = &quot;auto&quot;&lt;/code&gt;)">Russian is the default speech language and the fastest path: GigaAM understands Russian only. English dictation needs a manual switch to a multilingual whisper model: <code>molva config set stt.engine whisper-cpp</code>, <code>molva config set stt.model small</code>, <code>molva config set stt.language auto</code>. To go back: <code>stt.engine auto</code> and <code>stt.model gigaam-v3-e2e-rnnt-q4_k_m</code>. There is no automatic routing between models. The interface language follows the system (<code>ui_language = "auto"</code>)</p>
+          </div>
+        </details>
+
+        <details>
+          <summary data-ru="Работает ли на GNOME или KDE?">Does it work on GNOME or KDE?</summary>
+          <div class="answer">
+            <p data-ru="Да, в режиме переключения. Эти рабочие столы не сообщают приложению об отпускании клавиши, поэтому push-to-talk там невозможен. Hyprland и Sway сообщают оба события. На X11 без рабочего стола бэкенд evdev читает клавиши напрямую и требует членства в группе &lt;code&gt;input&lt;/code&gt;">Yes, in toggle mode. Those desktops do not report a key release to the application, so push-to-talk is impossible there. Hyprland and Sway report both events. On X11 without a desktop, the evdev backend reads the keys directly and needs membership in the <code>input</code> group</p>
+          </div>
+        </details>
+
+        <details>
+          <summary data-ru="Windows и macOS проверены так же, как Linux?">Are Windows and macOS as well tested as Linux?</summary>
+          <div class="answer">
+            <p data-ru="Нет, и репозиторий говорит об этом прямо. CI собирает все три системы, а в релизах есть установщик для Windows, dmg для Apple silicon и архив CLI для macOS. Часть живых проверок — например, вставка в русской раскладке на Windows — отмечена как непроверенная в &lt;a href=&quot;https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md&quot;&gt;docs/STATUS.md&lt;/a&gt;">No, and the repository says so. CI builds all three systems and releases carry an installer for Windows, a dmg for Apple silicon and a CLI archive for macOS. Some live checks, such as pasting in the Russian layout on Windows, are listed as not verified in <a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></p>
+          </div>
+        </details>
+
+        <details>
+          <summary data-ru="Обязательно ли использовать Nix?">Do I have to use Nix?</summary>
+          <div class="answer">
+            <p data-ru="Нет. &lt;code&gt;install.sh&lt;/code&gt; ставит собранный бинарник в &lt;code&gt;~/.local/bin&lt;/code&gt; без прав администратора и печатает команды для зависимостей твоего дистрибутива, а не запускает их. Готовые сборки лежат на странице релизов. Nix даёт dev-shell, пакет и модуль Home Manager, который берёт настройки и веса из хранилища">No. <code>install.sh</code> installs a built binary into <code>~/.local/bin</code> without administrator rights, and it prints the dependency commands for your distribution instead of running them. Ready builds are on the releases page. Nix gives a dev shell, a package and a Home Manager module with the settings and weights taken from the store</p>
+          </div>
+        </details>
+
+        <details>
+          <summary data-ru="Что меняет режим под управлением Nix?">What does the Nix-managed mode change?</summary>
+          <div class="answer">
+            <p data-ru="Модуль Home Manager рендерит файл настроек и веса моделей в хранилище Nix. Меняет их только переключение, а интерфейс прячет страницу настроек, потому что файл только для чтения. Демон работает как пользовательский сервис, а привязки Hyprland пишутся из твоей конфигурации. Подробности — в разделе &lt;a href=&quot;./docs/settings.html&quot;&gt;«Настройки»&lt;/a&gt;">The Home Manager module renders the settings file and the model weights into the Nix store. A switch is the only thing that changes them, and the GUI hides its settings page because the file is read-only. The daemon runs as a user service and the Hyprland binds are written from your configuration. Details in <a href="./docs/settings.html">settings</a></p>
+          </div>
+        </details>
+
+        <details>
+          <summary data-ru="Можно расшифровать видеофайл?">Can I transcribe a video file?</summary>
+          <div class="answer">
+            <p data-ru="Да. &lt;code&gt;molva transcribe film.mp4 --timecodes&lt;/code&gt; печатает отрезки с началом и концом, а &lt;code&gt;--json&lt;/code&gt; даёт массив для машин. Каталог, вложенное дерево и поток в stdin тоже работают. Результат попадает в журнал, поэтому &lt;code&gt;molva search&lt;/code&gt; найдёт его позже">Yes. <code>molva transcribe film.mp4 --timecodes</code> prints segments with their start and end, and <code>--json</code> gives a machine array. A directory, a nested tree and a stream on stdin work too. The result goes to the journal, so <code>molva search</code> finds it later</p>
+          </div>
+        </details>
+
+        <details>
+          <summary data-ru="Можно править текст голосом, а не диктовать новый?">Can I edit text by voice instead of dictating new text?</summary>
+          <div class="answer">
+            <p data-ru="Да, это режим команды: выдели абзац, нажми &lt;kbd&gt;Ctrl&lt;/kbd&gt;+&lt;kbd&gt;Alt&lt;/kbd&gt;+&lt;kbd&gt;X&lt;/kbd&gt;, скажи, что сделать, нажми ещё раз — выделение заменяется на месте. Нужна языковая модель, локальная или облачная, и включается она через &lt;code&gt;llm.enabled = true&lt;/code&gt;">Yes, that is command mode: select a paragraph, press <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>X</kbd>, say what to do, press again, and the selection is replaced in place. It needs a language model, local or cloud, and the model is enabled with <code>llm.enabled = true</code></p>
+          </div>
+        </details>
+
+        <details>
+          <summary data-ru="Есть телеметрия или аккаунт?">Is there telemetry or an account?</summary>
+          <div class="answer">
+            <p data-ru="Ни того, ни другого. Нет регистрации, нет аналитики на этом сайте и нет телеметрии в приложении. В конфигурации есть ключ &lt;code&gt;privacy.telemetry&lt;/code&gt;, который существует, чтобы быть &lt;code&gt;false&lt;/code&gt; и говорить это явно">Neither. There is no sign-up, no analytics on this site and no telemetry in the application. The configuration carries a <code>privacy.telemetry</code> key that exists to be <code>false</code> and to state this explicitly</p>
+          </div>
+        </details>
+
+        <details>
+          <summary data-ru="Проект готов?">Is the project finished?</summary>
+          <div class="answer">
+            <p data-ru="Нет. Он начался на хакатоне V0ICE в Казани в сентябре 2026 года и находится в разработке. Страница статуса перечисляет, что работает, а что вырезано, и ссылается на канонический файл в репозитории">No. It started at the V0ICE hackathon in Kazan in September 2026 and is in development. The status page lists what works and what is cut, and it links the canonical file in the repository</p>
+          </div>
+        </details>
+    </div>
+    <p class="to-top"><a href="#main" data-ru="К началу">Back to top</a></p>
+  </div>
+</section>
 </main>
-
 <footer class="site-footer">
-  <div class="wrap footer-grid">
-    <div class="footer-brand">
+  <div class="wrap footer-inner">
+    <div>
       <a class="brand" href="./index.html">
-        <img src="./assets/logo.svg" alt="" width="26" height="26">
-        <span>Molv<span class="brand-ai">AI</span></span>
+        <img src="./assets/logo.svg" alt="" width="22" height="22">
+        <span>MolvAI</span>
       </a>
-      <p>Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
-      <p class="footer-note">MIT licensed · no trackers · no external fonts</p>
+      <p data-ru="Открытый голосовой ввод во все приложения. Зажми клавишу, говори, отпусти — текст оказывается в активном поле">Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
+      <p class="footer-note" data-ru="MIT · без трекеров · без внешних шрифтов">MIT licensed · no trackers · no external fonts</p>
+      <p class="footer-note"><a href="./ASSETS.md" data-ru="Ассеты и лицензии">Assets and licences</a></p>
     </div>
-    <nav aria-label="Project links">
-      <p class="footer-title">Project</p>
+    <nav aria-label="Project links" data-ru-aria-label="Ссылки проекта">
+      <p class="footer-title" data-ru="Проект">Project</p>
       <ul>
         <li><a href="https://github.com/rokokol/MolvAI">GitHub</a></li>
-        <li><a href="https://github.com/rokokol/MolvAI/releases">Releases</a></li>
-        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE">License (MIT)</a></li>
-        <li><a href="https://github.com/rokokol/MolvAI/issues">Issues</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/releases" data-ru="Релизы">Releases</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE" data-ru="Лицензия (MIT)">License (MIT)</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/issues" data-ru="Задачи">Issues</a></li>
       </ul>
     </nav>
-    <nav aria-label="Site links">
-      <p class="footer-title">Site</p>
+    <nav aria-label="Site links" data-ru-aria-label="Страницы сайта">
+      <p class="footer-title" data-ru="Сайт">Site</p>
       <ul>
-        <li><a href="./features.html">Features</a></li>
-        <li><a href="./models.html">Models</a></li>
-        <li><a href="./cli.html">CLI reference</a></li>
-        <li><a href="./docs/index.html">Documentation</a></li>
+        <li><a href="./features.html" data-ru="Возможности">Features</a></li>
+        <li><a href="./models.html" data-ru="Модели">Models</a></li>
+        <li><a href="./cli.html" data-ru="Справочник CLI">CLI reference</a></li>
+        <li><a href="./docs/index.html" data-ru="Документация">Documentation</a></li>
         <li><a href="./faq.html">FAQ</a></li>
-        <li><a href="./docs/status.html">Status and roadmap</a></li>
+        <li><a href="./docs/status.html" data-ru="Статус и планы">Status and roadmap</a></li>
       </ul>
     </nav>
     <div>
-      <p class="footer-title">Canonical docs</p>
-      <p class="footer-note">The repository is the source of truth. These pages summarize it and link back</p>
+      <p class="footer-title" data-ru="Канонические документы">Canonical docs</p>
+      <p class="footer-note" data-ru="Источник истины — репозиторий. Эти страницы его пересказывают и дают ссылки">
+        The repository is the source of truth. These pages summarize it and link back
+      </p>
       <ul>
         <li><a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README</a></li>
         <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></li>
@@ -203,9 +218,10 @@
     </div>
   </div>
   <div class="wrap footer-credit">
-    <p>MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
-    <p>This site runs without cookies, analytics or third-party assets</p>
+    <p data-ru="MolvAI сделан на хакатоне V0ICE (Казань, 2026) и находится в разработке">MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
+    <p data-ru="Сайт работает без cookies, аналитики и сторонних ассетов">This site runs without cookies, analytics or third-party assets</p>
   </div>
 </footer>
+<script src="./assets/site.js"></script>
 </body>
 </html>

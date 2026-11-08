@@ -520,6 +520,7 @@ pub(crate) fn test_entry(ts: &str, words: u32, audio_secs: f32, app: &str) -> En
         text_raw: Some(format!("сырой текст {words}")),
         text_final: Some(format!("Итоговый текст {words}.")),
         audio_path: None,
+        translation: None,
         segments: Vec::new(),
     }
 }

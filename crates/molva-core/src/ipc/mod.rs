@@ -4,5 +4,6 @@
 pub mod protocol;
 
 pub use protocol::{
-    Command, DaemonState, ErrorCode, Event, IpcError, Request, Response, PROTOCOL_VERSION,
+    Command, DaemonState, ErrorCode, Event, FileFailure, FileReport, FileTranscriptionRequest,
+    IpcError, Request, Response, WorkerJob, PROTOCOL_VERSION,
 };

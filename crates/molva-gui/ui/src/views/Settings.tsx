@@ -1,48 +1,86 @@
 // SPDX-License-Identifier: MIT
 // Settings: a form over Config, validation on the Rust side, TOML export and import
+//
+// The page reads as a few choices: a provider, a model, a language, a key source. Everything
+// that only a careful setup needs sits under "Advanced", and no table that the core owns is
+// repeated here: the models come from `models.toml` and the provider URLs from the Rust side
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import { api, asCommandError, copyToClipboard } from "../api";
 import { AUTO_LANG, LANGUAGES, useI18n } from "../i18n";
 import type { Theme, ViewProps } from "../App";
-import type { CommandError, Config, DeviceInfo, HyprlandBinds, StyleOption } from "../types";
+import type {
+  CommandError,
+  Config,
+  CustomStyle,
+  LlmProbeReport,
+  LlmProviderOption,
+  HyprlandBinds,
+  ProviderKeyStatus,
+  SttModelOption,
+  SttProbeReport,
+  StyleOption,
+} from "../types";
+import PathInput from "../files/PathInput";
+import CopyButton from "../components/CopyButton";
+import DeviceField from "../settings/DeviceField";
+import HotkeyField from "../settings/HotkeyField";
+import { StyleEditor } from "../settings/StyleEditor";
+import { RECOGNITION_LANGUAGES } from "../settings/language";
+import {
+  keyField,
+  keySourceChoices,
+  storesInKeyring,
+  storeUnavailable,
+  warnsAboutClearText,
+} from "../settings/keysource";
+import {
+  engineOfModel,
+  humanSize,
+  localEngines,
+  modelFitsEngine,
+  modelsForEngine,
+  pickModel,
+  REMOTE_ENGINE,
+} from "../settings/providers";
+import { mcpCommandLine, mcpProfiles } from "../settings/mcp";
+import {
+  idleProbe,
+  LlmProbeResult,
+  SttProbeResult,
+  type ProbeState,
+} from "../settings/probe";
+import { styleIssues } from "../settings/styles";
 
 interface Props extends ViewProps {
   theme: Theme;
   onThemeChange: (theme: Theme) => void;
+  /** The config comes from the Nix store: the page is visible only for inspection */
+  managed?: boolean;
 }
 
-/** Provider presets: a choice fills in the address, the model and the key variable name */
-const PROVIDERS: Record<string, { base_url: string; model: string; api_key_env: string }> = {
-  ollama: { base_url: "http://localhost:11434/v1", model: "qwen3.5:4b", api_key_env: "" },
-  lmstudio: { base_url: "http://localhost:1234/v1", model: "local-model", api_key_env: "" },
-  openrouter: {
-    base_url: "https://openrouter.ai/api/v1",
-    model: "openai/gpt-4o-mini",
-    api_key_env: "OPENROUTER_API_KEY",
-  },
-  groq: {
-    base_url: "https://api.groq.com/openai/v1",
-    model: "llama-3.3-70b-versatile",
-    api_key_env: "GROQ_API_KEY",
-  },
-  openai: {
-    base_url: "https://api.openai.com/v1",
-    model: "gpt-4o-mini",
-    api_key_env: "OPENAI_API_KEY",
-  },
-  custom: { base_url: "", model: "", api_key_env: "" },
-};
-
-const CLOUD_PROVIDERS = ["openrouter", "groq", "openai"];
-const MODELS = ["tiny", "base", "small", "medium", "large-v3-turbo"];
 const OUTPUT_MODES = ["auto", "paste", "type", "clipboard"];
 const THEMES: Theme[] = ["system", "light", "dark"];
+const HOTKEY_KEYS = ["push_to_talk", "toggle", "command", "cancel", "style_next"] as const;
+const RULE_KEYS = [
+  "enabled",
+  "spoken_punctuation",
+  "auto_punctuation",
+  "remove_fillers",
+  "remove_repeats",
+  "numbers_as_digits",
+] as const;
+
+/** A model name that an OpenAI-compatible transcription endpoint serves, per provider */
+const REMOTE_STT_MODELS: Record<string, string> = {
+  openai: "whisper-1",
+  openrouter: "openai/whisper-1",
+};
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="card">
+    <section className="card settings-section">
       <h2>{title}</h2>
       {children}
     </section>
@@ -51,10 +89,12 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 function Check({
   label,
+  hint,
   checked,
   onChange,
 }: {
   label: string;
+  hint?: string;
   checked: boolean;
   onChange: (value: boolean) => void;
 }) {
@@ -65,32 +105,74 @@ function Check({
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
       />
-      <span>{label}</span>
+      <span>
+        {label}
+        {hint && <span className="small muted">{hint}</span>}
+      </span>
     </label>
   );
 }
 
+function engineLabel(id: string, t: (key: string) => string): string {
+  if (id === "whisper-cpp") {
+    return t("settings.engineName.whisper");
+  }
+  if (id === "transcribe-cpp") {
+    return t("settings.engineName.gigaam");
+  }
+  if (id === REMOTE_ENGINE) {
+    return t("settings.provider.remote");
+  }
+  return id;
+}
+
+function languageLabel(code: string, t: (key: string) => string): string {
+  if (code === "") {
+    return "";
+  }
+  const label = t(`language.${code}`);
+  return label.startsWith("language.") ? code.toUpperCase() : label;
+}
+
 export default function Settings({
   config,
+  status,
   reloadConfig,
   onError,
   theme,
   onThemeChange,
+  managed = false,
 }: Props) {
   const { t, lang } = useI18n();
   const [draft, setDraft] = useState<Config | null>(config);
   const [saved, setSaved] = useState(false);
   const [invalid, setInvalid] = useState<CommandError | null>(null);
-  const [devices, setDevices] = useState<DeviceInfo[]>([]);
   const [styles, setStyles] = useState<StyleOption[]>([]);
+  const [builtins, setBuiltins] = useState<StyleOption[]>([]);
+  const [models, setModels] = useState<SttModelOption[]>([]);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+  const [remoteAvailable, setRemoteAvailable] = useState(true);
+  const [providers, setProviders] = useState<LlmProviderOption[]>([]);
+  const [keyStatus, setKeyStatus] = useState<ProviderKeyStatus | null>(null);
+  const [keyDraft, setKeyDraft] = useState("");
+  const [keyBusy, setKeyBusy] = useState(false);
+  // The test buttons work from the draft: nothing is saved before a test runs
+  const [llmProbe, setLlmProbe] = useState<ProbeState<LlmProbeReport>>(idleProbe());
+  const [sttProbe, setSttProbe] = useState<ProbeState<SttProbeReport>>(idleProbe());
   const [autostart, setAutostart] = useState(false);
   const [configPath, setConfigPath] = useState("");
   const [hyprland, setHyprland] = useState<HyprlandBinds | null>(null);
   const [includeCopied, setIncludeCopied] = useState(false);
   const [importPath, setImportPath] = useState("");
   const [exportedTo, setExportedTo] = useState("");
-  const [cloudAccepted, setCloudAccepted] = useState(false);
-  const [newLanguage, setNewLanguage] = useState("");
+  const [newLanguage, setNewLanguage] = useState("ru");
+  const [mcpProfile, setMcpProfile] = useState("claude-code");
+  const [commandCopied, setCommandCopied] = useState(false);
+  const [configCopied, setConfigCopied] = useState(false);
+  const suggestPaths = useCallback(
+    (input: string) => api.pathSuggestions(input, 10),
+    [],
+  );
 
   useEffect(() => {
     setDraft(config);
@@ -99,18 +181,44 @@ export default function Settings({
   useEffect(() => {
     api.getAutostart().then(setAutostart).catch(() => setAutostart(false));
     api.getConfigPath().then(setConfigPath).catch(() => setConfigPath(""));
-    api.listDevices().then(setDevices).catch(() => setDevices([]));
+    api
+      .sttModels()
+      .then((list) => {
+        setModels(list);
+        setModelsError(null);
+      })
+      .catch((err) => setModelsError(asCommandError(err).message));
+    api.sttRemoteAvailable().then(setRemoteAvailable).catch(() => setRemoteAvailable(true));
+    api.llmProviders().then(setProviders).catch(() => setProviders([]));
   }, []);
 
-  // Built-in style names come translated from the Rust side: ask again when the language changes
+  // Built-in style names and the style menu come translated from the Rust side: ask again
+  // when the language changes
   useEffect(() => {
     api.availableStyles().then(setStyles).catch(() => setStyles([]));
+    api.builtinStyles().then(setBuiltins).catch(() => setBuiltins([]));
   }, [lang]);
 
-  // A save of new hotkeys rewrites an existing file on the Rust side: read its state again
   useEffect(() => {
     api.hyprlandBinds().then(setHyprland).catch(() => setHyprland(null));
   }, [config]);
+
+  // Whether the key entry exists is a property of the provider and of the store, not of the
+  // rest of the form: a keystroke elsewhere must not ask the store again
+  const provider = draft?.llm.provider ?? "";
+  const keySource = draft?.llm.api_key_source ?? "keyring";
+  useEffect(() => {
+    if (provider === "" || !storesInKeyring(keySource)) {
+      setKeyStatus(null);
+      return;
+    }
+    api
+      .providerKeyStatus(provider, keySource)
+      .then(setKeyStatus)
+      .catch((err) =>
+        setKeyStatus({ present: false, entry: "", detail: asCommandError(err).message }),
+      );
+  }, [provider, keySource]);
 
   const patch = useCallback((change: (next: Config) => void) => {
     setSaved(false);
@@ -118,8 +226,6 @@ export default function Settings({
       if (!prev) {
         return prev;
       }
-      // A copy one level deeper than the mutated branch is enough: change edits
-      // nested objects, so we clone the whole value with structuredClone
       const next = structuredClone(prev);
       change(next);
       return next;
@@ -130,13 +236,17 @@ export default function Settings({
     return (
       <>
         <h1>{t("settings.title")}</h1>
+
         <p className="muted">{t("common.loading")}</p>
       </>
     );
   }
 
-  const cloudSelected = draft.llm.enabled && CLOUD_PROVIDERS.includes(draft.llm.provider);
-  const blockedByCloud = cloudSelected && !cloudAccepted;
+  const llmCloud =
+    !["ollama", "lmstudio", "custom"].includes(draft.llm.provider);
+  const styleProblems = styleIssues(draft.style.custom);
+
+  const keyStoreRefused = keyStatus !== null && storeUnavailable(keyStatus);
 
   const save = async () => {
     try {
@@ -164,9 +274,146 @@ export default function Settings({
     }
   };
 
+  // Both tests send the draft as it stands in the form. A test never writes the settings and
+  // never starts a recording: the recognition test builds the engine and checks the files
+  const testLlm = async () => {
+    const sending = draft;
+    setLlmProbe({ pending: true, report: null, error: null });
+    try {
+      setLlmProbe({ pending: false, report: await api.testLlm(sending), error: null });
+    } catch (err) {
+      setLlmProbe({ pending: false, report: null, error: asCommandError(err) });
+    }
+  };
+
+  const testStt = async () => {
+    const sending = draft;
+    setSttProbe({ pending: true, report: null, error: null });
+    try {
+      setSttProbe({ pending: false, report: await api.testStt(sending), error: null });
+    } catch (err) {
+      setSttProbe({ pending: false, report: null, error: asCommandError(err) });
+    }
+  };
+
+  const engine = engineOfModel(models, draft.stt.model) ?? draft.stt.engine;
+  const selectedLanguages =
+    draft.stt.language === "auto"
+      ? draft.stt.allowed_languages
+      : [draft.stt.language].filter((code) => code !== "");
+  const availableLanguages = (RECOGNITION_LANGUAGES as readonly string[]).filter(
+    (code) => !selectedLanguages.includes(code),
+  );
+  // The add menu must never keep a language that is already a chip: otherwise its value is
+  // stale, the button looks disabled for no visible reason, and the first free language is
+  // what the person expects to see
+  useEffect(() => {
+    if (
+      availableLanguages.length > 0 &&
+      !availableLanguages.includes(newLanguage)
+    ) {
+      setNewLanguage(availableLanguages[0]);
+    }
+  }, [availableLanguages, newLanguage]);
+  const remoteProvider = draft.stt.remote.base_url.includes("openrouter")
+    ? "openrouter"
+    : "openai";
+  const profile = mcpProfiles().find((item) => item.id === mcpProfile) ?? mcpProfiles()[0];
+
+  const storeKey = async () => {
+    setKeyBusy(true);
+    try {
+      const next = await api.storeProviderKey(provider, keySource, keyDraft);
+      setKeyStatus(next);
+      // The value leaves the page at once: it lives in the store, not in the window
+      setKeyDraft("");
+    } catch (err) {
+      onError(asCommandError(err));
+    } finally {
+      setKeyBusy(false);
+    }
+  };
+
   return (
     <>
       <h1>{t("settings.title")}</h1>
+
+      <section className="card settings-section settings-actions">
+        {managed && (
+          <div className="notice" role="status">
+            <strong>{t("app.managed")}</strong>
+            <p>{t("app.managedHint")}</p>
+          </div>
+        )}
+        {styleProblems.length > 0 && (
+          <div className="notice warning" role="alert">
+            {t("settings.styles.blocked")}
+          </div>
+        )}
+        <div className="row">
+          <button
+            type="button"
+            className="primary"
+            onClick={() => void save()}
+            disabled={managed || styleProblems.length > 0}
+          >
+            {t("common.save")}
+          </button>
+          <button
+            type="button"
+            className="danger"
+            onClick={() => void reset()}
+            disabled={managed}
+          >
+            {t("common.reset")}
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              api
+                .exportConfig()
+                .then(setExportedTo)
+                .catch((err) => onError(asCommandError(err)))
+            }
+          >
+            {t("common.export")}
+          </button>
+        </div>
+        {exportedTo && (
+          <p className="small muted">{t("stats.exported", { path: exportedTo })}</p>
+        )}
+        <div className="field-row">
+          <div className="field">
+            <label htmlFor="import-path">{t("settings.importPath")}</label>
+            <PathInput
+              id="import-path"
+              value={importPath}
+              suggest={suggestPaths}
+              onChange={setImportPath}
+            />
+          </div>
+          <button
+            type="button"
+            disabled={importPath.trim() === ""}
+            onClick={() =>
+              api
+                .importConfig(importPath.trim())
+                .then((next) => {
+                  setDraft(next);
+                  setSaved(true);
+                  return reloadConfig();
+                })
+                .catch((err) => {
+                  const error = asCommandError(err);
+                  setInvalid(error);
+                  onError(error);
+                })
+            }
+          >
+            {t("common.import")}
+          </button>
+        </div>
+      </section>
 
       {invalid && (
         <div className="notice error" role="alert">
@@ -183,7 +430,7 @@ export default function Settings({
       )}
 
       <Section title={t("settings.section.general")}>
-        <div className="grid2">
+        <div className="formgrid">
           <div className="field">
             <label htmlFor="ui-language">{t("settings.language")}</label>
             <select
@@ -235,29 +482,20 @@ export default function Settings({
         )}
 
         <h3>{t("settings.hotkeys")}</h3>
-        <div className="grid2">
-          {(
-            [
-              ["push_to_talk", "settings.hotkeys.pushToTalk"],
-              ["toggle", "settings.hotkeys.toggle"],
-              ["command", "settings.hotkeys.command"],
-              ["cancel", "settings.hotkeys.cancel"],
-              ["style_next", "settings.hotkeys.styleNext"],
-            ] as const
-          ).map(([key, label]) => (
-            <div className="field" key={key}>
-              <label htmlFor={`hotkey-${key}`}>{t(label)}</label>
-              <input
-                id={`hotkey-${key}`}
-                type="text"
-                value={draft.hotkeys[key]}
-                onChange={(event) =>
-                  patch((next) => {
-                    next.hotkeys[key] = event.target.value;
-                  })
-                }
-              />
-            </div>
+        <p className="small muted">{t("settings.hotkeys.hint")}</p>
+        <div className="formgrid">
+          {HOTKEY_KEYS.map((key) => (
+            <HotkeyField
+              key={key}
+              id={`hotkey-${key}`}
+              label={t(`settings.hotkeys.${key === "push_to_talk" ? "pushToTalk" : key.replace("style_next", "styleNext")}`)}
+              value={draft.hotkeys[key]}
+              onChange={(value) =>
+                patch((next) => {
+                  next.hotkeys[key] = value;
+                })
+              }
+            />
           ))}
         </div>
 
@@ -265,36 +503,21 @@ export default function Settings({
           <details className="help">
             <summary>{t("settings.wayland.title")}</summary>
             <p>{t("settings.wayland.body")}</p>
-            <button
-              type="button"
-              className="chip"
-              onClick={() =>
-                api
-                  .writeHyprlandBinds()
-                  .then(setHyprland)
-                  .catch((err) => onError(asCommandError(err)))
-              }
-            >
-              {hyprland.written ? t("settings.wayland.rewrite") : t("settings.wayland.write")}
-            </button>
             {hyprland.written && (
               <>
                 <p className="small">{t("settings.wayland.written", { path: hyprland.path })}</p>
                 <p>{t("settings.wayland.include")}</p>
-                <input
-                  readOnly
-                  value={hyprland.include_line}
-                  aria-label={t("settings.wayland.include")}
-                />
-                <button
-                  type="button"
-                  className="chip"
-                  onClick={async () =>
-                    setIncludeCopied(await copyToClipboard(hyprland.include_line))
-                  }
-                >
-                  {includeCopied ? t("common.copied") : t("common.copy")}
-                </button>
+                <div className="copy-row">
+                  <code className="mono">{hyprland.include_line}</code>
+                  <CopyButton
+                    copied={includeCopied}
+                    label={t("common.copy")}
+                    copiedLabel={t("common.copied")}
+                    onClick={async () =>
+                      setIncludeCopied(await copyToClipboard(hyprland.include_line))
+                    }
+                  />
+                </div>
               </>
             )}
           </details>
@@ -302,26 +525,16 @@ export default function Settings({
       </Section>
 
       <Section title={t("settings.section.audio")}>
-        <div className="grid2">
-          <div className="field">
-            <label htmlFor="audio-device">{t("settings.device")}</label>
-            <select
-              id="audio-device"
-              value={draft.audio.device}
-              onChange={(event) =>
-                patch((next) => {
-                  next.audio.device = event.target.value;
-                })
-              }
-            >
-              <option value="default">{t("settings.deviceDefault")}</option>
-              {devices.map((device) => (
-                <option key={device.name} value={device.name}>
-                  {device.name}
-                </option>
-              ))}
-            </select>
-          </div>
+        <DeviceField
+          value={draft.audio.device}
+          daemonRunning={status?.daemon_running ?? false}
+          onChange={(device) =>
+            patch((next) => {
+              next.audio.device = device;
+            })
+          }
+        />
+        <div className="formgrid">
           <div className="field">
             <label htmlFor="audio-gain">
               {t("settings.gain")}: {draft.audio.gain.toFixed(1)}
@@ -373,212 +586,379 @@ export default function Settings({
             />
           </div>
         </div>
-        <Check
-          label={t("settings.sounds")}
-          checked={draft.audio.sounds}
-          onChange={(value) =>
-            patch((next) => {
-              next.audio.sounds = value;
-            })
-          }
-        />
-        <Check
-          label={t("settings.warnZeroLevel")}
-          checked={draft.audio.warn_zero_level}
-          onChange={(value) =>
-            patch((next) => {
-              next.audio.warn_zero_level = value;
-            })
-          }
-        />
-        <div className="row">
-          <button
-            type="button"
-            onClick={() =>
-              api
-                .listDevices()
-                .then(setDevices)
-                .catch((err) => onError(asCommandError(err)))
+        <div className="check-list">
+          <Check
+            label={t("settings.sounds")}
+            checked={draft.audio.sounds}
+            onChange={(value) =>
+              patch((next) => {
+                next.audio.sounds = value;
+              })
             }
-          >
-            {t("common.refresh")}
-          </button>
+          />
+          <Check
+            label={t("settings.warnZeroLevel")}
+            checked={draft.audio.warn_zero_level}
+            onChange={(value) =>
+              patch((next) => {
+                next.audio.warn_zero_level = value;
+              })
+            }
+          />
         </div>
       </Section>
 
       <Section title={t("settings.section.recognition")}>
-        <div className="grid2">
+        {modelsError && (
+          <div className="notice warning" role="alert">
+            <p>{t("settings.modelsError")}</p>
+            <p className="mono small">{modelsError}</p>
+          </div>
+        )}
+
+        <div className="formgrid">
           <div className="field">
             <label htmlFor="stt-engine">{t("settings.engine")}</label>
             <select
               id="stt-engine"
-              value={draft.stt.engine}
-              onChange={(event) =>
+              value={engine}
+              onChange={(event) => {
+                const nextEngine = event.target.value;
                 patch((next) => {
-                  next.stt.engine = event.target.value;
-                })
-              }
+                  next.stt.engine = nextEngine;
+                  if (nextEngine !== REMOTE_ENGINE) {
+                    next.stt.model = pickModel(models, nextEngine, next.stt.model);
+                  }
+                });
+              }}
             >
-              <option value="whisper-cpp">whisper-cpp</option>
-              <option value="remote-openai">remote-openai</option>
+              {(localEngines(models).includes(engine)
+                ? localEngines(models)
+                : [...localEngines(models), engine]
+              ).map((id) => (
+                <option key={id} value={id}>
+                  {engineLabel(id, t)}
+                </option>
+              ))}
+              <option value={REMOTE_ENGINE} disabled={!remoteAvailable}>
+                {t("settings.provider.remote")}
+              </option>
             </select>
+            {engine === REMOTE_ENGINE && !remoteAvailable && (
+              <p className="small warning-text">{t("settings.provider.remoteOff")}</p>
+            )}
           </div>
-          <div className="field">
-            <label htmlFor="stt-model">{t("settings.model")}</label>
-            <select
-              id="stt-model"
-              value={draft.stt.model}
-              onChange={(event) =>
+
+          {engine !== REMOTE_ENGINE && (
+            <div className="field">
+              <label htmlFor="stt-model">{t("settings.model")}</label>
+              <select
+                id="stt-model"
+                value={draft.stt.model}
+                onChange={(event) => {
+                  const nextModel = event.target.value;
+                  const nextEngine = engineOfModel(models, nextModel);
+                  patch((next) => {
+                    next.stt.model = nextModel;
+                    if (nextEngine) {
+                      next.stt.engine = nextEngine;
+                    }
+                  });
+                }}
+              >
+                {modelsForEngine(models, engine).map((model) => (
+                  <option key={model.name} value={model.name}>
+                    {model.name} — {humanSize(model.size_bytes)}
+                    {model.language ? ` — ${model.language.toUpperCase()}` : ""}
+                  </option>
+                ))}
+                {models.length > 0 &&
+                  !modelFitsEngine(models, draft.stt.model, engine) && (
+                    <option value={draft.stt.model}>{draft.stt.model}</option>
+                  )}
+              </select>
+              {models.some((model) => model.name === draft.stt.model) && (
+                <p className="small muted">
+                  {models.find((model) => model.name === draft.stt.model)?.installed
+                    ? t("settings.modelOnDisk")
+                    : t("settings.modelWillDownload")}
+                </p>
+              )}
+              {!modelFitsEngine(models, draft.stt.model, engine) && (
+                <p className="small warning-text">{t("settings.modelMismatch")}</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="field">
+          <button type="button" disabled={sttProbe.pending} onClick={() => void testStt()}>
+            {sttProbe.pending
+              ? t("settings.sttTest.testing")
+              : t("settings.sttTest.button")}
+          </button>
+          <p className="small muted">{t("settings.sttTest.hint")}</p>
+          <SttProbeResult state={sttProbe} />
+        </div>
+
+        {engine === REMOTE_ENGINE ? (
+          <>
+            <div className="notice warning" role="alert">
+              <strong>{t("settings.remote.off")}</strong>
+              <p>{t("settings.remote.offHint")}</p>
+            </div>
+            <div className="formgrid">
+              <div className="field">
+                <label htmlFor="remote-provider">{t("settings.llm.provider")}</label>
+                <select
+                  id="remote-provider"
+                  value={remoteProvider}
+                  disabled={!remoteAvailable}
+                  onChange={(event) => {
+                    const id = event.target.value;
+                    const preset = providers.find((item) => item.id === id);
+                    patch((next) => {
+                      next.stt.remote.base_url = preset?.base_url ?? next.stt.remote.base_url;
+                      next.stt.remote.model = REMOTE_STT_MODELS[id] ?? next.stt.remote.model;
+                      next.stt.remote.api_key_env =
+                        preset?.api_key_env ?? next.stt.remote.api_key_env;
+                    });
+                  }}
+                >
+                  {Object.keys(REMOTE_STT_MODELS).map((id) => (
+                    <option key={id} value={id}>
+                      {id === "openai" ? "OpenAI" : "OpenRouter"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="remote-model">{t("settings.model")}</label>
+                <input
+                  id="remote-model"
+                  type="text"
+                  disabled={!remoteAvailable}
+                  value={draft.stt.remote.model}
+                  onChange={(event) =>
+                    patch((next) => {
+                      next.stt.remote.model = event.target.value;
+                    })
+                  }
+                />
+              </div>
+              <div className="field wide">
+                <label htmlFor="remote-base-url">{t("settings.llm.baseUrl")}</label>
+                <input
+                  id="remote-base-url"
+                  type="text"
+                  disabled={!remoteAvailable}
+                  value={draft.stt.remote.base_url}
+                  onChange={(event) =>
+                    patch((next) => {
+                      next.stt.remote.base_url = event.target.value;
+                    })
+                  }
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="remote-key-source">{t("settings.llm.keySource")}</label>
+                <select
+                  id="remote-key-source"
+                  disabled={!remoteAvailable}
+                  value={draft.stt.remote.api_key_source}
+                  onChange={(event) =>
+                    patch((next) => {
+                      next.stt.remote.api_key_source = event.target.value;
+                    })
+                  }
+                >
+                  <option value="keyring">{t("settings.keySource.keyring")}</option>
+                  <option value="env">{t("settings.keySource.env")}</option>
+                  <option value="none">{t("settings.keySource.none")}</option>
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="remote-key-env">{t("settings.llm.keyEnv")}</label>
+                <input
+                  id="remote-key-env"
+                  type="text"
+                  disabled={!remoteAvailable}
+                  value={draft.stt.remote.api_key_env}
+                  onChange={(event) =>
+                    patch((next) => {
+                      next.stt.remote.api_key_env = event.target.value;
+                    })
+                  }
+                />
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="field wide">
+            <label htmlFor="stt-model-path">{t("settings.modelPath")}</label>
+            <PathInput
+              id="stt-model-path"
+              value={draft.stt.model_path}
+              suggest={suggestPaths}
+              onChange={(value) =>
                 patch((next) => {
-                  next.stt.model = event.target.value;
+                  next.stt.model_path = value;
                 })
               }
+            />
+            <p className="small muted">{t("settings.modelPathHint")}</p>
+          </div>
+        )}
+
+        <div className="field wide">
+          <label>{t("settings.sttLanguage")}</label>
+          <p className="small muted">{t("settings.sttLanguageHint")}</p>
+          <div className="chip-row">
+            {selectedLanguages.map((code) => (
+              <button
+                key={code}
+                type="button"
+                className="chip"
+                aria-label={`${code} — ${t("common.delete")}`}
+                onClick={() => {
+                  const next = selectedLanguages.filter((item) => item !== code);
+                  patch((draftConfig) => {
+                    draftConfig.stt.allowed_languages = next;
+                    draftConfig.stt.language =
+                      next.length === 1 ? next[0] : "auto";
+                  });
+                }}
+              >
+                {languageLabel(code, t)} ✕
+              </button>
+            ))}
+            <select
+              aria-label={t("settings.addLanguage")}
+              value={newLanguage}
+              disabled={availableLanguages.length === 0}
+              onChange={(event) => setNewLanguage(event.target.value)}
             >
-              {MODELS.map((model) => (
-                <option key={model} value={model}>
-                  {model}
+              {availableLanguages.map((code) => (
+                <option key={code} value={code}>
+                  {languageLabel(code, t)}
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              disabled={!availableLanguages.includes(newLanguage)}
+              onClick={() => {
+                const next = [...selectedLanguages, newLanguage];
+                patch((draftConfig) => {
+                  draftConfig.stt.allowed_languages = next;
+                  draftConfig.stt.language = next.length === 1 ? next[0] : "auto";
+                });
+              }}
+            >
+              {t("settings.addLanguage")}
+            </button>
           </div>
-          <div className="field">
-            <label htmlFor="stt-language">{t("settings.sttLanguage")}</label>
-            <input
-              id="stt-language"
-              type="text"
-              value={draft.stt.language}
-              onChange={(event) =>
-                patch((next) => {
-                  next.stt.language = event.target.value;
-                })
-              }
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="stt-threads">{t("settings.threads")}</label>
-            <input
-              id="stt-threads"
-              type="number"
-              min={0}
-              value={draft.stt.threads}
-              onChange={(event) =>
-                patch((next) => {
-                  next.stt.threads = Number(event.target.value);
-                })
-              }
-            />
-          </div>
-          <div className="field wide">
-            <label htmlFor="stt-model-path">{t("settings.modelPath")}</label>
-            <input
-              id="stt-model-path"
-              type="text"
-              value={draft.stt.model_path}
-              onChange={(event) =>
-                patch((next) => {
-                  next.stt.model_path = event.target.value;
-                })
-              }
-            />
-          </div>
-          <div className="field wide">
-            <label htmlFor="stt-models-mirror">{t("settings.modelsMirror")}</label>
-            <input
-              id="stt-models-mirror"
-              type="url"
-              placeholder="https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
-              value={draft.stt.models_mirror}
-              onChange={(event) =>
-                patch((next) => {
-                  next.stt.models_mirror = event.target.value;
-                })
-              }
-            />
-            <p className="muted small">{t("settings.modelsMirrorHint")}</p>
-          </div>
+          {selectedLanguages.length > 1 && (
+            <p className="small muted">{t("settings.allowedLanguagesHint")}</p>
+          )}
         </div>
 
-        <h3>{t("settings.allowedLanguages")}</h3>
-        <div className="row">
-          {draft.stt.allowed_languages.map((code) => (
-            <button
-              key={code}
-              type="button"
-              className="chip"
-              aria-label={`${code} — ${t("common.delete")}`}
-              onClick={() =>
+        <details className="help">
+          <summary>{t("settings.advanced")}</summary>
+          <div className="formgrid">
+            <div className="field">
+              <label htmlFor="stt-threads">{t("settings.threads")}</label>
+              <input
+                id="stt-threads"
+                type="number"
+                min={0}
+                value={draft.stt.threads}
+                onChange={(event) =>
+                  patch((next) => {
+                    next.stt.threads = Number(event.target.value);
+                  })
+                }
+              />
+            </div>
+            <div className="field wide">
+              <label htmlFor="stt-transcribe-cli">{t("settings.transcribeCli")}</label>
+              <PathInput
+                id="stt-transcribe-cli"
+                value={draft.stt.transcribe_cli}
+                suggest={suggestPaths}
+                onChange={(value) =>
+                  patch((next) => {
+                    next.stt.transcribe_cli = value;
+                  })
+                }
+              />
+              <p className="small muted">{t("settings.transcribeCliHint")}</p>
+            </div>
+            <div className="field wide">
+              <label htmlFor="stt-models-mirror">{t("settings.modelsMirror")}</label>
+              <input
+                id="stt-models-mirror"
+                type="url"
+                placeholder="https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
+                value={draft.stt.models_mirror}
+                onChange={(event) =>
+                  patch((next) => {
+                    next.stt.models_mirror = event.target.value;
+                  })
+                }
+              />
+              <p className="small muted">{t("settings.modelsMirrorHint")}</p>
+            </div>
+          </div>
+          <div className="check-list">
+            <Check
+              label={t("settings.streamingPreview")}
+              checked={draft.stt.streaming_preview}
+              onChange={(value) =>
                 patch((next) => {
-                  next.stt.allowed_languages = next.stt.allowed_languages.filter(
-                    (item) => item !== code,
-                  );
+                  next.stt.streaming_preview = value;
                 })
               }
-            >
-              {code} ✕
-            </button>
-          ))}
-        </div>
-        <div className="row" style={{ marginTop: "0.5rem", alignItems: "flex-end" }}>
-          <div className="field" style={{ marginBottom: 0, maxWidth: "8rem" }}>
-            <label htmlFor="stt-new-language">{t("settings.addLanguage")}</label>
-            <input
-              id="stt-new-language"
-              type="text"
-              value={newLanguage}
-              maxLength={5}
-              onChange={(event) => setNewLanguage(event.target.value)}
+            />
+            <Check
+              label={t("settings.autoPull")}
+              hint={t("settings.autoPullHint")}
+              checked={draft.stt.auto_pull}
+              onChange={(value) =>
+                patch((next) => {
+                  next.stt.auto_pull = value;
+                })
+              }
+            />
+            <Check
+              label={t("settings.chunked")}
+              checked={draft.stt.chunked}
+              onChange={(value) =>
+                patch((next) => {
+                  next.stt.chunked = value;
+                })
+              }
             />
           </div>
-          <button
-            type="button"
-            disabled={newLanguage.trim() === ""}
-            onClick={() => {
-              const code = newLanguage.trim().toLowerCase();
-              patch((next) => {
-                if (!next.stt.allowed_languages.includes(code)) {
-                  next.stt.allowed_languages.push(code);
-                }
-              });
-              setNewLanguage("");
-            }}
-          >
-            {t("settings.addLanguage")}
-          </button>
-        </div>
-        <Check
-          label={t("settings.streamingPreview")}
-          checked={draft.stt.streaming_preview}
-          onChange={(value) =>
-            patch((next) => {
-              next.stt.streaming_preview = value;
-            })
-          }
-        />
+        </details>
       </Section>
 
       <Section title={t("settings.section.post")}>
         <h3>{t("settings.rules")}</h3>
-        {(
-          [
-            ["enabled", "settings.rules.enabled"],
-            ["spoken_punctuation", "settings.rules.spokenPunctuation"],
-            ["auto_punctuation", "settings.rules.autoPunctuation"],
-            ["remove_fillers", "settings.rules.removeFillers"],
-            ["remove_repeats", "settings.rules.removeRepeats"],
-            ["numbers_as_digits", "settings.rules.numbersAsDigits"],
-          ] as const
-        ).map(([key, label]) => (
-          <Check
-            key={key}
-            label={t(label)}
-            checked={draft.rules[key]}
-            onChange={(value) =>
-              patch((next) => {
-                next.rules[key] = value;
-              })
-            }
-          />
-        ))}
+        <div className="check-list">
+          {RULE_KEYS.map((key) => (
+            <Check
+              key={key}
+              label={t(`settings.rules.${key === "enabled" ? "enabled" : key.replace(/_([a-z])/g, (_m, letter: string) => letter.toUpperCase())}`)}
+              checked={draft.rules[key]}
+              onChange={(value) =>
+                patch((next) => {
+                  next.rules[key] = value;
+                })
+              }
+            />
+          ))}
+        </div>
 
         <h3>{t("settings.llm")}</h3>
         <Check
@@ -590,34 +970,38 @@ export default function Settings({
             })
           }
         />
-        <div className="grid2">
+        <div className="formgrid">
           <div className="field">
             <label htmlFor="llm-provider">{t("settings.llm.provider")}</label>
             <select
               id="llm-provider"
               value={draft.llm.provider}
               onChange={(event) => {
-                const provider = event.target.value;
-                const preset = PROVIDERS[provider];
-                setCloudAccepted(false);
+                const id = event.target.value;
+                const preset = providers.find((item) => item.id === id);
                 patch((next) => {
-                  next.llm.provider = provider;
-                  if (preset && provider !== "custom") {
+                  next.llm.provider = id;
+                  if (preset) {
                     next.llm.base_url = preset.base_url;
-                    next.llm.model = preset.model;
-                    if (preset.api_key_env) {
+                    if (preset.model !== "") {
+                      next.llm.model = preset.model;
+                    }
+                    if (preset.api_key_env !== "") {
                       next.llm.api_key_env = preset.api_key_env;
                     }
                   }
                 });
               }}
             >
-              {Object.keys(PROVIDERS).map((provider) => (
-                <option key={provider} value={provider}>
-                  {provider}
+              {providers.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {t(`settings.llmProvider.${item.id}`, { id: item.id })}
                 </option>
               ))}
             </select>
+            {providers.find((item) => item.id === draft.llm.provider)?.is_local && (
+              <p className="small muted">{t("settings.llm.localHint")}</p>
+            )}
           </div>
           <div className="field">
             <label htmlFor="llm-model">{t("settings.llm.model")}</label>
@@ -632,6 +1016,125 @@ export default function Settings({
               }
             />
           </div>
+        </div>
+
+        <div className="field">
+          <label htmlFor="llm-reasoning">{t("settings.llm.reasoning")}</label>
+          <select
+            id="llm-reasoning"
+            value={draft.llm.reasoning_effort}
+            onChange={(event) =>
+              patch((next) => {
+                next.llm.reasoning_effort = event.target.value;
+              })
+            }
+          >
+            <option value="none">{t("settings.llm.reasoningNone")}</option>
+            <option value="auto">{t("settings.llm.reasoningAuto")}</option>
+            <option value="">{t("settings.llm.reasoningOff")}</option>
+            <option value="low">low</option>
+            <option value="medium">medium</option>
+            <option value="high">high</option>
+          </select>
+          <p className="small muted">{t("settings.llm.reasoningHint")}</p>
+        </div>
+
+        {draft.llm.provider === "openrouter" && (
+          <>
+            <h4>{t("settings.llm.hosters")}</h4>
+            <p className="small muted">{t("settings.llm.hostersHint")}</p>
+            <div className="formgrid">
+              <div className="field">
+                <label htmlFor="llm-provider-order">
+                  {t("settings.llm.hostersOrder")}
+                </label>
+                <input
+                  id="llm-provider-order"
+                  type="text"
+                  placeholder="groq, together"
+                  value={draft.llm.provider_order}
+                  onChange={(event) =>
+                    patch((next) => {
+                      next.llm.provider_order = event.target.value;
+                    })
+                  }
+                />
+                <p className="small muted">{t("settings.llm.hostersOrderHint")}</p>
+              </div>
+              <div className="field">
+                <Check
+                  label={t("settings.llm.allowFallbacks")}
+                  hint={t("settings.llm.allowFallbacksHint")}
+                  checked={draft.llm.allow_fallbacks}
+                  onChange={(value) =>
+                    patch((next) => {
+                      next.llm.allow_fallbacks = value;
+                    })
+                  }
+                />
+                <Check
+                  label={t("settings.llm.requireParameters")}
+                  hint={t("settings.llm.requireParametersHint")}
+                  checked={draft.llm.require_parameters}
+                  onChange={(value) =>
+                    patch((next) => {
+                      next.llm.require_parameters = value;
+                    })
+                  }
+                />
+              </div>
+            </div>
+          </>
+        )}
+
+        <div className="field">
+          <button type="button" disabled={llmProbe.pending} onClick={() => void testLlm()}>
+            {llmProbe.pending ? t("settings.llm.testing") : t("settings.llm.test")}
+          </button>
+          <p className="small muted">{t("settings.llm.testHint")}</p>
+          <LlmProbeResult state={llmProbe} />
+        </div>
+
+        {llmCloud && (
+          <>
+            <h4>{t("settings.llm.privacy")}</h4>
+            <div className="formgrid">
+              <div className="field">
+                <label htmlFor="llm-data-collection">
+                  {t("settings.llm.dataCollection")}
+                </label>
+                <select
+                  id="llm-data-collection"
+                  value={draft.llm.data_collection}
+                  onChange={(event) =>
+                    patch((next) => {
+                      next.llm.data_collection = event.target.value;
+                    })
+                  }
+                >
+                  <option value="deny">{t("settings.llm.dataCollectionDeny")}</option>
+                  <option value="allow">{t("settings.llm.dataCollectionAllow")}</option>
+                </select>
+                <p className="small muted">{t("settings.llm.dataCollectionHint")}</p>
+              </div>
+              <div className="field">
+                <Check
+                  label={t("settings.llm.zdr")}
+                  hint={t("settings.llm.zdrHint")}
+                  checked={draft.llm.zdr}
+                  onChange={(value) =>
+                    patch((next) => {
+                      next.llm.zdr = value;
+                    })
+                  }
+                />
+              </div>
+            </div>
+          </>
+        )}
+
+        <details className="help">
+          <summary>{t("settings.llm.connection")}</summary>
           <div className="field wide">
             <label htmlFor="llm-base-url">{t("settings.llm.baseUrl")}</label>
             <input
@@ -645,34 +1148,112 @@ export default function Settings({
               }
             />
           </div>
-          <div className="field">
-            <label htmlFor="llm-key-env">{t("settings.llm.keyEnv")}</label>
-            <input
-              id="llm-key-env"
-              type="text"
-              value={draft.llm.api_key_env}
-              onChange={(event) =>
-                patch((next) => {
-                  next.llm.api_key_env = event.target.value;
-                })
-              }
-            />
-          </div>
+
           <div className="field">
             <label htmlFor="llm-key-source">{t("settings.llm.keySource")}</label>
             <select
               id="llm-key-source"
               value={draft.llm.api_key_source}
-              onChange={(event) =>
+              onChange={(event) => {
+                const source = event.target.value;
                 patch((next) => {
-                  next.llm.api_key_source = event.target.value;
-                })
-              }
+                  next.llm.api_key_source = source;
+                });
+              }}
             >
-              <option value="keyring">keyring</option>
-              <option value="env">env</option>
+              {keySourceChoices(draft.llm.api_key_source).map((source) => (
+                <option key={source} value={source}>
+                  {t(`settings.keySource.${keyField(source)}`, { source })}
+                </option>
+              ))}
             </select>
+            <p className="small muted">{t(`settings.keySourceHint.${keyField(keySource)}`)}</p>
           </div>
+
+          {keyField(keySource) === "store" && (
+            <div className="field wide">
+              <label htmlFor="llm-key-value">{t("settings.llm.keyValue")}</label>
+              <div className="field-inline">
+                <input
+                  id="llm-key-value"
+                  type="password"
+                  autoComplete="off"
+                  value={keyDraft}
+                  onChange={(event) => setKeyDraft(event.target.value)}
+                />
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={keyBusy || keyDraft.trim() === ""}
+                  onClick={() => void storeKey()}
+                >
+                  {t("settings.llm.keyStore")}
+                </button>
+                <button
+                  type="button"
+                  disabled={keyBusy || keyStatus?.present !== true}
+                  onClick={() =>
+                    api
+                      .removeProviderKey(provider, keySource)
+                      .then(setKeyStatus)
+                      .catch((err) => onError(asCommandError(err)))
+                  }
+                >
+                  {t("settings.llm.keyRemove")}
+                </button>
+              </div>
+              <p className="small" aria-live="polite">
+                {keyStatus?.present
+                  ? t("settings.llm.keyPresent", { entry: keyStatus.entry })
+                  : t("settings.llm.keyMissing")}
+              </p>
+              {keyStoreRefused && keyStatus?.detail && (
+                <div className="notice warning" role="alert">
+                  <p>{t("settings.llm.keyStoreRefused")}</p>
+                  <p className="mono small">{keyStatus.detail}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {warnsAboutClearText(keySource) && (
+            <>
+              <div className="notice warning" role="alert">
+                <p>{t("settings.keySource.plainWarning")}</p>
+              </div>
+              <div className="field wide">
+                <label htmlFor="llm-key-plain">{t("settings.llm.keyValue")}</label>
+                <input
+                  id="llm-key-plain"
+                  type="password"
+                  autoComplete="off"
+                  value={draft.llm.api_key_plain}
+                  onChange={(event) =>
+                    patch((next) => {
+                      next.llm.api_key_plain = event.target.value;
+                    })
+                  }
+                />
+              </div>
+            </>
+          )}
+
+          {keyField(keySource) === "env" && (
+            <div className="field">
+              <label htmlFor="llm-key-env">{t("settings.llm.keyEnv")}</label>
+              <input
+                id="llm-key-env"
+                type="text"
+                value={draft.llm.api_key_env}
+                onChange={(event) =>
+                  patch((next) => {
+                    next.llm.api_key_env = event.target.value;
+                  })
+                }
+              />
+            </div>
+          )}
+
           <div className="field">
             <label htmlFor="llm-temperature">
               {t("settings.llm.temperature")}: {draft.llm.temperature.toFixed(2)}
@@ -691,17 +1272,8 @@ export default function Settings({
               }
             />
           </div>
-        </div>
-        {cloudSelected && (
-          <div className="notice warning" role="alert">
-            <strong>{t("settings.llm.cloudWarning")}</strong>
-            <Check
-              label={t("settings.llm.cloudConfirm")}
-              checked={cloudAccepted}
-              onChange={setCloudAccepted}
-            />
-          </div>
-        )}
+
+        </details>
 
         <div className="field">
           <label htmlFor="default-style">{t("settings.defaultStyle")}</label>
@@ -715,16 +1287,30 @@ export default function Settings({
             }
           >
             {styles.map((style) => (
-              <option key={style.id} value={style.id}>
+              <option
+                key={style.id}
+                value={style.id}
+                disabled={!draft.llm.enabled && style.id !== "verbatim"}
+              >
                 {style.name}
               </option>
             ))}
           </select>
         </div>
+
+        <StyleEditor
+          styles={draft.style.custom}
+          builtins={builtins}
+          onChange={(next: CustomStyle[]) =>
+            patch((configNext) => {
+              configNext.style.custom = next;
+            })
+          }
+        />
       </Section>
 
       <Section title={t("settings.section.output")}>
-        <div className="grid2">
+        <div className="formgrid">
           <div className="field">
             <label htmlFor="output-mode">{t("settings.output.mode")}</label>
             <select
@@ -769,108 +1355,128 @@ export default function Settings({
         />
       </Section>
 
+      <Section title={t("settings.section.mcp")}>
+        <Check
+          label={t("settings.mcp.enabled")}
+          hint={t("settings.mcp.enabledHint")}
+          checked={draft.mcp.enabled}
+          onChange={(value) =>
+            patch((next) => {
+              next.mcp.enabled = value;
+            })
+          }
+        />
+        <div className="field wide">
+          <label>{t("settings.mcp.command")}</label>
+          <div className="copy-row">
+            <code className="mono">{mcpCommandLine()}</code>
+            <CopyButton
+              copied={commandCopied}
+              label={t("common.copy")}
+              copiedLabel={t("common.copied")}
+              onClick={async () => setCommandCopied(await copyToClipboard(mcpCommandLine()))}
+            />
+          </div>
+          <p className="small muted">{t("settings.mcp.stdioHint")}</p>
+        </div>
+        <div className="formgrid">
+          <div className="field">
+            <label htmlFor="mcp-profile">{t("settings.mcp.harness")}</label>
+            <select
+              id="mcp-profile"
+              value={profile.id}
+              onChange={(event) => {
+                setConfigCopied(false);
+                setMcpProfile(event.target.value);
+              }}
+            >
+              {mcpProfiles().map((item) => (
+                <option key={item.id} value={item.id}>
+                  {t(item.labelKey)}
+                </option>
+              ))}
+            </select>
+            {profile.command === undefined && profile.file !== "" && (
+              <p className="small muted">{t("settings.mcp.file", { file: profile.file })}</p>
+            )}
+          </div>
+        </div>
+        {profile.command ? (
+          <div className="copy-row">
+            <code className="mono">{profile.command}</code>
+            <CopyButton
+              copied={commandCopied}
+              label={t("common.copy")}
+              copiedLabel={t("common.copied")}
+              onClick={async () =>
+                setCommandCopied(await copyToClipboard(profile.command ?? ""))
+              }
+            />
+          </div>
+        ) : (
+          <>
+            <pre className="codeblock">{profile.config}</pre>
+            <CopyButton
+              copied={configCopied}
+              label={t("common.copy")}
+              copiedLabel={t("common.copied")}
+              onClick={async () => setConfigCopied(await copyToClipboard(profile.config))}
+            />
+          </>
+        )}
+      </Section>
+
       <Section title={t("settings.section.privacy")}>
-        <Check
-          label={t("settings.privacy.includeText")}
-          checked={draft.journal.include_text}
-          onChange={(value) =>
-            patch((next) => {
-              next.journal.include_text = value;
-            })
-          }
-        />
-        <Check
-          label={t("settings.privacy.noRecord")}
-          checked={draft.privacy.no_record_mode}
-          onChange={(value) =>
-            patch((next) => {
-              next.privacy.no_record_mode = value;
-            })
-          }
-        />
-        <Check
-          label={t("settings.privacy.keepAudio")}
-          checked={draft.journal.keep_audio}
-          onChange={(value) =>
-            patch((next) => {
-              next.journal.keep_audio = value;
-            })
-          }
-        />
-        <Check
-          label={t("settings.privacy.sendToLlm")}
-          checked={draft.privacy.send_to_llm}
-          onChange={(value) =>
-            patch((next) => {
-              next.privacy.send_to_llm = value;
-            })
-          }
-        />
+        <div className="check-list">
+          <Check
+            label={t("settings.privacy.includeText")}
+            checked={draft.journal.include_text}
+            onChange={(value) =>
+              patch((next) => {
+                next.journal.include_text = value;
+              })
+            }
+          />
+          <Check
+            label={t("settings.privacy.noRecord")}
+            checked={draft.privacy.no_record_mode}
+            onChange={(value) =>
+              patch((next) => {
+                next.privacy.no_record_mode = value;
+              })
+            }
+          />
+          <Check
+            label={t("settings.privacy.keepAudio")}
+            checked={draft.journal.keep_audio}
+            onChange={(value) =>
+              patch((next) => {
+                next.journal.keep_audio = value;
+              })
+            }
+          />
+          <Check
+            label={t("settings.privacy.sendToLlm")}
+            checked={draft.privacy.send_to_llm}
+            onChange={(value) =>
+              patch((next) => {
+                next.privacy.send_to_llm = value;
+              })
+            }
+          />
+          <Check
+            label={t("settings.privacy.cloudConsent")}
+            checked={draft.privacy.cloud_consent}
+            onChange={(value) =>
+              patch((next) => {
+                next.privacy.cloud_consent = value;
+              })
+            }
+          />
+        </div>
         <p className="small muted">{t("settings.privacy.telemetry")}</p>
       </Section>
 
-      <section className="card">
-        <div className="row">
-          <button
-            type="button"
-            className="primary"
-            onClick={() => void save()}
-            disabled={blockedByCloud}
-          >
-            {t("common.save")}
-          </button>
-          <button type="button" className="danger" onClick={() => void reset()}>
-            {t("common.reset")}
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              api
-                .exportConfig()
-                .then(setExportedTo)
-                .catch((err) => onError(asCommandError(err)))
-            }
-          >
-            {t("common.export")}
-          </button>
-        </div>
-        {exportedTo && (
-          <p className="small muted">
-            {t("stats.exported", { path: exportedTo })}
-          </p>
-        )}
-        <div className="row" style={{ marginTop: "0.75rem", alignItems: "flex-end" }}>
-          <div className="field" style={{ marginBottom: 0, flex: "1 1 16rem" }}>
-            <label htmlFor="import-path">{t("settings.importPath")}</label>
-            <input
-              id="import-path"
-              type="text"
-              value={importPath}
-              onChange={(event) => setImportPath(event.target.value)}
-            />
-          </div>
-          <button
-            type="button"
-            disabled={importPath.trim() === ""}
-            onClick={() =>
-              api
-                .importConfig(importPath.trim())
-                .then((next) => {
-                  setDraft(next);
-                  setSaved(true);
-                  return reloadConfig();
-                })
-                .catch((err) => {
-                  const error = asCommandError(err);
-                  setInvalid(error);
-                  onError(error);
-                })
-            }
-          >
-            {t("common.import")}
-          </button>
-        </div>
-      </section>
     </>
   );
 }

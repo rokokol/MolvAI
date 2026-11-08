@@ -5,6 +5,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 
 import { api, asCommandError } from "./api";
+import AppMark from "./components/AppMark";
+import { FilesProvider } from "./files/FilesProvider";
+import { HistoryProvider } from "./history/HistoryProvider";
 import { I18nContext, isLang, translate, type Lang } from "./i18n";
 import type {
   CommandError,
@@ -13,18 +16,18 @@ import type {
   DaemonState,
   Entry,
   Status,
+  WorkerJob,
 } from "./types";
 import Dashboard from "./views/Dashboard";
 import Files from "./views/Files";
 import History from "./views/History";
-import Search from "./views/Search";
 import Settings from "./views/Settings";
 import Stats from "./views/Stats";
 
-export type Tab = "dashboard" | "history" | "search" | "stats" | "files" | "settings";
+export type Tab = "dashboard" | "history" | "stats" | "files" | "settings";
 export type Theme = "system" | "light" | "dark";
 
-const TABS: Tab[] = ["dashboard", "history", "search", "stats", "files", "settings"];
+const TABS: Tab[] = ["dashboard", "history", "stats", "files", "settings"];
 const THEME_KEY = "molva.theme";
 
 /** Silence longer than this during recording is a reason to warn about a dead microphone */
@@ -142,14 +145,20 @@ export default function App() {
 
   useEffect(() => {
     const unlisten = [
-      listen<{ state: DaemonState }>("molva://state", (event) => {
+      listen<{ state: DaemonState; job?: WorkerJob | null }>("molva://state", (event) => {
         setStatus((prev) =>
           prev
-            ? { ...prev, state: event.payload.state, daemon_running: true }
+            ? {
+                ...prev,
+                state: event.payload.state,
+                job: event.payload.job ?? null,
+                daemon_running: true,
+              }
             : {
                 daemon_running: true,
                 daemon_ours: false,
                 state: event.payload.state,
+                job: event.payload.job ?? null,
                 style: null,
                 hotkeys_paused: false,
               },
@@ -218,13 +227,18 @@ export default function App() {
 
   const i18n = useMemo(() => ({ lang, t }), [lang, t]);
 
-  // A managed config has no settings page: every attempt to save would be refused
-  const tabs = managed ? TABS.filter((item) => item !== "settings") : TABS;
+  // A managed config hides its settings page by default: every attempt to save is refused.
+  // The Nix module can turn the page on for inspection, and it stays read-only then
+  const settingsVisible =
+    !managed || config?.gui.show_managed_settings === true;
+  const tabs = settingsVisible
+    ? TABS
+    : TABS.filter((item) => item !== "settings");
   useEffect(() => {
-    if (managed && tab === "settings") {
+    if (!settingsVisible && tab === "settings") {
       setTab("dashboard");
     }
-  }, [managed, tab]);
+  }, [settingsVisible, tab]);
 
   const shared = {
     config,
@@ -236,68 +250,86 @@ export default function App() {
 
   return (
     <I18nContext.Provider value={i18n}>
-      <div className="layout">
-        <a className="skip-link" href="#main">
-          {t("nav.label")}
-        </a>
-        <nav className="sidebar" aria-label={t("nav.label")}>
-          <div className="brand">
-            <strong>{t("app.title")}</strong>
-            <span>{t("app.subtitle")}</span>
-          </div>
-          <div className="nav">
-            {tabs.map((item) => (
-              <button
-                key={item}
-                type="button"
-                onClick={() => setTab(item)}
-                aria-current={tab === item ? "page" : undefined}
-              >
-                {t(`nav.${item}`)}
-              </button>
-            ))}
-          </div>
-        </nav>
-        <main className="content" id="main" tabIndex={-1}>
-          {managed && (
-            <div className="notice">
-              <strong>{t("app.managed")}</strong>
-              <p>{t("app.managedHint")}</p>
-              {configPath && <p className="mono small">{configPath}</p>}
-            </div>
-          )}
-          {error && (
-            <div className="notice error" role="alert">
-              <strong>{t("error.title")}</strong>
-              <p>{error.message}</p>
-              {error.hint && (
-                <p>
-                  {t("common.nextStep")}: {error.hint}
-                </p>
+      {/* The queue and the loaded history belong to the window, not to a tab: a tab switch
+          must not unmount their listeners or their state */}
+      <FilesProvider onError={setError}>
+        <HistoryProvider onError={setError}>
+          {/* The ambient strip lies behind the page and takes no pointer, so nothing stands
+              between a click and a control */}
+          <div className="ambient-strip" aria-hidden="true" />
+          <div className="layout">
+            <a className="skip-link" href="#main">
+              {t("nav.label")}
+            </a>
+            <nav className="sidebar" aria-label={t("nav.label")}>
+              <div className="brand">
+                <AppMark />
+                <strong>{t("app.title")}</strong>
+                <span>{t("app.subtitle")}</span>
+              </div>
+              <div className="nav">
+                {tabs.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setTab(item)}
+                    aria-current={tab === item ? "page" : undefined}
+                  >
+                    {t(`nav.${item}`)}
+                  </button>
+                ))}
+              </div>
+            </nav>
+            <main className="content" id="main" tabIndex={-1}>
+              {managed && (
+                <div className="notice">
+                  <strong>{t("app.managed")}</strong>
+                  <p>{t("app.managedHint")}</p>
+                  {configPath && <p className="mono small">{configPath}</p>}
+                </div>
               )}
-              <button type="button" className="ghost chip" onClick={() => setError(null)}>
-                {t("common.close")}
-              </button>
-            </div>
-          )}
-          {tab === "dashboard" && (
-            <Dashboard
-              {...shared}
-              level={level}
-              zeroLevel={zeroLevel}
-              lastEntry={lastEntry}
-              hypothesis={hypothesis}
-            />
-          )}
-          {tab === "history" && <History {...shared} />}
-          {tab === "search" && <Search {...shared} />}
-          {tab === "stats" && <Stats {...shared} />}
-          {tab === "files" && <Files {...shared} />}
-          {tab === "settings" && (
-            <Settings {...shared} theme={theme} onThemeChange={setTheme} />
-          )}
-        </main>
-      </div>
+              {error && (
+                <div className="notice error" role="alert">
+                  <strong>{t("error.title")}</strong>
+                  <p>{error.message}</p>
+                  {error.hint && (
+                    <p>
+                      {t("common.nextStep")}: {error.hint}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    className="ghost chip"
+                    onClick={() => setError(null)}
+                  >
+                    {t("common.close")}
+                  </button>
+                </div>
+              )}
+              {tab === "dashboard" && (
+                <Dashboard
+                  {...shared}
+                  level={level}
+                  zeroLevel={zeroLevel}
+                  lastEntry={lastEntry}
+                  hypothesis={hypothesis}
+                />
+              )}
+              {tab === "history" && <History />}
+              {tab === "stats" && <Stats {...shared} />}
+              {tab === "files" && <Files {...shared} />}
+              {tab === "settings" && (
+                <Settings
+                  {...shared}
+                  theme={theme}
+                  onThemeChange={setTheme}
+                  managed={managed}
+                />
+              )}
+            </main>
+          </div>
+        </HistoryProvider>
+      </FilesProvider>
     </I18nContext.Provider>
   );
 }

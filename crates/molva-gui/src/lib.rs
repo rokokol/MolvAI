@@ -25,10 +25,14 @@ pub mod history;
 pub mod hotkeys;
 pub mod i18n;
 pub mod ipc;
+pub mod media_server;
+pub mod paths;
+pub mod providers;
 pub mod sidecar;
 pub mod stats;
 pub mod tray;
 
+use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -62,21 +66,45 @@ struct DaemonPresence {
     hint: Option<String>,
 }
 
-/// Error notice with a next step: the same in the system toast and in the window
-pub fn notify_error(app: &AppHandle, message: &str, hint: Option<&str>) {
+/// Whether the main window is hidden in the tray
+fn window_hidden(app: &AppHandle) -> bool {
+    let Some(window) = app.get_webview_window("main") else {
+        return true;
+    };
+    let visible = window.is_visible().unwrap_or(false);
+    let minimized = window.is_minimized().unwrap_or(false);
+    !visible || minimized
+}
+
+/// A system toast for work that happens while the window is hidden
+/// The app icon as a file for the notification server: the plugin takes a path, not bytes
+fn notification_icon() -> Option<PathBuf> {
+    // A fresh path and a fresh write: a notification server caches an icon by its path, and a
+    // stale temp file from an older build would keep the old blue mark
+    let path = std::env::temp_dir().join("molvai-notification-icon-pink.png");
+    std::fs::write(&path, include_bytes!("../icons/notification.png")).ok()?;
+    Some(path)
+}
+
+fn system_notification(app: &AppHandle, message: &str, hint: Option<&str>) {
     use tauri_plugin_notification::NotificationExt;
     let body = match hint {
         Some(hint) => format!("{message}\n{}: {hint}", i18n::t("common.nextStep")),
         None => message.to_string(),
     };
-    if let Err(err) = app
-        .notification()
-        .builder()
-        .title("MolvAI")
-        .body(&body)
-        .show()
-    {
+    let mut builder = app.notification().builder().title("MolvAI").body(&body);
+    if let Some(icon) = notification_icon() {
+        builder = builder.icon(icon.to_string_lossy());
+    }
+    if let Err(err) = builder.show() {
         tracing::warn!(%err, "notification not shown");
+    }
+}
+
+/// Error notice with a next step: the window always gets it; the toast only when hidden
+pub fn notify_error(app: &AppHandle, message: &str, hint: Option<&str>) {
+    if window_hidden(app) {
+        system_notification(app, message, hint);
     }
     let _ = app.emit(
         "molva://error",
@@ -92,11 +120,14 @@ fn refresh_tray(app: &AppHandle) {
 
 fn handle_event(app: &AppHandle, event: Event) {
     match event {
-        Event::State { state, mode } => {
+        // The state event carries the state machine and the job of the worker: the window
+        // shows "recording" and "transcribing a file" from the same message, so the two can
+        // never disagree
+        Event::State { state, mode, job } => {
             app.state::<AppState>().remember_state(Some(state));
             let _ = app.emit(
                 "molva://state",
-                serde_json::json!({ "state": state, "mode": mode }),
+                serde_json::json!({ "state": state, "mode": mode, "job": job }),
             );
             refresh_tray(app);
         }
@@ -115,8 +146,17 @@ fn handle_event(app: &AppHandle, event: Event) {
             hint,
         } => {
             tracing::warn!(?code, %message, "daemon error");
-            let message = format!("{}: {message}", i18n::daemon_error_title(code));
-            notify_error(app, &message, hint.as_deref());
+            let title = i18n::daemon_error_title(code);
+            // The window gets the detailed daemon text. A hidden window gets one short toast
+            // in the interface language, without the English daemon detail
+            let detailed = format!("{title}: {message}");
+            if window_hidden(app) {
+                system_notification(app, &title, None);
+            }
+            let _ = app.emit(
+                "molva://error",
+                serde_json::json!({ "message": detailed, "hint": hint }),
+            );
         }
         Event::ConfigReloaded => {
             let _ = app.emit("molva://config", ());
@@ -246,6 +286,16 @@ pub fn run() {
             commands::record_cancel,
             commands::set_style,
             commands::available_styles,
+            commands::builtin_styles,
+            commands::stt_models,
+            commands::stt_remote_available,
+            commands::test_stt,
+            commands::test_llm,
+            commands::llm_providers,
+            commands::provider_key_status,
+            commands::store_provider_key,
+            commands::remove_provider_key,
+            commands::check_hotkey,
             commands::list_devices,
             commands::inject_text,
             commands::reload_config,
@@ -274,7 +324,8 @@ pub fn run() {
             commands::stats_summary,
             commands::stats_export_csv,
             commands::transcribe_file,
-            commands::transcribe_cancel,
+            commands::prepare_media,
+            commands::path_suggestions,
             commands::ui_language,
         ])
         .setup(|app| {

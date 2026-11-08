@@ -1,107 +1,375 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="no-js" data-ddlc-heading="plain">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Page not found — MolvAI</title>
-<meta name="description" content="This page does not exist. Return to the MolvAI home page or the documentation">
+<title data-ru="Страница не найдена — MolvAI">Page not found — MolvAI</title>
+<meta name="description" content="This page does not exist. Return to the MolvAI home page or the documentation" data-ru-content="Такой страницы нет. Вернись на главную MolvAI или в документацию">
 <meta name="robots" content="noindex">
 <meta name="color-scheme" content="dark light">
-<meta name="theme-color" content="#0a0c12">
-<link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#222222" media="(prefers-color-scheme: dark)">
+<!-- assets/logo.svg is inlined below for the reason the palette is repeated further down:
+     this page is served at an unknown depth, so a path beside it breaks -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2022%2022%22%20width=%2222%22%20height=%2222%22><g%20shape-rendering=%22crispEdges%22><rect%20width=%2222%22%20height=%2222%22%20fill=%22%23361B39%22/><rect%20width=%2222%22%20height=%222%22%20fill=%22%23DD77BB%22/><rect%20x=%223%22%20y=%224%22%20width=%2216%22%20height=%2212%22%20fill=%22%23FFDBF0%22/><rect%20x=%222%22%20y=%225%22%20width=%2218%22%20height=%2210%22%20fill=%22%23FFDBF0%22/><rect%20x=%223%22%20y=%225%22%20width=%2216%22%20height=%221%22%20fill=%22%23FFFFFF%22/><rect%20x=%225%22%20y=%2216%22%20width=%226%22%20height=%221%22%20fill=%22%23FFDBF0%22/><rect%20x=%226%22%20y=%2217%22%20width=%224%22%20height=%221%22%20fill=%22%23FFDBF0%22/><rect%20x=%227%22%20y=%2218%22%20width=%222%22%20height=%221%22%20fill=%22%23FFDBF0%22/><g%20fill=%22%236C4681%22><rect%20x=%224%22%20y=%228%22%20width=%222%22%20height=%224%22/><rect%20x=%227%22%20y=%226%22%20width=%222%22%20height=%228%22/><rect%20x=%2210%22%20y=%226%22%20width=%222%22%20height=%229%22/><rect%20x=%2213%22%20y=%227%22%20width=%222%22%20height=%226%22/><rect%20x=%2216%22%20y=%228%22%20width=%222%22%20height=%223%22/></g></g></svg>">
+<script>
+  // The same protocol as assets/site.js — ?theme and ?lang first, then the stored choice, then
+  // the first supported language of the browser, then English — and ?theme and ?lang are
+  // stored, as they are there. It is written out on this page because GitHub Pages serves the
+  // 404 at whatever depth the reader asked for, where a relative path to assets/ breaks. The
+  // resolved language goes on window for the body script, which applies the text
+  (function () {
+    try {
+      var q = new URLSearchParams(location.search)
+      var pinned = q.get("theme")
+      var theme = pinned === "light" || pinned === "dark" ? pinned : localStorage.getItem("molvai-theme")
+      if (pinned === "light" || pinned === "dark") localStorage.setItem("molvai-theme", pinned)
+      if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme
+      var lang = q.get("lang")
+      if (lang !== "ru" && lang !== "en") lang = null
+      var stored = localStorage.getItem("molvai-lang")
+      if (lang === null && (stored === "ru" || stored === "en")) lang = stored
+      if (lang === null) {
+        var list = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || "en"]
+        lang = "en"
+        for (var i = 0; i < list.length; i++) {
+          var tag = String(list[i]).toLowerCase()
+          if (/^ru\b/.test(tag)) { lang = "ru"; break }
+          if (/^en\b/.test(tag)) { lang = "en"; break }
+        }
+      }
+      document.documentElement.lang = lang
+      window.molvaiLang = lang
+      if (q.get("lang") === "ru" || q.get("lang") === "en") localStorage.setItem("molvai-lang", lang)
+    } catch (e) {}
+  })()
+</script>
 <style>
+  /* The 404 is served at whatever depth the reader asked for, so it cannot link the shared
+     stylesheet: a path of ../assets breaks below the first segment. This is the one place
+     where the DDLC palette is repeated, cut down to the roles the page uses, and every rule
+     below reads those roles rather than a colour of its own */
+
   :root {
-    --bg: #0a0c12;
-    --surface: #12161f;
-    --text: #eef1f8;
-    --muted: #a6b0c4;
-    --border: #262d3d;
-    --accent: #93aaff;
-    --accent-ink: #0a0c12;
-    color-scheme: dark;
+    --ddlc-paper: #FFFFFF;
+    --ddlc-ink: #222222;
+    --ddlc-dot: #FFDBF0;
+    --ddlc-blush: #FFBDE1;
+    --ddlc-pink: #DD77BB;
+    --ddlc-plum: #BB5599;
+    --ddlc-yuri: #6C4681;
+    --ddlc-yuri-shadow: #361B39;
+    --ddlc-jacket: #B59CA1;
+    --ddlc-ground: light-dark(var(--ddlc-paper), var(--ddlc-ink));
+    --ddlc-text: light-dark(var(--ddlc-ink), var(--ddlc-paper));
+    --ddlc-muted: light-dark(color-mix(in srgb, var(--ddlc-ink) 55%, var(--ddlc-jacket)), color-mix(in srgb, var(--ddlc-jacket) 75%, var(--ddlc-paper)));
+    --ddlc-line: light-dark(var(--ddlc-blush), var(--ddlc-yuri));
+    --ddlc-line-live: light-dark(var(--ddlc-pink), var(--ddlc-plum));
+    --ddlc-accent: light-dark(var(--ddlc-plum), var(--ddlc-pink));
+    --ddlc-accent-live: light-dark(var(--ddlc-pink), var(--ddlc-blush));
+    --ddlc-on-accent: var(--ddlc-paper);
+    --ddlc-panel: color-mix(in srgb, var(--ddlc-ground) 92%, transparent);
+    --ddlc-code-ground: light-dark(var(--ddlc-dot), var(--ddlc-yuri-shadow));
+    --ddlc-tape: light-dark(color-mix(in srgb, var(--ddlc-blush) 70%, transparent), color-mix(in srgb, var(--ddlc-pink) 60%, transparent));
+    --ddlc-board: light-dark(color-mix(in srgb, var(--ddlc-dot) 50%, var(--ddlc-paper)), color-mix(in srgb, var(--ddlc-yuri) 30%, var(--ddlc-ink)));
+    --ddlc-board-frame: light-dark(var(--ddlc-dot), var(--ddlc-board));
+    --ddlc-board-drop: var(--ddlc-blush);
+    --font-data: 'Departure Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    --font-prose: 'Mya Nunito', Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    color-scheme: light dark;
   }
-  @media (prefers-color-scheme: light) {
-    :root {
-      --bg: #f6f7fa;
-      --surface: #ffffff;
-      --text: #14161c;
-      --muted: #485061;
-      --border: #d5dae4;
-      --accent: #2743c4;
-      --accent-ink: #ffffff;
-      color-scheme: light;
-    }
+
+  :root[data-theme="light"] { color-scheme: light; }
+  :root[data-theme="dark"] { color-scheme: dark; }
+
+  *,
+  *::before,
+  *::after { box-sizing: border-box; }
+
+  html {
+    background: var(--ddlc-ground);
+    color: var(--ddlc-text);
   }
-  * { box-sizing: border-box; }
+
+  /* The dot paper of the kit, drawn without a canvas: a lattice of 2 px dots fading down
+     the page, so the page reads as the same kit even without its stylesheet */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image: radial-gradient(var(--ddlc-line) 1.5px, transparent 1.5px);
+    background-size: 12px 12px;
+    mask-image: linear-gradient(180deg, black 0%, black 40%, transparent 78%);
+    -webkit-mask-image: linear-gradient(180deg, black 0%, transparent 78%);
+  }
+
   body {
     margin: 0;
     min-height: 100vh;
     display: grid;
     place-items: center;
-    padding: 2rem 1.25rem;
-    background: var(--bg);
-    color: var(--text);
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
-    line-height: 1.6;
+    padding: 24px 16px;
+    font: 11px / 2 var(--font-data);
   }
-  main {
-    width: 100%;
-    max-width: 34rem;
-    border: 1px solid var(--border);
-    border-radius: 18px;
-    background: var(--surface);
-    padding: 2rem;
-  }
-  .code {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 0.8rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin: 0 0 0.75rem;
-  }
-  h1 { margin: 0 0 0.6rem; font-size: 1.9rem; line-height: 1.15; letter-spacing: -0.03em; }
-  p { color: var(--muted); margin: 0 0 1.4rem; }
-  nav { display: flex; flex-wrap: wrap; gap: 0.6rem; }
-  a {
-    display: inline-block;
-    padding: 0.6rem 1rem;
-    border: 1px solid var(--border);
-    border-radius: 9px;
-    font-weight: 600;
-    text-decoration: none;
-    color: var(--text);
-  }
-  a.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-  a:hover { border-color: var(--accent); }
-  a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  ::selection { background: var(--ddlc-line-live); }
+
+  a { color: var(--ddlc-line-live); }
+  a:hover { color: var(--ddlc-accent-live); }
+
+  :focus-visible { outline: 2px solid var(--ddlc-accent); outline-offset: 2px; }
+
   .skip {
     position: absolute;
-    left: 1rem;
-    top: -4rem;
-    padding: 0.6rem 1rem;
-    background: var(--accent);
-    color: var(--accent-ink);
-    border-radius: 0 0 9px 9px;
-    font-weight: 600;
+    left: -9999px;
+    top: 0;
+    padding: 4px 12px;
+    border: 2px solid var(--ddlc-text);
+    background: var(--ddlc-ground);
+    color: var(--ddlc-text);
+  }
+
+  .skip:focus { left: 8px; top: 8px; z-index: 3; }
+
+  .wrap {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 560px;
+  }
+
+  .card {
+    position: relative;
+    padding: 16px 20px 20px;
+    border: 2px solid var(--ddlc-text);
+    background: var(--ddlc-panel);
+    box-shadow: 6px 6px 0 var(--ddlc-line);
+  }
+
+  /* A strip of tape over the top edge, as the kit tapes its photographs */
+  .card::before {
+    content: "";
+    position: absolute;
+    top: -12px;
+    left: 50%;
+    width: 104px;
+    height: 24px;
+    background: var(--ddlc-tape);
+    transform: translateX(-50%) rotate(-2.5deg);
+  }
+
+  .head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+  }
+
+  .brand {
+    margin-right: auto;
+    color: var(--ddlc-text);
+    font-size: 22px;
+    line-height: 1;
     text-decoration: none;
   }
-  .skip:focus { top: 0; outline: 3px solid var(--text); }
-  small { display: block; margin-top: 1.5rem; color: var(--muted); font-size: 0.78rem; }
+
+  .swap { display: flex; border: 2px solid var(--ddlc-line); }
+
+  .swap button {
+    padding: 2px 8px;
+    border: 0;
+    background: none;
+    color: var(--ddlc-muted);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .swap button[aria-pressed="true"] {
+    background: var(--ddlc-accent);
+    color: var(--ddlc-on-accent);
+  }
+
+  .no-js .swap { display: none; }
+
+  .sticker {
+    display: inline-block;
+    margin: 32px 0 8px;
+    padding: 2px 10px;
+    border: 2px solid var(--ddlc-text);
+    background: var(--ddlc-accent);
+    color: var(--ddlc-on-accent);
+    font-size: 22px;
+    line-height: 1.4;
+    box-shadow: 3px 3px 0 var(--ddlc-text);
+    transform: rotate(-2deg);
+  }
+
+  h1 {
+    margin: 8px 0 12px;
+    font: 400 33px / 1.15 var(--font-data);
+    letter-spacing: -0.01em;
+  }
+
+  @media (min-width: 560px) {
+    h1 { font-size: 44px; }
+  }
+
+  p {
+    margin: 0 0 12px;
+    font: 500 15px / 1.6 var(--font-prose);
+    color: var(--ddlc-muted);
+  }
+
+  .ways {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 20px 0 16px;
+  }
+
+  .button {
+    display: inline-block;
+    padding: 4px 12px;
+    border: 2px solid var(--ddlc-text);
+    background: var(--ddlc-ground);
+    color: var(--ddlc-text);
+    font: 11px / 2 var(--font-data);
+    text-decoration: none;
+    box-shadow: 2px 2px 0 var(--ddlc-text);
+  }
+
+  .button:hover {
+    border-color: var(--ddlc-accent);
+    box-shadow: 2px 2px 0 var(--ddlc-accent);
+  }
+
+  .button:active {
+    transform: translate(2px, 2px);
+    box-shadow: none;
+  }
+
+  .button.primary {
+    border-color: var(--ddlc-accent);
+    background: var(--ddlc-accent);
+    color: var(--ddlc-on-accent);
+  }
+
+  .fine {
+    margin: 0;
+    color: var(--ddlc-muted);
+    font-size: 11px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .card::before,
+    .sticker { transform: none; }
+  }
 </style>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
-<main id="main">
-  <p class="code">404</p>
-  <h1>This page does not exist</h1>
-  <p>The address may have moved with a release, or a link may have a typo in it. The home page and the documentation are one click away</p>
-  <nav aria-label="Ways back">
-    <a class="primary" href="./index.html">Home</a>
-    <a href="./docs/index.html">Documentation</a>
-    <a href="https://github.com/rokokol/MolvAI">GitHub</a>
-  </nav>
-  <small>MolvAI is open source under the MIT license · no cookies, no analytics</small>
+<a class="skip" href="#main" data-ru="К содержанию">Skip to content</a>
+
+<main id="main" class="wrap">
+  <div class="card">
+    <div class="head">
+      <a class="brand" href="./index.html" aria-label="MolvAI home" data-ru-aria-label="MolvAI — главная">MolvAI</a>
+      <div class="swap" role="group" aria-label="Language" data-ru-aria-label="Язык">
+        <button type="button" data-lang-set="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang-set="ru" aria-pressed="false">RU</button>
+      </div>
+    </div>
+
+    <p class="sticker" aria-hidden="true">404</p>
+    <h1 data-ru="Такой страницы нет">This page does not exist</h1>
+    <p data-ru="Адрес мог измениться вместе с релизом, или в ссылке опечатка. Главная и документация — в одном клике">The address may have moved with a release, or a link may have a typo in it. The home page and the documentation are one click away</p>
+
+    <nav class="ways" aria-label="Ways back" data-ru-aria-label="Куда вернуться">
+      <a class="button primary" href="./index.html" data-ru="На главную">Home</a>
+      <a class="button" href="./docs/index.html" data-ru="Документация">Documentation</a>
+      <a class="button" href="https://github.com/rokokol/MolvAI">GitHub</a>
+    </nav>
+
+    <p class="fine" data-ru="MolvAI — открытый код под лицензией MIT · без cookies, без аналитики">MolvAI is open source under the MIT license · no cookies, no analytics</p>
+  </div>
 </main>
+
+<script>
+  // The language protocol of the rest of the site — data-ru beside the English — carried out
+  // here because this page is served at an unknown depth and cannot load site.js. The head
+  // script already chose the language and left it on window; this one applies the text and
+  // answers the switch
+  (function () {
+    "use strict";
+
+    var root = document.documentElement;
+    root.classList.remove("no-js");
+
+    var texts = [];
+    var attrs = [];
+    var NAMES = ["aria-label", "content"];
+
+    Array.prototype.forEach.call(document.querySelectorAll("[data-ru]"), function (el) {
+      texts.push({
+        el: el,
+        isTitle: el.tagName === "TITLE",
+        html: el.tagName === "TITLE" ? el.textContent : el.innerHTML,
+      });
+    });
+    Array.prototype.forEach.call(
+      document.querySelectorAll("[data-ru-aria-label], [data-ru-content]"),
+      function (el) {
+        NAMES.forEach(function (name) {
+          if (el.hasAttribute("data-ru-" + name)) {
+            attrs.push({ el: el, name: name, value: el.getAttribute(name) || "" });
+          }
+        });
+      }
+    );
+
+    function apply(lang) {
+      var ru = lang === "ru";
+      root.lang = ru ? "ru" : "en";
+      texts.forEach(function (item) {
+        var value = ru ? item.el.getAttribute("data-ru") : item.html;
+        if (item.isTitle) {
+          item.el.textContent = value;
+        } else {
+          item.el.innerHTML = value;
+        }
+      });
+      attrs.forEach(function (item) {
+        var value = ru ? item.el.getAttribute("data-ru-" + item.name) : item.value;
+        if (value !== null) {
+          item.el.setAttribute(item.name, value);
+        }
+      });
+      Array.prototype.forEach.call(document.querySelectorAll("[data-lang-set]"), function (b) {
+        b.setAttribute("aria-pressed", b.getAttribute("data-lang-set") === lang ? "true" : "false");
+      });
+    }
+
+    // The head script resolved the language before the first paint, so this one only applies
+    // it to the text. A switch writes the choice and pins it in the address, as site.js does
+    apply(window.molvaiLang === "ru" ? "ru" : "en");
+
+    Array.prototype.forEach.call(document.querySelectorAll("[data-lang-set]"), function (button) {
+      button.addEventListener("click", function () {
+        var next = button.getAttribute("data-lang-set");
+        if (next !== "en" && next !== "ru") {
+          return;
+        }
+        apply(next);
+        try {
+          localStorage.setItem("molvai-lang", next);
+          var url = new URL(location.href);
+          url.searchParams.set("lang", next);
+          history.replaceState(null, "", url);
+        } catch (e) {}
+      });
+    });
+  })();
+</script>
 </body>
 </html>

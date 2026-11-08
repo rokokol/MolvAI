@@ -7,9 +7,18 @@
 
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use molva_core::app::bench::{self, BenchOptions};
+use molva_core::app::bench_latency::MemoryProbe;
 use molva_core::app::engine::{build_stt_with, EngineChoice};
+use molva_core::app::pipeline::{Pipeline, PipelineConfig};
+use molva_core::domain::entry::Source;
+use molva_core::domain::fakes::{MemJournal, RecordingInjector};
+use molva_core::domain::stt::{LanguageHint, SttOptions};
+use molva_core::domain::SystemClock;
+use molva_core::infra::audio::decode;
+use molva_core::ipc::protocol::FileTranscriptionRequest;
 use molva_core::Config;
 
 use super::CmdError;
@@ -39,11 +48,30 @@ pub(crate) struct Args {
     /// Recognition model
     #[arg(long, value_name = "NAME")]
     pub model: Option<String>,
+
+    /// Measure one audio file: recognition, post-processing and peak memory
+    #[arg(long)]
+    pub latency: bool,
+
+    /// Audio for `--latency`; the default is the checked-in 15 s fixture
+    #[arg(long, value_name = "FILE", default_value = "bench/latency-15s.wav")]
+    pub audio: PathBuf,
+
+    /// Do not run the post-processing stage in `--latency`
+    #[arg(long)]
+    pub no_postprocess: bool,
+
+    /// Post-processing style for `--latency`; the default style of the settings when absent
+    #[arg(long, value_name = "NAME")]
+    pub style: Option<String>,
 }
 
 pub(crate) fn run(args: &Args, config: &Config, stdout: &mut dyn Write) -> Result<(), CmdError> {
     if args.repeat == 0 {
         return Err(CmdError::args("--repeat must be at least 1"));
+    }
+    if args.latency {
+        return latency(args, config, stdout);
     }
     let choice = EngineChoice {
         engine: args.engine.clone(),
@@ -72,6 +100,138 @@ pub(crate) fn run(args: &Args, config: &Config, stdout: &mut dyn Write) -> Resul
         bench::format_summary(&report).trim_end().to_string()
     };
     writeln!(stdout, "{text}").map_err(|e| CmdError::file(e.to_string()))?;
+    Ok(())
+}
+
+#[derive(Debug, serde::Serialize)]
+struct LatencyReport {
+    audio: String,
+    audio_secs: f32,
+    engine: String,
+    model: String,
+    repeat: usize,
+    recognition_ms: Vec<u32>,
+    postprocess_ms: Vec<u32>,
+    peak_rss_mib: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    peak_vram_mib: Option<u64>,
+    text: String,
+}
+
+fn latency(args: &Args, config: &Config, stdout: &mut dyn Write) -> Result<(), CmdError> {
+    let audio = decode::decode_file(&args.audio).map_err(|e| CmdError::file(e.to_string()))?;
+    let audio_secs = audio.duration_secs();
+    let ready = audio.to_16k();
+    let choice = EngineChoice {
+        engine: args.engine.clone(),
+        model: args.model.clone(),
+        fake_text: None,
+    };
+    let mut engine =
+        build_stt_with(config, &choice).map_err(|e| CmdError::engine(e.to_string()))?;
+    let language = LanguageHint::parse(&config.stt.language);
+    let options = SttOptions {
+        language: language.clone(),
+        threads: config.stt.threads as usize,
+        ..SttOptions::default()
+    };
+
+    let probe = MemoryProbe::start();
+    let mut recognition_ms = Vec::with_capacity(args.repeat);
+    let mut text = String::new();
+    for _ in 0..args.repeat {
+        let started = std::time::Instant::now();
+        let transcript = engine
+            .transcribe(&ready, &options)
+            .map_err(|e| CmdError::engine(e.to_string()))?;
+        recognition_ms.push(started.elapsed().as_millis() as u32);
+        text = transcript.text;
+    }
+
+    let mut postprocess_ms = Vec::new();
+    if !args.no_postprocess {
+        let mut pipeline = Pipeline::new(
+            build_stt_with(config, &choice).map_err(|e| CmdError::engine(e.to_string()))?,
+            super::daemon::build_llm(config),
+            Box::new(RecordingInjector::default()),
+            Box::new(MemJournal::default()),
+            Arc::new(SystemClock),
+            PipelineConfig::from_config(config),
+        );
+        let request = FileTranscriptionRequest {
+            path: args.audio.clone(),
+            style: args.style.clone(),
+            timecodes: false,
+            no_llm: false,
+            source: Source::File,
+        };
+        for _ in 0..args.repeat {
+            let started = std::time::Instant::now();
+            let report = pipeline.transcribe_file(&request);
+            let elapsed = started.elapsed().as_millis() as u32;
+            let stt = recognition_ms
+                .get(postprocess_ms.len())
+                .copied()
+                .unwrap_or_default();
+            postprocess_ms.push(elapsed.saturating_sub(stt));
+            if let Some(result) = report.results.first() {
+                text.clone_from(&result.text);
+            }
+            if let Some(error) = report.errors.first() {
+                return Err(CmdError::engine(error.reason.clone()));
+            }
+        }
+    }
+    let peak = probe.stop();
+
+    let report = LatencyReport {
+        audio: args.audio.display().to_string(),
+        audio_secs,
+        engine: engine.id().to_string(),
+        model: engine.model_name().to_string(),
+        repeat: args.repeat,
+        recognition_ms,
+        postprocess_ms,
+        peak_rss_mib: peak.rss_bytes / (1024 * 1024),
+        peak_vram_mib: peak.vram_bytes.map(|bytes| bytes / (1024 * 1024)),
+        text,
+    };
+    if args.json {
+        let text =
+            serde_json::to_string_pretty(&report).map_err(|e| CmdError::file(e.to_string()))?;
+        writeln!(stdout, "{text}").map_err(|e| CmdError::file(e.to_string()))?;
+        return Ok(());
+    }
+
+    let median = |values: &[u32]| -> u32 {
+        if values.is_empty() {
+            return 0;
+        }
+        let mut sorted = values.to_vec();
+        sorted.sort_unstable();
+        sorted[sorted.len() / 2]
+    };
+    let recognition = median(&report.recognition_ms);
+    let postprocess = median(&report.postprocess_ms);
+    let vram = report
+        .peak_vram_mib
+        .map_or_else(|| "n/a".to_string(), |mib| format!("{mib} MiB"));
+    writeln!(
+        stdout,
+        "{}  {:.2} s  {} / {}\nrecognition p50 {} ms  ({:.2}x realtime)\npost-processing p50 {} ms  (total {} ms)\npeak RAM {} MiB  peak VRAM {}\ntext: {}",
+        report.audio,
+        report.audio_secs,
+        report.engine,
+        report.model,
+        recognition,
+        if recognition == 0 { 0.0 } else { report.audio_secs * 1000.0 / recognition as f32 },
+        postprocess,
+        recognition.saturating_add(postprocess),
+        report.peak_rss_mib,
+        vram,
+        report.text
+    )
+    .map_err(|e| CmdError::file(e.to_string()))?;
     Ok(())
 }
 
@@ -115,6 +275,10 @@ mod tests {
             repeat: 1,
             engine: Some("fake".into()),
             model: None,
+            latency: false,
+            audio: PathBuf::from("bench/latency-15s.wav"),
+            no_postprocess: false,
+            style: None,
         }
     }
 

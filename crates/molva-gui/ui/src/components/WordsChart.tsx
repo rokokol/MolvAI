@@ -13,7 +13,7 @@ const PADDING = { top: 12, right: 46, bottom: 26, left: 46 };
 export default function WordsChart({ series }: { series: DayPoint[] }) {
   const { t } = useI18n();
   if (series.length === 0) {
-    return <p className="muted">{t("stats.chartEmpty")}</p>;
+    return <p className="empty">{t("stats.chartEmpty")}</p>;
   }
 
   const plotWidth = WIDTH - PADDING.left - PADDING.right;
@@ -99,11 +99,11 @@ export default function WordsChart({ series }: { series: DayPoint[] }) {
       </svg>
       <div className="legend">
         <span>
-          <i style={{ background: "var(--chart-bar)" }} aria-hidden="true" />
+          <i style={{ background: "var(--ddlc-accent)" }} aria-hidden="true" />
           {t("stats.legendWords")}
         </span>
         <span>
-          <i style={{ background: "var(--chart-line)" }} aria-hidden="true" />
+          <i style={{ background: "var(--ddlc-sayori)" }} aria-hidden="true" />
           {t("stats.legendWpm")}
         </span>
       </div>

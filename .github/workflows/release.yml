@@ -347,8 +347,65 @@ jobs:
           name: cli-cuda-x86_64-pc-windows-msvc
           path: dist/*
 
+  # A CUDA build of the CLI for Linux: the same optional artifact as the Windows one. The
+  # runner has no NVIDIA driver, so the build links against the toolkit stubs; at run time the
+  # user's driver is used. The archive carries the CUDA runtime libraries and an rpath relative
+  # to the binary. The free packages stay on Vulkan/CPU
+  cli-cuda-linux:
+    needs: gate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: Jimver/cuda-toolkit@v0.2.36
+        with:
+          cuda: "12.6.0"
+          method: network
+          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev"]'
+
+      - name: System dependencies (Linux CUDA)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libclang-dev libssl-dev cmake patchelf
+
+      - name: Rust toolchain from rust-toolchain.toml
+        shell: bash
+        run: rustup show
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-cuda-x86_64-unknown-linux-gnu
+
+      - name: Build the CLI with CUDA
+        shell: bash
+        env:
+          LIBCLANG_PATH: /usr/lib/llvm-14/lib
+          LIBRARY_PATH: /usr/local/cuda/lib64/stubs
+        run: cargo build --locked --release --bin molva --features molva-core/cuda
+
+      - name: Archive of the CLI with CUDA and the NVIDIA runtime
+        shell: bash
+        run: |
+          mkdir -p dist
+          stage="molva-cuda-${{ github.ref_name }}-x86_64-unknown-linux-gnu"
+          mkdir -p "$stage/lib"
+          cp target/release/molva "$stage/"
+          for lib in libcudart.so.12 libcublas.so.12 libcublasLt.so.12; do
+            cp -L "/usr/local/cuda/lib64/$lib" "$stage/lib/" || echo "::warning::no $lib in /usr/local/cuda/lib64"
+          done
+          patchelf --set-rpath '$ORIGIN/lib' "$stage/molva"
+          cp README.md LICENSE NOTICE THIRD-PARTY.md "$stage/"
+          tar -czf "dist/$stage.tar.gz" "$stage"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cli-cuda-x86_64-unknown-linux-gnu
+          path: dist/*
+
   publish:
-    needs: [cli, cli-cuda, provenance]
+    needs: [cli, cli-cuda, cli-cuda-linux, provenance]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 15

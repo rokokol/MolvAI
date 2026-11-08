@@ -1,78 +1,75 @@
 /* SPDX-License-Identifier: MIT */
-/* MolvAI styling. Variables set the theme: the light theme holds the default values.
-   The dark theme comes from the system setting or from an explicit `data-theme` choice.
-   Every "text on background" pair has a contrast of at least 4.5:1.
-   Sizes use rem, so the interface stays readable at 200 % zoom */
+/* MolvAI window styling: the site's DDLC kit, laid out for a desktop window.
+   The palette, the roles, the two faces and the prose, table and code-window rules come from
+   the report sheet that the repository vendors for the site, imported into a lower cascade
+   layer. Everything below is an addition or an override, never a second palette: a colour is
+   a --ddlc-* role, a face is --ddlc-font-prose or --ddlc-font-data, and a size is a multiple
+   of the kit's 11 px grid. Sizes are rem, so the window stays readable at 200 % zoom */
+
+@import "../../../../site/assets/vendor/ddlc/ddlc-report.css" layer(ddlc);
+
+/* The report sheet loads Mya Nunito, the prose face; Departure Mono, the data face, sits
+   beside the kit's stylesheet and is the one face the window adds for itself */
+@font-face {
+  font-family: "Departure Mono";
+  src: url("../../../../site/assets/vendor/ddlc/DepartureMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
 
 :root {
-  --bg: #f4f5f8;
-  --surface: #ffffff;
-  --surface-alt: #eceef3;
-  --text: #14161c;
-  --muted: #4b5364;
-  --border: #ccd1da;
-  --accent: #2743c4;
-  --accent-text: #ffffff;
-  --accent-soft: #e4e8fb;
-  --ok: #0d6b34;
-  --warn-bg: #fdf1d8;
-  --warn-text: #6d4a00;
-  --danger: #a4231c;
-  --danger-soft: #fbe6e4;
-  --chart-bar: #5f7fe8;
-  --chart-line: #b5561f;
-  --shadow: 0 1px 2px rgba(20, 22, 28, 0.08);
+  /* The kit's grid, doubled for a window read at arm's length on a large screen: 26 px for a
+     label or a table cell, 30 px for prose, 34 px for the body of an entry and 52 px for a
+     page title or a figure. A size in this sheet is one of these steps, never a length typed
+     beside a rule. A length that pads a label is in em of that label, so a frame keeps its
+     proportion to the word it holds; a length that pads a block stays in rem */
+  --step-tiny: 1rem;
+  --step-data: 1.125rem;
+  --step-body: 1.25rem;
+  --step-lead: 1.375rem;
+  --step-big: 2rem;
+  /* The wordmark is the one thing in the window that is a sign rather than a readout: it takes
+     a step of its own above the page title, so it stays the largest word on screen */
+  --step-brand: 2.5rem;
+  --gap: 1.25rem;
+  --pad: 1.1rem 1.75rem 1.35rem;
+  /* The column of the tabs: wide enough for the longest label at the data step and for the
+     brand mark and the wordmark on one line at the brand step */
+  --rail: 16rem;
 
-  --radius: 0.5rem;
-  --gap: 1rem;
-  color-scheme: light;
+  /* A tone that carries meaning, dark enough to read on paper and light enough on ink */
+  --danger-ink: light-dark(
+    var(--ddlc-bow),
+    color-mix(in srgb, var(--ddlc-bow) 45%, var(--ddlc-paper))
+  );
+  --warn-ink: light-dark(
+    color-mix(in srgb, var(--ddlc-sayori) 45%, var(--ddlc-ink)),
+    var(--ddlc-sayori)
+  );
+  --ok-ink: light-dark(
+    color-mix(in srgb, var(--ddlc-ok) 55%, var(--ddlc-ink)),
+    var(--ddlc-ok)
+  );
+
+  /* The four tones of the live signal: the ground, the ticks of an idle column, the body of a
+     lit one and its peak. A custom property keeps the expression of each tone, so the signal and
+     the page-wide grain read one set of roles rather than their own colours */
+  --signal-ground: var(--ddlc-code-ground);
+  --signal-tick: var(--ddlc-grid);
+  --signal-lit: var(--ddlc-accent);
+  --signal-peak: var(--ddlc-accent-live);
+
+  /* The kit's lattice, as a mask rather than a picture: a white-on-nothing tile that a surface
+     paints over a role colour, so the pixels of the site cost no canvas and no frame loop. The
+     dots are the dither of the site's cloud, and the grain is a one-bit noise that breaks their
+     regularity. A tile is rasterized once and then tiled, so a repaint costs an image blit */
+  --dither-dots: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Cpath fill='%23fff' d='M0 0h2v2h-2zM4 1h2v2h-2zM1 4h2v2h-2zM5 5h2v2h-2zM9 0h2v2h-2zM12 2h2v2h-2zM10 6h2v2h-2zM14 8h2v2h-2zM0 9h2v2h-2zM4 11h2v2h-2zM8 12h2v2h-2zM12 13h2v2h-2zM2 14h2v2h-2zM6 8h2v2h-2zM11 10h2v2h-2zM15 15h2v2h-2z'/%3E%3C/svg%3E");
+  --dither-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='1' stitchTiles='stitch'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='discrete' tableValues='1 0 0 1 0'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='64' height='64' filter='url(%23g)'/%3E%3C/svg%3E");
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #101218;
-    --surface: #191c24;
-    --surface-alt: #232733;
-    --text: #edeff5;
-    --muted: #a8b1c2;
-    --border: #333949;
-    --accent: #93aaff;
-    --accent-text: #0a0c12;
-    --accent-soft: #232a43;
-    --ok: #6bd696;
-    --warn-bg: #3b2f12;
-    --warn-text: #f2cf87;
-    --danger: #ff9b93;
-    --danger-soft: #3a1f1d;
-    --chart-bar: #7d97ee;
-    --chart-line: #f0a06a;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-    color-scheme: dark;
-  }
-}
-
-:root[data-theme="dark"] {
-  --bg: #101218;
-  --surface: #191c24;
-  --surface-alt: #232733;
-  --text: #edeff5;
-  --muted: #a8b1c2;
-  --border: #333949;
-  --accent: #93aaff;
-  --accent-text: #0a0c12;
-  --accent-soft: #232a43;
-  --ok: #6bd696;
-  --warn-bg: #3b2f12;
-  --warn-text: #f2cf87;
-  --danger: #ff9b93;
-  --danger-soft: #3a1f1d;
-  --chart-bar: #7d97ee;
-  --chart-line: #f0a06a;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-  color-scheme: dark;
-}
-
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
@@ -83,19 +80,14 @@ body,
   margin: 0;
 }
 
+/* The report sheet is a 46 rem column with its own margins; a window is neither */
 body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  font-size: 0.95rem;
-  line-height: 1.5;
-}
-
-/* A visible focus is required: the keyboard controls the whole interface */
-:focus-visible {
-  outline: 3px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: 0.25rem;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  background: var(--ddlc-ground);
+  color: var(--ddlc-text);
+  font: 500 var(--step-body) / 1.55 var(--ddlc-font-prose);
 }
 
 .skip-link {
@@ -103,515 +95,1055 @@ body {
   left: -100vw;
   top: 0;
   z-index: 10;
-  background: var(--accent);
-  color: var(--accent-text);
-  padding: 0.5rem 0.75rem;
+  padding: 0.2em 0.6em;
+  border: 2px solid var(--ddlc-text);
+  background: var(--ddlc-ground);
+  color: var(--ddlc-text);
+  font: 400 var(--step-data) / 1.6 var(--ddlc-font-data);
 }
 
 .skip-link:focus {
-  left: 0.5rem;
-  top: 0.5rem;
+  left: 8px;
+  top: 8px;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- the shell ---------- */
+
 .layout {
-  display: flex;
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: var(--rail) minmax(0, 1fr);
   height: 100%;
   min-height: 0;
 }
 
 .sidebar {
-  flex: 0 0 13rem;
-  background: var(--surface);
-  border-right: 1px solid var(--border);
-  padding: var(--gap);
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: var(--gap);
+  min-height: 0;
+  padding: 1rem 0.9rem;
   overflow-y: auto;
+  background: var(--ddlc-panel);
+  border-right: 2px solid var(--ddlc-line);
 }
 
 .brand {
   display: flex;
-  align-items: baseline;
-  gap: 0.4rem;
   flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.5rem;
+  margin: 0;
+  padding: 0 0.25rem 0.9rem;
+  border-bottom: 2px solid var(--ddlc-line);
 }
 
+/* The wordmark takes the brand step rather than a length of its own, so it can never drift from
+   the rest of the window. It is the largest word of the window on purpose: the rail is a sign
+   first and a list of tabs second */
 .brand strong {
-  font-size: 1.1rem;
+  font: 400 var(--step-brand) / 1.05 var(--ddlc-font-data);
+  letter-spacing: -0.01em;
+}
+
+/* The mark is the brand row's first item: it keeps its own width and centres against the
+   wordmark's line */
+.brand .app-mark {
+  flex: none;
+  align-self: center;
 }
 
 .brand span {
-  color: var(--muted);
-  font-size: 0.8rem;
+  color: var(--ddlc-muted);
+  font: 400 var(--step-data) / 1.4 var(--ddlc-font-data);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
+/* A section is a sticker of the kit: a small card in the data face, a two-pixel frame, a hard
+   shadow, and a tilt that alternates down the column, so the rail reads as things put on the
+   page rather than a list. The chosen one inverts, as a chosen control does elsewhere */
 .nav {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.6rem;
 }
 
 .nav button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.55em 0.9em;
+  border: 2px solid var(--ddlc-text);
+  background: var(--ddlc-ground);
+  box-shadow: 3px 3px 0 var(--ddlc-line);
+  color: var(--ddlc-text);
+  font: 400 var(--step-data) / 1.3 var(--ddlc-font-data);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   text-align: left;
-  background: none;
-  border: 1px solid transparent;
-  color: var(--text);
-  padding: 0.5rem 0.65rem;
-  border-radius: var(--radius);
-  font: inherit;
-  cursor: pointer;
+  transform: rotate(-1.1deg);
 }
 
-.nav button:hover {
-  background: var(--surface-alt);
+/* The pixel square of the kit's section headings, so a tab and a card title read as one family */
+.nav button::before {
+  content: "";
+  flex: none;
+  width: 0.35em;
+  height: 0.35em;
+  background: var(--ddlc-line-live);
 }
 
-.nav button[aria-current="page"] {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-  font-weight: 600;
+.nav button:nth-child(even) {
+  transform: rotate(1deg);
+  box-shadow: 3px 3px 0 var(--ddlc-accent-live);
+}
+
+.nav button:hover:not(:disabled):not([aria-current="page"]) {
+  border-color: var(--ddlc-accent);
+  background: var(--ddlc-ground);
+  box-shadow: 3px 3px 0 var(--ddlc-accent);
+  color: var(--ddlc-text);
+}
+
+.nav button:active:not(:disabled) {
+  box-shadow: none;
+  transform: rotate(-1.1deg) translate(2px, 2px);
+}
+
+.nav button:nth-child(even):active:not(:disabled) {
+  transform: rotate(1deg) translate(2px, 2px);
+}
+
+/* The chosen tab keeps its inverted sticker under the pointer too: the generic hover below
+   weighs as much as a class, so this rule counts one more to stay the winner */
+.nav button[aria-current="page"]:not(:disabled) {
+  border-color: var(--ddlc-text);
+  background: var(--ddlc-text);
+  box-shadow: 4px 4px 0 var(--ddlc-accent);
+  color: var(--ddlc-ground);
+  transform: rotate(-0.6deg) translate(-1px, -1px);
+}
+
+.nav button[aria-current="page"]::before {
+  background: var(--ddlc-accent);
+}
+
+.nav button[aria-current="page"]:active:not(:disabled) {
+  transform: rotate(-0.6deg) translate(1px, 1px);
+}
+.nav button:focus-visible {
+  outline: 2px solid var(--ddlc-accent);
+  outline-offset: 3px;
 }
 
 .content {
-  flex: 1 1 auto;
   min-width: 0;
   overflow-y: auto;
-  padding: calc(var(--gap) * 1.25);
+  padding: 1.5rem 2.25rem 2.75rem;
 }
 
-/* At 200 % zoom and in a narrow window, the navigation moves to the top as a row */
-@media (max-width: 46rem) {
+/* Narrow, the sections move above the page as a row of stickers, as the site's bar does. The
+   rail needs a fifth of the window at this scale, so the column gives way earlier than a
+   phone-sized layout would: below this width the page keeps more of the words per line */
+@media (max-width: 64rem) {
   .layout {
-    flex-direction: column;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .sidebar {
-    flex: 0 0 auto;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
+    gap: 0.6rem;
+    padding: 0.6rem 0.75rem;
+    border-right: 0;
+    border-bottom: 2px solid var(--ddlc-line);
+  }
+
+  .brand {
+    padding-bottom: 0.6rem;
   }
 
   .nav {
     flex-direction: row;
     flex-wrap: wrap;
+    gap: 0.45rem;
+  }
+
+  .nav button {
+    width: auto;
+    padding: 0.35em 0.7em;
+    letter-spacing: 0.04em;
+  }
+
+  .content {
+    padding: 1.25rem 1.5rem 2.5rem;
   }
 }
 
+/* ---------- the page and its sections ---------- */
+
+/* A page title is a line of the data face over a rule: the window's own heading, not the
+   report sheet's, which is a prose title */
 h1 {
-  font-size: 1.35rem;
   margin: 0 0 var(--gap);
+  padding: 0 0 0.6rem;
+  border-bottom: 2px solid var(--ddlc-line);
+  font: 400 var(--step-big) / 1.15 var(--ddlc-font-data);
+  letter-spacing: -0.01em;
 }
 
+/* A section inside a card is a pixel label with the kit's accent square, as on the site */
 h2 {
-  font-size: 1.05rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
   margin: 0 0 0.5rem;
+  color: var(--ddlc-muted);
+  font: 400 var(--step-data) / 1.6 var(--ddlc-font-data);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+h2::before {
+  content: "";
+  flex: none;
+  width: 0.3em;
+  height: 0.3em;
+  background: var(--ddlc-accent);
 }
 
 h3 {
-  font-size: 0.95rem;
-  margin: 0 0 0.35rem;
+  margin: 1.25rem 0 0.5rem;
+  font: 400 var(--step-data) / 1.6 var(--ddlc-font-data);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+h4 {
+  margin: 0.75rem 0 0.35rem;
+  color: var(--ddlc-muted);
+  font: 400 var(--step-data) / 1.6 var(--ddlc-font-data);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--gap);
-  box-shadow: var(--shadow);
-  margin-bottom: var(--gap);
+  min-width: 0;
+  margin: 0 0 var(--gap);
+  padding: var(--pad);
+  border: 2px solid var(--ddlc-line);
+  background: var(--ddlc-panel);
+}
+
+/* One gap inside a card: a field never sits against the frame */
+.card > * + * {
+  margin-top: 1rem;
+}
+
+h2 + * {
+  margin-top: 0;
+}
+
+/* The panel that holds the daemon: inked frame, pink hard shadow, a strip of tape over the
+   top edge, as a note pinned to the page */
+.record-panel {
+  position: relative;
+  border-color: var(--ddlc-text);
+  box-shadow: 6px 6px 0 var(--ddlc-line);
+}
+
+.record-state {
+  gap: 0.55rem;
+}
+
+/* The record light sits outside the badge, where the eye finds it before reading the label. It
+   is a lamp, not a bullet: a large square, so a glance from across the desk reads the state */
+.record-led {
+  flex: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 2px solid var(--ddlc-text);
+  background: var(--ddlc-switch-off);
+  box-shadow: 2px 2px 0 var(--ddlc-line);
+}
+
+.record-led.ready {
+  background: var(--ddlc-ok);
+}
+
+.record-led.live {
+  background: var(--ddlc-danger);
+  animation: rec 1.4s steps(2, end) infinite;
+}
+
+.record-panel::before {
+  content: "";
+  position: absolute;
+  top: -0.6rem;
+  left: 50%;
+  width: min(7rem, 30%);
+  height: 1.1rem;
+  background: var(--ddlc-tape);
+  transform: translateX(-50%) rotate(-2deg);
+  pointer-events: none;
 }
 
 .row {
   display: flex;
-  gap: 0.6rem;
-  align-items: center;
   flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .spread {
   justify-content: space-between;
 }
 
-.tiles {
+.grid2 {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
-  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 0 1.25rem;
 }
 
-.tile {
-  background: var(--surface-alt);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.75rem;
+.muted {
+  color: var(--ddlc-muted);
 }
 
-.tile dt {
-  color: var(--muted);
-  font-size: 0.8rem;
-  margin: 0 0 0.2rem;
+.small {
+  font-size: var(--step-data);
 }
 
-.tile dd {
-  margin: 0;
-  font-size: 1.35rem;
-  font-weight: 600;
+.mono {
+  font-family: var(--ddlc-font-data);
+  font-size: var(--step-data);
   font-variant-numeric: tabular-nums;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
-.tile .unit {
-  font-size: 0.8rem;
-  font-weight: 400;
-  color: var(--muted);
-  margin-left: 0.25rem;
+.text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
+/* ---------- controls ---------- */
+
+/* A button presses into its own shadow, and the frame is always two pixels of ink. The label
+   keeps off the frame, and it is one line: a wrapped label in a row of actions reads as a
+   different control and hides the edge it wraps against. The padding is in em of the label,
+   so a button keeps the same margin around its word at every step of the scale */
 button {
-  font: inherit;
+  padding: 0.45em 1.25em;
+  border: 2px solid var(--ddlc-text);
+  border-radius: 0;
+  background: var(--ddlc-ground);
+  box-shadow: 2px 2px 0 var(--ddlc-text);
+  color: var(--ddlc-text);
+  font: 400 var(--step-data) / 1.5 var(--ddlc-font-data);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
   cursor: pointer;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  background: var(--surface-alt);
-  color: var(--text);
-  padding: 0.4rem 0.8rem;
 }
 
 button:hover:not(:disabled) {
-  border-color: var(--accent);
+  border-color: var(--ddlc-accent);
+  box-shadow: 2px 2px 0 var(--ddlc-accent);
+  color: var(--ddlc-text);
+}
+
+button:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: none;
 }
 
 button:disabled {
-  opacity: 0.55;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
 button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-text);
-  font-weight: 600;
+  min-height: 2.2em;
+  border-color: var(--ddlc-accent);
+  /* The accent surface darkened towards the ink on paper, so the label keeps a readable
+     contrast there; on ink the accent is already the light pink, so the ink labels it */
+  background: light-dark(
+    color-mix(in srgb, var(--ddlc-accent) 85%, var(--ddlc-ink)),
+    var(--ddlc-accent)
+  );
+  color: light-dark(var(--ddlc-paper), var(--ddlc-ink));
+  box-shadow: 2px 2px 0 var(--ddlc-text);
+  font-size: var(--step-body);
+  letter-spacing: 0.04em;
+}
+
+button.primary:hover:not(:disabled) {
+  border-color: var(--ddlc-accent-live);
+  background: var(--ddlc-accent-live);
+  color: var(--ddlc-ink);
+  box-shadow: 2px 2px 0 var(--ddlc-text);
+}
+
+button.primary:active:not(:disabled) {
+  box-shadow: none;
 }
 
 button.danger {
-  background: var(--danger-soft);
-  border-color: var(--danger);
-  color: var(--danger);
+  border-color: var(--danger-ink);
+  box-shadow: 2px 2px 0 var(--danger-ink);
+  color: var(--danger-ink);
+}
+
+button.danger:hover:not(:disabled) {
+  border-color: var(--danger-ink);
+  box-shadow: 2px 2px 0 var(--danger-ink);
 }
 
 button.ghost {
+  border-color: transparent;
   background: none;
+  box-shadow: none;
 }
 
+button.ghost:hover:not(:disabled) {
+  border-color: var(--ddlc-line);
+  box-shadow: none;
+}
+
+/* A chip is a button that sits in a row of its kind: a shallower frame, the same margin
+   around the word as any other framed label */
 button.chip {
-  padding: 0.15rem 0.5rem;
-  font-size: 0.85rem;
+  min-height: 1.6em;
+  padding: 0.18em 1em;
+  box-shadow: 1px 1px 0 var(--ddlc-text);
 }
 
+/* The action row of the main panel: Record, Stop, Cancel and Start daemon are read at a glance
+   and pressed without aiming, so each one owns its width, keeps the base margin around its
+   label and never shrinks into the one beside it */
+.actions-row {
+  gap: 0.6rem;
+}
+
+.actions-row button {
+  flex: 0 0 auto;
+  min-height: 2.2em;
+  font-size: var(--step-body);
+  letter-spacing: 0.04em;
+}
+
+/* A chosen choice inverts, as the kit's tools do */
 button[aria-pressed="true"] {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-  font-weight: 600;
+  border-color: var(--ddlc-text);
+  background: var(--ddlc-text);
+  box-shadow: 2px 2px 0 var(--ddlc-accent);
+  color: var(--ddlc-ground);
+}
+
+button[aria-pressed="true"]:hover:not(:disabled) {
+  border-color: var(--ddlc-text);
+  box-shadow: 2px 2px 0 var(--ddlc-accent);
+  color: var(--ddlc-ground);
 }
 
 label {
   display: block;
-  font-size: 0.85rem;
-  color: var(--muted);
-  margin-bottom: 0.2rem;
+  margin-bottom: 0.25rem;
+  color: var(--ddlc-muted);
+  font: 400 var(--step-data) / 1.6 var(--ddlc-font-data);
 }
 
+/* A control's frame is the live line, not the card's pale one: a field has to be visible as
+   a field, and the accent ring marks the focus */
 input[type="text"],
 input[type="number"],
 input[type="date"],
 input[type="search"],
+input[type="url"],
+input[type="password"],
 select,
 textarea {
-  font: inherit;
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.35rem 0.5rem;
   width: 100%;
-  max-width: 26rem;
+  max-width: 32rem;
+  padding: 0.35em 0.6em;
+  border: 2px solid var(--ddlc-line-live);
+  border-radius: 0;
+  background: var(--ddlc-ground);
+  color: var(--ddlc-text);
+  font: 400 var(--step-data) / 1.6 var(--ddlc-font-data);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--ddlc-accent);
+}
+
+textarea {
+  max-width: 100%;
+  min-height: 5rem;
+  resize: vertical;
 }
 
 input[type="range"] {
   width: 100%;
   max-width: 16rem;
-}
-
-textarea {
-  max-width: 100%;
-  min-height: 4rem;
-  font-family: ui-monospace, "Cascadia Code", "Fira Code", monospace;
-  font-size: 0.85rem;
+  accent-color: var(--ddlc-accent);
 }
 
 .field {
-  margin-bottom: 0.75rem;
-  max-width: 26rem;
+  min-width: 0;
+  max-width: 32rem;
+  margin-bottom: 0.9rem;
 }
 
 .field.wide {
   max-width: none;
 }
 
+.field-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.field-inline select,
+.field-inline input[type="text"],
+.field-inline input[type="password"] {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+
+
+.field-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.65rem;
+  margin-top: 0.9rem;
+}
+
+.field-row .field {
+  flex: 1 1 17rem;
+  margin-bottom: 0;
+}
+
+.formgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 0.35rem 1.25rem;
+  align-items: start;
+}
+
+.formgrid .field {
+  max-width: 100%;
+}
+
+/* Inputs stay inside their column: a fixed width could pass the card edge */
+.settings-section input[type="text"],
+.settings-section input[type="number"],
+.settings-section input[type="url"],
+.settings-section input[type="password"],
+.settings-section select {
+  max-width: 100%;
+}
+
 .check {
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
+  /* The box is a framed control, so the row keeps its own margin from whatever frame holds it:
+     the padding moves the box off the card edge and widens the target of the whole row */
+  padding: 0.15rem 0.6rem;
   margin-bottom: 0.5rem;
-  color: var(--text);
-  font-size: 0.95rem;
+  color: var(--ddlc-text);
+  font: 500 var(--step-body) / 1.5 var(--ddlc-font-prose);
 }
 
-.check input {
-  margin-top: 0.25rem;
-}
-
-.grid2 {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-  gap: 0 1rem;
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  border-radius: 999px;
-  padding: 0.2rem 0.7rem;
-  border: 1px solid var(--border);
-  background: var(--surface-alt);
-  font-size: 0.85rem;
-  font-weight: 600;
-}
-
-.badge .dot {
-  width: 0.6rem;
-  height: 0.6rem;
-  border-radius: 50%;
-  background: var(--muted);
-}
-
-.badge.recording {
-  border-color: var(--danger);
-  color: var(--danger);
-}
-
-.badge.recording .dot {
-  background: var(--danger);
-}
-
-.badge.busy {
-  border-color: var(--warn-text);
-  color: var(--warn-text);
-  background: var(--warn-bg);
-}
-
-.badge.busy .dot {
-  background: var(--warn-text);
-}
-
-.badge.ready {
-  border-color: var(--ok);
-  color: var(--ok);
-}
-
-.badge.ready .dot {
-  background: var(--ok);
-}
-
-.notice {
-  border: 1px solid var(--border);
-  border-left-width: 4px;
-  border-radius: var(--radius);
-  padding: 0.6rem 0.75rem;
-  margin-bottom: var(--gap);
-  background: var(--surface-alt);
-}
-
-.notice.warning {
-  background: var(--warn-bg);
-  color: var(--warn-text);
-  border-color: var(--warn-text);
-}
-
-.notice.error {
-  background: var(--danger-soft);
-  color: var(--danger);
-  border-color: var(--danger);
-}
-
-.notice.ok {
-  border-color: var(--ok);
-  color: var(--ok);
-}
-
-.notice p {
-  margin: 0.2rem 0 0;
-  font-size: 0.85rem;
-}
-
-.help {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.5rem 0.75rem;
-  background: var(--surface-alt);
-}
-
-.help summary {
+/* A checkbox is the kit's square frame: the browser keeps the state, the frame and the accent
+   fill show it, and the box stays visible against the ground */
+.check input[type="checkbox"] {
+  appearance: none;
+  inline-size: 1em;
+  block-size: 1em;
+  flex: 0 0 auto;
+  margin: 0.15rem 0 0;
+  padding: 2px;
+  border: 2px solid var(--ddlc-text);
+  background: none;
   cursor: pointer;
-  font-weight: 600;
 }
 
-.help p {
-  margin: 0.35rem 0;
-  font-size: 0.85rem;
-  color: var(--muted);
+.check input[type="checkbox"]:checked {
+  border-color: var(--ddlc-accent);
+  background: var(--ddlc-accent) content-box;
 }
 
-.meter {
-  height: 1.1rem;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface-alt);
-  overflow: hidden;
+.check input[type="checkbox"]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
-.meter .fill {
-  height: 100%;
-  background: var(--accent);
-  transition: width 80ms linear;
+.check input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--ddlc-accent);
+  outline-offset: 2px;
 }
 
-.muted {
-  color: var(--muted);
-}
-
-.small {
-  font-size: 0.85rem;
-}
-
-.mono {
-  font-family: ui-monospace, "Cascadia Code", "Fira Code", monospace;
-  font-size: 0.85rem;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.entry-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-}
-
-.entry {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.6rem 0.75rem;
-  background: var(--surface);
-}
-
-.entry .meta {
-  display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  color: var(--muted);
-  font-size: 0.8rem;
-  margin-bottom: 0.35rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.entry .text {
-  margin: 0 0 0.5rem;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.transcript {
-  border-top: 1px solid var(--border);
-  margin-top: 0.5rem;
-  padding-top: 0.5rem;
-}
-
-.transcript-text {
-  margin: 0 0 0.5rem;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-family: var(--mono, monospace);
-  font-size: 0.85rem;
-}
-
-table {
-  border-collapse: collapse;
-  width: 100%;
-  font-size: 0.9rem;
-}
-
-th,
-td {
-  text-align: left;
-  padding: 0.35rem 0.5rem;
-  border-bottom: 1px solid var(--border);
-}
-
-th {
-  color: var(--muted);
-  font-weight: 600;
-}
-
-td.num,
-th.num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.table-scroll {
-  overflow-x: auto;
-}
-
-.chart {
-  width: 100%;
-  height: auto;
+.check span {
   display: block;
 }
 
+.check-hint {
+  display: block;
+  color: var(--ddlc-muted);
+  font-size: var(--step-data);
+}
+
+.check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+kbd {
+  padding: 0 0.35em;
+  border: 2px solid var(--ddlc-line);
+  border-bottom-width: 4px;
+  background: var(--ddlc-ground);
+  color: var(--ddlc-text);
+  font: 400 var(--step-tiny) / 1.5 var(--ddlc-font-data);
+}
+
+/* ---------- choices ---------- */
+
+.segmented-set {
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.segmented-set legend {
+  margin-bottom: 0.35rem;
+  padding: 0;
+  color: var(--ddlc-muted);
+  font: 400 var(--step-data) / 1.6 var(--ddlc-font-data);
+}
+
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.6rem;
+  border: 0;
+}
+
+.segmented .segment {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin: 0;
+  padding: 0.45em 0.6em;
+  border: 2px solid var(--ddlc-line);
+  background: var(--ddlc-ground);
+  color: var(--ddlc-text);
+  font: 500 var(--step-body) / 1.5 var(--ddlc-font-prose);
+  cursor: pointer;
+}
+
+.segmented .segment.active {
+  border-color: var(--ddlc-text);
+  background: var(--ddlc-code-ground);
+  box-shadow: 3px 3px 0 var(--ddlc-accent);
+}
+
+.segmented .segment input {
+  position: absolute;
+  opacity: 0;
+  inline-size: 1px;
+  block-size: 1px;
+}
+
+.segmented .segment:has(input:focus-visible) {
+  outline: 2px solid var(--ddlc-accent);
+  outline-offset: 2px;
+}
+
+.segmented .segment:has(input:disabled) {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.segment-hint {
+  color: var(--ddlc-muted);
+  font: 400 var(--step-data) / 1.5 var(--ddlc-font-prose);
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.chip-row select {
+  width: auto;
+  max-width: 12rem;
+}
+
+/* ---------- the recorder dialog ---------- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--gap);
+  background: color-mix(in srgb, var(--ddlc-ink) 60%, transparent);
+}
+
+.modal {
+  width: min(38rem, 100%);
+  padding: var(--gap);
+  border: 2px solid var(--ddlc-text);
+  background: var(--ddlc-ground);
+  box-shadow: 6px 6px 0 var(--ddlc-accent);
+  color: var(--ddlc-text);
+}
+
+.modal h3 {
+  margin-top: 0;
+}
+
+.modal-capture {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 5rem;
+  margin: 0.9rem 0;
+  border: 2px dashed var(--ddlc-line);
+  background: var(--ddlc-code-ground);
+}
+
+.modal-actions {
+  justify-content: flex-end;
+  margin-top: 0.75rem;
+}
+
+/* ---------- notices, empty states, help ---------- */
+
+/* A notice is a note pinned on: a hard shadow in the colour of what it says */
+.notice {
+  margin: 0 0 var(--gap);
+  padding: 0.55em 0.7em;
+  border: 2px solid var(--ddlc-line);
+  background: var(--ddlc-panel);
+  box-shadow: 5px 5px 0 var(--ddlc-line);
+}
+
+.notice > strong {
+  display: inline-block;
+  margin: 0 0 8px;
+  padding: 0.1em 0.45em;
+  border: 2px solid var(--ddlc-text);
+  background: var(--ddlc-line);
+  color: var(--ddlc-text);
+  font: 400 var(--step-data) / 1.6 var(--ddlc-font-data);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.notice p {
+  margin: 0.3rem 0 0;
+  font: 500 var(--step-body) / 1.55 var(--ddlc-font-prose);
+}
+
+.notice .mono {
+  font-size: var(--step-data);
+}
+
+.notice.warning {
+  border-color: var(--warn-ink);
+  box-shadow: 5px 5px 0 var(--warn-ink);
+}
+
+.notice.warning > strong {
+  border-color: var(--warn-ink);
+  background: var(--ddlc-sayori);
+  color: var(--ddlc-ink);
+}
+
+.notice.error {
+  border-color: var(--danger-ink);
+  box-shadow: 5px 5px 0 var(--danger-ink);
+}
+
+.notice.error > strong {
+  border-color: var(--danger-ink);
+  background: var(--ddlc-bow);
+  color: var(--ddlc-paper);
+}
+
+.notice.ok {
+  border-color: var(--ok-ink);
+  box-shadow: 5px 5px 0 var(--ok-ink);
+}
+
+.notice.ok > strong {
+  border-color: var(--ok-ink);
+  background: var(--ddlc-ok);
+  color: var(--ddlc-ink);
+}
+
+/* Nothing to show yet reads as an empty slot of the lattice, never as a blank card */
+.empty {
+  margin: 0;
+  padding: 0.6em;
+  border: 2px dashed var(--ddlc-grid);
+  background: var(--ddlc-code-ground);
+  color: var(--ddlc-muted);
+  font: 500 var(--step-body) / 1.55 var(--ddlc-font-prose);
+}
+
+.help {
+  margin: 0;
+  border: 2px solid var(--ddlc-line);
+  background: var(--ddlc-ground);
+}
+
+.help summary {
+  padding: 0.55em 0.9em;
+  color: var(--ddlc-text);
+  font: 400 var(--step-data) / 1.6 var(--ddlc-font-data);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.help summary::marker {
+  color: var(--ddlc-accent);
+}
+
+.help[open] summary {
+  border-bottom: 2px solid var(--ddlc-line);
+  background: var(--ddlc-code-ground);
+}
+
+.help > :not(summary) {
+  margin: 8px 10px;
+}
+
+.help p {
+  color: var(--ddlc-muted);
+  font: 500 var(--step-data) / 1.55 var(--ddlc-font-prose);
+}
+
+/* ---------- readouts ---------- */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.9rem 1.25rem;
+}
+
+/* A tile is a column, not two blocks: the label takes the slack and the number sits at the
+   foot of the tallest tile in the row, so four numbers share one line even when a label
+   wraps to two */
+.tile {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding-top: 0.45rem;
+  border-top: 2px solid var(--ddlc-line);
+}
+
+.tile dt {
+  flex: 1 1 auto;
+  margin: 0 0 0.3rem;
+  color: var(--ddlc-muted);
+  font: 400 var(--step-data) / 1.5 var(--ddlc-font-data);
+}
+
+.tile dd {
+  margin: 0;
+  font: 400 var(--step-big) / 1.2 var(--ddlc-font-data);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tile .unit {
+  margin-left: 0.25rem;
+  color: var(--ddlc-muted);
+  font-size: var(--step-data);
+}
+
+/* A meter is a track of whole blocks, as the kit draws its level */
+.meter,
+.progress {
+  position: relative;
+  height: 0.7em;
+  overflow: hidden;
+  border: 2px solid var(--ddlc-line);
+  background: var(--ddlc-code-ground);
+}
+
+.meter .fill,
+.progress-fill {
+  height: 100%;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--fill, var(--ddlc-accent)) 0 7px,
+    transparent 7px 9px
+  );
+  transition: width 120ms linear;
+}
+
+.progress.done {
+  --fill: var(--ddlc-ok);
+}
+
+/* An unknown share of the work: a moving stripe, no number and no full bar */
+.progress.indeterminate .progress-fill {
+  width: 35%;
+  animation: progress-sweep 1.6s steps(8, end) infinite;
+}
+
+@keyframes progress-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+/* The live signal: the kit's pixel lattice on its terminal ground */
+.signal-wrap {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+/* An empty signal is a lattice, not a blank panel: the ground carries the dither of the site at
+   the finest pitch, so a silent microphone still shows the pixels the meter is made of */
+.signal-bars {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  width: 100%;
+  height: 9rem;
+  padding: 4px;
+  border: 2px solid var(--ddlc-text);
+  background: var(--signal-ground);
+  image-rendering: pixelated;
+}
+
+.signal-bars::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--signal-tick);
+  opacity: 0.55;
+  mask-image: var(--dither-dots);
+  mask-size: 12px 12px;
+  mask-repeat: repeat;
+  pointer-events: none;
+}
+
+/* A column is a bar of the meter, so it stacks above the lattice of the ground */
+.signal-column {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  min-width: 0;
+  background: var(--signal-tick);
+}
+
+.signal-column.lit {
+  background: linear-gradient(to top, var(--signal-lit) 0 70%, var(--signal-peak) 70%);
+}
+
+.signal-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+}
+
+.signal-readout {
+  flex: 0 1 auto;
+  margin: 0;
+  color: var(--ddlc-text);
+  font: 400 var(--step-data) / 1.6 var(--ddlc-font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+.signal-hint {
+  flex: 1 1 12rem;
+  margin: 0;
+}
+
+/* ---------- charts ---------- */
+
+.chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 .chart .grid-line {
-  stroke: var(--border);
+  stroke: var(--ddlc-grid);
   stroke-width: 1;
 }
 
 .chart .bar {
-  fill: var(--chart-bar);
+  fill: var(--ddlc-accent);
 }
 
 .chart .wpm-line {
   fill: none;
-  stroke: var(--chart-line);
+  stroke: var(--ddlc-sayori);
   stroke-width: 2;
   stroke-linejoin: round;
 }
 
 .chart .wpm-dot {
-  fill: var(--chart-line);
+  fill: var(--ddlc-sayori);
 }
 
 .chart text {
-  fill: var(--muted);
-  font-size: 0.7rem;
+  fill: var(--ddlc-muted);
+  font-family: var(--ddlc-font-data);
+  /* A chart is a drawing that scales to its column, so its labels are measured in viewBox
+     units, not in window pixels: this is the label's share of the drawing, and it grows with
+     the drawing rather than with the step scale */
+  font-size: 1.125rem;
 }
 
 .legend {
   display: flex;
+  flex-wrap: wrap;
   gap: 1rem;
-  font-size: 0.85rem;
-  color: var(--muted);
-  margin-top: 0.4rem;
+  margin-top: 0.5rem;
+  color: var(--ddlc-muted);
+  font: 400 var(--step-data) / 1.6 var(--ddlc-font-data);
 }
 
 .legend span {
@@ -621,37 +1153,784 @@ th.num {
 }
 
 .legend i {
-  width: 0.85rem;
-  height: 0.6rem;
-  border-radius: 2px;
   display: inline-block;
+  width: 12px;
+  height: 12px;
 }
 
-.dropzone {
-  border: 2px dashed var(--border);
-  border-radius: var(--radius);
-  padding: 1.5rem;
-  text-align: center;
-  color: var(--muted);
-  background: var(--surface-alt);
+/* ---------- tables ---------- */
+
+.table-scroll {
+  overflow-x: auto;
+  border: 2px solid var(--ddlc-line);
+  background: var(--ddlc-panel);
 }
 
-.dropzone.over {
-  border-color: var(--accent);
-  color: var(--text);
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 500 var(--step-body) / 1.5 var(--ddlc-font-prose);
 }
 
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
+th,
+td {
+  padding: 0.35em 0.7em;
+  border-bottom: 1px solid var(--ddlc-grid);
+  text-align: left;
+  vertical-align: top;
+}
+
+thead th {
+  border-bottom: 2px solid var(--ddlc-line);
+  background: var(--ddlc-code-ground);
+  color: var(--ddlc-muted);
+  font: 400 var(--step-data) / 1.6 var(--ddlc-font-data);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+td.num,
+th.num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ---------- terminal rows and code ---------- */
+
+/* A command is one line of a terminal: the site's window, a compact title bar, then the prompt,
+   the command and the copy button on one line. The bar is a fixed height in rem rather than in
+   em of the command, so a long command can never push an empty band out of the window */
+.copy-row {
+  --bar: 0.875rem;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.25rem 0.6rem;
+  margin: 0.5rem 0 0;
+  padding: 0 0.6rem 0.55rem;
+  border: 2px solid var(--ddlc-window-border);
+  background: var(--ddlc-window-ground);
+  box-shadow: 4px 4px 0 var(--ddlc-board-drop);
+  color: var(--ddlc-window-text);
+}
+
+/* The title bar of the window: a strip of the bar colour with the three pixel lights of the kit,
+   drawn as gradients so the bar adds no element to the markup */
+.copy-row::before {
+  content: "";
+  grid-column: 1 / -1;
+  height: var(--bar);
+  margin: 0 -0.6rem;
+  border-bottom: 2px solid var(--ddlc-window-border);
+  background-image:
+    linear-gradient(var(--ddlc-window-control-live), var(--ddlc-window-control-live)),
+    linear-gradient(var(--ddlc-window-control), var(--ddlc-window-control)),
+    linear-gradient(var(--ddlc-window-control), var(--ddlc-window-control)),
+    linear-gradient(var(--ddlc-window-bar), var(--ddlc-window-bar));
+  background-repeat: no-repeat;
+  background-size: 6px 6px, 6px 6px, 6px 6px, 100% 100%;
+  background-position: 8px 50%, 20px 50%, 32px 50%, 0 0;
+  image-rendering: pixelated;
+}
+
+/* The prompt shares the command's line: a window of one line needs no second row. The three
+   pieces are placed by column, because a generated box is painted after the children of the
+   element and would otherwise take the place of the copy button. The prompt stands on the
+   first line of a wrapped command, where a prompt belongs */
+.copy-row::after {
+  content: ">";
+  grid-row: 2;
+  grid-column: 1;
+  align-self: start;
+  color: var(--ddlc-window-prompt);
+  font: 400 var(--step-data) / 1.6 var(--ddlc-font-data);
+}
+
+.copy-row .mono {
+  grid-row: 2;
+  grid-column: 2;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ddlc-window-text);
+  font: 400 var(--step-data) / 1.6 var(--ddlc-font-data);
+}
+
+.copy-row button {
+  grid-row: 2;
+  grid-column: 3;
+  align-self: center;
+  border-color: var(--ddlc-window-border);
+  background: var(--ddlc-window-bar);
+  box-shadow: none;
+  color: var(--ddlc-window-title);
+}
+
+.copy-row button:hover:not(:disabled) {
+  border-color: var(--ddlc-window-control-live);
+  color: var(--ddlc-window-control-live);
+}
+
+
+
+
+/* The code block is the report sheet's kitty window: only its box is set here. The sheet sizes
+   a code block in the code's own em, so the window's bar follows the step it is given */
+.codeblock {
+  max-height: 11em;
+  margin: 0.5rem 0;
+  overflow-y: auto;
+  font: 400 var(--step-data) / 1.5 var(--ddlc-font-data);
+}
+
+.plain-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plain-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+/* ---------- entries: history, the queue, the transcript ---------- */
+
+.entry-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.entry {
+  min-width: 0;
+  padding: 0.4em 0.55em;
+  border: 2px solid var(--ddlc-line);
+  background: var(--ddlc-ground);
+}
+
+.entry .meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.8rem;
+  margin-bottom: 0.4rem;
+  color: var(--ddlc-muted);
+  font: 400 var(--step-data) / 1.6 var(--ddlc-font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+.entry .text {
+  margin: 0 0 0.5rem;
+  font: 500 var(--step-lead) / 1.6 var(--ddlc-font-prose);
+}
+
+.entry.job {
+  border-left-width: 4px;
+  border-left-color: var(--ddlc-grid);
+}
+
+.entry.job.done {
+  border-left-color: var(--ok-ink);
+}
+
+.entry.job.running {
+  border-left-color: var(--ddlc-accent);
+}
+
+.entry.job.failed {
+  border-left-color: var(--danger-ink);
+}
+
+.entry.job.interrupted {
+  border-left-color: var(--warn-ink);
+}
+
+.job-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+/* The file name of a job is the control that opens the transcript, and it has to look like one:
+   a framed sticker with the chevron of a disclosure, so the name reads as something to press
+   rather than as a caption over the row */
+button.job-expander {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.15em 0.65em;
+  border: 2px solid var(--ddlc-line-live);
+  background: var(--ddlc-ground);
+  box-shadow: 2px 2px 0 var(--ddlc-line);
+  text-align: left;
+}
+
+button.job-expander:hover:not(:disabled) {
+  border-color: var(--ddlc-accent);
+  background: var(--ddlc-code-ground);
+  box-shadow: 2px 2px 0 var(--ddlc-accent);
+  color: var(--ddlc-text);
+}
+
+/* An open transcript keeps its control pressed into the row it belongs to */
+button.job-expander[aria-expanded="true"] {
+  border-color: var(--ddlc-text);
+  background: var(--ddlc-code-ground);
+  box-shadow: 2px 2px 0 var(--ddlc-accent);
+}
+
+button.job-expander:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: none;
+}
+
+/* A long name ends in an ellipsis instead of widening the row past the card: the whole path is
+   in the button's title, and the frame keeps its shape at every width */
+.job-name {
+  min-width: 0;
   overflow: hidden;
-  clip: rect(0 0 0 0);
+  font: 400 var(--step-data) / 1.6 var(--ddlc-font-data);
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.job-chevron {
+  color: var(--ddlc-accent);
+  font-size: var(--step-data);
+}
+
+.job-actions {
+  margin-left: auto;
+}
+
+.job-path {
+  margin: 0.15rem 0 0.35rem;
+  overflow-wrap: anywhere;
+}
+
+.job-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.35rem 0;
+}
+
+.job-progress p {
+  margin: 0;
+}
+
+.job-detail {
+  margin: 0.25rem 0;
+  color: var(--danger-ink);
+}
+
+.job-body {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 2px solid var(--ddlc-line);
+}
+
+.result + .result {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--ddlc-grid);
+}
+
+.queue-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.queue-progress .progress {
+  flex: 1 1 auto;
+}
+
+.queue-counts span + span::before {
+  content: "·";
+  margin-right: 0.5rem;
+  margin-left: 0.15rem;
+}
+
+.dropzone {
+  padding: 1.2em 0.8em;
+  border: 2px dashed var(--ddlc-grid);
+  background: var(--ddlc-code-ground);
+  color: var(--ddlc-muted);
+  font: 500 var(--step-body) / 1.55 var(--ddlc-font-prose);
+  text-align: center;
+}
+
+.dropzone.over {
+  border-color: var(--ddlc-accent);
+  background: var(--ddlc-highlight);
+  color: var(--ddlc-text);
+}
+
+.transcript {
+  min-width: 0;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 2px solid var(--ddlc-line);
+}
+
+.transcript-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 0.75rem;
+  margin-bottom: 0.4rem;
+}
+
+.transcript-head .mono {
+  overflow-wrap: anywhere;
+}
+
+.transcript-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.transcript-toolbar input[type="search"] {
+  flex: 1 1 12rem;
+  max-width: 20rem;
+}
+
+.transcript-plain .text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.segments {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  max-height: 24rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.segments .segment {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  padding: 0.1rem 0.2rem;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  cursor: default;
+}
+
+.segments .segment:hover {
+  background: var(--ddlc-code-ground);
+}
+
+.segments .segment.active {
+  background: var(--ddlc-highlight);
+}
+
+button.segment-main,
+div.segment-main {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: baseline;
+  gap: 0.6rem;
+  min-width: 0;
+  padding: 0.2rem 0.3rem;
+  border: 2px solid transparent;
+  background: none;
+  box-shadow: none;
+  color: var(--ddlc-text);
+  font: 500 var(--step-body) / 1.5 var(--ddlc-font-prose);
+  text-align: left;
+}
+
+button.segment-main:hover:not(:disabled) {
+  border-color: var(--ddlc-line);
+  box-shadow: none;
+  background: none;
+}
+
+.segments .segment.active .segment-main {
+  border-color: var(--ddlc-accent);
+}
+
+.segment-times {
+  display: inline-flex;
+  gap: 0.3rem;
+  color: var(--ddlc-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.segment-text {
+  overflow-wrap: anywhere;
+}
+
+button.segment-copy {
+  flex: 0 0 auto;
+  margin-top: 0.15rem;
+}
+
+/* ---------- suggestions ---------- */
+
+.combobox {
+  position: relative;
+}
+
+.suggestions {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  max-width: 32rem;
+  max-height: 17rem;
+  margin: 0.15rem 0 0;
+  padding: 0.2rem;
+  overflow-y: auto;
+  border: 2px solid var(--ddlc-text);
+  background: var(--ddlc-ground);
+  box-shadow: 4px 4px 0 var(--ddlc-accent);
+  list-style: none;
+}
+
+.suggestion {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.25rem 0.45rem;
+  cursor: pointer;
+}
+
+.suggestion.active,
+.suggestion:hover {
+  background: var(--ddlc-code-ground);
+}
+
+.suggestion-name {
+  overflow: hidden;
+  font-family: var(--ddlc-font-data);
+  font-size: var(--step-data);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suggestions-status:empty {
+  display: none;
+}
+
+.suggestions-status {
+  margin: 0.25rem 0 0;
+}
+
+/* ---------- settings ---------- */
+
+/* The card rule already spaces the children; a heading only needs to breathe above its group */
+.settings-section h3:not(:first-child) {
+  margin-top: 1.5rem;
+}
+
+.hotkey-value {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  width: 100%;
+  max-width: 100%;
+  padding: 0.35em 0.6em;
+  background: var(--ddlc-ground);
+  text-align: left;
+}
+
+/* A combination is a long word in a frame: its field takes the width of two columns of the form,
+   so "Super+Alt+Escape" keeps its margin and no label is cut by the button's own edge */
+.formgrid .field:has(> .hotkey-value) {
+  grid-column: span 2;
+}
+
+.hotkey-value .hotkey-record {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--ddlc-accent);
+}
+
+.style-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.style-picker select {
+  flex: 1 1 12rem;
+}
+
+.style-entry {
+  min-width: 0;
+  margin: 0 0 0.9rem;
+  padding: 0.6em 0.7em;
+  border: 2px solid var(--ddlc-line);
+  background: var(--ddlc-ground);
+}
+
+.style-entry legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.4em;
+  color: var(--ddlc-text);
+  font: 400 var(--step-data) / 1.6 var(--ddlc-font-data);
+}
+
+.style-entry legend .badge {
+  transform: none;
+}
+
+.style-entry .field,
+.style-entry textarea {
+  max-width: 100%;
+}
+
+.builtin-styles {
+  margin-bottom: 0.5rem;
+}
+
+.error-text {
+  margin: 0.2rem 0 0;
+  color: var(--danger-ink);
+}
+
+.warning-text {
+  margin: 0.2rem 0 0;
+  color: var(--warn-ink);
+}
+
+/* The state badge is a sticker: a label put on the panel, taped at an angle */
+.badge {
+  --badge-tone: var(--ddlc-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0.12em 0.55em;
+  border: 2px solid var(--ddlc-text);
+  background: var(--ddlc-ground);
+  box-shadow: 3px 3px 0 var(--badge-tone);
+  color: var(--ddlc-text);
+  font: 400 var(--step-data) / 1.6 var(--ddlc-font-data);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  transform: rotate(-1.2deg);
+}
+
+/* A toned state is the shadow and the frame, never a dot beside the word: the record light of
+   the main panel is the only lamp, and a second one inside the label competes with it */
+.badge.ready {
+  --badge-tone: var(--ddlc-ok);
+}
+
+.badge.busy {
+  --badge-tone: var(--ddlc-sayori);
+}
+
+.badge.recording {
+  --badge-tone: var(--ddlc-danger);
+}
+
+@keyframes rec {
+  50% {
+    background: var(--ddlc-switch-off);
+  }
+}
+
+/* ---------- the window's mark and its ambient motion ---------- */
+
+/* The mark of the site: the pixel logo on a plate of the kit's ink, in a frame and a hard
+   shadow. It sits in the brand row, in the flow of the rail, and its own ground keeps it
+   readable on either theme */
+.app-mark {
+  display: block;
+  padding: 3px;
+  border: 1px solid var(--ddlc-text);
+  background: var(--ddlc-ground);
+  box-shadow: 3px 3px 0 var(--ddlc-accent);
+}
+
+.app-mark svg {
+  display: block;
+  /* The mark keeps the proportion it had to the wordmark: a step below it in the scale */
+  width: var(--step-big);
+  height: var(--step-big);
+  image-rendering: pixelated;
+}
+
+/* Two layers carry the ambient grain: a field of dithered dots and a one-bit noise over them.
+   Neither is drawn by script and neither animates per frame: the tiles are rasterized once, and
+   the only motion left is a stepped drift of the masks, a few frames a second */
+.ambient-strip,
+.ambient-trail {
+  position: fixed;
+  display: block;
+  pointer-events: none;
+  image-rendering: pixelated;
+}
+
+/* The ground of the strip is the page's, so the grain has something to sit on that a theme
+   change repaints without a second palette */
+.ambient-strip {
+  inset: 0 0 auto 0;
+  z-index: 0;
+  width: 100%;
+  height: 6rem;
+  background: var(--ddlc-ground);
+  mask-image: linear-gradient(180deg, black 0%, black 26%, transparent 84%);
+  -webkit-mask-image: linear-gradient(180deg, black 0%, black 26%, transparent 84%);
+}
+
+.ambient-strip::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--ddlc-accent);
+  opacity: 0.34;
+  mask-image: var(--dither-dots);
+  mask-size: 10px 10px;
+  mask-repeat: repeat;
+  animation: drift-dots 24s steps(8, end) infinite alternate;
+}
+
+.ambient-strip::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--ddlc-accent-live);
+  opacity: 0.16;
+  mask-image: var(--dither-grain);
+  mask-size: 24px 24px;
+  mask-repeat: repeat;
+  animation: drift-grain 33s steps(6, end) infinite alternate;
+}
+
+/* The drift steps each mask by a few pixels in its own direction: the grain shifts, the page
+   does not, and eight steps over twenty-four seconds are eight repaints of one band */
+@keyframes drift-dots {
+  from { mask-position: 0 0; }
+  to { mask-position: 6px 2px; }
+}
+
+@keyframes drift-grain {
+  from { mask-position: 0 0; }
+  to { mask-position: -8px 3px; }
+}
+
+/* The page itself takes the finest grain of all, under every card: a band alone would read as a
+   banner, while the dither under the whole window is the ground the site is printed on */
+.layout::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: var(--ddlc-accent);
+  opacity: 0.07;
+  mask-image: var(--dither-dots);
+  mask-size: 6px 6px;
+  mask-repeat: repeat;
+  pointer-events: none;
+}
+
+.ambient-trail {
+  inset: 0;
+  z-index: 15;
+  width: 100%;
+  height: 100%;
+}
+
+/* ---------- a narrow window and the reader who asks for less motion ---------- */
+
+/* The fields give way on their own minmax, not with the rail: a form of two columns still
+   reads at this width while the tab column no longer does */
+@media (max-width: 48rem) {
+  h1 {
+    font-size: var(--step-big);
+  }
+
+  .formgrid,
+  .segmented {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .signal {
+    height: 5rem;
+  }
+
+  .modal {
+    width: 100%;
+  }
+
+  .job-actions {
+    margin-left: 0;
+  }
+
+  /* A narrow window gives the command the whole line: the copy button takes a row of its own at
+     the foot of the window, so a long command wraps in a readable column instead of a sliver */
+  .copy-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .copy-row button {
+    grid-row: 3;
+    grid-column: 1 / -1;
+    justify-self: end;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  * {
+  *,
+  *::before,
+  *::after {
     transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .badge,
+  .notice > strong,
+  .app-mark,
+  .nav button,
+  .nav button:nth-child(even),
+  .nav button[aria-current="page"] {
+    transform: none;
+  }
+
+  .record-panel::before {
+    transform: translateX(-50%);
   }
 }

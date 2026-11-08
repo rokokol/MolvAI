@@ -1,91 +1,48 @@
 // SPDX-License-Identifier: MIT
-// Phrase history: search, filters, copy, paste again and delete
+// Phrase history: search, filters, copy, paste again and delete.
+// The rows and filters live in HistoryProvider, so leaving the tab keeps them.
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect } from "react";
 
-import { api, asCommandError, copyToClipboard } from "../api";
+import { api, copyToClipboard } from "../api";
 import { formatLatency, formatTimestamp, formatWpm } from "../format";
+import { useHistoryState } from "../history/HistoryProvider";
 import { useI18n } from "../i18n";
-import type { ViewProps } from "../App";
-import type { Entry } from "../types";
 
-/** Midnight of the given date in ISO: the "from date" filter includes the whole day */
-function dayStart(value: string): string | null {
-  if (!value) {
-    return null;
-  }
-  const date = new Date(`${value}T00:00:00`);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
-function dayEnd(value: string): string | null {
-  if (!value) {
-    return null;
-  }
-  const date = new Date(`${value}T23:59:59.999`);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
-export default function History({ status, onError }: ViewProps) {
+export default function History() {
   const { t, lang } = useI18n();
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [apps, setApps] = useState<string[]>([]);
-  const [query, setQuery] = useState("");
-  const [app, setApp] = useState("");
-  const [since, setSince] = useState("");
-  const [until, setUntil] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [dataDir, setDataDir] = useState("");
+  const {
+    entries,
+    apps,
+    query,
+    setQuery,
+    app,
+    setApp,
+    since,
+    setSince,
+    until,
+    setUntil,
+    loading,
+    filtered,
+    dataDir,
+    copiedId,
+    setCopiedId,
+    reload,
+    reloadIfStale,
+    remove,
+    clearAll,
+  } = useHistoryState();
 
-  const filtered = query.trim() !== "" || app !== "" || since !== "" || until !== "";
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const list = await api.historyList({
-        query,
-        app,
-        since: dayStart(since),
-        until: dayEnd(until),
-      });
-      setEntries(list);
-      onError(null);
-    } catch (err) {
-      onError(asCommandError(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [query, app, since, until, onError]);
-
+  // A phrase recorded while another tab was open is worth fetching on return
   useEffect(() => {
-    void load();
-  }, [load]);
+    reloadIfStale();
+  }, [reloadIfStale]);
 
-  useEffect(() => {
-    api.historyApps().then(setApps).catch(() => setApps([]));
-    api.dataDirPath().then(setDataDir).catch(() => setDataDir(""));
-  }, []);
-
-  const remove = async (id: string) => {
-    try {
-      await api.historyDelete(id);
-      setEntries((prev) => prev.filter((entry) => entry.id !== id));
-    } catch (err) {
-      onError(asCommandError(err));
-    }
-  };
-
-  const clearAll = async () => {
+  const clearAllConfirmed = async () => {
     if (!window.confirm(t("history.confirmClear"))) {
       return;
     }
-    try {
-      await api.historyClear();
-      setEntries([]);
-    } catch (err) {
-      onError(asCommandError(err));
-    }
+    await clearAll();
   };
 
   return (
@@ -140,7 +97,7 @@ export default function History({ status, onError }: ViewProps) {
         <div className="row spread">
           <span className="small muted">{t("history.count", { count: entries.length })}</span>
           <div className="row">
-            <button type="button" onClick={() => void load()}>
+            <button type="button" onClick={reload}>
               {t("common.refresh")}
             </button>
             {dataDir && (
@@ -151,7 +108,7 @@ export default function History({ status, onError }: ViewProps) {
             <button
               type="button"
               className="danger"
-              onClick={() => void clearAll()}
+              onClick={() => void clearAllConfirmed()}
               disabled={entries.length === 0}
             >
               {t("common.clear")}
@@ -160,10 +117,10 @@ export default function History({ status, onError }: ViewProps) {
         </div>
       </section>
 
-      {loading ? (
+      {loading && entries.length === 0 ? (
         <p className="muted">{t("common.loading")}</p>
       ) : entries.length === 0 ? (
-        <p className="muted">{filtered ? t("history.emptyFiltered") : t("history.empty")}</p>
+        <p className="empty">{filtered ? t("history.emptyFiltered") : t("history.empty")}</p>
       ) : (
         <ul className="entry-list">
           {entries.map((entry) => {
@@ -181,6 +138,16 @@ export default function History({ status, onError }: ViewProps) {
                   <span>
                     {entry.words} {t("common.words")}
                   </span>
+                  {entry.source === "file" ? (
+                    <span className="badge">{t("history.files")}</span>
+                  ) : (
+                    entry.llm_used && (
+                      <span className="badge">
+                        LLM · {entry.llm_provider ?? "?"}
+                        {entry.llm_model ? ` / ${entry.llm_model}` : ""}
+                      </span>
+                    )
+                  )}
                 </div>
                 <p className={text ? "text" : "text muted"}>{text ?? t("history.noText")}</p>
                 <div className="row">
@@ -195,18 +162,6 @@ export default function History({ status, onError }: ViewProps) {
                     }}
                   >
                     {copiedId === entry.id ? t("common.copied") : t("common.copy")}
-                  </button>
-                  <button
-                    type="button"
-                    className="chip"
-                    disabled={!text || !status?.daemon_running}
-                    onClick={() => {
-                      if (text) {
-                        api.injectText(text).catch((err) => onError(asCommandError(err)));
-                      }
-                    }}
-                  >
-                    {t("history.pasteAgain")}
                   </button>
                   <button
                     type="button"

@@ -2,7 +2,9 @@
 //! `molva daemon` — the background process that holds the microphone, the model and the socket
 
 use std::path::{Path, PathBuf};
+use std::process::{Child, Stdio};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context};
 use molva_core::app::daemon::{Daemon, DaemonParts};
@@ -22,12 +24,15 @@ use molva_core::domain::notify::Notifier;
 use molva_core::domain::stt::SttEngine;
 use molva_core::infra::audio::CpalSource;
 use molva_core::infra::inject::ChainInjector;
-use molva_core::infra::ipc::{self, RequestHandler, Server};
+use molva_core::infra::ipc::{self, Client, RequestHandler, Server};
 use molva_core::infra::llm::openai_compat::OpenAiCompatClient;
 use molva_core::infra::notify::{LogNotifier, SystemNotifier};
 use molva_core::infra::platform;
 use molva_core::infra::sound;
+use molva_core::ipc::protocol::Command;
 use uuid::Uuid;
+
+use crate::cmd::CmdError;
 
 /// The socket path: the flag wins over the environment variable, and the variable wins over
 /// the default
@@ -59,7 +64,8 @@ pub(crate) fn build_stt(config: &Config) -> anyhow::Result<Box<dyn SttEngine>> {
 /// The progress goes to stderr as a bar, like in `molva models pull`; with the setting off
 /// the build fails with a clear error that names the download command
 fn ensure_model_present(config: &Config) -> anyhow::Result<()> {
-    if config.stt.engine.trim() != "whisper-cpp" || !config.stt.auto_pull {
+    let engine = config.stt.engine.trim();
+    if !config.stt.auto_pull || engine == engine::FAKE_ENGINE || engine == "remote-openai" {
         return Ok(());
     }
     let name = config.stt.model.trim();
@@ -110,7 +116,11 @@ fn build_journal(config: &Config) -> anyhow::Result<Box<dyn Journal>> {
 
 /// The post-processing model, if it is enabled; the key is taken from the environment by the
 /// name from the settings
-fn build_llm(config: &Config) -> Option<Arc<dyn LlmClient>> {
+///
+/// This is the transport, not the schedule: the pipeline wraps the client in a
+/// `LlmExecutor`, which keeps a local model to one request at a time and lets a cloud provider
+/// answer several beside each other
+pub(crate) fn build_llm(config: &Config) -> Option<Arc<dyn LlmClient>> {
     if !config.llm.enabled || !config.privacy.send_to_llm {
         return None;
     }
@@ -152,11 +162,11 @@ fn build_dictionary(config: &Config, config_path: &Path) -> Dictionary {
 pub(crate) fn single_instance_guard(
     socket: &Path,
     ping: impl Fn(&Path) -> Option<u32>,
-) -> Result<(), crate::cmd::CmdError> {
+) -> Result<(), CmdError> {
     let Some(pid) = ping(socket) else {
         return Ok(());
     };
-    Err(crate::cmd::CmdError::already_running(format!(
+    Err(CmdError::already_running(format!(
         "the daemon is already running (pid {pid}), socket {}",
         socket.display()
     )))
@@ -165,6 +175,111 @@ pub(crate) fn single_instance_guard(
 pub(crate) struct Options {
     pub socket: PathBuf,
     pub foreground: bool,
+}
+
+/// How long a client waits for a daemon that it started itself
+///
+/// Starting includes loading the weights, and on a clean machine the download of them: a minute
+/// is a normal start and twenty are a slow link, so the bound is generous and still finite. The
+/// MCP server answers `initialize` long before this: the wait only delays the first transcription
+const READY_TIMEOUT: Duration = Duration::from_secs(1800);
+
+/// How often the client knocks on the socket while the daemon starts
+const READY_STEP: Duration = Duration::from_millis(100);
+
+/// Connect to the daemon, and start it when it does not answer on this socket
+///
+/// A tool that needs the model does not load its own: the model belongs to the daemon, which
+/// already holds it for dictation, the GUI and the other clients. So the client asks first, and
+/// starts a daemon only when there is none: a second copy would load a second model and fight for
+/// the microphone. The start uses the current executable, because `molva` need not be on `PATH` —
+/// the MCP client started this binary by its own path. The daemon is left running: it is shared,
+/// and a client that exits must not take the microphone and the model away from the others
+pub(crate) fn ensure_running(config_path: &Path, socket: &Path) -> Result<Client, CmdError> {
+    if let Some(client) = connect_if_running(socket) {
+        return Ok(client);
+    }
+    let exe = std::env::current_exe()
+        .map_err(|err| CmdError::no_daemon(format!("cannot find the molva executable: {err}")))?;
+    let start = || spawn_daemon(&exe, config_path, socket).map(Some);
+    wait_for_daemon(socket, READY_TIMEOUT, &start)
+}
+
+/// A client of a daemon that answers; `None` when nobody listens or nobody replies
+fn connect_if_running(socket: &Path) -> Option<Client> {
+    let mut client = Client::connect(socket).ok()?;
+    client.call_ok(Command::Ping).ok()?;
+    Some(client)
+}
+
+/// Start the daemon once and wait until it answers
+///
+/// `start` returns `None` when the test starts nothing itself and waits for a socket that another
+/// thread binds
+fn wait_for_daemon(
+    socket: &Path,
+    ready: Duration,
+    start: &dyn Fn() -> Result<Option<Child>, CmdError>,
+) -> Result<Client, CmdError> {
+    if let Some(client) = connect_if_running(socket) {
+        return Ok(client);
+    }
+    let mut child = start()?;
+    let deadline = Instant::now() + ready;
+    loop {
+        if let Some(client) = connect_if_running(socket) {
+            return Ok(client);
+        }
+        if let Some(process) = child.as_mut() {
+            if let Ok(Some(status)) = process.try_wait() {
+                if status.code() != Some(i32::from(crate::exit::ALREADY_RUNNING)) {
+                    return Err(CmdError::no_daemon(format!(
+                        "the daemon exited during startup ({status}); run `molva daemon --foreground` to see why"
+                    )));
+                }
+                // Another client won the race: its daemon is starting, and this one waits for
+                // that socket rather than starting a third copy
+                child = None;
+            }
+        }
+        if Instant::now() >= deadline {
+            return Err(CmdError::no_daemon(format!(
+                "the daemon did not answer on {} within {} s",
+                socket.display(),
+                ready.as_secs()
+            )));
+        }
+        std::thread::sleep(READY_STEP.min(deadline.saturating_duration_since(Instant::now())));
+    }
+}
+
+/// Start `molva daemon` with the settings and the socket of the caller
+///
+/// The child gets no stdin and no stdout: the stdout of an MCP server carries the protocol, and a
+/// greeting of the daemon would break it. Its own process group keeps it alive when the client's
+/// group is killed
+fn spawn_daemon(exe: &Path, config_path: &Path, socket: &Path) -> Result<Child, CmdError> {
+    let mut command = std::process::Command::new(exe);
+    command
+        .arg("--config")
+        .arg(config_path)
+        .arg("--socket")
+        .arg(socket)
+        .arg("daemon")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::inherit());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt as _;
+        command.process_group(0);
+    }
+    command.spawn().map_err(|err| {
+        CmdError::no_daemon(format!(
+            "cannot start the daemon ({}): {err}",
+            exe.display()
+        ))
+    })
 }
 
 pub(crate) fn run(config_path: &Path, options: &Options) -> anyhow::Result<()> {
@@ -231,6 +346,8 @@ pub(crate) fn run(config_path: &Path, options: &Options) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cmd::CmdError;
+    use molva_core::ipc::protocol::{Event, IpcError};
 
     #[test]
     fn an_explicit_socket_flag_wins_over_everything() {
@@ -337,5 +454,113 @@ mod tests {
         let config = Config::default();
         let dictionary = build_dictionary(&config, &config_path);
         assert_eq!(dictionary.apply("привет").1, 0);
+    }
+
+    /// A daemon that answers a ping and nothing else
+    struct PingHandler;
+
+    impl RequestHandler for PingHandler {
+        fn handle(&self, cmd: Command) -> Result<serde_json::Value, IpcError> {
+            match cmd {
+                Command::Ping => Ok(serde_json::json!({ "pid": 4242 })),
+                _ => Ok(serde_json::Value::Null),
+            }
+        }
+        fn subscribe(&self, _levels: bool) -> Option<std::sync::mpsc::Receiver<Event>> {
+            None
+        }
+    }
+
+    /// A daemon that answers on a socket in a temporary directory, and the way to stop it
+    fn fake_daemon(directory: &Path) -> (PathBuf, ipc::Stopper) {
+        let path = directory.join("molva.sock");
+        let server = Server::bind(&path).unwrap();
+        let stopper = server.stopper();
+        let handler: Arc<dyn RequestHandler> = Arc::new(PingHandler);
+        std::thread::spawn(move || {
+            let _ = server.serve(&handler);
+        });
+        for _ in 0..100 {
+            if Client::connect(&path).is_ok() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        (path, stopper)
+    }
+
+    #[test]
+    fn a_live_daemon_is_reused_and_nothing_is_started() {
+        let directory = tempfile::tempdir().unwrap();
+        let (socket, stopper) = fake_daemon(directory.path());
+        let started = std::cell::Cell::new(false);
+        let mut client = wait_for_daemon(&socket, Duration::from_millis(200), &|| {
+            started.set(true);
+            Err(CmdError::no_daemon("must not be called"))
+        })
+        .expect("the live daemon must be used");
+        assert!(!started.get(), "a second daemon was started");
+        assert!(client.call_ok(Command::Ping).is_ok());
+        stopper.stop();
+    }
+
+    #[test]
+    fn a_missing_daemon_is_started_once_and_waited_for() {
+        let directory = tempfile::tempdir().unwrap();
+        let socket = directory.path().join("molva.sock");
+        assert!(
+            connect_if_running(&socket).is_none(),
+            "the socket must be empty"
+        );
+        let starts = std::cell::Cell::new(0);
+        // The daemon appears while the client waits, as a real start does after the model loads
+        let starting = socket.clone();
+        let mut client = wait_for_daemon(&socket, Duration::from_secs(5), &|| {
+            starts.set(starts.get() + 1);
+            let directory = starting.parent().unwrap().to_path_buf();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(150));
+                let host = directory.join("molva.sock");
+                let server = Server::bind(&host).unwrap();
+                let handler: Arc<dyn RequestHandler> = Arc::new(PingHandler);
+                let _ = server.serve(&handler);
+            });
+            Ok(None)
+        })
+        .expect("the wait must end with a client");
+        assert_eq!(starts.get(), 1, "the daemon was started more than once");
+        assert!(client.call_ok(Command::Ping).is_ok());
+    }
+
+    #[test]
+    fn a_daemon_that_never_answers_gives_a_clear_error() {
+        let directory = tempfile::tempdir().unwrap();
+        let socket = directory.path().join("molva.sock");
+        let err = wait_for_daemon(&socket, Duration::from_millis(300), &|| Ok(None)).unwrap_err();
+        assert_eq!(err.code, CmdError::NO_DAEMON);
+        assert!(err.message.contains("molva.sock"), "{}", err.message);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_daemon_that_dies_during_startup_says_so_at_once() {
+        let directory = tempfile::tempdir().unwrap();
+        let socket = directory.path().join("molva.sock");
+        let err = wait_for_daemon(&socket, Duration::from_secs(30), &|| {
+            std::process::Command::new("sh")
+                .arg("-c")
+                .arg("exit 1")
+                .spawn()
+                .map(Some)
+                .map_err(|err| CmdError::no_daemon(err.to_string()))
+        })
+        .unwrap_err();
+        assert_eq!(err.code, CmdError::NO_DAEMON);
+        assert!(
+            err.message.contains("exited during startup"),
+            "{}",
+            err.message
+        );
+        assert!(err.message.contains("foreground"), "{}", err.message);
     }
 }

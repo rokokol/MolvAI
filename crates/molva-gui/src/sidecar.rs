@@ -1,17 +1,30 @@
 // SPDX-License-Identifier: MIT
-//! Start of the daemon and transcription of files through the `molva` CLI
+//! Start of the daemon: the one process that holds the microphone and the recognizer
 //!
-//! The GUI stops only the daemon that it started itself: a foreign process survives Quit
+//! The GUI stops only the daemon that it started itself: a foreign process survives Quit. File
+//! transcription does not run here: it goes to the daemon over IPC, like dictation and like the
+//! MCP server, so one recognizer serves every client ([`crate::commands::transcribe_file`]).
 
 use std::collections::VecDeque;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command as OsCommand, Stdio};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use thiserror::Error;
 
 use crate::lock;
+
+/// Exit code of `molva daemon` when another copy already holds the socket
+///
+/// The CLI prints the exit code table in `molva --help`; `7` is "the daemon is already
+/// running". A client that started a second copy gets this code, and the daemon that won the
+/// race is the one to wait for
+pub const DAEMON_ALREADY_RUNNING: i32 = 7;
+
+/// How often a wait for the daemon knocks on the socket
+pub const READY_STEP: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Error)]
 pub enum SidecarError {
@@ -23,12 +36,12 @@ pub enum SidecarError {
         #[source]
         source: std::io::Error,
     },
-    #[error("`molva transcribe` exited with code {code}: {stderr}")]
-    Failed { code: i32, stderr: String },
-    #[error("transcription cancelled")]
-    Cancelled,
-    #[error("`molva transcribe` returned output that is not JSON: {0}")]
-    BadOutput(String),
+    /// The daemon exited before it answered: the reason comes from its last stderr line
+    #[error("the daemon exited before it answered: {reason}")]
+    Startup { reason: String },
+    /// The socket did not answer in time: the weights may still be downloading
+    #[error("the daemon did not answer within {secs} s")]
+    NotReady { secs: u64 },
 }
 
 /// Where to look for `molva`: next to the GUI, then in the build target directory, then in PATH
@@ -54,6 +67,21 @@ pub struct DaemonFailure {
     pub code: Option<i32>,
     /// Last stderr line: `molva` prints the fatal error last
     pub last_line: String,
+}
+
+impl DaemonFailure {
+    /// The failure in words, for a window that has to name the reason
+    pub fn reason(&self) -> String {
+        let code = self.code.map_or_else(
+            || "killed by a signal".to_string(),
+            |code| format!("exit code {code}"),
+        );
+        if self.last_line.is_empty() {
+            code
+        } else {
+            format!("{code}: {}", self.last_line)
+        }
+    }
 }
 
 /// Remove the ANSI color codes that tracing also writes to the pipe
@@ -89,14 +117,23 @@ pub struct Daemon {
 }
 
 impl Daemon {
-    /// Start `molva daemon`. A second call while the process lives does nothing
-    pub fn start(&mut self) -> Result<(), SidecarError> {
+    /// Start `molva --config <path> --socket <path> daemon`
+    ///
+    /// The settings and the socket are named explicitly: the daemon must read the same file and
+    /// listen on the same socket as the window that starts it, whatever the environment holds.
+    /// A second call while the process lives does nothing
+    pub fn start(&mut self, config_path: &Path, socket: &Path) -> Result<(), SidecarError> {
         if self.is_alive() {
             return Ok(());
         }
         let program = locate()?;
         let mut command = OsCommand::new(&program);
-        command.arg("daemon");
+        command
+            .arg("--config")
+            .arg(config_path)
+            .arg("--socket")
+            .arg(socket)
+            .arg("daemon");
         self.spawn(command, &program.display().to_string())
     }
 
@@ -142,18 +179,23 @@ impl Daemon {
         if status.success() {
             return None;
         }
+        Some(DaemonFailure {
+            code: status.code(),
+            last_line: self.wait_for_last_line(),
+        })
+    }
+
+    /// The last line of stderr, waiting a moment for the reader thread
+    fn wait_for_last_line(&self) -> String {
         let mut last_line = None;
         for _ in 0..20 {
             last_line = lock(&self.stderr_tail).back().cloned();
             if last_line.is_some() {
                 break;
             }
-            std::thread::sleep(std::time::Duration::from_millis(10));
+            std::thread::sleep(Duration::from_millis(10));
         }
-        Some(DaemonFailure {
-            code: status.code(),
-            last_line: last_line.unwrap_or_default(),
-        })
+        last_line.unwrap_or_default()
     }
 
     /// Whether the process that this handle started is alive
@@ -165,8 +207,16 @@ impl Daemon {
     }
 
     /// Whether the daemon belongs to this handle: only its own Quit may stop it
-    pub fn is_ours(&self) -> bool {
-        self.child.is_some()
+    ///
+    /// A child that lost the start race exits with the "already running" code, and the daemon
+    /// on the socket belongs to another client: this handle owns nothing then
+    pub fn is_ours(&mut self) -> bool {
+        self.is_alive()
+    }
+
+    /// The process that this handle started, if it is still there
+    pub fn pid(&self) -> Option<u32> {
+        self.child.as_ref().map(Child::id)
     }
 
     /// Wait for the exit after `Command::Shutdown`, otherwise kill
@@ -180,115 +230,37 @@ impl Daemon {
     }
 }
 
-/// File transcription progress, as it goes to the frontend
-pub type ProgressSink = Arc<dyn Fn(&str) + Send + Sync>;
-
-/// Running file transcriptions: the key is the job identifier from the frontend
-#[derive(Debug, Default)]
-pub struct Transcriptions {
-    running: Mutex<Vec<(String, Child)>>,
-}
-
-impl Transcriptions {
-    /// Cancel a transcription by identifier. `false` means the job no longer exists
-    pub fn cancel(&self, id: &str) -> bool {
-        let mut running = lock(&self.running);
-        if let Some(pos) = running.iter().position(|(key, _)| key == id) {
-            let (_, mut child) = running.remove(pos);
-            let _ = child.kill();
-            let _ = child.wait();
-            return true;
-        }
-        false
-    }
-
-    fn forget(&self, id: &str) {
-        let mut running = lock(&self.running);
-        running.retain(|(key, _)| key != id);
-    }
-}
-
-/// Transcribe an audio file through `molva transcribe <path> --json`
+/// Wait until the daemon answers `ping`, or report why it will not
 ///
-/// Progress goes to `progress` line by line from stderr, and the result is the parsed JSON
-/// from stdout. Track E implements the command; until then the call reports plainly that the
-/// subcommand does not exist
-pub fn transcribe(
-    registry: &Transcriptions,
-    id: &str,
-    path: &Path,
-    progress: ProgressSink,
-) -> Result<Vec<molva_core::app::file_result::FileResult>, SidecarError> {
-    let program = locate()?;
-    let mut child = OsCommand::new(&program)
-        .arg("transcribe")
-        .arg(path)
-        .arg("--json")
-        .arg("--timecodes")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|source| SidecarError::Spawn {
-            program: program.display().to_string(),
-            source,
-        })?;
-
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
-    {
-        let mut running = lock(&registry.running);
-        running.push((id.to_string(), child));
-    }
-
-    // A separate thread reads stderr: otherwise a full pipe buffer stops the process
-    let stderr_thread = stderr.map(|stderr| {
-        std::thread::spawn(move || {
-            let mut collected = String::new();
-            for line in BufReader::new(stderr).lines().map_while(Result::ok) {
-                progress(&line);
-                collected.push_str(&line);
-                collected.push('\n');
-            }
-            collected
-        })
-    });
-
-    let mut output = String::new();
-    if let Some(stdout) = stdout {
-        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-            output.push_str(&line);
-            output.push('\n');
+/// The daemon loads the recognizer before it opens the socket, and on a clean machine it also
+/// downloads the weights: a start is a minute on a fast link and much longer on a slow one, so
+/// the bound is generous and the message names the likely reason. A child that ended with the
+/// "already running" code did not fail: another client won the race, and this wait is for its
+/// daemon
+pub fn wait_ready(
+    ready: Duration,
+    ping: &dyn Fn() -> bool,
+    failure: &mut dyn FnMut() -> Option<DaemonFailure>,
+) -> Result<(), SidecarError> {
+    let deadline = Instant::now() + ready;
+    loop {
+        if ping() {
+            return Ok(());
         }
-    }
-    let logged = stderr_thread
-        .and_then(|handle| handle.join().ok())
-        .unwrap_or_default();
-
-    let status = {
-        let mut running = lock(&registry.running);
-        match running.iter().position(|(key, _)| key == id) {
-            // Someone took the job out of the registry, so it was cancelled
-            None => return Err(SidecarError::Cancelled),
-            Some(pos) => {
-                let (_, mut child) = running.remove(pos);
-                drop(running);
-                child.wait().map_err(|source| SidecarError::Spawn {
-                    program: program.display().to_string(),
-                    source,
-                })?
+        if let Some(failure) = failure() {
+            if failure.code != Some(DAEMON_ALREADY_RUNNING) {
+                return Err(SidecarError::Startup {
+                    reason: failure.reason(),
+                });
             }
         }
-    };
-    registry.forget(id);
-
-    if !status.success() {
-        return Err(SidecarError::Failed {
-            code: status.code().unwrap_or(-1),
-            stderr: logged.trim().to_string(),
-        });
+        if Instant::now() >= deadline {
+            return Err(SidecarError::NotReady {
+                secs: ready.as_secs(),
+            });
+        }
+        std::thread::sleep(READY_STEP);
     }
-    serde_json::from_str(output.trim()).map_err(|e| SidecarError::BadOutput(e.to_string()))
 }
 
 #[cfg(test)]
@@ -339,7 +311,7 @@ mod tests {
             if !daemon.is_alive() {
                 return;
             }
-            std::thread::sleep(std::time::Duration::from_millis(10));
+            std::thread::sleep(Duration::from_millis(10));
         }
         panic!("the script did not finish");
     }
@@ -358,6 +330,12 @@ mod tests {
             exit.last_line,
             "error: network unreachable (https://huggingface.co)"
         );
+        assert!(exit.reason().contains("exit code 5"), "{}", exit.reason());
+        assert!(
+            exit.reason().contains("network unreachable"),
+            "{}",
+            exit.reason()
+        );
     }
 
     #[cfg(unix)]
@@ -372,9 +350,76 @@ mod tests {
         assert!(clean.failure().is_none());
     }
 
+    #[cfg(unix)]
     #[test]
-    fn cancelling_an_unknown_task_reports_that_there_was_none() {
-        let registry = Transcriptions::default();
-        assert!(!registry.cancel("no such job"));
+    fn a_child_that_already_exited_is_not_owned_any_more() {
+        // A second copy that lost the start race leaves this handle with a dead process: the
+        // daemon on the socket belongs to the other client, and Quit must not shut it down
+        let mut daemon = daemon_from_script("exit 7");
+        wait_for_exit(&mut daemon);
+        assert!(
+            !daemon.is_ours(),
+            "a dead child still claimed the daemon on the socket"
+        );
+    }
+
+    #[test]
+    fn a_daemon_that_answers_is_not_waited_for() {
+        let started = Instant::now();
+        wait_ready(Duration::from_secs(5), &|| true, &mut || None).unwrap();
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
+
+    #[test]
+    fn a_daemon_that_never_answers_names_the_bound() {
+        let err = wait_ready(Duration::from_millis(150), &|| false, &mut || None).unwrap_err();
+        match err {
+            SidecarError::NotReady { secs } => assert_eq!(secs, 0),
+            other => panic!("expected a timeout, got {other:?}"),
+        }
+        assert!(err.to_string().contains("did not answer"), "{err}");
+    }
+
+    #[test]
+    fn a_daemon_that_died_at_once_reports_its_reason_instead_of_waiting() {
+        let mut calls = 0;
+        let err = wait_ready(Duration::from_secs(30), &|| false, &mut || {
+            calls += 1;
+            Some(DaemonFailure {
+                code: Some(5),
+                last_line: "error: network unreachable".into(),
+            })
+        })
+        .unwrap_err();
+        assert_eq!(calls, 1, "the failure must be seen at the first check");
+        assert!(err.to_string().contains("network unreachable"), "{err}");
+    }
+
+    #[test]
+    fn a_second_copy_that_lost_the_race_keeps_the_wait_alive() {
+        // The child ended with "already running": another client started the daemon, and this
+        // wait is for that one, not a failure
+        let checks = std::sync::atomic::AtomicUsize::new(0);
+        let failures = std::sync::atomic::AtomicUsize::new(0);
+        let outcome = wait_ready(
+            Duration::from_secs(5),
+            &|| {
+                // The other daemon opens the socket on the third knock
+                checks.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1 >= 3
+            },
+            &mut || {
+                failures.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Some(DaemonFailure {
+                    code: Some(DAEMON_ALREADY_RUNNING),
+                    last_line: "the daemon is already running (pid 42)".into(),
+                })
+            },
+        );
+        outcome.unwrap();
+        assert!(checks.load(std::sync::atomic::Ordering::SeqCst) >= 3);
+        assert!(
+            failures.load(std::sync::atomic::Ordering::SeqCst) >= 1,
+            "the loss of the race was never seen"
+        );
     }
 }

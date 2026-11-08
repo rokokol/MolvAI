@@ -1,171 +1,189 @@
 <!DOCTYPE html>
-<html lang="en" class="no-js">
+<html lang="en" class="no-js" data-ddlc-heading="plain">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Models and GigaAM — MolvAI documentation</title>
-<meta name="description" content="How MolvAI selects a recognition model: the GigaAM-v3 default, the auto engine, checksum-verified downloads, mirrors, custom weights and the licenses">
+<title data-ru="Модели и GigaAM — документация MolvAI">Models and GigaAM — MolvAI documentation</title>
+<meta name="description" content="How MolvAI selects a recognition model: the GigaAM-v3 default, the auto engine, checksum-verified downloads, mirrors, custom weights and the licenses" data-ru-content="Как MolvAI выбирает модель распознавания: GigaAM-v3 по умолчанию, движок auto, загрузки со сверкой суммы, зеркала, свои веса и лицензии">
 <meta name="color-scheme" content="dark light">
-<meta name="theme-color" content="#0a0c12">
-<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#222222" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="../assets/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/vendor/ddlc/ddlc-tokens.css">
+<link rel="stylesheet" href="../assets/vendor/ddlc/ddlc-ui.css">
+<link rel="stylesheet" href="../assets/vendor/ddlc/ddlc-report.css">
 <link rel="stylesheet" href="../assets/site.css">
-<script src="../assets/site.js" defer></script>
+<script>
+  (function () {
+    try {
+      var q = new URLSearchParams(location.search)
+      var pinned = q.get("theme")
+      var theme = pinned === "light" || pinned === "dark" ? pinned : localStorage.getItem("molvai-theme")
+      if (pinned === "light" || pinned === "dark") localStorage.setItem("molvai-theme", pinned)
+      if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme
+      var lang = q.get("lang")
+      var stored = localStorage.getItem("molvai-lang")
+      if (lang === "ru" || (lang !== "en" && stored === "ru")) document.documentElement.lang = "ru"
+    } catch (e) {}
+  })()
+</script>
+<script type="module" src="../assets/kit.js"></script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
-
-<header class="site-header">
-  <div class="wrap header-inner">
-    <a class="brand" href="../index.html" aria-label="MolvAI home">
-      <img src="../assets/logo.svg" alt="" width="26" height="26">
-      <span>Molv<span class="brand-ai">AI</span></span>
+<canvas class="cloud" id="cloud" aria-hidden="true"></canvas>
+<a class="skip" href="#main" data-ru="К содержанию">Skip to content</a>
+<header class="site-bar">
+  <div class="bar wrap bar-row">
+    <a class="brand" href="../index.html" aria-label="MolvAI home" data-ru-aria-label="MolvAI — главная">
+      <img src="../assets/logo.svg" alt="" width="22" height="22">
+      <span>MolvAI</span>
     </a>
-    <nav class="site-nav" id="site-nav" aria-label="Main">
-      <a href="../index.html">Home</a>
-      <a href="../features.html">Features</a>
-      <a href="../models.html">Models</a>
-      <a href="../cli.html">CLI</a>
-      <a href="./index.html" aria-current="page">Docs</a>
-      <a href="../faq.html">FAQ</a>
-      <a href="./status.html">Status</a>
-      <a class="nav-github" href="https://github.com/rokokol/MolvAI"><img src="../assets/icon-github.svg" alt="" width="15" height="15">GitHub</a>
+    <p class="tagline" data-ru="Голосовой ввод во все приложения">System-wide voice input, on your machine</p>
+    <nav class="tabs" aria-label="Main" data-ru-aria-label="Основное">
+      <a href="../index.html" data-ru="Главная">Home</a>
+      <a href="../features.html" data-ru="Возможности">Features</a>
+      <a href="../models.html" data-ru="Модели">Models</a>
+      <a href="../cli.html" data-ru="CLI">CLI</a>
+      <a href="../docs/index.html" aria-current="page" data-ru="Документация">Docs</a>
+      <a href="../faq.html" data-ru="FAQ">FAQ</a>
+      <a href="../docs/status.html" data-ru="Статус">Status</a>
     </nav>
-    <div class="header-tools">
-      <button class="icon-btn theme-toggle" type="button" data-theme-toggle aria-label="Switch between dark and light theme">
-        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8">
-          <circle cx="12" cy="12" r="8"></circle>
-          <path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"></path>
-        </svg>
+    <div class="bar-end">
+      <div class="segmented lang-switch" role="group" aria-label="Language" data-ru-aria-label="Язык">
+        <button type="button" data-lang-set="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang-set="ru" aria-pressed="false">RU</button>
+      </div>
+      <button class="icon-button" id="theme" type="button" aria-label="Theme: system" data-ru-aria-label="Тема">
+        <svg class="pixel" viewBox="0 0 8 8" aria-hidden="true"><path id="theme-icon"/></svg>
       </button>
-      <button class="icon-btn menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="site-nav">
-        <span class="menu-bars" aria-hidden="true"></span>
-        <span class="visually-hidden">Menu</span>
-      </button>
+      <a class="icon-button" href="https://github.com/rokokol/MolvAI" aria-label="MolvAI on GitHub" data-ru-aria-label="MolvAI на GitHub">
+        <img src="../assets/icon-github.svg" alt="" width="16" height="16">
+      </a>
     </div>
   </div>
 </header>
-
 <main id="main" class="wrap doc-layout">
-  <aside class="doc-nav" aria-label="Documentation">
-    <p class="doc-nav-title">Documentation</p>
+  <aside class="doc-nav" aria-label="Documentation" data-ru-aria-label="Документация">
+    <p class="doc-nav-title" data-ru="Документация">Documentation</p>
     <ul>
-      <li><a href="./index.html">Overview</a></li>
-      <li><a href="./install.html">Install and first run</a></li>
-      <li><a href="./models.html" aria-current="page">Models and GigaAM</a></li>
-      <li><a href="./hotkeys.html">Hotkeys and compositors</a></li>
-      <li><a href="./settings.html">Settings and Nix mode</a></li>
-      <li><a href="./cli.html">CLI guide</a></li>
-      <li><a href="./privacy.html">Privacy and journal</a></li>
-      <li><a href="./troubleshooting.html">Troubleshooting</a></li>
-      <li><a href="./status.html">Status and roadmap</a></li>
+      <li><a href="./index.html" data-ru="Обзор">Overview</a></li>
+      <li><a href="./install.html" data-ru="Установка и первый запуск">Install and first run</a></li>
+      <li><a href="./models.html" aria-current="page" data-ru="Модели и GigaAM">Models and GigaAM</a></li>
+      <li><a href="./hotkeys.html" data-ru="Клавиши и композиторы">Hotkeys and compositors</a></li>
+      <li><a href="./settings.html" data-ru="Настройки и режим Nix">Settings and Nix mode</a></li>
+      <li><a href="./cli.html" data-ru="Руководство по CLI">CLI guide</a></li>
+      <li><a href="./privacy.html" data-ru="Приватность и журнал">Privacy and journal</a></li>
+      <li><a href="./troubleshooting.html" data-ru="Если что-то не работает">Troubleshooting</a></li>
+      <li><a href="./status.html" data-ru="Статус и планы">Status and roadmap</a></li>
     </ul>
-    <p class="doc-nav-title">Elsewhere</p>
+    <p class="doc-nav-title" data-ru="Ещё">Elsewhere</p>
     <ul>
-      <li><a href="../cli.html">CLI reference</a></li>
-      <li><a href="../models.html">Model catalog</a></li>
-      <li><a href="../index.html">Home</a></li>
+      <li><a href="../cli.html" data-ru="Справочник CLI">CLI reference</a></li>
+      <li><a href="../models.html" data-ru="Каталог моделей">Model catalog</a></li>
+      <li><a href="../index.html" data-ru="Главная">Home</a></li>
     </ul>
   </aside>
-
   <article class="doc-body prose">
-    <h1>Models and GigaAM</h1>
-    <p class="canonical">Canonical source: <a href="https://github.com/rokokol/MolvAI/blob/main/models.toml">models.toml</a> and <a href="https://github.com/rokokol/MolvAI/blob/main/docs/model-licenses.md">docs/model-licenses.md</a></p>
+<h1 data-ru="Модели и GigaAM">Models and GigaAM</h1>
+<p class="canonical" data-ru="Канонический источник: &lt;a href=&quot;https://github.com/rokokol/MolvAI/blob/main/models.toml&quot;&gt;models.toml&lt;/a&gt; и &lt;a href=&quot;https://github.com/rokokol/MolvAI/blob/main/docs/model-licenses.md&quot;&gt;docs/model-licenses.md&lt;/a&gt;">Canonical source: <a href="https://github.com/rokokol/MolvAI/blob/main/models.toml">models.toml</a></p>
 
-    <h2>What a model is here</h2>
-    <p>One weights file and one entry in <code>models.toml</code>. The entry carries the name, the file name, the download address, the size, the SHA-256 and the engine that can load the file. The CLI, the GUI and the Nix module read that one list, so a name means the same thing everywhere</p>
+<h2 data-ru="Что здесь называется моделью">What a model is here</h2>
+<p data-ru="Один файл весов и одна запись в &lt;code&gt;models.toml&lt;/code&gt;. Запись несёт имя, имя файла, адрес загрузки, размер, SHA-256 и движок, который умеет загрузить файл. CLI, интерфейс и модуль Nix читают один и тот же список, поэтому имя значит одно и то же везде">One weights file and one entry in <code>models.toml</code>. The entry carries the name, the file name, the download address, the size, the SHA-256 and the engine that can load the file. The CLI, the GUI and the Nix module read that one list, so a name means the same thing everywhere</p>
 
-    <h2>The default</h2>
-    <p>The default is <code>gigaam-v3-e2e-rnnt-q4_k_m</code>: GigaAM-v3 end-to-end RNNT from Sber, at Q4_K_M quantization, 175 MiB, Russian. The default engine is <code>auto</code></p>
-    <div class="table-wrap">
-      <table>
-        <caption>The default, as the catalog declares it</caption>
-        <thead><tr><th scope="col">Field</th><th scope="col">Value</th></tr></thead>
-        <tbody>
-          <tr><th scope="row">Name</th><td><code>gigaam-v3-e2e-rnnt-q4_k_m</code></td></tr>
-          <tr><th scope="row">File</th><td><code>gigaam-v3-e2e-rnnt-Q4_K_M.gguf</code></td></tr>
-          <tr><th scope="row">Engine</th><td><code>transcribe-cpp</code></td></tr>
-          <tr><th scope="row">Quantization</th><td>Q4_K_M</td></tr>
-          <tr><th scope="row">Language</th><td><code>ru</code></td></tr>
-          <tr><th scope="row">Size</th><td>183,948,704 bytes, 175 MiB</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p>The full catalog, with sizes and quantization for every file, is on the <a href="../models.html">model catalog page</a></p>
+<h2 data-ru="Модель по умолчанию">The default</h2>
+<p data-ru="По умолчанию — &lt;code&gt;gigaam-v3-e2e-rnnt-q4_k_m&lt;/code&gt;: GigaAM-v3 end-to-end RNNT от Сбера, квантование Q4_K_M, 175 МиБ, русский. Движок по умолчанию — &lt;code&gt;auto&lt;/code&gt;">The default is <code>gigaam-v3-e2e-rnnt-q4_k_m</code>: GigaAM-v3 end-to-end RNNT from Sber, at Q4_K_M quantization, 175 MiB, Russian. The default engine is <code>auto</code></p>
+<div class="table-wrap">
+  <table>
+    <caption data-ru="Модель по умолчанию, как её объявляет каталог">The default, as the catalog declares it</caption>
+    <thead><tr><th scope="col" data-ru="Поле">Field</th><th scope="col" data-ru="Значение">Value</th></tr></thead>
+    <tbody>
+            <tr><th scope="row" data-ru="Имя">Name</th><td data-ru="&lt;code&gt;gigaam-v3-e2e-rnnt-q4_k_m&lt;/code&gt;"><code>gigaam-v3-e2e-rnnt-q4_k_m</code></td></tr>
+            <tr><th scope="row" data-ru="Файл">File</th><td data-ru="&lt;code&gt;gigaam-v3-e2e-rnnt-Q4_K_M.gguf&lt;/code&gt;"><code>gigaam-v3-e2e-rnnt-Q4_K_M.gguf</code></td></tr>
+            <tr><th scope="row" data-ru="Движок">Engine</th><td data-ru="&lt;code&gt;transcribe-cpp&lt;/code&gt;"><code>transcribe-cpp</code></td></tr>
+            <tr><th scope="row" data-ru="Квантование">Quantization</th><td data-ru="Q4_K_M">Q4_K_M</td></tr>
+            <tr><th scope="row" data-ru="Язык">Language</th><td data-ru="&lt;code&gt;ru&lt;/code&gt;"><code>ru</code></td></tr>
+            <tr><th scope="row" data-ru="Размер">Size</th><td data-ru="183 948 704 байта, 175 МиБ">183,948,704 bytes, 175 MiB</td></tr>
+    </tbody>
+  </table>
+</div>
+<p data-ru="Полный каталог с размерами и квантованием для каждого файла — на &lt;a href=&quot;../models.html&quot;&gt;странице каталога моделей&lt;/a&gt;">The full catalog, with sizes and quantization for every file, is on the <a href="../models.html">model catalog page</a></p>
 
-    <h2>Why the CPU-first default</h2>
-    <p>Russian dictation is the main case, and the CPU is the hardware every machine has. GigaAM is a Russian-first family, and the Q4_K_M file keeps the model small enough to load quickly and to sit beside other work</p>
-    <p>transcribe.cpp publishes a benchmark of this quantization on a Ryzen 7 4750U: 10.98 s of audio in 630 ms, about 17× realtime. The same run reports about 15.5× on a 33.84 s clip</p>
-    <p>That is an upstream measurement, not this project's. No GigaAM GPU figure is published in the repository</p>
+<h2 data-ru="Почему по умолчанию процессор">Why the CPU-first default</h2>
+<p data-ru="Диктовка по-русски — основной случай, а процессор есть на каждой машине. GigaAM — семейство, сделанное прежде всего для русского, а файл Q4_K_M держит модель достаточно маленькой, чтобы она быстро грузилась и уживалась с другой работой">Russian dictation is the main case, and the CPU is the hardware every machine has. GigaAM is a Russian-first family, and the Q4_K_M file keeps the model small enough to load quickly and to sit beside other work</p>
+<p data-ru="transcribe.cpp публикует бенчмарк этого квантования на Ryzen 7 4750U: 10,98 с звука за 630 мс, примерно 17× быстрее реального времени. Тот же прогон даёт около 15,5× на клипе 33,84 с">transcribe.cpp publishes a benchmark of this quantization on a Ryzen 7 4750U: 10.98 s of audio in 630 ms, about 17× realtime. The same run reports about 15.5× on a 33.84 s clip</p>
+<p data-ru="Это измерение апстрима, а не проекта. GPU-цифр для GigaAM в репозитории нет">That is an upstream measurement, not this project's. No GigaAM GPU figure is published in the repository</p>
 
-    <h2>The engine</h2>
-    <div class="table-wrap">
-      <table>
-        <caption>What <code>stt.engine</code> accepts</caption>
-        <thead><tr><th scope="col">Value</th><th scope="col">Meaning</th></tr></thead>
-        <tbody>
-          <tr><th scope="row"><code>auto</code></th><td>Follow the catalog entry of the model. This is the default, and it is why a GigaAM file needs no special setting</td></tr>
-          <tr><th scope="row"><code>whisper-cpp</code></th><td>The whisper.cpp runtime. It reads the <code>ggml</code> files of the catalog and your own whisper weights</td></tr>
-          <tr><th scope="row"><code>transcribe-cpp</code></th><td>The transcribe.cpp runtime, which loads the GigaAM GGUF file. <code>stt.transcribe_cli</code> names the binary; empty means <code>transcribe-cli</code> from <code>PATH</code></td></tr>
-          <tr><th scope="row"><code>fake</code></th><td>A test engine that returns fixed text. It runs the pipeline without weights</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p>The GPU path belongs to whisper.cpp: the released Linux and Windows builds use Vulkan. A CUDA build is a separate opt-in, and the releases carry it for Windows. <code>stt.transcribe_backend</code> passes <code>auto</code>, <code>cpu</code>, <code>vulkan</code> or <code>cuda</code> to transcribe.cpp</p>
+<h2 data-ru="Движок">The engine</h2>
+<div class="table-wrap">
+  <table>
+    <caption data-ru="Что принимает &lt;code&gt;stt.engine&lt;/code&gt;">What <code>stt.engine</code> accepts</caption>
+    <thead><tr><th scope="col" data-ru="Значение">Value</th><th scope="col" data-ru="Смысл">Meaning</th></tr></thead>
+    <tbody>
+            <tr><th scope="row" data-ru="&lt;code&gt;auto&lt;/code&gt;"><code>auto</code></th><td data-ru="Следовать записи каталога для модели. Это значение по умолчанию, и поэтому файлу GigaAM не нужна особая настройка">Follow the catalog entry of the model. This is the default, and it is why a GigaAM file needs no special setting</td></tr>
+            <tr><th scope="row" data-ru="&lt;code&gt;whisper-cpp&lt;/code&gt;"><code>whisper-cpp</code></th><td data-ru="Рантайм whisper.cpp. Читает файлы &lt;code&gt;ggml&lt;/code&gt; из каталога и твои собственные веса whisper">The whisper.cpp runtime. It reads the <code>ggml</code> files of the catalog and your own whisper weights</td></tr>
+            <tr><th scope="row" data-ru="&lt;code&gt;transcribe-cpp&lt;/code&gt;"><code>transcribe-cpp</code></th><td data-ru="Рантайм transcribe.cpp, он загружает GGUF-файл GigaAM. &lt;code&gt;stt.transcribe_cli&lt;/code&gt; задаёт имя бинарника; пусто значит &lt;code&gt;transcribe-cli&lt;/code&gt; из &lt;code&gt;PATH&lt;/code&gt;">The transcribe.cpp runtime, which loads the GigaAM GGUF file. <code>stt.transcribe_cli</code> names the binary; empty means <code>transcribe-cli</code> from <code>PATH</code></td></tr>
+            <tr><th scope="row" data-ru="&lt;code&gt;fake&lt;/code&gt;"><code>fake</code></th><td data-ru="Тестовый движок, возвращает фиксированный текст. Прогоняет конвейер без весов">A test engine that returns fixed text. It runs the pipeline without weights</td></tr>
+    </tbody>
+  </table>
+</div>
+<p data-ru="Путь через GPU принадлежит whisper.cpp: выпущенные сборки для Linux и Windows используют Vulkan. CUDA-сборка — отдельный выбор, и в релизах она есть отдельными архивами для Windows и Linux. &lt;code&gt;stt.transcribe_backend&lt;/code&gt; передаёт в transcribe.cpp одно из значений &lt;code&gt;auto&lt;/code&gt;, &lt;code&gt;cpu&lt;/code&gt;, &lt;code&gt;vulkan&lt;/code&gt; или &lt;code&gt;cuda&lt;/code&gt;">The GPU path belongs to whisper.cpp: the released Linux and Windows builds use Vulkan. A CUDA build is a separate opt-in, and the releases carry it as separate archives for Windows and Linux. <code>stt.transcribe_backend</code> passes <code>auto</code>, <code>cpu</code>, <code>vulkan</code> or <code>cuda</code> to transcribe.cpp</p>
 
-    <h2>Download, verify, switch</h2>
-    <div class="cmd"><code>molva models list</code><button class="copy" type="button" data-copy="molva models list">Copy</button></div>
-    <div class="cmd"><code>molva models pull large-v3-turbo</code><button class="copy" type="button" data-copy="molva models pull large-v3-turbo">Copy</button></div>
-    <div class="cmd"><code>molva models verify large-v3-turbo</code><button class="copy" type="button" data-copy="molva models verify large-v3-turbo">Copy</button></div>
-    <div class="cmd"><code>molva config set stt.model large-v3-turbo</code><button class="copy" type="button" data-copy="molva config set stt.model large-v3-turbo">Copy</button></div>
-    <p>Every download is checked against the SHA-256 from the catalog before it reaches the disk. A daemon start pulls missing weights on its own while <code>stt.auto_pull</code> is <code>true</code>, which is the default. The recognizer is built when the daemon starts, so restart the daemon to load different weights</p>
+<h2 data-ru="Скачать, проверить, переключить">Download, verify, switch</h2>
+<div class="cmd"><code>molva models list</code><button class="copy" type="button" data-copy="molva models list" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>molva models pull large-v3-turbo</code><button class="copy" type="button" data-copy="molva models pull large-v3-turbo" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>molva models verify large-v3-turbo</code><button class="copy" type="button" data-copy="molva models verify large-v3-turbo" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>molva config set stt.model large-v3-turbo</code><button class="copy" type="button" data-copy="molva config set stt.model large-v3-turbo" data-ru="Скопировать">Copy</button></div>
+<p data-ru="Каждая загрузка сверяется с SHA-256 из каталога до того, как попадёт на диск. При старте демон сам качает недостающие веса, пока &lt;code&gt;stt.auto_pull&lt;/code&gt; равен &lt;code&gt;true&lt;/code&gt;, а это значение по умолчанию. Распознаватель собирается при старте демона, поэтому для других весов перезапусти демон">Every download is checked against the SHA-256 from the catalog before it reaches the disk. A daemon start pulls missing weights on its own while <code>stt.auto_pull</code> is <code>true</code>, which is the default. The recognizer is built when the daemon starts, so restart the daemon to load different weights</p>
 
-    <h2>Mirrors and your own weights</h2>
-    <p><code>stt.models_mirror</code> points at a directory that serves the same file names instead of Hugging Face. The checksum check still runs, so a plain <code>http://</code> mirror on a local network is acceptable</p>
-    <p>Your own file goes through <code>stt.model_path</code>, the directory that holds the weights, and <code>stt.model</code>, the name the engine sees. A <code>ggml</code> file that whisper.cpp understands fits the whisper engine</p>
+<h2 data-ru="Зеркала и свои веса">Mirrors and your own weights</h2>
+<p data-ru="&lt;code&gt;stt.models_mirror&lt;/code&gt; указывает на каталог, который отдаёт те же имена файлов вместо Hugging Face. Сверка суммы при этом работает, поэтому обычное &lt;code&gt;http://&lt;/code&gt;-зеркало в локальной сети годится"><code>stt.models_mirror</code> points at a directory that serves the same file names instead of Hugging Face. The checksum check still runs, so a plain <code>http://</code> mirror on a local network is acceptable</p>
+<p data-ru="Свой файл подключается через &lt;code&gt;stt.model_path&lt;/code&gt; — каталог с весами — и &lt;code&gt;stt.model&lt;/code&gt; — имя, которое видит движок. Файл &lt;code&gt;ggml&lt;/code&gt;, понятный whisper.cpp, подходит движку whisper">Your own file goes through <code>stt.model_path</code>, the directory that holds the weights, and <code>stt.model</code>, the name the engine sees. A <code>ggml</code> file that whisper.cpp understands fits the whisper engine</p>
 
-    <h2>Licenses</h2>
-    <p>The repository is MIT and the weights are not covered by that license. Their terms are collected in <a href="https://github.com/rokokol/MolvAI/blob/main/docs/model-licenses.md">docs/model-licenses.md</a>, and the addresses they come from are part of <a href="https://github.com/rokokol/MolvAI/blob/main/docs/outgoing-endpoints.md">docs/outgoing-endpoints.md</a></p>
+<h2 data-ru="Лицензии">Licenses</h2>
+<p data-ru="Репозиторий под MIT, а веса этой лицензией не покрыты. Их условия собраны в &lt;a href=&quot;https://github.com/rokokol/MolvAI/blob/main/docs/model-licenses.md&quot;&gt;docs/model-licenses.md&lt;/a&gt;, а адреса, откуда они приходят, входят в &lt;a href=&quot;https://github.com/rokokol/MolvAI/blob/main/docs/outgoing-endpoints.md&quot;&gt;docs/outgoing-endpoints.md&lt;/a&gt;">The repository is MIT and the weights are not covered by that license. Their terms are collected in <a href="https://github.com/rokokol/MolvAI/blob/main/docs/model-licenses.md">docs/model-licenses.md</a>, and the addresses they come from are part of <a href="https://github.com/rokokol/MolvAI/blob/main/docs/outgoing-endpoints.md">docs/outgoing-endpoints.md</a></p>
 
-    <h2>With Nix</h2>
-    <p>The Home Manager module fetches the models named in <code>programs.molvai.models</code> at evaluation time and renders <code>stt.model_path</code> into the store as a directory of symlinks. A switch is the only thing that changes them. <code>programs.molvai.model</code> must be one of <code>programs.molvai.models</code>, and an unknown name fails the switch with a message that names the option</p>
+<h2 data-ru="С Nix">With Nix</h2>
+<p data-ru="Модуль Home Manager скачивает модели из &lt;code&gt;programs.molvai.models&lt;/code&gt; во время вычисления конфигурации и рендерит &lt;code&gt;stt.model_path&lt;/code&gt; в хранилище как каталог симлинков. Меняет их только переключение. &lt;code&gt;programs.molvai.model&lt;/code&gt; обязан быть одной из &lt;code&gt;programs.molvai.models&lt;/code&gt;, а неизвестное имя валит переключение с сообщением, в котором названа опция">The Home Manager module fetches the models named in <code>programs.molvai.models</code> at evaluation time and renders <code>stt.model_path</code> into the store as a directory of symlinks. A switch is the only thing that changes them. <code>programs.molvai.model</code> must be one of <code>programs.molvai.models</code>, and an unknown name fails the switch with a message that names the option</p>
 
-    <p class="to-top"><a href="./settings.html">Next: settings and Nix mode →</a> · <a href="#main">Back to top</a></p>
+<p class="to-top"><a href="./settings.html" data-ru="Дальше: настройки и режим Nix →">Next: settings and Nix mode →</a> · <a href="#main" data-ru="К началу">Back to top</a></p>
   </article>
 </main>
-
 <footer class="site-footer">
-  <div class="wrap footer-grid">
-    <div class="footer-brand">
+  <div class="wrap footer-inner">
+    <div>
       <a class="brand" href="../index.html">
-        <img src="../assets/logo.svg" alt="" width="26" height="26">
-        <span>Molv<span class="brand-ai">AI</span></span>
+        <img src="../assets/logo.svg" alt="" width="22" height="22">
+        <span>MolvAI</span>
       </a>
-      <p>Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
-      <p class="footer-note">MIT licensed · no trackers · no external fonts</p>
+      <p data-ru="Открытый голосовой ввод во все приложения. Зажми клавишу, говори, отпусти — текст оказывается в активном поле">Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
+      <p class="footer-note" data-ru="MIT · без трекеров · без внешних шрифтов">MIT licensed · no trackers · no external fonts</p>
+      <p class="footer-note"><a href="../ASSETS.md" data-ru="Ассеты и лицензии">Assets and licences</a></p>
     </div>
-    <nav aria-label="Project links">
-      <p class="footer-title">Project</p>
+    <nav aria-label="Project links" data-ru-aria-label="Ссылки проекта">
+      <p class="footer-title" data-ru="Проект">Project</p>
       <ul>
         <li><a href="https://github.com/rokokol/MolvAI">GitHub</a></li>
-        <li><a href="https://github.com/rokokol/MolvAI/releases">Releases</a></li>
-        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE">License (MIT)</a></li>
-        <li><a href="https://github.com/rokokol/MolvAI/issues">Issues</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/releases" data-ru="Релизы">Releases</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE" data-ru="Лицензия (MIT)">License (MIT)</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/issues" data-ru="Задачи">Issues</a></li>
       </ul>
     </nav>
-    <nav aria-label="Site links">
-      <p class="footer-title">Site</p>
+    <nav aria-label="Site links" data-ru-aria-label="Страницы сайта">
+      <p class="footer-title" data-ru="Сайт">Site</p>
       <ul>
-        <li><a href="../features.html">Features</a></li>
-        <li><a href="../models.html">Models</a></li>
-        <li><a href="../cli.html">CLI reference</a></li>
-        <li><a href="./index.html">Documentation</a></li>
+        <li><a href="../features.html" data-ru="Возможности">Features</a></li>
+        <li><a href="../models.html" data-ru="Модели">Models</a></li>
+        <li><a href="../cli.html" data-ru="Справочник CLI">CLI reference</a></li>
+        <li><a href="../docs/index.html" data-ru="Документация">Documentation</a></li>
         <li><a href="../faq.html">FAQ</a></li>
-        <li><a href="./status.html">Status and roadmap</a></li>
+        <li><a href="../docs/status.html" data-ru="Статус и планы">Status and roadmap</a></li>
       </ul>
     </nav>
     <div>
-      <p class="footer-title">Canonical docs</p>
-      <p class="footer-note">The repository is the source of truth. These pages summarize it and link back</p>
+      <p class="footer-title" data-ru="Канонические документы">Canonical docs</p>
+      <p class="footer-note" data-ru="Источник истины — репозиторий. Эти страницы его пересказывают и дают ссылки">
+        The repository is the source of truth. These pages summarize it and link back
+      </p>
       <ul>
         <li><a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README</a></li>
         <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></li>
@@ -175,9 +193,10 @@
     </div>
   </div>
   <div class="wrap footer-credit">
-    <p>MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
-    <p>This site runs without cookies, analytics or third-party assets</p>
+    <p data-ru="MolvAI сделан на хакатоне V0ICE (Казань, 2026) и находится в разработке">MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
+    <p data-ru="Сайт работает без cookies, аналитики и сторонних ассетов">This site runs without cookies, analytics or third-party assets</p>
   </div>
 </footer>
+<script src="../assets/site.js"></script>
 </body>
 </html>

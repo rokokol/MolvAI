@@ -171,6 +171,111 @@ mark {
   color: inherit;
 }
 
+/* A photograph taped to the page: a warm mount in a thin frame, a strip of clear tape over
+   its top edge, a hard shadow and, with .ddlc-snap-left or .ddlc-snap-right, a slight tilt.
+   The caption sits under a rule inside the mount. The mount is the board role, a shade off
+   the page on paper and on ink alike, so this one block serves both stylesheets and a
+   consumer that vendors one of them gets the other's component unchanged. The picture keeps
+   its own shape: no crop, no letterbox, no fixed height. The tape and the tilt are
+   decoration, so a reader who asks for less motion loses the tilt and keeps the rest */
+.ddlc-snap {
+  position: relative;
+  width: 100%;
+  max-width: 30rem;
+  margin: 1.75rem auto;
+  padding: 0.5rem 0.5rem 0;
+  border: 2px solid var(--ddlc-board-frame);
+  background: var(--ddlc-board);
+  box-shadow: 0.3rem 0.35rem 0 var(--ddlc-board-drop);
+}
+
+.ddlc-snap-left {
+  transform: rotate(-1.4deg);
+}
+
+.ddlc-snap-right {
+  transform: rotate(1.4deg);
+}
+
+.ddlc-snap::before {
+  content: "";
+  position: absolute;
+  top: -0.55rem;
+  left: 50%;
+  z-index: 1;
+  width: min(5.5rem, 42%);
+  height: 1.1rem;
+  background: var(--ddlc-tape);
+  transform: translateX(-50%) rotate(-2.5deg);
+  pointer-events: none;
+}
+
+.ddlc-snap img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--ddlc-line);
+}
+
+.ddlc-snap figcaption {
+  margin-top: 0.5rem;
+  padding: 0.45rem 0.25rem 0.6rem;
+  border-top: 1px solid var(--ddlc-line);
+  color: var(--ddlc-muted);
+  font-size: 0.9em;
+  line-height: 1.4;
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ddlc-snap-left,
+  .ddlc-snap-right {
+    transform: none;
+  }
+
+  .ddlc-snap::before {
+    transform: translateX(-50%);
+  }
+}
+
+/* A copy control in a terminal row: the visible face is the icon, while the label stays in
+   the accessibility tree. It is wider than the bar's icon button so a finger finds it */
+.copy-button {
+  display: grid;
+  place-items: center;
+  width: 2.4em;
+  height: 2.1em;
+  padding: 0;
+  border: 2px solid transparent;
+  background: none;
+  color: var(--ddlc-text);
+  cursor: pointer;
+}
+
+.copy-button:hover {
+  border-color: var(--ddlc-line);
+  color: var(--ddlc-accent);
+}
+
+.copy-button svg {
+  width: 1.15em;
+  height: 1.15em;
+  fill: none;
+}
+
+/* Text for a screen reader only; the same utility a page uses for an icon-only control */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 
 @font-face {
   font-family: "Departure Mono";

@@ -194,7 +194,7 @@ export default function Stats({ onError }: ViewProps) {
       <section className="card">
         <h2>{t("stats.byApp")}</h2>
         {summary.by_app.length === 0 ? (
-          <p className="muted">{t("history.empty")}</p>
+          <p className="empty">{t("history.empty")}</p>
         ) : (
           <div className="table-scroll">
             <table>

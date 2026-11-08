@@ -4,17 +4,26 @@
 use std::path::Path;
 
 use molva_core::infra::ipc::{Client, IpcClientError};
-use molva_core::ipc::protocol::{Command, Event};
+use molva_core::ipc::protocol::{Command, Event, WorkerJob};
 use serde_json::Value;
 
 /// A status line for a person
+///
+/// The state machine and the job of the worker thread are two facts: a file transcription
+/// leaves the state `idle` while the recognizer is busy, and a line that says only "ready"
+/// would be wrong
 pub(crate) fn describe(status: &Value) -> String {
     let state = status
         .get("state")
         .and_then(Value::as_str)
         .unwrap_or("unknown");
     let pid = status.get("pid").and_then(Value::as_u64).unwrap_or(0);
-    format!("state: {} (pid {pid})", human_state(state))
+    let job = status
+        .get("job")
+        .and_then(Value::as_str)
+        .map(|job| format!(", {}", human_job(job)))
+        .unwrap_or_default();
+    format!("state: {}{job} (pid {pid})", human_state(state))
 }
 
 /// The protocol states in plain words: the user sees them, not the developer
@@ -29,15 +38,27 @@ pub(crate) fn human_state(state: &str) -> &str {
     }
 }
 
+/// The job of the worker thread in plain words
+pub(crate) fn human_job(job: &str) -> &str {
+    match job {
+        "file" => "transcribing a file",
+        other => other,
+    }
+}
+
 /// A short line about an event for `--watch`
 pub(crate) fn describe_event(event: &Event) -> Option<String> {
     match event {
-        Event::State { state, .. } => {
+        Event::State { state, job, .. } => {
             let name = serde_json::to_value(state)
                 .ok()
                 .and_then(|v| v.as_str().map(str::to_string))
                 .unwrap_or_default();
-            Some(human_state(&name).to_string())
+            let job = match job {
+                Some(WorkerJob::File) => ", transcribing a file",
+                None => "",
+            };
+            Some(format!("{}{job}", human_state(&name)))
         }
         Event::Entry { entry } => Some(format!(
             "phrase: {} ({} words, {} ms)",
@@ -95,14 +116,36 @@ mod tests {
     }
 
     #[test]
+    fn a_file_job_is_named_beside_the_idle_state() {
+        let status = serde_json::json!({ "state": "idle", "job": "file", "pid": 17 });
+        assert_eq!(
+            describe(&status),
+            "state: ready, transcribing a file (pid 17)"
+        );
+        let none = serde_json::json!({ "state": "idle", "job": null, "pid": 17 });
+        assert_eq!(describe(&none), "state: ready (pid 17)");
+        assert_eq!(human_job("file"), "transcribing a file");
+        assert_eq!(human_job("rendering"), "rendering");
+    }
+
+    #[test]
     fn level_events_are_not_printed_but_replies_are() {
         assert_eq!(describe_event(&Event::Level { rms: 0.4 }), None);
         assert_eq!(
             describe_event(&Event::State {
                 state: DaemonState::Injecting,
-                mode: None
+                mode: None,
+                job: None,
             }),
             Some("injecting".to_string())
+        );
+        assert_eq!(
+            describe_event(&Event::State {
+                state: DaemonState::Idle,
+                mode: None,
+                job: Some(WorkerJob::File),
+            }),
+            Some("ready, transcribing a file".to_string())
         );
         assert_eq!(
             describe_event(&Event::Error {

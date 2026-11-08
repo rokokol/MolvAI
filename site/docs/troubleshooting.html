@@ -1,228 +1,178 @@
 <!DOCTYPE html>
-<html lang="en" class="no-js">
+<html lang="en" class="no-js" data-ddlc-heading="plain">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Troubleshooting — MolvAI documentation</title>
-<meta name="description" content="Fix the common MolvAI failures: silent bind, empty recording, failed paste, missing model, daemon that does not answer, and a language model that returns nothing">
+<title data-ru="Если что-то не работает — документация MolvAI">Troubleshooting — MolvAI documentation</title>
+<meta name="description" content="The doctor, the silent bind, the empty recording, the failed paste, the missing model and the exit codes, with the cause and the fix for each" data-ru-content="doctor, молчащая привязка, пустая запись, несостоявшаяся вставка, отсутствующая модель и коды возврата — с причиной и решением для каждого">
 <meta name="color-scheme" content="dark light">
-<meta name="theme-color" content="#0a0c12">
-<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#222222" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="../assets/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/vendor/ddlc/ddlc-tokens.css">
+<link rel="stylesheet" href="../assets/vendor/ddlc/ddlc-ui.css">
+<link rel="stylesheet" href="../assets/vendor/ddlc/ddlc-report.css">
 <link rel="stylesheet" href="../assets/site.css">
-<script src="../assets/site.js" defer></script>
+<script>
+  (function () {
+    try {
+      var q = new URLSearchParams(location.search)
+      var pinned = q.get("theme")
+      var theme = pinned === "light" || pinned === "dark" ? pinned : localStorage.getItem("molvai-theme")
+      if (pinned === "light" || pinned === "dark") localStorage.setItem("molvai-theme", pinned)
+      if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme
+      var lang = q.get("lang")
+      var stored = localStorage.getItem("molvai-lang")
+      if (lang === "ru" || (lang !== "en" && stored === "ru")) document.documentElement.lang = "ru"
+    } catch (e) {}
+  })()
+</script>
+<script type="module" src="../assets/kit.js"></script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
-
-<header class="site-header">
-  <div class="wrap header-inner">
-    <a class="brand" href="../index.html" aria-label="MolvAI home">
-      <img src="../assets/logo.svg" alt="" width="26" height="26">
-      <span>Molv<span class="brand-ai">AI</span></span>
+<canvas class="cloud" id="cloud" aria-hidden="true"></canvas>
+<a class="skip" href="#main" data-ru="К содержанию">Skip to content</a>
+<header class="site-bar">
+  <div class="bar wrap bar-row">
+    <a class="brand" href="../index.html" aria-label="MolvAI home" data-ru-aria-label="MolvAI — главная">
+      <img src="../assets/logo.svg" alt="" width="22" height="22">
+      <span>MolvAI</span>
     </a>
-    <nav class="site-nav" id="site-nav" aria-label="Main">
-      <a href="../index.html">Home</a>
-      <a href="../features.html">Features</a>
-      <a href="../models.html">Models</a>
-      <a href="../cli.html">CLI</a>
-      <a href="./index.html" aria-current="page">Docs</a>
-      <a href="../faq.html">FAQ</a>
-      <a href="./status.html">Status</a>
-      <a class="nav-github" href="https://github.com/rokokol/MolvAI"><img src="../assets/icon-github.svg" alt="" width="15" height="15">GitHub</a>
+    <p class="tagline" data-ru="Голосовой ввод во все приложения">System-wide voice input, on your machine</p>
+    <nav class="tabs" aria-label="Main" data-ru-aria-label="Основное">
+      <a href="../index.html" data-ru="Главная">Home</a>
+      <a href="../features.html" data-ru="Возможности">Features</a>
+      <a href="../models.html" data-ru="Модели">Models</a>
+      <a href="../cli.html" data-ru="CLI">CLI</a>
+      <a href="../docs/index.html" aria-current="page" data-ru="Документация">Docs</a>
+      <a href="../faq.html" data-ru="FAQ">FAQ</a>
+      <a href="../docs/status.html" data-ru="Статус">Status</a>
     </nav>
-    <div class="header-tools">
-      <button class="icon-btn theme-toggle" type="button" data-theme-toggle aria-label="Switch between dark and light theme">
-        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8">
-          <circle cx="12" cy="12" r="8"></circle>
-          <path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"></path>
-        </svg>
+    <div class="bar-end">
+      <div class="segmented lang-switch" role="group" aria-label="Language" data-ru-aria-label="Язык">
+        <button type="button" data-lang-set="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang-set="ru" aria-pressed="false">RU</button>
+      </div>
+      <button class="icon-button" id="theme" type="button" aria-label="Theme: system" data-ru-aria-label="Тема">
+        <svg class="pixel" viewBox="0 0 8 8" aria-hidden="true"><path id="theme-icon"/></svg>
       </button>
-      <button class="icon-btn menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="site-nav">
-        <span class="menu-bars" aria-hidden="true"></span>
-        <span class="visually-hidden">Menu</span>
-      </button>
+      <a class="icon-button" href="https://github.com/rokokol/MolvAI" aria-label="MolvAI on GitHub" data-ru-aria-label="MolvAI на GitHub">
+        <img src="../assets/icon-github.svg" alt="" width="16" height="16">
+      </a>
     </div>
   </div>
 </header>
-
 <main id="main" class="wrap doc-layout">
-  <aside class="doc-nav" aria-label="Documentation">
-    <p class="doc-nav-title">Documentation</p>
+  <aside class="doc-nav" aria-label="Documentation" data-ru-aria-label="Документация">
+    <p class="doc-nav-title" data-ru="Документация">Documentation</p>
     <ul>
-      <li><a href="./index.html">Overview</a></li>
-      <li><a href="./install.html">Install and first run</a></li>
-      <li><a href="./models.html">Models and GigaAM</a></li>
-      <li><a href="./hotkeys.html">Hotkeys and compositors</a></li>
-      <li><a href="./settings.html">Settings and Nix mode</a></li>
-      <li><a href="./cli.html">CLI guide</a></li>
-      <li><a href="./privacy.html">Privacy and journal</a></li>
-      <li><a href="./troubleshooting.html" aria-current="page">Troubleshooting</a></li>
-      <li><a href="./status.html">Status and roadmap</a></li>
+      <li><a href="./index.html" data-ru="Обзор">Overview</a></li>
+      <li><a href="./install.html" data-ru="Установка и первый запуск">Install and first run</a></li>
+      <li><a href="./models.html" data-ru="Модели и GigaAM">Models and GigaAM</a></li>
+      <li><a href="./hotkeys.html" data-ru="Клавиши и композиторы">Hotkeys and compositors</a></li>
+      <li><a href="./settings.html" data-ru="Настройки и режим Nix">Settings and Nix mode</a></li>
+      <li><a href="./cli.html" data-ru="Руководство по CLI">CLI guide</a></li>
+      <li><a href="./privacy.html" data-ru="Приватность и журнал">Privacy and journal</a></li>
+      <li><a href="./troubleshooting.html" aria-current="page" data-ru="Если что-то не работает">Troubleshooting</a></li>
+      <li><a href="./status.html" data-ru="Статус и планы">Status and roadmap</a></li>
     </ul>
-    <p class="doc-nav-title">Elsewhere</p>
+    <p class="doc-nav-title" data-ru="Ещё">Elsewhere</p>
     <ul>
-      <li><a href="../cli.html">CLI reference</a></li>
-      <li><a href="../models.html">Model catalog</a></li>
-      <li><a href="../index.html">Home</a></li>
+      <li><a href="../cli.html" data-ru="Справочник CLI">CLI reference</a></li>
+      <li><a href="../models.html" data-ru="Каталог моделей">Model catalog</a></li>
+      <li><a href="../index.html" data-ru="Главная">Home</a></li>
     </ul>
   </aside>
-
   <article class="doc-body prose">
-    <h1>Troubleshooting</h1>
-    <p class="canonical">Canonical source: the troubleshooting material lives in the <a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README</a>, <a href="https://github.com/rokokol/MolvAI/blob/main/docs/install.md">docs/install.md</a> and the pitfall lists of <a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></p>
+<h1 data-ru="Если что-то не работает">Troubleshooting</h1>
+<p class="canonical" data-ru="Канонический источник: материал о проблемах живёт в &lt;a href=&quot;https://github.com/rokokol/MolvAI/blob/main/README.md&quot;&gt;README&lt;/a&gt;, &lt;a href=&quot;https://github.com/rokokol/MolvAI/blob/main/docs/install.md&quot;&gt;docs/install.md&lt;/a&gt; и списках подводных камней в &lt;a href=&quot;https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md&quot;&gt;docs/STATUS.md&lt;/a&gt;">Canonical source: <a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README</a></p>
 
-    <h2>Start with the doctor</h2>
-    <p>One command names the broken part and the next step. It checks the session, the compositor, the paste utilities and the permissions on the input devices. It also checks the daemon socket, the weights and their checksum, and the model provider</p>
-    <div class="cmd"><code>molva doctor</code><button class="copy" type="button" data-copy="molva doctor">Copy</button></div>
-    <p>If the problem is about a phrase that seems to vanish, follow the daemon while you dictate</p>
-    <div class="cmd"><code>molva status --watch</code><button class="copy" type="button" data-copy="molva status --watch">Copy</button></div>
+<h2 data-ru="Начни с doctor">Start with the doctor</h2>
+<p data-ru="Одна команда называет сломанную часть и следующий шаг. Она проверяет сессию, композитор, утилиты вставки и права на устройства ввода. А ещё сокет демона, веса и их сумму и провайдера модели">One command names the broken part and the next step. It checks the session, the compositor, the paste utilities and the permissions on the input devices. It also checks the daemon socket, the weights and their checksum, and the model provider</p>
+<div class="cmd"><code>molva doctor</code><button class="copy" type="button" data-copy="molva doctor" data-ru="Скопировать">Copy</button></div>
+<p data-ru="Если проблема в фразе, которая будто исчезает, следи за демоном во время диктовки">If the problem is about a phrase that seems to vanish, follow the daemon while you dictate</p>
+<div class="cmd"><code>molva status --watch</code><button class="copy" type="button" data-copy="molva status --watch" data-ru="Скопировать">Copy</button></div>
 
-    <h2>Symptom, cause, fix</h2>
-    <div class="table-wrap">
-      <table>
-        <caption>The failures people meet first</caption>
-        <thead><tr><th scope="col">Symptom</th><th scope="col">Likely cause</th><th scope="col">What to do</th></tr></thead>
-        <tbody>
-          <tr>
-            <th scope="row">A bind does nothing</th>
-            <td><code>molva</code> is not in the <code>PATH</code> of the environment that the compositor uses to start the bind, which is the usual NixOS cause</td>
-            <td>Run <code>molva doctor</code>, then call the binary by its absolute path in the bind</td>
-          </tr>
-          <tr>
-            <th scope="row">Push-to-talk records for a moment and stops</th>
-            <td>The desktop does not report the key release</td>
-            <td>Use the toggle on KDE and GNOME, the hold on Hyprland and Sway, or the evdev backend</td>
-          </tr>
-          <tr>
-            <th scope="row">The recording is empty or the level is zero</th>
-            <td>A wrong device or a muted channel in the mixer, not a quiet voice</td>
-            <td>Pick the device from <code>molva devices</code>, write it to <code>audio.device</code>, check the mixer</td>
-          </tr>
-          <tr>
-            <th scope="row">Nothing appears in the field</th>
-            <td>The compositor refuses input emulation, or <code>wtype</code> is missing on Wayland</td>
-            <td>Install <code>wtype</code>, run <code>molva test-inject</code>, and fall back to <code>output.mode = "clipboard"</code></td>
-          </tr>
-          <tr>
-            <th scope="row">The paste lands in the wrong place</th>
-            <td>The focus has not returned to the field yet</td>
-            <td>Raise <code>output.pre_inject_delay_ms</code>; on a remote desktop it needs up to 1500</td>
-          </tr>
-          <tr>
-            <th scope="row">The terminal pastes the wrong thing</th>
-            <td>Terminals want Ctrl+Shift+V</td>
-            <td>Leave <code>output.terminal_shortcut = true</code>, which is the default and detects the window class</td>
-          </tr>
-          <tr>
-            <th scope="row">Exit code 3</th>
-            <td>The daemon does not answer on the socket</td>
-            <td>Start <code>molva daemon</code>, check <code>molva status</code>, check <code>--socket</code> and <code>MOLVA_SOCKET</code></td>
-          </tr>
-          <tr>
-            <th scope="row">Exit code 4</th>
-            <td>The previous phrase is still being processed</td>
-            <td>Wait for it. A new recording is otherwise allowed while the previous one is recognized</td>
-          </tr>
-          <tr>
-            <th scope="row">Exit code 7</th>
-            <td>A daemon of the same user already runs</td>
-            <td>Use the existing instance; only one owns the microphone</td>
-          </tr>
-          <tr>
-            <th scope="row">The weights are missing</th>
-            <td>No file in the models directory, and the automatic download is off or failed</td>
-            <td><code>molva models pull gigaam-v3-e2e-rnnt-q4_k_m</code>, or point <code>stt.models_mirror</code> at a local directory</td>
-          </tr>
-          <tr>
-            <th scope="row">A checksum does not match</th>
-            <td>A truncated download or a mirror serving another file</td>
-            <td><code>molva models pull &lt;name&gt; --force</code>, then <code>molva models verify &lt;name&gt;</code></td>
-          </tr>
-          <tr>
-            <th scope="row">The language lands on Ukrainian or Bulgarian</th>
-            <td>Automatic detection on a short Russian phrase</td>
-            <td>Keep <code>stt.language = "ru"</code>, or restrict <code>allowed_languages</code></td>
-          </tr>
-          <tr>
-            <th scope="row">The language model returns an empty text</th>
-            <td>A reasoning model spends the token budget on reasoning</td>
-            <td>Leave <code>llm.reasoning_effort = "auto"</code>, which sends <code>none</code> to local providers</td>
-          </tr>
-          <tr>
-            <th scope="row">The model is slow to answer</th>
-            <td>The timeout passed, so the text after the rules was used</td>
-            <td>Raise <code>llm.timeout_secs</code>, or disable the model for that style</td>
-          </tr>
-          <tr>
-            <th scope="row">Command mode reports no selected text</th>
-            <td>Nothing is selected, or the copy combination did not reach the application</td>
-            <td>Select the text first, check the compositor shortcut, and read the log line of the copy</td>
-          </tr>
-          <tr>
-            <th scope="row">The GUI has no settings page</th>
-            <td>The settings file is managed by Nix</td>
-            <td>Change <code>programs.molvai</code> in your configuration and run the switch</td>
-          </tr>
-          <tr>
-            <th scope="row">The GUI asks to build <code>molva</code></th>
-            <td>A release whose GUI package shipped without the CLI</td>
-            <td>Take the CLI archive of the same release, or read the notes of the release you installed</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+<h2 data-ru="Симптом, причина, что делать">Symptom, cause, fix</h2>
+<div class="table-wrap">
+  <table>
+    <caption data-ru="Сбои, с которыми сталкиваются первыми">The failures people meet first</caption>
+    <thead><tr><th scope="col" data-ru="Симптом">Symptom</th><th scope="col" data-ru="Вероятная причина">Likely cause</th><th scope="col" data-ru="Что делать">What to do</th></tr></thead>
+    <tbody>
+            <tr><th scope="row" data-ru="Привязка ничего не делает">A bind does nothing</th><td data-ru="&lt;code&gt;molva&lt;/code&gt; нет в &lt;code&gt;PATH&lt;/code&gt; того окружения, из которого композитор запускает привязку, — обычная причина в NixOS"><code>molva</code> is not in the <code>PATH</code> of the environment that the compositor uses to start the bind, which is the usual NixOS cause</td><td data-ru="Запусти &lt;code&gt;molva doctor&lt;/code&gt;, затем вызывай бинарник по абсолютному пути в привязке">Run <code>molva doctor</code>, then call the binary by its absolute path in the bind</td></tr>
+            <tr><th scope="row" data-ru="Push-to-talk пишет мгновение и останавливается">Push-to-talk records for a moment and stops</th><td data-ru="Рабочий стол не сообщает об отпускании клавиши">The desktop does not report the key release</td><td data-ru="Используй переключение в KDE и GNOME, удержание в Hyprland и Sway или бэкенд evdev">Use the toggle on KDE and GNOME, the hold on Hyprland and Sway, or the evdev backend</td></tr>
+            <tr><th scope="row" data-ru="Запись пустая или уровень нулевой">The recording is empty or the level is zero</th><td data-ru="Неверное устройство или замьюченный канал в микшере, а не тихий голос">A wrong device or a muted channel in the mixer, not a quiet voice</td><td data-ru="Выбери устройство из &lt;code&gt;molva devices&lt;/code&gt;, запиши его в &lt;code&gt;audio.device&lt;/code&gt;, проверь микшер">Pick the device from <code>molva devices</code>, write it to <code>audio.device</code>, check the mixer</td></tr>
+            <tr><th scope="row" data-ru="В поле ничего не появляется">Nothing appears in the field</th><td data-ru="Композитор отказывает в эмуляции ввода или в Wayland нет &lt;code&gt;wtype&lt;/code&gt;">The compositor refuses input emulation, or <code>wtype</code> is missing on Wayland</td><td data-ru="Поставь &lt;code&gt;wtype&lt;/code&gt;, запусти &lt;code&gt;molva test-inject&lt;/code&gt; и откатись на &lt;code&gt;output.mode = &quot;clipboard&quot;&lt;/code&gt;">Install <code>wtype</code>, run <code>molva test-inject</code>, and fall back to <code>output.mode = "clipboard"</code></td></tr>
+            <tr><th scope="row" data-ru="Вставка попадает не туда">The paste lands in the wrong place</th><td data-ru="Фокус ещё не вернулся в поле">The focus has not returned to the field yet</td><td data-ru="Подними &lt;code&gt;output.pre_inject_delay_ms&lt;/code&gt;; на удалённом рабочем столе нужно до 1500">Raise <code>output.pre_inject_delay_ms</code>; on a remote desktop it needs up to 1500</td></tr>
+            <tr><th scope="row" data-ru="Терминал вставляет не то">The terminal pastes the wrong thing</th><td data-ru="Терминалы хотят Ctrl+Shift+V">Terminals want Ctrl+Shift+V</td><td data-ru="Оставь &lt;code&gt;output.terminal_shortcut = true&lt;/code&gt; — это значение по умолчанию, оно определяет класс окна">Leave <code>output.terminal_shortcut = true</code>, which is the default and detects the window class</td></tr>
+            <tr><th scope="row" data-ru="Код возврата 3">Exit code 3</th><td data-ru="Демон не отвечает на сокете">The daemon does not answer on the socket</td><td data-ru="Запусти &lt;code&gt;molva daemon&lt;/code&gt;, проверь &lt;code&gt;molva status&lt;/code&gt;, &lt;code&gt;--socket&lt;/code&gt; и &lt;code&gt;MOLVA_SOCKET&lt;/code&gt;">Start <code>molva daemon</code>, check <code>molva status</code>, check <code>--socket</code> and <code>MOLVA_SOCKET</code></td></tr>
+            <tr><th scope="row" data-ru="Код возврата 4">Exit code 4</th><td data-ru="Предыдущая фраза ещё обрабатывается">The previous phrase is still being processed</td><td data-ru="Подожди. В остальном новая запись разрешена, пока распознаётся предыдущая">Wait for it. A new recording is otherwise allowed while the previous one is recognized</td></tr>
+            <tr><th scope="row" data-ru="Код возврата 7">Exit code 7</th><td data-ru="Демон того же пользователя уже работает">A daemon of the same user already runs</td><td data-ru="Используй существующий экземпляр; микрофоном владеет только один">Use the existing instance; only one owns the microphone</td></tr>
+            <tr><th scope="row" data-ru="Весов нет">The weights are missing</th><td data-ru="В каталоге моделей нет файла, а автоматическая загрузка выключена или не удалась">No file in the models directory, and the automatic download is off or failed</td><td data-ru="&lt;code&gt;molva models pull gigaam-v3-e2e-rnnt-q4_k_m&lt;/code&gt; или укажи &lt;code&gt;stt.models_mirror&lt;/code&gt; на локальный каталог"><code>molva models pull gigaam-v3-e2e-rnnt-q4_k_m</code>, or point <code>stt.models_mirror</code> at a local directory</td></tr>
+            <tr><th scope="row" data-ru="Сумма не совпадает">A checksum does not match</th><td data-ru="Обрезанная загрузка или зеркало, отдающее другой файл">A truncated download or a mirror serving another file</td><td data-ru="&lt;code&gt;molva models pull &amp;lt;name&amp;gt; --force&lt;/code&gt;, затем &lt;code&gt;molva models verify &amp;lt;name&amp;gt;&lt;/code&gt;"><code>molva models pull &lt;name&gt; --force</code>, then <code>molva models verify &lt;name&gt;</code></td></tr>
+            <tr><th scope="row" data-ru="Язык определяется как украинский или болгарский">The language lands on Ukrainian or Bulgarian</th><td data-ru="Автоопределение на короткой русской фразе">Automatic detection on a short Russian phrase</td><td data-ru="Держи &lt;code&gt;stt.language = &quot;ru&quot;&lt;/code&gt; или ограничь &lt;code&gt;allowed_languages&lt;/code&gt;">Keep <code>stt.language = "ru"</code>, or restrict <code>allowed_languages</code></td></tr>
+            <tr><th scope="row" data-ru="Языковая модель возвращает пустой текст">The language model returns an empty text</th><td data-ru="Рассуждающая модель тратит бюджет токенов на рассуждение">A reasoning model spends the token budget on reasoning</td><td data-ru="Оставь &lt;code&gt;llm.reasoning_effort = &quot;auto&quot;&lt;/code&gt; — он шлёт &lt;code&gt;none&lt;/code&gt; локальным провайдерам">Leave <code>llm.reasoning_effort = "auto"</code>, which sends <code>none</code> to local providers</td></tr>
+            <tr><th scope="row" data-ru="Модель отвечает медленно">The model is slow to answer</th><td data-ru="Таймаут прошёл, поэтому взят текст после правил">The timeout passed, so the text after the rules was used</td><td data-ru="Подними &lt;code&gt;llm.timeout_secs&lt;/code&gt; или выключи модель для этого стиля">Raise <code>llm.timeout_secs</code>, or disable the model for that style</td></tr>
+            <tr><th scope="row" data-ru="Режим команды говорит, что выделенного текста нет">Command mode reports no selected text</th><td data-ru="Ничего не выделено или сочетание копирования не дошло до приложения">Nothing is selected, or the copy combination did not reach the application</td><td data-ru="Сначала выдели текст, проверь сочетание композитора и прочитай строку лога о копировании">Select the text first, check the compositor shortcut, and read the log line of the copy</td></tr>
+            <tr><th scope="row" data-ru="В интерфейсе нет страницы настроек">The GUI has no settings page</th><td data-ru="Файлом настроек управляет Nix">The settings file is managed by Nix</td><td data-ru="Меняй &lt;code&gt;programs.molvai&lt;/code&gt; в конфигурации и запускай переключение">Change <code>programs.molvai</code> in your configuration and run the switch</td></tr>
+            <tr><th scope="row" data-ru="Интерфейс просит собрать &lt;code&gt;molva&lt;/code&gt;">The GUI asks to build <code>molva</code></th><td data-ru="Релиз, в котором пакет с интерфейсом вышел без CLI">A release whose GUI package shipped without the CLI</td><td data-ru="Возьми архив CLI того же релиза или прочитай заметки к установленному релизу">Take the CLI archive of the same release, or read the notes of the release you installed</td></tr>
+    </tbody>
+  </table>
+</div>
 
-    <h2>Collect the facts before you ask</h2>
-    <ul>
-      <li>The output of <code>molva doctor</code> and <code>molva --version</code></li>
-      <li>The session type and the compositor: <code>echo "$XDG_SESSION_TYPE"</code> and <code>echo "$XDG_CURRENT_DESKTOP"</code></li>
-      <li>The settings as they are loaded: <code>molva config get</code></li>
-      <li>The error field of the phrase in the journal, from <code>molva history show &lt;id&gt;</code></li>
-    </ul>
-    <p>With those facts, an issue can be answered without a round of guesses. The project's issue tracker is <a href="https://github.com/rokokol/MolvAI/issues">github.com/rokokol/MolvAI/issues</a></p>
+<h2 data-ru="Собери факты до вопроса">Collect the facts before you ask</h2>
+<ul>
+  <li data-ru="Вывод &lt;code&gt;molva doctor&lt;/code&gt; и &lt;code&gt;molva --version&lt;/code&gt;">The output of <code>molva doctor</code> and <code>molva --version</code></li>
+  <li data-ru="Тип сессии и композитор: &lt;code&gt;echo &quot;$XDG_SESSION_TYPE&quot;&lt;/code&gt; и &lt;code&gt;echo &quot;$XDG_CURRENT_DESKTOP&quot;&lt;/code&gt;">The session type and the compositor: <code>echo "$XDG_SESSION_TYPE"</code> and <code>echo "$XDG_CURRENT_DESKTOP"</code></li>
+  <li data-ru="Настройки в том виде, в котором они загружены: &lt;code&gt;molva config get&lt;/code&gt;">The settings as they are loaded: <code>molva config get</code></li>
+  <li data-ru="Поле ошибки фразы в журнале, из &lt;code&gt;molva history show &amp;lt;id&amp;gt;&lt;/code&gt;">The error field of the phrase in the journal, from <code>molva history show &lt;id&gt;</code></li>
+</ul>
+<p data-ru="С этими фактами на задачу можно ответить без круга догадок. Трекер проекта — &lt;a href=&quot;https://github.com/rokokol/MolvAI/issues&quot;&gt;github.com/rokokol/MolvAI/issues&lt;/a&gt;">With those facts, an issue can be answered without a round of guesses. The project's issue tracker is <a href="https://github.com/rokokol/MolvAI/issues">github.com/rokokol/MolvAI/issues</a></p>
 
-    <div class="callout">
-      <span class="callout-title">Known limits are not bugs</span>
-      <p>Pre-roll audio is deliberately not captured, and GNOME and KDE cannot report a key release. A whole English sentence inside a Russian phrase is not read as English either. The <a href="./status.html">status page</a> and <a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a> list the rest</p>
-    </div>
+<div class="callout">
+  <span class="callout-title" data-ru="Известные пределы — не баги">Known limits are not bugs</span>
+  <p data-ru="Звук до нажатия нарочно не пишется, а GNOME и KDE не умеют сообщать об отпускании клавиши. Целое английское предложение внутри русской фразы тоже не читается как английское. Остальное перечисляют &lt;a href=&quot;./status.html&quot;&gt;страница статуса&lt;/a&gt; и &lt;a href=&quot;https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md&quot;&gt;docs/STATUS.md&lt;/a&gt;">Pre-roll audio is deliberately not captured, and GNOME and KDE cannot report a key release. A whole English sentence inside a Russian phrase is not read as English either. The <a href="./status.html">status page</a> and <a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a> list the rest</p>
+</div>
 
-    <p class="to-top"><a href="./status.html">Next: status and roadmap →</a> · <a href="#main">Back to top</a></p>
+<p class="to-top"><a href="./status.html" data-ru="Дальше: статус и планы →">Next: status and roadmap →</a> · <a href="#main" data-ru="К началу">Back to top</a></p>
   </article>
 </main>
-
 <footer class="site-footer">
-  <div class="wrap footer-grid">
-    <div class="footer-brand">
+  <div class="wrap footer-inner">
+    <div>
       <a class="brand" href="../index.html">
-        <img src="../assets/logo.svg" alt="" width="26" height="26">
-        <span>Molv<span class="brand-ai">AI</span></span>
+        <img src="../assets/logo.svg" alt="" width="22" height="22">
+        <span>MolvAI</span>
       </a>
-      <p>Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
-      <p class="footer-note">MIT licensed · no trackers · no external fonts</p>
+      <p data-ru="Открытый голосовой ввод во все приложения. Зажми клавишу, говори, отпусти — текст оказывается в активном поле">Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
+      <p class="footer-note" data-ru="MIT · без трекеров · без внешних шрифтов">MIT licensed · no trackers · no external fonts</p>
+      <p class="footer-note"><a href="../ASSETS.md" data-ru="Ассеты и лицензии">Assets and licences</a></p>
     </div>
-    <nav aria-label="Project links">
-      <p class="footer-title">Project</p>
+    <nav aria-label="Project links" data-ru-aria-label="Ссылки проекта">
+      <p class="footer-title" data-ru="Проект">Project</p>
       <ul>
         <li><a href="https://github.com/rokokol/MolvAI">GitHub</a></li>
-        <li><a href="https://github.com/rokokol/MolvAI/releases">Releases</a></li>
-        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE">License (MIT)</a></li>
-        <li><a href="https://github.com/rokokol/MolvAI/issues">Issues</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/releases" data-ru="Релизы">Releases</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE" data-ru="Лицензия (MIT)">License (MIT)</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/issues" data-ru="Задачи">Issues</a></li>
       </ul>
     </nav>
-    <nav aria-label="Site links">
-      <p class="footer-title">Site</p>
+    <nav aria-label="Site links" data-ru-aria-label="Страницы сайта">
+      <p class="footer-title" data-ru="Сайт">Site</p>
       <ul>
-        <li><a href="../features.html">Features</a></li>
-        <li><a href="../models.html">Models</a></li>
-        <li><a href="../cli.html">CLI reference</a></li>
-        <li><a href="./index.html">Documentation</a></li>
+        <li><a href="../features.html" data-ru="Возможности">Features</a></li>
+        <li><a href="../models.html" data-ru="Модели">Models</a></li>
+        <li><a href="../cli.html" data-ru="Справочник CLI">CLI reference</a></li>
+        <li><a href="../docs/index.html" data-ru="Документация">Documentation</a></li>
         <li><a href="../faq.html">FAQ</a></li>
-        <li><a href="./status.html">Status and roadmap</a></li>
+        <li><a href="../docs/status.html" data-ru="Статус и планы">Status and roadmap</a></li>
       </ul>
     </nav>
     <div>
-      <p class="footer-title">Canonical docs</p>
-      <p class="footer-note">The repository is the source of truth. These pages summarize it and link back</p>
+      <p class="footer-title" data-ru="Канонические документы">Canonical docs</p>
+      <p class="footer-note" data-ru="Источник истины — репозиторий. Эти страницы его пересказывают и дают ссылки">
+        The repository is the source of truth. These pages summarize it and link back
+      </p>
       <ul>
         <li><a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README</a></li>
         <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></li>
@@ -232,9 +182,10 @@
     </div>
   </div>
   <div class="wrap footer-credit">
-    <p>MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
-    <p>This site runs without cookies, analytics or third-party assets</p>
+    <p data-ru="MolvAI сделан на хакатоне V0ICE (Казань, 2026) и находится в разработке">MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
+    <p data-ru="Сайт работает без cookies, аналитики и сторонних ассетов">This site runs without cookies, analytics or third-party assets</p>
   </div>
 </footer>
+<script src="../assets/site.js"></script>
 </body>
 </html>

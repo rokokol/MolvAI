@@ -29,7 +29,10 @@ use crate::domain::sound::{CueKind, SoundCue};
 use crate::infra::audio::level::ZeroLevelWatch;
 use crate::infra::ipc::RequestHandler;
 use crate::infra::platform;
-use crate::ipc::protocol::{Command, DaemonState, ErrorCode, Event, IpcError};
+use crate::ipc::protocol::{
+    Command, DaemonState, ErrorCode, Event, FileReport, FileTranscriptionRequest, IpcError,
+    WorkerJob,
+};
 
 /// What to do when the microphone gives a digital zero. On macOS a common cause is denied
 /// access: the system returns silence, not an error
@@ -38,6 +41,14 @@ const SILENT_MICROPHONE_HINT: &str =
     "check access: System Settings → Privacy & Security → Microphone";
 #[cfg(not(target_os = "macos"))]
 const SILENT_MICROPHONE_HINT: &str = "check the device: molva devices";
+
+/// How long a client waits for a file transcription
+///
+/// The wait is bounded, because the worker thread serves the phrase and the file in turn: a stuck
+/// recognition or a hung model must end with an answer, not with a client that waits forever. Two
+/// hours of audio on a slow processor still fit, and a longer file is worth a second attempt rather
+/// than an unbounded hold of the MCP session
+const FILE_JOB_TIMEOUT: Duration = Duration::from_secs(600);
 
 pub use chunked::{ChunkAccumulator, ChunkContext, ChunkFeeder, ChunkPrefix, ChunkText};
 pub use processor::{ProcessError, Processor, ProcessorConfig, SimpleProcessor};
@@ -60,6 +71,11 @@ enum Ctl {
     },
     /// Reloaded settings: hotkeys for the state machine, the rest for the worker thread
     Reload(Box<Config>),
+    /// A file that the worker thread must transcribe with the pipeline it already holds
+    FileJob {
+        request: FileTranscriptionRequest,
+        reply: Sender<Result<FileReport, IpcError>>,
+    },
 }
 
 /// Job for the worker thread
@@ -88,6 +104,12 @@ enum Job {
     },
     /// The recording was cancelled: forget the collected chunks
     Discard,
+    /// A file transcription for the same worker thread: one pipeline, one recognizer, one file
+    /// at a time
+    File {
+        request: FileTranscriptionRequest,
+        reply: Sender<Result<FileReport, IpcError>>,
+    },
 }
 
 /// Milliseconds between two points of monotonic time, with no overflow
@@ -128,6 +150,9 @@ struct Shared {
     injector: Mutex<Option<Box<dyn TextInjector>>>,
     /// Threshold `output.auto_type_max_chars` for resolving the `auto` mode
     auto_type_max_chars: u32,
+    /// What the worker thread is busy with, as the clients see it (`status`, state events):
+    /// `Some` also means that the slot is taken, so one file at a time needs no second flag
+    job: Mutex<Option<WorkerJob>>,
     /// Settings file for `config.reload`; `None` means the default path
     config_path: Mutex<Option<PathBuf>>,
 }
@@ -141,16 +166,90 @@ impl Shared {
         subscribers.retain(|tx| tx.send(event.clone()).is_ok());
     }
 
+    /// The file slot is free again: the worker finished the file or never took it
+    fn release_file_job(&self) {
+        let taken = {
+            let mut job = self
+                .job
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            job.take().is_some()
+        };
+        if taken {
+            self.publish_state(None);
+        }
+    }
+
+    /// Take the worker for a file, or say why the file cannot start now
+    ///
+    /// Two rules, and both keep one recognizer honest: a phrase in recording or processing comes
+    /// first, because a person waits for it, and only one file job may hold the worker. The slot
+    /// is taken and reported in one step, so a client never reads `idle` with no job while the
+    /// file is already on its way to the worker
+    fn take_file_slot(&self, state: DaemonState) -> Result<(), IpcError> {
+        if state != DaemonState::Idle {
+            return Err(IpcError {
+                code: ErrorCode::Busy,
+                message: "the daemon is recording or processing a phrase".into(),
+                hint: Some("try again when the phrase is delivered".into()),
+            });
+        }
+        {
+            let mut job = self
+                .job
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if job.is_some() {
+                return Err(IpcError {
+                    code: ErrorCode::Busy,
+                    message: "another file transcription is already running".into(),
+                    hint: Some("one recognizer transcribes one file at a time".into()),
+                });
+            }
+            *job = Some(WorkerJob::File);
+        }
+        self.publish_state(None);
+        Ok(())
+    }
+
+    /// The job of the worker thread, still set while a phrase recorded during it waits
+    fn job(&self) -> Option<WorkerJob> {
+        *self
+            .job
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn state(&self) -> DaemonState {
+        *self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// The current state and job as one event: a client that missed one of the two changes
+    /// would show a state that contradicts the work of the worker
+    fn publish_state(&self, mode: Option<Mode>) {
+        let state = self.state();
+        let job = self.job();
+        self.publish(&Event::State { state, mode, job });
+    }
+
     fn set_state(&self, state: DaemonState, mode: Option<Mode>) {
-        let changed = match self.state.lock() {
-            Ok(mut current) if *current != state => {
+        let changed = {
+            let mut current = self
+                .state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if *current == state {
+                false
+            } else {
                 *current = state;
                 true
             }
-            _ => false,
         };
         if changed {
-            self.publish(&Event::State { state, mode });
+            self.publish_state(mode);
         }
     }
 }
@@ -178,7 +277,7 @@ impl Daemon {
         let DaemonParts {
             mut audio,
             mut processor,
-            notifier,
+            notifier: _notifier,
             sound,
             injector,
             clock,
@@ -198,6 +297,7 @@ impl Daemon {
             generation: AtomicU64::new(0),
             injector: Mutex::new(injector),
             auto_type_max_chars: config.output.auto_type_max_chars,
+            job: Mutex::new(None),
             config_path: Mutex::new(None),
         });
 
@@ -211,7 +311,6 @@ impl Daemon {
         // Control thread: the only one that touches the state machine and the microphone
         {
             let shared = shared.clone();
-            let notifier = notifier.clone();
             let sound = sound.clone();
             let tx = tx.clone();
             let control_clock = clock.clone();
@@ -249,6 +348,26 @@ impl Daemon {
                             machine.set_hotkeys(config.hotkeys.clone());
                             let _ = work_tx.send(Job::Reload(config));
                             shared.publish(&Event::ConfigReloaded);
+                            continue;
+                        }
+                        // A file transcription uses the pipeline of the worker thread. The
+                        // decision is taken here, in the thread that also decides about the
+                        // microphone: so a file job cannot slip in between a key press and the
+                        // recording it starts, and the user's phrase never waits for a file
+                        Ctl::FileJob { request, reply } => {
+                            if let Err(error) = shared.take_file_slot(machine.state()) {
+                                let _ = reply.send(Err(error));
+                            } else {
+                                let job = Job::File {
+                                    request,
+                                    reply: reply.clone(),
+                                };
+                                if work_tx.send(job).is_err() {
+                                    // No worker, no job: the slot must not stay taken
+                                    shared.release_file_job();
+                                    let _ = reply.send(Err(internal("daemon stopped")));
+                                }
+                            }
                             continue;
                         }
                         Ctl::Message(message) => message,
@@ -309,7 +428,6 @@ impl Daemon {
                                             message: err.to_string(),
                                             hint: Some("check the device: molva doctor".into()),
                                         });
-                                        notifier.notify("MolvAI", &err.to_string());
                                     }
                                 }
                             }
@@ -406,7 +524,6 @@ impl Daemon {
         // "busy"
         {
             let shared = shared.clone();
-            let notifier = notifier.clone();
             let tx = tx.clone();
             threads.push(std::thread::spawn(move || {
                 // Chunks come in one queue to one thread. The order of the texts is the order of
@@ -444,6 +561,22 @@ impl Daemon {
                             );
                             continue;
                         }
+                        // A file is not a phrase: it never reaches the state machine, and the
+                        // recognizer is the one that already holds the weights
+                        Job::File { request, reply } => {
+                            let answer = processor.transcribe_file(&request).map_err(|err| {
+                                IpcError {
+                                    code: error_code_for(&err),
+                                    message: err.to_string(),
+                                    hint: None,
+                                }
+                            });
+                            // The slot is free before the answer leaves, so the next file can
+                            // start at once
+                            shared.release_file_job();
+                            let _ = reply.send(answer);
+                            continue;
+                        }
                         Job::Finish {
                             audio,
                             tail,
@@ -473,14 +606,31 @@ impl Daemon {
                     );
                     let input = match result {
                         Ok(entry) => {
+                            // The entry comes first: clients that wait for the phrase must
+                            // not mistake its warning for a failed processing. The window then
+                            // gets the reason why the model or the paste did not take part
+                            let warning = entry.error.clone().map(|error| {
+                                let code = if error.starts_with("LLM:") {
+                                    ErrorCode::LlmFailed
+                                } else {
+                                    ErrorCode::InjectFailed
+                                };
+                                (code, error)
+                            });
                             shared.publish(&Event::Entry {
                                 entry: Box::new(entry),
                             });
+                            if let Some((code, message)) = warning {
+                                shared.publish(&Event::Error {
+                                    code,
+                                    message,
+                                    hint: None,
+                                });
+                            }
                             Input::ProcessingDone
                         }
                         Err(err) => {
                             tracing::error!(%err, "processing failed");
-                            notifier.notify("MolvAI", &err.to_string());
                             shared.publish(&Event::Error {
                                 code: error_code_for(&err),
                                 message: err.to_string(),
@@ -499,14 +649,12 @@ impl Daemon {
         // notification, and from here the error goes by the same path as a recording error
         {
             let shared = shared.clone();
-            let notifier = notifier.clone();
             let clock = clock.clone();
             threads.push(std::thread::spawn(move || {
                 let mut silence = ZeroLevelWatch::with_defaults();
                 while let Ok(rms) = level_rx.recv() {
                     if let Some(message) = silence.observe(rms, clock.instant()) {
                         tracing::warn!("{message}");
-                        notifier.notify("MolvAI", message);
                         shared.publish(&Event::Error {
                             code: ErrorCode::NoDevice,
                             message: message.to_string(),
@@ -599,19 +747,29 @@ fn process_chunk(
     match result {
         Ok(chunk) => {
             let since_start = u32::try_from(started.elapsed().as_millis()).unwrap_or(u32::MAX);
+            let mut typed = String::new();
             if policy.mode == Mode::Dictation {
-                if let Some(Err(err)) = processor.stream_chunk(&chunk, app) {
-                    tracing::warn!(
-                        %err,
-                        "chunk not typed, the phrase continues without streaming"
-                    );
+                match processor.stream_chunk(&chunk, app) {
+                    Some(Ok(progress)) => typed = progress.typed,
+                    Some(Err(err)) => {
+                        tracing::warn!(
+                            %err,
+                            "chunk not typed, the phrase continues without streaming"
+                        );
+                    }
+                    None => {}
                 }
             }
             chunks.push(chunk, since_start);
             if policy.preview {
-                shared.publish(&Event::Hypothesis {
-                    text: chunks.draft(),
-                });
+                // The draft is what the field holds: the typed chunks, or the recognized text
+                // when nothing was typed yet
+                let text = if typed.is_empty() {
+                    chunks.draft()
+                } else {
+                    typed
+                };
+                shared.publish(&Event::Hypothesis { text });
             }
         }
         Err(err) => {
@@ -624,7 +782,7 @@ fn error_code_for(err: &ProcessError) -> ErrorCode {
     match err {
         ProcessError::Stt(_) => ErrorCode::SttFailed,
         ProcessError::Inject(_) => ErrorCode::InjectFailed,
-        ProcessError::Journal(_) => ErrorCode::Internal,
+        ProcessError::Journal(_) | ProcessError::FilesUnsupported => ErrorCode::Internal,
         ProcessError::Pipeline(_) => ErrorCode::BadRequest,
     }
 }
@@ -652,7 +810,7 @@ impl DaemonHandle {
     }
 
     pub fn state(&self) -> DaemonState {
-        self.shared.state.lock().map_or(DaemonState::Idle, |s| *s)
+        self.shared.state()
     }
 
     pub fn session_id(&self) -> Uuid {
@@ -670,6 +828,35 @@ impl DaemonHandle {
             subscribers.push(tx);
         }
         rx
+    }
+
+    /// Transcribe one file with the recognizer and the pipeline that this daemon already holds
+    ///
+    /// The job goes to the worker thread, which owns the only pipeline of the process: so the
+    /// daemon never loads a second model for a file. The wait is bounded by [`FILE_JOB_TIMEOUT`]:
+    /// a stuck recognition must end with an answer and not with a client that waits forever
+    pub fn transcribe_file(
+        &self,
+        request: FileTranscriptionRequest,
+    ) -> Result<FileReport, IpcError> {
+        let (reply, answer) = channel();
+        {
+            let tx = self.shared.tx.lock().map_err(|_| internal("daemon busy"))?;
+            tx.send(Ctl::FileJob { request, reply })
+                .map_err(|_| internal("daemon stopped"))?;
+        }
+        match answer.recv_timeout(FILE_JOB_TIMEOUT) {
+            Ok(answer) => answer,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(IpcError {
+                code: ErrorCode::Internal,
+                message: format!(
+                    "the file transcription did not finish in {} min",
+                    FILE_JOB_TIMEOUT.as_secs() / 60
+                ),
+                hint: Some("the daemon log says what it is doing; try a shorter file".into()),
+            }),
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(internal("daemon stopped")),
+        }
     }
 
     /// Paste a ready text: the repeat of a phrase from the history (`molva history paste`)
@@ -716,7 +903,6 @@ impl DaemonHandle {
         }
     }
 
-    /// Summary for `molva status`
     /// Where the daemon rereads the settings on `config.reload`; without a path it is the
     /// default file
     pub fn set_config_path(&self, path: PathBuf) {
@@ -752,9 +938,12 @@ impl DaemonHandle {
         Ok(config)
     }
 
+    /// Summary for `molva status` and the window: the state machine and the job of the worker
+    /// are two facts, and a client needs both
     pub fn status_json(&self) -> serde_json::Value {
         serde_json::json!({
             "state": self.state(),
+            "job": self.shared.job(),
             "session_id": self.session_id(),
             "started_at": self.started_at(),
             "pid": std::process::id(),
@@ -794,6 +983,10 @@ impl RequestHandler for DaemonHandle {
             }
             Command::RecordCancel => outcome_to_result(self.send(Input::RecordCancel)?),
             Command::InjectText { text, mode } => self.inject_text(&text, mode),
+            Command::FileTranscribe(request) => {
+                let report = self.transcribe_file(request)?;
+                serde_json::to_value(report).map_err(|err| internal(&err.to_string()))
+            }
             Command::ConfigReload => {
                 let config = self.reload_config(None)?;
                 Ok(serde_json::json!({
@@ -843,9 +1036,11 @@ fn command_name(cmd: &Command) -> String {
 mod tests {
     use super::*;
     use crate::domain::fakes::{
-        FakeAudioSource, FakeClock, FakeStt, MemJournal, RecordingNotifier, RecordingSoundCue,
+        FakeAudioSource, FakeClock, FakeLlm, FakeStt, MemJournal, RecordingNotifier,
+        RecordingSoundCue,
     };
     use crate::domain::inject::{InjectError, InjectReport, OutputMode, TextInjector};
+    use crate::domain::llm::{ChatResponse, LlmClient};
     use crate::infra::audio::level::ZERO_LEVEL_MESSAGE;
     use std::time::Duration;
 
@@ -1059,18 +1254,9 @@ mod tests {
             errors,
             vec![(ErrorCode::NoDevice, ZERO_LEVEL_MESSAGE.to_string())]
         );
-        let notified: Vec<String> = h
-            .notifier
-            .messages
-            .lock()
-            .unwrap()
-            .iter()
-            .map(|(_, body)| body.clone())
-            .collect();
-        assert_eq!(
-            notified,
-            vec![ZERO_LEVEL_MESSAGE.to_string()],
-            "one notification per segment of silence"
+        assert!(
+            h.notifier.messages.lock().unwrap().is_empty(),
+            "the window owns the notice; the daemon must not send a system toast"
         );
         drop(h.daemon);
     }
@@ -1367,7 +1553,7 @@ mod tests {
             entry.error.is_some(),
             "a paste failure must be in the entry"
         );
-        assert!(!h.notifier.messages.lock().unwrap().is_empty());
+        assert!(h.notifier.messages.lock().unwrap().is_empty());
         drop(h.daemon);
     }
 
@@ -1488,6 +1674,15 @@ mod tests {
     /// A daemon with the full pipeline and a microphone that returns sound in portions: this is
     /// the only way streaming processing works
     fn streaming_harness(responses: &[&str], config: Config) -> Harness {
+        streaming_harness_with(responses, config, None)
+    }
+
+    /// The same, with a model that translates the phrase after the release
+    fn streaming_harness_with(
+        responses: &[&str],
+        config: Config,
+        llm: Option<Arc<dyn LlmClient>>,
+    ) -> Harness {
         use crate::app::pipeline::{Pipeline, PipelineConfig};
         use crate::domain::stt::Transcript;
 
@@ -1510,7 +1705,7 @@ mod tests {
         );
         let pipeline = Pipeline::new(
             Box::new(stt),
-            None,
+            llm,
             Box::new(injector),
             Box::new(MemJournal::default()),
             clock.clone(),
@@ -1656,6 +1851,7 @@ mod tests {
         let mut config = Config::default();
         // The words are checked literally, not after the number rule turns them into digits
         config.rules.numbers_as_digits = false;
+        config.stt.streaming_inject = true;
         let h = streaming_harness(&responses, config);
 
         let (_drafts, entry) = record(&h);
@@ -1690,6 +1886,70 @@ mod tests {
             lower(entry.text_raw.as_deref().unwrap_or_default()),
             "the streamed phrase lost a tail word: {final_text:?} against {:?}",
             entry.text_raw
+        );
+        drop(h.daemon);
+    }
+
+    #[test]
+    fn the_whole_phrase_is_translated_once_after_the_release() {
+        let llm = Arc::new(FakeLlm::new(|request| {
+            Ok(ChatResponse {
+                text: format!("[{}]", request.user),
+                prompt_tokens: None,
+                completion_tokens: None,
+            })
+        }));
+        let mut config = Config::default();
+        config.llm.enabled = true;
+        config.translation.enabled = true;
+        config.translation.target = "en".into();
+        // The words are checked literally, not after the number rule turns them into digits
+        config.rules.numbers_as_digits = false;
+        // Live typing stays off, as it is shipped: the chunks type nothing, and the field gets
+        // the whole phrase once, translated
+        assert!(!config.stt.streaming_inject);
+        let h = streaming_harness_with(
+            &["раз", "два", "три", "четыре", "пять"],
+            config,
+            Some(llm.clone()),
+        );
+
+        let (drafts, entry) = record(&h);
+
+        assert!(
+            drafts.iter().all(|draft| !draft.contains('[')),
+            "a draft carried a translation: {drafts:?}"
+        );
+        assert_eq!(llm.calls(), 1, "the phrase was translated more than once");
+        let raw = entry.text_raw.clone().unwrap_or_default();
+        let request = llm.last_request.lock().unwrap().clone().unwrap();
+        assert!(
+            raw.split_whitespace().count() >= 2,
+            "the phrase was recognized as one word: {raw:?}"
+        );
+        assert_eq!(
+            request.user.split_whitespace().count(),
+            raw.split_whitespace().count(),
+            "the model saw a part of the phrase: {:?} against {raw:?}",
+            request.user
+        );
+        let final_text = entry.text_final.clone().unwrap_or_default();
+        assert!(
+            !raw.contains('['),
+            "the raw text holds the translation: {raw:?}"
+        );
+        assert!(
+            final_text.contains('['),
+            "the journal does not hold the translation: {final_text:?}"
+        );
+        assert_eq!(
+            entry.translation.map(|info| info.target),
+            Some("en".to_string())
+        );
+        assert_eq!(
+            h.injected.lock().unwrap().len(),
+            1,
+            "the field got more than one paste"
         );
         drop(h.daemon);
     }
@@ -1860,6 +2120,311 @@ mod tests {
             })
             .unwrap_err();
         assert_eq!(err.code, ErrorCode::Busy);
+        drop(h.daemon);
+    }
+
+    // --- File jobs on the one worker thread ---
+
+    /// A processor that serves a file and holds it until the test lets it finish
+    ///
+    /// The log is the order of the work of the worker thread: the only way to see that a phrase
+    /// recorded during a file job was queued and not lost
+    #[derive(Debug)]
+    struct FileJobProbe {
+        inner: SimpleProcessor<SharedInjector, MemJournal>,
+        log: Arc<Mutex<Vec<String>>>,
+        started: Arc<Mutex<bool>>,
+        release: Arc<Mutex<bool>>,
+    }
+
+    impl Processor for FileJobProbe {
+        fn process(
+            &mut self,
+            audio: PcmAudio,
+            mode: Mode,
+            style: Option<&str>,
+            app_hint: Option<&str>,
+        ) -> Result<crate::domain::entry::Entry, ProcessError> {
+            let entry = self.inner.process(audio, mode, style, app_hint)?;
+            self.log.lock().unwrap().push(format!(
+                "phrase:{}",
+                entry.text_final.clone().unwrap_or_default()
+            ));
+            Ok(entry)
+        }
+
+        fn transcribe_file(
+            &mut self,
+            request: &FileTranscriptionRequest,
+        ) -> Result<FileReport, ProcessError> {
+            self.log.lock().unwrap().push("file:start".into());
+            *self.started.lock().unwrap() = true;
+            wait_until(
+                || *self.release.lock().unwrap(),
+                "the file job was never released",
+            );
+            self.log.lock().unwrap().push("file:done".into());
+            Ok(FileReport {
+                results: vec![crate::app::file_result::FileResult {
+                    file: request.path.display().to_string(),
+                    text: "текст файла".into(),
+                    segments: Vec::new(),
+                    audio_secs: 1.0,
+                    latency_ms: 3,
+                    language: None,
+                }],
+                errors: Vec::new(),
+            })
+        }
+    }
+
+    /// Poll a flag that another thread sets: the daemon threads have no other place to report
+    fn wait_until(mut condition: impl FnMut() -> bool, what: &str) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while Instant::now() < deadline {
+            if condition() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        panic!("timed out: {what}");
+    }
+
+    struct FileProbeHarness {
+        daemon: Daemon,
+        handle: DaemonHandle,
+        clock: Arc<FakeClock>,
+        log: Arc<Mutex<Vec<String>>>,
+        release: Arc<Mutex<bool>>,
+    }
+
+    fn file_probe_harness(text: &str) -> FileProbeHarness {
+        let config = Config::default();
+        let start = DateTime::parse_from_rfc3339("2026-09-05T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let clock = Arc::new(FakeClock::at(start));
+        let notifier = Arc::new(RecordingNotifier::default());
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let started = Arc::new(Mutex::new(false));
+        let release = Arc::new(Mutex::new(false));
+        let probe = FileJobProbe {
+            inner: SimpleProcessor::new(
+                Box::new(FakeStt::returning(text)),
+                SharedInjector {
+                    injected: Arc::new(Mutex::new(Vec::new())),
+                    fail: false,
+                    delay: Duration::ZERO,
+                },
+                MemJournal::default(),
+                clock.clone(),
+                notifier.clone(),
+                ProcessorConfig::from_config(&config, Uuid::nil()),
+            ),
+            log: log.clone(),
+            started: started.clone(),
+            release: release.clone(),
+        };
+        let daemon = Daemon::spawn(DaemonParts {
+            audio: Box::new(SharedAudio(Arc::new(Mutex::new(FakeAudioSource::silence(
+                2.0,
+            ))))),
+            processor: Box::new(probe),
+            notifier,
+            sound: Arc::new(RecordingSoundCue::default()),
+            injector: None,
+            clock: clock.clone(),
+            config,
+        });
+        let handle = daemon.handle();
+        FileProbeHarness {
+            daemon,
+            handle,
+            clock,
+            log,
+            release,
+        }
+    }
+
+    fn file_request(path: &str) -> FileTranscriptionRequest {
+        FileTranscriptionRequest {
+            path: PathBuf::from(path),
+            style: None,
+            timecodes: true,
+            no_llm: false,
+            source: crate::domain::entry::Source::Mcp,
+        }
+    }
+
+    fn status_job(handle: &DaemonHandle) -> serde_json::Value {
+        <DaemonHandle as RequestHandler>::handle(handle, Command::Status).unwrap()["job"].clone()
+    }
+
+    fn start_file_job(handle: &DaemonHandle) -> Receiver<Result<FileReport, IpcError>> {
+        let (tx, rx) = channel();
+        let handle = handle.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(handle.transcribe_file(file_request("/tmp/lecture.wav")));
+        });
+        rx
+    }
+
+    #[test]
+    fn a_file_job_is_visible_in_the_status_and_in_the_state_event() {
+        let h = file_probe_harness("реплика");
+        let events = h.handle.subscribe();
+        let answer = start_file_job(&h.handle);
+        wait_until(
+            || h.log.lock().unwrap().first().map(String::as_str) == Some("file:start"),
+            "the file job never started",
+        );
+
+        // The state machine is idle, and the status says what the worker is really doing
+        let handler: &dyn RequestHandler = &h.handle;
+        let status = handler.handle(Command::Status).unwrap();
+        assert_eq!(status["state"], "idle");
+        assert_eq!(status["job"], "file");
+
+        let mut saw_file_job = false;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            match events.recv_timeout(Duration::from_millis(100)) {
+                Ok(Event::State {
+                    job: Some(WorkerJob::File),
+                    ..
+                }) => {
+                    saw_file_job = true;
+                    break;
+                }
+                Ok(_) => {}
+                Err(_) => break,
+            }
+        }
+        assert!(saw_file_job, "no state event carried the file job");
+
+        *h.release.lock().unwrap() = true;
+        let report = answer
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap()
+            .unwrap();
+        assert_eq!(report.results[0].text, "текст файла");
+        // The slot is free again before the client gets its answer
+        assert_eq!(status_job(&h.handle), serde_json::Value::Null);
+        drop(h.daemon);
+    }
+
+    #[test]
+    fn a_phrase_recorded_during_a_file_job_waits_for_it_and_is_processed_after() {
+        // The recording must not be refused while the file job holds the worker: the audio is
+        // the one thing that cannot be repeated, the file can wait for it
+        let h = file_probe_harness("реплика после файла");
+        let events = h.handle.subscribe();
+        let answer = start_file_job(&h.handle);
+        wait_until(
+            || h.log.lock().unwrap().first().map(String::as_str) == Some("file:start"),
+            "the file job never started",
+        );
+
+        let outcome = h
+            .handle
+            .send(Input::RecordStart {
+                mode: Mode::Dictation,
+                style: None,
+            })
+            .unwrap();
+        assert!(outcome.is_ok(), "the recording was refused: {outcome:?}");
+        assert_eq!(h.handle.state(), DaemonState::Recording);
+
+        h.clock.advance(Duration::from_secs(2));
+        h.handle.send(Input::RecordStop).unwrap();
+        // The phrase is in the queue of the worker, behind the file that is still running
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(
+            *h.log.lock().unwrap(),
+            vec!["file:start".to_string()],
+            "the phrase was processed before the file finished"
+        );
+
+        *h.release.lock().unwrap() = true;
+        let report = answer
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap()
+            .unwrap();
+        assert!(report.ok());
+        let entry = wait_for_entry(&events);
+        assert_eq!(entry.text_final.as_deref(), Some("реплика после файла"));
+        assert_eq!(
+            *h.log.lock().unwrap(),
+            vec![
+                "file:start".to_string(),
+                "file:done".to_string(),
+                "phrase:реплика после файла".to_string()
+            ],
+            "the phrase did not run right after the file"
+        );
+        drop(h.daemon);
+    }
+
+    #[test]
+    fn a_file_job_is_refused_while_a_phrase_records() {
+        // The file must not take the recognizer away from a person who is speaking
+        let h = file_probe_harness("реплика");
+        h.handle
+            .send(Input::RecordStart {
+                mode: Mode::Dictation,
+                style: None,
+            })
+            .unwrap();
+        h.clock.advance(Duration::from_secs(2));
+        let err = h
+            .handle
+            .transcribe_file(file_request("/tmp/lecture.wav"))
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::Busy);
+        assert!(err.hint.is_some(), "the refusal must say what to do next");
+        assert!(
+            h.log.lock().unwrap().is_empty(),
+            "the refused file reached the worker"
+        );
+        h.handle.send(Input::RecordCancel).unwrap();
+        drop(h.daemon);
+    }
+
+    #[test]
+    fn a_second_file_job_is_refused_while_the_first_one_runs() {
+        let h = file_probe_harness("реплика");
+        let first = start_file_job(&h.handle);
+        wait_until(
+            || h.log.lock().unwrap().first().map(String::as_str) == Some("file:start"),
+            "the file job never started",
+        );
+        let err = h
+            .handle
+            .transcribe_file(file_request("/tmp/second.wav"))
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::Busy);
+
+        *h.release.lock().unwrap() = true;
+        first.recv_timeout(Duration::from_secs(5)).unwrap().unwrap();
+        // The slot is free: the next file is accepted
+        let second = start_file_job(&h.handle);
+        wait_until(
+            || {
+                h.log
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|line| *line == "file:start")
+                    .count()
+                    == 2
+            },
+            "the second file job never started",
+        );
+        *h.release.lock().unwrap() = true;
+        second
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap()
+            .unwrap();
         drop(h.daemon);
     }
 }

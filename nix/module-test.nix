@@ -86,6 +86,7 @@ let
     daemon = builtins.unsafeDiscardStringContext (
       config.systemd.user.services.molva-daemon.Service.ExecStart or ""
     );
+    guiAutostart = config.xdg.configFile."autostart/molvai-gui.desktop".text or "";
     model = config.programs.molvai.model;
     models = config.programs.molvai.models;
     configSource = builtins.unsafeDiscardStringContext (
@@ -119,6 +120,18 @@ in
     programs.molvai = {
       enable = true;
       daemon.enable = false;
+    };
+  });
+  noGuiAutostart = summary (eval {
+    programs.molvai = {
+      enable = true;
+      guiAutostart.enable = false;
+    };
+  });
+  customGuiCommand = summary (eval {
+    programs.molvai = {
+      enable = true;
+      guiAutostart.command = "/run/current-system/sw/bin/molva-gui";
     };
   });
   whisper = summary (eval {

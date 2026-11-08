@@ -5,10 +5,13 @@
 //! Response: `{"id":7,"ok":true,"result":{...}}` or `{"id":7,"ok":false,"error":{...}}`
 //! Events on subscribed connections: `{"event":"level","rms":0.08}`
 
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::domain::entry::{Entry, Mode};
+use crate::app::file_result::FileResult;
+use crate::domain::entry::{Entry, Mode, Source};
 
 pub const PROTOCOL_VERSION: u32 = 1;
 
@@ -21,6 +24,18 @@ pub enum DaemonState {
     Transcribing,
     PostProcessing,
     Injecting,
+}
+
+/// What the worker thread does beside the recording state machine
+///
+/// A file transcription holds the recognizer while the state machine stays `Idle`: the person
+/// can still record, the phrase waits in the queue, and the client must see why nothing is
+/// processed at once. So the job is a field of the status, not a state of the machine
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkerJob {
+    /// The worker transcribes a file for `file.transcribe`
+    File,
 }
 
 /// Client commands. Names with a dot are namespaces, as in the CLI
@@ -63,6 +78,10 @@ pub enum Command {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         mode: Option<crate::domain::inject::OutputMode>,
     },
+    /// Transcribe one audio or video file with the recognizer and the pipeline that the daemon
+    /// already holds: no client loads a model of its own
+    #[serde(rename = "file.transcribe")]
+    FileTranscribe(FileTranscriptionRequest),
     #[serde(rename = "subscribe")]
     Subscribe {
         #[serde(default)]
@@ -70,6 +89,60 @@ pub enum Command {
     },
     #[serde(rename = "shutdown")]
     Shutdown,
+}
+
+/// What a file transcription asks for
+///
+/// The recognizer, its language, the dictionary, the rules and the model are the settings of
+/// the daemon: a request carries only what the caller picks for this one file. The source goes
+/// with the request, so the journal line of an MCP client and of the CLI stay apart without a
+/// second command for each
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FileTranscriptionRequest {
+    /// Path on the machine where the daemon runs
+    pub path: PathBuf,
+    /// Post-processing style; the default style of the settings when absent
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style: Option<String>,
+    /// Segments with timecodes in the answer
+    #[serde(default = "default_true")]
+    pub timecodes: bool,
+    /// Do not call the post-processing model for this file
+    #[serde(default)]
+    pub no_llm: bool,
+    /// What the journal records: `mcp` for an MCP client, `file` for the CLI
+    #[serde(default = "default_source")]
+    pub source: Source,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_source() -> Source {
+    Source::File
+}
+
+/// The answer of `file.transcribe`: the same shape that `molva transcribe --json` prints
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct FileReport {
+    #[serde(default)]
+    pub results: Vec<FileResult>,
+    #[serde(default)]
+    pub errors: Vec<FileFailure>,
+}
+
+impl FileReport {
+    pub fn ok(&self) -> bool {
+        self.errors.is_empty()
+    }
+}
+
+/// One input that could not be transcribed and why
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FileFailure {
+    pub file: String,
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -154,6 +227,9 @@ pub enum Event {
         state: DaemonState,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         mode: Option<Mode>,
+        /// A file transcription holds the worker while the state machine stays as it is
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        job: Option<WorkerJob>,
     },
     Level {
         rms: f32,
@@ -216,6 +292,73 @@ mod tests {
         round_trip(&Command::Shutdown);
     }
 
+    fn request_fixture() -> FileTranscriptionRequest {
+        FileTranscriptionRequest {
+            path: PathBuf::from("/tmp/lecture.mp4"),
+            style: Some("cleanup".into()),
+            timecodes: true,
+            no_llm: false,
+            source: Source::Mcp,
+        }
+    }
+
+    #[test]
+    fn a_file_transcription_round_trips_with_its_arguments() {
+        round_trip(&Command::FileTranscribe(request_fixture()));
+        let json =
+            serde_json::to_value(Request::new(3, Command::FileTranscribe(request_fixture())))
+                .unwrap();
+        assert_eq!(json["cmd"], "file.transcribe");
+        assert_eq!(json["args"]["path"], "/tmp/lecture.mp4");
+        assert_eq!(json["args"]["style"], "cleanup");
+        assert_eq!(json["args"]["timecodes"], true);
+        assert_eq!(json["args"]["no_llm"], false);
+        assert_eq!(json["args"]["source"], "mcp");
+    }
+
+    #[test]
+    fn a_file_request_carries_defaults_for_the_optional_arguments() {
+        // A client that sends only the path gets timecodes and the journal source of the CLI
+        let request: Request = serde_json::from_str(
+            r#"{"v":1,"id":1,"cmd":"file.transcribe","args":{"path":"a.wav"}}"#,
+        )
+        .unwrap();
+        let Command::FileTranscribe(args) = request.cmd else {
+            panic!("the file command was expected");
+        };
+        assert_eq!(args.path, PathBuf::from("a.wav"));
+        assert_eq!(args.style, None);
+        assert!(args.timecodes);
+        assert!(!args.no_llm);
+        assert_eq!(args.source, Source::File);
+    }
+
+    #[test]
+    fn the_file_report_holds_the_results_and_the_failures() {
+        let report = FileReport {
+            results: vec![FileResult {
+                file: "/tmp/a.wav".into(),
+                text: "привет".into(),
+                segments: Vec::new(),
+                audio_secs: 1.5,
+                latency_ms: 12,
+                language: Some("ru".into()),
+            }],
+            errors: vec![FileFailure {
+                file: "/tmp/b.wav".into(),
+                reason: "unknown format".into(),
+            }],
+        };
+        let json = serde_json::to_value(&report).unwrap();
+        assert_eq!(json["results"][0]["text"], "привет");
+        assert_eq!(json["errors"][0]["file"], "/tmp/b.wav");
+        assert_eq!(json["errors"][0]["reason"], "unknown format");
+        let back: FileReport = serde_json::from_value(json).unwrap();
+        assert_eq!(back, report);
+        assert!(!report.ok());
+        assert!(FileReport::default().ok());
+    }
+
     #[test]
     fn request_wire_format_matches_documentation() {
         let request = Request::new(
@@ -263,9 +406,28 @@ mod tests {
         let state = serde_json::to_value(Event::State {
             state: DaemonState::PostProcessing,
             mode: Some(Mode::Dictation),
+            job: None,
         })
         .unwrap();
         assert_eq!(state["state"], "post_processing");
+        assert!(state.get("job").is_none(), "an absent job is not sent");
+        let busy = serde_json::to_value(Event::State {
+            state: DaemonState::Idle,
+            mode: None,
+            job: Some(WorkerJob::File),
+        })
+        .unwrap();
+        assert_eq!(busy["job"], "file");
+        // A client of an older build sends no job and must still be understood
+        let old: Event = serde_json::from_str(r#"{"event":"state","state":"idle"}"#).unwrap();
+        assert_eq!(
+            old,
+            Event::State {
+                state: DaemonState::Idle,
+                mode: None,
+                job: None
+            }
+        );
         let reloaded = serde_json::to_string(&Event::ConfigReloaded).unwrap();
         assert_eq!(reloaded, r#"{"event":"config_reloaded"}"#);
     }

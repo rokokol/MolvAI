@@ -79,10 +79,11 @@ pub struct Config {
     pub output: OutputConfig,
     pub hotkeys: HotkeysConfig,
     pub command_mode: CommandModeConfig,
+    pub translation: TranslationConfig,
     pub journal: JournalConfig,
     pub stats: StatsConfig,
     pub privacy: PrivacyConfig,
-    pub autostart: AutostartConfig,
+    pub mcp: McpConfig,
     pub gui: GuiConfig,
     pub log: LogConfig,
 }
@@ -101,10 +102,11 @@ impl Default for Config {
             output: OutputConfig::default(),
             hotkeys: HotkeysConfig::default(),
             command_mode: CommandModeConfig::default(),
+            translation: TranslationConfig::default(),
             journal: JournalConfig::default(),
             stats: StatsConfig::default(),
             privacy: PrivacyConfig::default(),
-            autostart: AutostartConfig::default(),
+            mcp: McpConfig::default(),
             gui: GuiConfig::default(),
             log: LogConfig::default(),
         }
@@ -202,7 +204,8 @@ impl Default for SttConfig {
             // go to the model
             chunk_pause_ms: crate::app::audio::segmenter::DEFAULT_CHUNK_PAUSE_MS,
             streaming_preview: true,
-            streaming_inject: true,
+            // Live typing is disabled in this build: the phrase is typed as one piece after release
+            streaming_inject: false,
             transcribe_cli: String::new(),
             transcribe_backend: "auto".into(),
             remote: RemoteSttConfig::default(),
@@ -289,18 +292,34 @@ pub struct LlmConfig {
     pub base_url: String,
     pub model: String,
     /// `keyring` is the OS store, `file` is `<settings directory>/secrets/llm-api-key-<provider>`,
-    /// `env` is the environment variable only, `none` means no key
+    /// `env` is the environment variable only, `plain` keeps the key in this TOML file, and
+    /// `none` means no key
     pub api_key_source: String,
     pub api_key_env: String,
+    /// The key itself, used only by `api_key_source = "plain"`; it is written in clear text
+    /// and must never be treated as safe
+    pub api_key_plain: String,
+    /// OpenRouter data collection: `allow` or `deny`. Other providers ignore it
+    pub data_collection: String,
+    /// Ask OpenRouter for zero data retention; other providers ignore it
+    pub zdr: bool,
+    /// OpenRouter provider order: comma-separated provider slugs (`groq, together`), sent as
+    /// `provider.order`. Empty means no order, and the router picks. Other providers ignore it
+    pub provider_order: String,
+    /// Let OpenRouter fall back to another provider when the ordered ones cannot answer
+    pub allow_fallbacks: bool,
+    /// Ask OpenRouter for providers that support every parameter of the request
+    pub require_parameters: bool,
     pub temperature: f32,
     pub max_tokens: u32,
     pub timeout_secs: u64,
     pub max_retries: u32,
-    /// How much the model "thinks" before it answers: `auto` sends `none` for local providers
-    /// (Ollama, LM Studio) and does not send the field for cloud ones; an empty string means
-    /// never send; any other value (`none`, `low`, `medium`, `high`) goes as it is. Otherwise
-    /// reasoning models such as qwen3.5 spend the whole `max_tokens` on reasoning and return
-    /// empty text
+    /// How much the model "thinks" before it answers: `none` is the default and asks for no
+    /// reasoning, and OpenRouter gets no `reasoning` field at all, because it answers HTTP 400
+    /// for a model with mandatory reasoning; `auto` does the same for a cloud provider and
+    /// sends `none` to a local one (Ollama, LM Studio); an empty string means never send; any
+    /// other value (`low`, `medium`, `high`) goes as it is. Without `none` a reasoning model
+    /// such as qwen3.5 spends the whole `max_tokens` on reasoning and returns empty text
     pub reasoning_effort: String,
 }
 
@@ -313,13 +332,57 @@ impl Default for LlmConfig {
             model: "qwen3.5:4b".into(),
             api_key_source: "keyring".into(),
             api_key_env: "OPENAI_API_KEY".into(),
+            api_key_plain: String::new(),
+            data_collection: "allow".into(),
+            zdr: false,
+            provider_order: String::new(),
+            // The router falls back by itself unless the user narrows the choice: an answer
+            // from a second provider beats no answer at all
+            allow_fallbacks: true,
+            require_parameters: false,
             temperature: 0.2,
             max_tokens: 1024,
             timeout_secs: 20,
             max_retries: 2,
-            reasoning_effort: "auto".into(),
+            reasoning_effort: "none".into(),
         }
     }
+}
+
+/// Provider slugs of `llm.provider_order`: split on commas, trimmed, lower case, without repeats
+///
+/// OpenRouter compares its slugs exactly and writes them in lower case, so `Groq` selects
+/// nothing. Empty tokens are dropped here and refused by the validation: this function answers
+/// what to send, and a stray comma must not become a provider named `""`
+pub fn provider_slugs(raw: &str) -> Vec<String> {
+    let mut slugs: Vec<String> = Vec::new();
+    for token in raw.split(',') {
+        let slug = token.trim().to_ascii_lowercase();
+        if slug.is_empty() || slugs.contains(&slug) {
+            continue;
+        }
+        slugs.push(slug);
+    }
+    slugs
+}
+
+/// The first token of `llm.provider_order` that cannot be a provider slug
+///
+/// A slug is letters, digits, `-`, `_`, `.` and `/`: OpenRouter writes `deepinfra/turbo`. An
+/// empty token is a stray comma, and a space inside a token is two names typed as one
+pub fn invalid_provider_slug(raw: &str) -> Option<String> {
+    if raw.trim().is_empty() {
+        return None;
+    }
+    raw.split(',')
+        .map(str::trim)
+        .find(|token| {
+            token.is_empty()
+                || !token
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/'))
+        })
+        .map(str::to_string)
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -488,6 +551,27 @@ impl Default for JournalConfig {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
+pub struct TranslationConfig {
+    /// Translate the finished dictation into `target`
+    ///
+    /// Off by default: the text of a phrase leaves the machine for the model. The dictionary
+    /// and the rules work in the recognized language, and the finished phrase is translated once
+    pub enabled: bool,
+    /// Target language, ISO 639-1; there is no `auto`, because a translation needs a target
+    pub target: String,
+}
+
+impl Default for TranslationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            target: "en".into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct StatsConfig {
     /// Baseline for the "saved time" against typing on a keyboard
     pub typing_baseline_wpm: u32,
@@ -505,6 +589,8 @@ impl Default for StatsConfig {
 #[serde(default)]
 pub struct PrivacyConfig {
     pub send_to_llm: bool,
+    /// The owner has confirmed that text may leave the machine for a cloud provider
+    pub cloud_consent: bool,
     /// Turns off the text journal and the whole history
     pub no_record_mode: bool,
     /// There is no telemetry; the key exists to say this explicitly
@@ -515,16 +601,25 @@ impl Default for PrivacyConfig {
     fn default() -> Self {
         Self {
             send_to_llm: true,
+            cloud_consent: false,
             no_record_mode: false,
             telemetry: false,
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct AutostartConfig {
+pub struct McpConfig {
+    /// The stdio MCP server may be started by a harness. This switch lets the owner disable it
+    /// without removing the command from the harness configuration
     pub enabled: bool,
+}
+
+impl Default for McpConfig {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -536,6 +631,12 @@ pub struct GuiConfig {
     /// processing), so it updates only a few times per phrase, and not on every signal level
     /// event. Whoever needs a blinking indicator more than a calm tray sets `true`
     pub tray_animation: bool,
+    /// Show the Settings tab while the config is a Nix store path; the tab stays read-only
+    ///
+    /// A managed home hides it by default: every save is refused, so a form that cannot
+    /// change anything only misleads. The Nix module turns this on when the owner wants to
+    /// inspect the effective settings inside the application
+    pub show_managed_settings: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -783,6 +884,7 @@ impl Config {
         self.validate_stt(&mut issues);
         self.validate_output(&mut issues);
         self.validate_llm(&mut issues);
+        self.validate_translation(&mut issues);
         self.validate_styles(&mut issues);
         self.validate_limits(&mut issues);
 
@@ -917,8 +1019,24 @@ impl Config {
             issues,
             "llm.api_key_source",
             &self.llm.api_key_source,
-            &["keyring", "file", "env", "none"],
+            &["keyring", "file", "env", "plain", "none"],
         );
+        one_of(
+            issues,
+            "llm.data_collection",
+            &self.llm.data_collection,
+            &["allow", "deny"],
+        );
+        if let Some(token) = invalid_provider_slug(&self.llm.provider_order) {
+            issues.push(ConfigIssue::new(
+                "llm.provider_order",
+                &self.llm.provider_order,
+                &format!(
+                    "{token:?} is not an OpenRouter provider slug: expected comma-separated \
+                     names such as `groq, together`"
+                ),
+            ));
+        }
         in_range(
             issues,
             "llm.temperature",
@@ -956,8 +1074,60 @@ impl Config {
         }
     }
 
+    /// Translation: the target must be a language code that a model can act on
+    fn validate_translation(&self, issues: &mut Vec<ConfigIssue>) {
+        let target = self.translation.target.trim();
+        if target.chars().count() != 2 || !target.chars().all(|c| c.is_ascii_alphabetic()) {
+            issues.push(ConfigIssue::new(
+                "translation.target",
+                target,
+                "expected a two-letter ISO 639-1 language code, for example `en`",
+            ));
+        }
+    }
+
     /// Post-processing styles: both the default and the bindings to applications
     fn validate_styles(&self, issues: &mut Vec<ConfigIssue>) {
+        // The settings editor offers ten slots; the config keeps the same hard limit so a hand
+        // written file cannot bypass it
+        if self.style.custom.len() > 10 {
+            issues.push(ConfigIssue::new(
+                "style.custom",
+                &self.style.custom.len().to_string(),
+                "at most ten custom styles are allowed",
+            ));
+        }
+        let mut seen = BTreeMap::new();
+        for (index, custom) in self.style.custom.iter().enumerate() {
+            let id = custom.id.trim();
+            if id.is_empty() {
+                issues.push(ConfigIssue::new(
+                    &format!("style.custom.{index}.id"),
+                    id,
+                    "a custom style needs an id",
+                ));
+            } else if seen.insert(id, index).is_some() {
+                issues.push(ConfigIssue::new(
+                    &format!("style.custom.{index}.id"),
+                    id,
+                    "the id duplicates another custom style",
+                ));
+            }
+            if custom.name.trim().is_empty() {
+                issues.push(ConfigIssue::new(
+                    &format!("style.custom.{index}.name"),
+                    &custom.name,
+                    "a custom style needs a display name",
+                ));
+            }
+            if custom.uses_llm && custom.system_prompt.trim().is_empty() {
+                issues.push(ConfigIssue::new(
+                    &format!("style.custom.{index}.system_prompt"),
+                    &custom.system_prompt,
+                    "a style that uses the model needs a system prompt",
+                ));
+            }
+        }
         let styles = crate::app::styles::Styles::from_config(&self.style);
         if styles.get(&self.style.default).is_none() {
             let known: Vec<&str> = styles.all().iter().map(|s| s.id.as_str()).collect();
@@ -1251,13 +1421,10 @@ mod tests {
     }
 
     #[test]
-    fn no_api_key_field_exists_in_config() {
-        let text = Config::default().to_toml_string().unwrap();
-        assert!(
-            !text.contains("api_key ="),
-            "the key must not be stored in the file"
-        );
-        assert!(text.contains("api_key_env"));
+    fn the_plain_key_is_empty_by_default() {
+        let config = Config::default();
+        assert!(config.llm.api_key_plain.is_empty());
+        assert_eq!(config.llm.api_key_source, "keyring");
     }
 
     #[test]
@@ -1266,21 +1433,125 @@ mod tests {
     }
 
     #[test]
-    fn streaming_is_on_out_of_the_box() {
-        // Promise of the product: the draft is visible during speech, and after the release only a
-        // tail remains. It can be turned off only explicitly in the settings file
+    fn streaming_preview_is_on_but_live_typing_is_off() {
+        // The draft remains visible during speech, but the phrase reaches the field as one piece
+        // after the release. Live chunk typing is a separate feature with its own task
         let stt = Config::default().stt;
         assert!(stt.chunked, "streaming processing is off by default");
         assert!(stt.streaming_preview, "the draft is off by default");
         assert!(
-            stt.streaming_inject,
-            "the chunks wait for the release instead of reaching the field"
+            !stt.streaming_inject,
+            "live typing must stay off until its ordering is fixed"
         );
         assert_eq!(stt.chunk_pause_ms, 700);
         assert!(stt.transcribe_cli.is_empty());
         assert_eq!(stt.transcribe_backend, "auto");
         assert_eq!(stt.engine, "auto");
         assert_eq!(stt.model, "gigaam-v3-e2e-rnnt-q4_k_m");
+    }
+
+    #[test]
+    fn openrouter_routing_is_off_by_default_except_fallbacks() {
+        let llm = Config::default().llm;
+        assert_eq!(llm.provider_order, "");
+        assert!(
+            llm.allow_fallbacks,
+            "the router may pick another provider when the ordered one cannot answer"
+        );
+        assert!(!llm.require_parameters);
+        assert_eq!(provider_slugs(&llm.provider_order), Vec::<String>::new());
+    }
+
+    #[test]
+    fn provider_slugs_are_trimmed_lower_case_and_without_repeats() {
+        assert_eq!(
+            provider_slugs(" Groq , together ,GROQ,, deepinfra/turbo "),
+            vec!["groq", "together", "deepinfra/turbo"]
+        );
+        assert_eq!(provider_slugs(""), Vec::<String>::new());
+        assert_eq!(provider_slugs(" , "), Vec::<String>::new());
+    }
+
+    #[test]
+    fn only_a_token_that_cannot_be_a_slug_is_refused() {
+        for good in [
+            "",
+            "  ",
+            "groq",
+            "groq, together",
+            "azure",
+            "deepinfra/turbo",
+        ] {
+            assert_eq!(invalid_provider_slug(good), None, "{good:?}");
+        }
+        // A stray comma and a space inside a token are mistakes, not orders
+        for (bad, token) in [
+            ("groq,", ""),
+            (",groq", ""),
+            ("groq,,together", ""),
+            ("groq together", "groq together"),
+            ("groq;together", "groq;together"),
+        ] {
+            assert_eq!(
+                invalid_provider_slug(bad).as_deref(),
+                Some(token),
+                "{bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_settings_refuse_a_provider_order_that_is_not_a_list_of_slugs() {
+        let mut config = Config::default();
+        config.llm.provider_order = "groq, together".into();
+        assert!(config.validate().is_ok());
+        config.llm.provider_order = "groq; together".into();
+        let issues = config.validate().unwrap_err();
+        assert!(
+            issues.iter().any(|i| i.key == "llm.provider_order"),
+            "{issues:?}"
+        );
+    }
+
+    #[test]
+    fn the_routing_settings_survive_a_round_trip_through_toml() {
+        let mut config = Config::default();
+        config.llm.provider_order = "groq, together".into();
+        config.llm.allow_fallbacks = false;
+        config.llm.require_parameters = true;
+        let text = config.to_toml_string().unwrap();
+        let back = Config::from_toml_str(Path::new("x.toml"), &text).unwrap();
+        assert_eq!(back.llm.provider_order, "groq, together");
+        assert!(!back.llm.allow_fallbacks);
+        assert!(back.llm.require_parameters);
+        assert_eq!(back, config);
+    }
+
+    #[test]
+    fn translation_is_off_out_of_the_box() {
+        let config = Config::default();
+        assert!(
+            !config.translation.enabled,
+            "a phrase must not leave the machine for the model without a choice"
+        );
+        assert_eq!(config.translation.target, "en");
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn a_target_language_that_is_not_a_code_is_refused() {
+        for (target, allowed) in [
+            ("en", true),
+            (" RU ", true),
+            ("auto", false),
+            ("english", false),
+            ("", false),
+            ("e1", false),
+        ] {
+            let mut config = Config::default();
+            config.translation.target = target.into();
+            assert_eq!(config.validate().is_ok(), allowed, "{target:?}");
+        }
     }
 
     #[test]

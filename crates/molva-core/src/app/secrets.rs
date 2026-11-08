@@ -340,6 +340,9 @@ where
     if source == "none" {
         return None;
     }
+    if source == "plain" {
+        return non_blank(&cfg.api_key_plain);
+    }
     if source == "keyring" || source == "file" {
         let entry = llm_key_entry(&cfg.provider);
         match store.get(&entry) {

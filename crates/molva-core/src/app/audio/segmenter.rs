@@ -7,11 +7,14 @@
 //! whisper during the speech, and after the release only the tail remains to recognize
 //!
 //! A cut in the middle of a syllable is not allowed: from a fragment of a word, whisper
-//! confidently prints a wrong word. This gives two rules. The boundary is searched at the middle
-//! of a pause, not by a timer. When there are no pauses at all and the chunk has reached the
-//! limit, the boundary goes to the quietest window of the last two seconds. Neighbouring chunks
-//! overlap by [`SegmenterConfig::overlap_ms`], so the sound exactly at the boundary falls into
-//! both
+//! confidently prints a wrong word. So the boundary is searched at the middle of a pause, not by
+//! a timer, and the pause that counts is `stt.chunk_pause_ms`, 700 ms by default
+//!
+//! [`DEFAULT_MAX_CHUNK_SECS`] is where the wait for that pause costs more than a less ideal
+//! boundary: after ten seconds a pause of [`LATE_PAUSE_MS`] is enough. There is no forced cut. A
+//! chunk that meets no acceptable pause keeps growing, so a person who speaks without pauses pays
+//! for it with memory and a late first hypothesis. Neighbouring chunks overlap by
+//! [`SegmenterConfig::overlap_ms`], so the sound exactly at the boundary falls into both
 //!
 //! The structure is pure: no time, no threads, no I/O. It takes only samples as input and
 //! returns chunks as output, so synthetic signals test it without a microphone and without a
@@ -28,10 +31,20 @@ use crate::domain::audio::PcmAudio;
 /// again (9.6 s), because each extra chunk pays for its own encoder window padding
 pub const DEFAULT_TARGET_CHUNK_SECS: f32 = 3.0;
 
-/// Limit after which a chunk is cut even without a pause
+/// Length after which the pause that cuts a chunk relaxes to [`LATE_PAUSE_MS`]
 pub const DEFAULT_MAX_CHUNK_SECS: f32 = 10.0;
 
+/// Pause that cuts a chunk once it is longer than [`DEFAULT_MAX_CHUNK_SECS`]
+///
+/// Ten seconds of one chunk is a long wait for a boundary, and a long sentence may hold no pause
+/// of 700 ms. A pause of 200 ms arrives soon and still leaves silence on both sides of the cut
+pub const LATE_PAUSE_MS: u32 = 200;
+
 /// Overlap of neighbouring chunks: the sound at the boundary falls into both chunks
+///
+/// The overlap is also what whisper echoes: the next chunk holds sound the previous one already
+/// had, so the last word comes back at the start of the next chunk. The daemon drops that echo by
+/// text, see [`crate::app::daemon::chunked::strip_repeated_head`]
 pub const DEFAULT_OVERLAP_MS: u32 = 150;
 
 /// Pause at which a chunk is cut, when the settings do not say otherwise
@@ -39,9 +52,6 @@ pub const DEFAULT_CHUNK_PAUSE_MS: u32 = 700;
 
 /// Window for the level analysis: as in [`crate::app::audio::trim`], 20 ms
 const WINDOW_MS: u32 = 20;
-
-/// Tail in which the quietest window is searched, when the chunk has reached the limit
-const QUIETEST_LOOKBACK_MS: u32 = 2_000;
 
 /// Level that counts as absolute silence: the logarithm of zero is not defined
 const SILENCE_FLOOR_DB: f32 = -120.0;
@@ -53,9 +63,10 @@ pub struct SegmenterConfig {
     pub sample_rate: u32,
     /// A chunk is not returned before this length, even if a pause has already occurred
     pub target_chunk_secs: f32,
-    /// After this length a chunk is cut at the quietest window, even if there was no pause
+    /// After this length the pause that cuts a chunk relaxes to [`LATE_PAUSE_MS`]. The chunk is
+    /// still not cut without a pause
     pub max_chunk_secs: f32,
-    /// A pause shorter than this does not count as a boundary
+    /// A pause shorter than this does not count as a boundary before that length
     pub min_pause_ms: u32,
     /// Silence threshold in dBFS, as `audio.silence_threshold_db`
     pub silence_threshold_db: f32,
@@ -131,7 +142,8 @@ impl Segmenter {
     /// Add fresh samples and take everything that has matured into a chunk
     ///
     /// One call can return several chunks: if the stream came as a big portion, it may hold
-    /// several boundaries at once
+    /// several boundaries at once. Only a pause makes a chunk, so a stream without pauses
+    /// returns nothing and keeps the sound until the release
     pub fn push(&mut self, samples: &[f32]) -> Vec<Chunk> {
         self.buffer.extend_from_slice(samples);
         let mut out = Vec::new();
@@ -145,11 +157,9 @@ impl Segmenter {
             if self.buffer.len() < self.target_samples() {
                 break;
             }
-            // A pause beats the limit: if a pause exists, cutting at it is always better
-            let cut = self
-                .pause_cut()
-                .or_else(|| (self.buffer.len() >= self.max_samples()).then(|| self.quietest_cut()));
-            let Some(cut) = cut else { break };
+            let Some(cut) = self.pause_cut(self.pause_required()) else {
+                break;
+            };
             if let Some(chunk) = self.take(cut) {
                 out.push(chunk);
             }
@@ -206,13 +216,31 @@ impl Segmenter {
         self.windows[index] < self.config.silence_threshold_db
     }
 
-    /// Boundary at the middle of the first pause that is long enough after `target`
+    /// Pause that a chunk of the current length waits for
+    ///
+    /// Before the limit the person still has time, so the boundary needs the configured pause.
+    /// After it, the wait costs more than a boundary that is not ideal, so [`LATE_PAUSE_MS`] is
+    /// enough. A configured pause shorter than that stays shorter: this rule relaxes the setting
+    /// and never tightens it
+    ///
+    /// The length decides, not the place of the pause: a chunk that has passed the limit takes
+    /// the first pause the late rule accepts, even if that pause began before the limit. Waiting
+    /// for the next pause would make the chunk longer for no gain
+    fn pause_required(&self) -> u32 {
+        if self.buffer.len() >= self.max_samples() {
+            LATE_PAUSE_MS.min(self.config.min_pause_ms)
+        } else {
+            self.config.min_pause_ms
+        }
+    }
+
+    /// Boundary at the middle of the first pause of at least `min_pause_ms` after `target`
     ///
     /// A pause at the end of the buffer counts the same as a finished pause. To wait until the
     /// person speaks again would waste the very time that the design exists to save
-    fn pause_cut(&self) -> Option<usize> {
+    fn pause_cut(&self, min_pause_ms: u32) -> Option<usize> {
         let window = self.window_len();
-        let min_run = (self.config.min_pause_ms as usize / WINDOW_MS as usize).max(1);
+        let min_run = (min_pause_ms as usize / WINDOW_MS as usize).max(1);
         let target = self.target_samples();
 
         let mut run_start: Option<usize> = None;
@@ -234,28 +262,6 @@ impl Segmenter {
             }
         }
         None
-    }
-
-    /// Boundary at the quietest window of the last seconds: there was no pause, but it is
-    /// time to cut
-    fn quietest_cut(&self) -> usize {
-        let window = self.window_len();
-        let fallback = self.max_samples().clamp(1, self.buffer.len());
-        let limit = (self.max_samples() / window).min(self.windows.len());
-        let lookback = (QUIETEST_LOOKBACK_MS as usize / WINDOW_MS as usize).max(1);
-        let from = limit.saturating_sub(lookback).max(1);
-        if from >= limit {
-            return fallback;
-        }
-        let quietest = (from..limit).min_by(|a, b| {
-            self.windows[*a]
-                .partial_cmp(&self.windows[*b])
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-        // The middle of the quietest window: the syllable is not torn to either side
-        quietest.map_or(fallback, |index| {
-            (index * window + window / 2).min(self.buffer.len())
-        })
     }
 
     /// Cut off a chunk at the boundary `cut` and keep the overlap for the next one
@@ -339,6 +345,15 @@ mod tests {
         }
     }
 
+    /// Settings with a configured pause well above [`LATE_PAUSE_MS`]: the two rules separate
+    fn config_wide_pause() -> SegmenterConfig {
+        SegmenterConfig {
+            min_pause_ms: 700,
+            max_chunk_secs: 2.5,
+            ..config()
+        }
+    }
+
     fn tone(ms: u32) -> Vec<f32> {
         tone_at(ms, 0.5)
     }
@@ -381,39 +396,119 @@ mod tests {
     }
 
     #[test]
-    fn a_continuous_tone_is_cut_at_the_limit() {
+    fn a_chunk_without_any_pause_keeps_growing() {
         let mut segmenter = Segmenter::new(config());
 
-        let chunks = segmenter.push(&tone(1_700));
+        let mut chunks = Vec::new();
+        // Three seconds of a continuous tone: twice the limit of 1500 ms, and not one pause
+        for _ in 0..6 {
+            chunks.extend(segmenter.push(&tone(500)));
+        }
 
-        assert_eq!(
-            chunks.len(),
-            1,
-            "the continuous tone was not cut at the limit"
-        );
-        let cut = ms_of(&chunks[0]);
         assert!(
-            cut <= 1_500,
-            "the chunk must fit the limit of 1500 ms, but it came at {cut} ms"
+            chunks.is_empty(),
+            "the chunk was cut without a pause: {chunks:?}"
         );
-        assert!(cut > 0, "the chunk is empty");
+        assert_eq!(segmenter.emitted(), 0);
+        let tail = segmenter.finish().expect("the tail is the whole tone");
+        assert_eq!(ms_of(&tail), 3_000, "the grown chunk lost sound");
     }
 
     #[test]
-    fn without_a_pause_the_boundary_lands_on_the_quietest_window() {
+    fn a_drop_in_loudness_is_not_a_pause() {
         let mut segmenter = Segmenter::new(config());
-        // Speech without pauses, but with a drop in loudness at 1000 ms: the cut belongs there
+        // Quieter, but well above the -45 dBFS threshold: a quiet window is not a pause, and a
+        // cut there lands in the middle of a word
         let mut signal = tone(1_000);
-        signal.extend(tone_at(100, 0.02));
+        signal.extend(tone_at(200, 0.02));
+        signal.extend(tone(600));
+
+        assert!(
+            segmenter.push(&signal).is_empty(),
+            "a quiet window must not become a boundary"
+        );
+    }
+
+    #[test]
+    fn after_the_limit_a_pause_of_two_hundred_ms_cuts_the_chunk() {
+        let mut segmenter = Segmenter::new(config_wide_pause());
+        // The configured pause is 700 ms: the 220 ms pause alone would never cut
+        let mut signal = tone(2_600);
+        signal.extend(silence(220));
         signal.extend(tone(600));
 
         let chunks = segmenter.push(&signal);
 
-        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks.len(), 1, "the late pause did not cut: {chunks:?}");
         let cut = ms_of(&chunks[0]);
         assert!(
-            (980..=1_120).contains(&cut),
-            "the boundary must fall into the drop at 1000 ms, but it came at {cut} ms"
+            cut > 2_500,
+            "the chunk is below the limit of 2500 ms: {cut} ms"
+        );
+        assert!(
+            (2_600..=2_820).contains(&cut),
+            "the cut must fall into the 220 ms pause after 2600 ms, but it came at {cut} ms"
+        );
+    }
+
+    #[test]
+    fn before_the_limit_a_pause_below_the_setting_does_not_cut() {
+        let mut segmenter = Segmenter::new(config_wide_pause());
+        // 600 ms of silence is below the configured 700, and the chunk is below the limit
+        let mut signal = tone(600);
+        signal.extend(silence(600));
+        signal.extend(tone(600));
+
+        assert!(
+            segmenter.push(&signal).is_empty(),
+            "a pause below the configured one cut the chunk before the limit"
+        );
+        assert_eq!(segmenter.emitted(), 0);
+    }
+
+    #[test]
+    fn a_pause_that_reaches_the_setting_cuts_before_the_limit() {
+        let mut segmenter = Segmenter::new(config_wide_pause());
+        // 900 ms of silence reaches the configured 700, and the chunk is below the limit
+        let mut signal = tone(600);
+        signal.extend(silence(900));
+        signal.extend(tone(600));
+
+        let chunks = segmenter.push(&signal);
+
+        assert_eq!(
+            chunks.len(),
+            1,
+            "the configured pause did not cut: {chunks:?}"
+        );
+        // The middle of the pause 600…1500 ms: 1050 ms
+        let cut = ms_of(&chunks[0]);
+        assert!(
+            (1_000..=1_100).contains(&cut),
+            "the cut must be at the middle of the pause, but it came at {cut} ms"
+        );
+    }
+
+    #[test]
+    fn a_chunk_past_the_limit_takes_the_first_pause_the_late_rule_accepts() {
+        let mut segmenter = Segmenter::new(config_wide_pause());
+        // One pause of 300 ms below the configured 700, and the chunk passes the limit of 2500 ms
+        let mut signal = tone(600);
+        signal.extend(silence(300));
+        signal.extend(tone(2_200));
+
+        let chunks = segmenter.push(&signal);
+
+        assert_eq!(
+            chunks.len(),
+            1,
+            "the chunk past the limit was not cut: {chunks:?}"
+        );
+        // The length decides, not the place: the pause began before the limit and still cuts
+        let cut = ms_of(&chunks[0]);
+        assert!(
+            (600..=900).contains(&cut),
+            "the cut must fall into the pause at 600…900 ms, but it came at {cut} ms"
         );
     }
 
@@ -546,6 +641,7 @@ mod tests {
         assert_eq!(config.max_chunk_secs, 10.0);
         assert_eq!(config.overlap_ms, 150);
         assert_eq!(config.min_pause_ms, 700);
+        assert_eq!(LATE_PAUSE_MS, 200);
     }
 
     #[test]

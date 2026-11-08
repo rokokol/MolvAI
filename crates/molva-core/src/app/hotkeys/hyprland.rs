@@ -75,6 +75,17 @@ pub fn lua(hotkeys: &HotkeysConfig) -> Result<String, HotkeyError> {
         "-- MolvAI hotkeys for Hyprland, written by MolvAI from its settings\n\
          -- Change the hotkeys in MolvAI: it rewrites this file, so an edit here does not last\n",
     );
+    // The panel is a small floating window, not a tile: a tiled window would take half the
+    // screen and hide the application the person is dictating into
+    text.push_str(
+        "hl.window_rule({\n  name = \"molvai-floating-panel\",\n  match = { class = \"^(molva-gui|Molva-gui|MolvAI)$\" },\n  float = true,\n  size = { 900, 600 },\n  center = true,\n})\n",
+    );
+    // A development build has no `molva` on the compositor's PATH: the next directory is
+    // where a local install or a symlink to the CLI lives. It is harmless when the package
+    // already provides the command
+    text.push_str(
+        "hl.env(\"PATH\", os.getenv(\"HOME\") .. \"/.local/bin:\" .. (os.getenv(\"PATH\") or \"\"))\n",
+    );
     for bind in binds {
         if bind.keys.trim().is_empty() {
             continue;

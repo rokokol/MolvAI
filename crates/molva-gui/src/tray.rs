@@ -346,6 +346,28 @@ fn send_async(app: &AppHandle, command: Command) {
     });
 }
 
+/// Start a recording from the menu, starting the daemon first when nobody answers
+///
+/// The window and the menu ask for a recording the same way: the microphone belongs to the
+/// daemon, and a user who clicks Record does not want to learn about sockets
+fn record_from_menu(app: &AppHandle) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let state = app.state::<AppState>();
+        if let Err(err) = crate::commands::ensure_daemon(&state) {
+            crate::notify_error(&app, &err.message, err.hint.as_deref());
+            return;
+        }
+        let command = Command::RecordStart {
+            mode: molva_core::domain::entry::Mode::Dictation,
+            style: None,
+        };
+        if let Err(err) = ipc::request(command) {
+            crate::notify_error(&app, &err.user_message(), err.hint().as_deref());
+        }
+    });
+}
+
 // `on_menu_event` sets the signature: the event arrives by value
 #[allow(clippy::needless_pass_by_value)]
 fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
@@ -356,15 +378,11 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
                 app.state::<AppState>().last_state(),
                 Some(DaemonState::Recording)
             );
-            let command = if recording {
-                Command::RecordStop
+            if recording {
+                send_async(app, Command::RecordStop);
             } else {
-                Command::RecordStart {
-                    mode: molva_core::domain::entry::Mode::Dictation,
-                    style: None,
-                }
-            };
-            send_async(app, command);
+                record_from_menu(app);
+            }
         }
         "pause" => {
             let state = app.state::<AppState>();

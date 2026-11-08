@@ -14,6 +14,7 @@ import {
 import { useI18n } from "../i18n";
 import type { ViewProps } from "../App";
 import type { Entry, StatsSummary, StyleOption } from "../types";
+import LevelSignal from "../components/LevelSignal";
 import StateBadge from "../components/StateBadge";
 
 interface Props extends ViewProps {
@@ -41,6 +42,8 @@ export default function Dashboard({
 
   const running = status?.daemon_running ?? false;
   const recording = status?.state === "recording";
+  // A file transcription holds the recognizer: the badge and a notice say so instead of "Ready"
+  const fileJob = status?.job === "file";
   const download = running ? undefined : status?.download;
 
   const loadToday = useCallback(async () => {
@@ -83,17 +86,26 @@ export default function Dashboard({
   };
 
   const currentStyle = status?.style ?? config?.style.default ?? "";
-  // The level rarely reaches one: the square root stretches the quiet part of the scale
-  const levelPercent = Math.min(100, Math.round(Math.sqrt(Math.max(0, level)) * 140));
+  const llmEnabled = config?.llm.enabled ?? false;
 
   return (
     <>
       <h1>{t("dashboard.title")}</h1>
 
-      <section className="card">
+      <section className={`card record-panel${recording ? " recording" : ""}`}>
         <div className="row spread">
-          <StateBadge state={status?.state ?? null} running={running} />
-          <div className="row">
+          <div className="row record-state">
+            <span
+              className={`record-led ${recording ? "live" : running ? "ready" : "idle"}`}
+              aria-hidden="true"
+            />
+            <StateBadge
+              state={status?.state ?? null}
+              running={running}
+              job={status?.job ?? null}
+            />
+          </div>
+          <div className="row actions-row">
             {running ? (
               <>
                 <button
@@ -114,20 +126,36 @@ export default function Dashboard({
                 </button>
               </>
             ) : (
+              // A recording needs the daemon: the button starts it and records at once, so a
+              // cold window is not a reason to say "the daemon is stopped" and stop there.
               // During a download the socket does not exist yet, and the single-instance check
               // would let a second daemon write to the same .part file
               !download && (
-                <button
-                  type="button"
-                  className="primary"
-                  onClick={() => run(() => api.startDaemon())}
-                >
-                  {t("daemon.start")}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="primary"
+                    onClick={() => run(() => api.recordStart())}
+                  >
+                    {t("dashboard.record")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => run(() => api.startDaemon())}
+                  >
+                    {t("daemon.start")}
+                  </button>
+                </>
               )
             )}
           </div>
         </div>
+        {fileJob && (
+          <div className="notice" role="status">
+            <strong>{t("dashboard.fileJob")}</strong>
+            <p>{t("dashboard.fileJobHint")}</p>
+          </div>
+        )}
         {download && (
           <div className="notice" role="status">
             <strong>{t("daemon.downloading", { model: download.model })}</strong>
@@ -167,16 +195,7 @@ export default function Dashboard({
 
       <section className="card">
         <h2>{t("dashboard.level")}</h2>
-        <div
-          className="meter"
-          role="meter"
-          aria-label={t("dashboard.level")}
-          aria-valuenow={levelPercent}
-          aria-valuemin={0}
-          aria-valuemax={100}
-        >
-          <div className="fill" style={{ width: `${levelPercent}%` }} />
-        </div>
+        <LevelSignal level={level} active={recording} />
         {zeroLevel && (
           <div className="notice warning" role="alert">
             <strong>{t("dashboard.levelZero")}</strong>
@@ -200,6 +219,12 @@ export default function Dashboard({
                 type="button"
                 className="chip"
                 aria-pressed={style.id === currentStyle}
+                disabled={!llmEnabled && style.id !== "verbatim"}
+                title={
+                  !llmEnabled && style.id !== "verbatim"
+                    ? t("dashboard.styleNeedsLlm")
+                    : undefined
+                }
                 onClick={() => void chooseStyle(style.id)}
               >
                 {style.name}
@@ -222,6 +247,16 @@ export default function Dashboard({
                 {t("dashboard.latency")}: {formatLatency(lastEntry.latency_ms.total)}
               </span>
               <span>{lastEntry.style}</span>
+              {lastEntry.source === "file" ? (
+                <span className="badge">{t("history.files")}</span>
+              ) : (
+                lastEntry.llm_used && (
+                  <span className="badge">
+                    LLM · {lastEntry.llm_provider ?? "?"}
+                    {lastEntry.llm_model ? ` / ${lastEntry.llm_model}` : ""}
+                  </span>
+                )
+              )}
               {lastEntry.app && <span>{lastEntry.app}</span>}
             </div>
             <p className="text">
@@ -238,22 +273,10 @@ export default function Dashboard({
               >
                 {copied ? t("common.copied") : t("common.copy")}
               </button>
-              <button
-                type="button"
-                className="chip"
-                disabled={!running}
-                onClick={() =>
-                  run(() =>
-                    api.injectText(lastEntry.text_final ?? lastEntry.text_raw ?? ""),
-                  )
-                }
-              >
-                {t("history.pasteAgain")}
-              </button>
             </div>
           </article>
         ) : (
-          <p className="muted">{t("dashboard.lastEmpty")}</p>
+          <p className="empty">{t("dashboard.lastEmpty")}</p>
         )}
       </section>
 

@@ -16,7 +16,7 @@ use serde_json::json;
 use tracing::warn;
 
 use crate::app::secrets::ApiKey;
-use crate::config::LlmConfig;
+use crate::config::{provider_slugs, LlmConfig};
 use crate::domain::llm::{ChatRequest, ChatResponse, LlmClient, LlmError};
 
 /// Known providers: presets of the base URL and of the local flag
@@ -88,13 +88,44 @@ pub struct OpenAiCompatClient {
     /// The `reasoning_effort` field of the request; `None` means do not send (see
     /// `LlmConfig::reasoning_effort`)
     reasoning_effort: Option<String>,
+    /// OpenRouter's `provider.data_collection`; `None` means do not send
+    data_collection: Option<String>,
+    /// OpenRouter's `provider.zdr`: ask for zero data retention
+    zdr: bool,
+    /// OpenRouter's `provider.order`: provider slugs in the order to try them; empty means the
+    /// router picks
+    provider_order: Vec<String>,
+    /// OpenRouter's `provider.allow_fallbacks`
+    allow_fallbacks: bool,
+    /// OpenRouter's `provider.require_parameters`
+    require_parameters: bool,
     http: reqwest::blocking::Client,
+}
+
+/// Whether a URL names this machine: the model then runs beside the daemon, not in a cloud
+///
+/// The host is taken from the text and not parsed by a URL library: a settings value without
+/// a scheme, `localhost:11434`, must reach the same answer as the full form
+pub fn is_loopback_url(base_url: &str) -> bool {
+    let rest = base_url.trim();
+    let rest = rest.split_once("://").map_or(rest, |(_, rest)| rest);
+    let host = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    // `[::1]:1234` keeps its brackets, `localhost:11434` loses the port
+    let host = match host.strip_prefix('[') {
+        Some(bracketed) => bracketed.split(']').next().unwrap_or_default(),
+        None => host.split(':').next().unwrap_or_default(),
+    };
+    matches!(
+        host.to_ascii_lowercase().as_str(),
+        "localhost" | "127.0.0.1" | "::1" | "0.0.0.0"
+    ) || host.to_ascii_lowercase().starts_with("127.")
 }
 
 /// What to send in `reasoning_effort` by the setting and the provider type. `auto` turns off
 /// reasoning in local models (`none`) and does not send the field to cloud ones — it is
 /// not valid for all of their models. An empty string means do not send, and anything else goes
-/// as it is
+/// as it is. `none` is the default of the settings, and OpenRouter drops it from the body on its
+/// own, because its models may refuse to stop reasoning
 pub fn effective_reasoning_effort(setting: &str, is_local: bool) -> Option<String> {
     match setting.trim() {
         "" => None,
@@ -136,6 +167,11 @@ impl OpenAiCompatClient {
             is_local,
             timeout,
             reasoning_effort: None,
+            data_collection: None,
+            zdr: false,
+            provider_order: Vec::new(),
+            allow_fallbacks: true,
+            require_parameters: false,
             http,
         })
     }
@@ -147,7 +183,46 @@ impl OpenAiCompatClient {
         self
     }
 
+    /// Set OpenRouter's data-collection policy; other providers never send it
+    #[must_use]
+    pub fn with_data_collection(mut self, policy: Option<String>) -> Self {
+        self.data_collection = policy;
+        self
+    }
+
+    /// Ask OpenRouter to keep no copy of the request
+    #[must_use]
+    pub fn with_zdr(mut self, zdr: bool) -> Self {
+        self.zdr = zdr;
+        self
+    }
+
+    /// Set OpenRouter's provider order; an empty list means the router picks
+    #[must_use]
+    pub fn with_provider_order(mut self, order: Vec<String>) -> Self {
+        self.provider_order = order;
+        self
+    }
+
+    /// Let OpenRouter fall back to another provider
+    #[must_use]
+    pub fn with_allow_fallbacks(mut self, allow: bool) -> Self {
+        self.allow_fallbacks = allow;
+        self
+    }
+
+    /// Ask OpenRouter for providers that support every request parameter
+    #[must_use]
+    pub fn with_require_parameters(mut self, require: bool) -> Self {
+        self.require_parameters = require;
+        self
+    }
+
     /// Client from the settings: an empty `base_url` comes from the provider preset
+    ///
+    /// A custom provider that points at this machine is a local model too: it is one process
+    /// with the weights, and neither the journal nor the call policy may treat it as a cloud
+    /// one just because its name is not in the list
     pub fn from_config(cfg: &LlmConfig, api_key: Option<String>) -> Result<Self, LlmError> {
         let provider = Provider::parse(&cfg.provider);
         let base_url = if cfg.base_url.trim().is_empty() {
@@ -160,19 +235,28 @@ impl OpenAiCompatClient {
                 "the model URL is not set: fill in llm.base_url".into(),
             ));
         }
+        let is_local = provider.is_local() || is_loopback_url(&base_url);
         Self::new(
             base_url,
             cfg.model.clone(),
             api_key,
             Duration::from_secs(cfg.timeout_secs),
             provider.id(),
-            provider.is_local(),
+            is_local,
         )
         .map(|client| {
-            client.with_reasoning_effort(effective_reasoning_effort(
-                &cfg.reasoning_effort,
-                provider.is_local(),
-            ))
+            let client = client
+                .with_reasoning_effort(effective_reasoning_effort(&cfg.reasoning_effort, is_local));
+            if provider == Provider::OpenRouter {
+                client
+                    .with_data_collection(Some(cfg.data_collection.clone()))
+                    .with_zdr(cfg.zdr)
+                    .with_provider_order(provider_slugs(&cfg.provider_order))
+                    .with_allow_fallbacks(cfg.allow_fallbacks)
+                    .with_require_parameters(cfg.require_parameters)
+            } else {
+                client
+            }
         })
     }
 
@@ -322,8 +406,35 @@ impl LlmClient for OpenAiCompatClient {
             "max_tokens": req.max_tokens,
             "stream": false,
         });
-        if let Some(effort) = &self.reasoning_effort {
-            body["reasoning_effort"] = json!(effort);
+        if let Some(effort) = self.reasoning_effort.as_deref() {
+            // OpenRouter names the knob `reasoning.effort`; the OpenAI-compatible field is
+            // `reasoning_effort`. Sending the wrong one would be silently ignored
+            if self.provider_id == "openrouter" {
+                // OpenRouter answers HTTP 400 when a model with mandatory reasoning is asked
+                // for `none`: the field is left out and the provider default applies
+                if effort != "none" {
+                    body["reasoning"] = json!({ "effort": effort });
+                }
+            } else {
+                body["reasoning_effort"] = json!(effort);
+            }
+        }
+        if self.provider_id == "openrouter" {
+            let mut provider = serde_json::Map::new();
+            if let Some(policy) = &self.data_collection {
+                provider.insert("data_collection".into(), json!(policy));
+            }
+            if self.zdr {
+                provider.insert("zdr".into(), json!(true));
+            }
+            // The order is absent when the user did not narrow the choice: an empty array
+            // would read as "no provider at all"
+            if !self.provider_order.is_empty() {
+                provider.insert("order".into(), json!(self.provider_order));
+            }
+            provider.insert("allow_fallbacks".into(), json!(self.allow_fallbacks));
+            provider.insert("require_parameters".into(), json!(self.require_parameters));
+            body["provider"] = serde_json::Value::Object(provider);
         }
 
         let url = self.endpoint();
@@ -349,10 +460,18 @@ impl LlmClient for OpenAiCompatClient {
 
         let parsed: Completion = serde_json::from_str(&text)
             .map_err(|err| LlmError::BadResponse(format!("{err}: {}", snippet(&text))))?;
+        // OpenRouter can answer HTTP 200 with an error object and an empty choices list. The
+        // detailed provider reason is in that object; dropping it leaves "the answer has no
+        // text" and hides the hoster's real failure
+        if let Some(error) = parsed.error {
+            let detail = error.message.unwrap_or_else(|| snippet(&text));
+            return Err(LlmError::BadResponse(format!("provider error: {detail}")));
+        }
         let content = parsed
             .choices
             .into_iter()
             .find_map(|choice| choice.message.and_then(|message| message.content))
+            .filter(|text| !text.trim().is_empty())
             .ok_or_else(|| {
                 LlmError::BadResponse(format!("the answer has no text: {}", snippet(&text)))
             })?;
@@ -489,6 +608,39 @@ mod tests {
     }
 
     #[test]
+    fn a_custom_provider_on_this_machine_is_a_local_model() {
+        // "custom" is not a synonym for "remote": a self-hosted endpoint is one process with
+        // the weights, and the call policy must not treat it as a cloud provider
+        for url in [
+            "http://localhost:8000/v1",
+            "localhost:8000/v1",
+            "http://127.0.0.1:8080/v1",
+            "http://127.1.2.3/v1",
+            "http://[::1]:11434/v1",
+            "https://LOCALHOST/v1",
+        ] {
+            assert!(is_loopback_url(url), "{url} was taken for a cloud endpoint");
+        }
+        for url in [
+            "https://openrouter.ai/api/v1",
+            "https://api.groq.com/openai/v1",
+            "http://my-lan-box.local:11434/v1",
+            "http://10.0.0.5:1234/v1",
+            "https://localhost.example.com/v1",
+        ] {
+            assert!(!is_loopback_url(url), "{url} was taken for this machine");
+        }
+
+        let cfg = LlmConfig {
+            provider: "custom".into(),
+            base_url: "http://127.0.0.1:8080/v1".into(),
+            ..LlmConfig::default()
+        };
+        let client = OpenAiCompatClient::from_config(&cfg, None).unwrap();
+        assert!(client.is_local());
+    }
+
+    #[test]
     fn auto_reasoning_effort_silences_local_models_and_leaves_cloud_alone() {
         assert_eq!(
             effective_reasoning_effort("auto", true),
@@ -526,11 +678,172 @@ mod tests {
     }
 
     #[test]
-    fn config_with_auto_effort_and_ollama_sends_none() {
+    fn openrouter_gets_reasoning_effort_in_its_own_shape() {
+        let server = MockServer::spawn(vec![Some(ok_body())]);
+        OpenAiCompatClient::new(
+            server.base_url(),
+            "z-ai/glm-5.3-flash",
+            None,
+            Duration::from_millis(700),
+            "openrouter",
+            false,
+        )
+        .unwrap()
+        .with_reasoning_effort(Some("low".into()))
+        .complete(&request())
+        .unwrap();
+        let sent = server.last_request();
+        assert!(sent.contains(r#""reasoning":{"effort":"low"}"#), "{sent}");
+        assert!(!sent.contains(r#""reasoning_effort""#), "{sent}");
+    }
+
+    #[test]
+    fn openrouter_gets_no_reasoning_field_for_none() {
+        // A model with mandatory reasoning answers HTTP 400 when it is asked for `none`: the
+        // field is left out and the provider default applies
+        let server = MockServer::spawn(vec![Some(ok_body())]);
+        OpenAiCompatClient::new(
+            server.base_url(),
+            "z-ai/glm-5.3-flash",
+            None,
+            Duration::from_millis(700),
+            "openrouter",
+            false,
+        )
+        .unwrap()
+        .with_reasoning_effort(effective_reasoning_effort("none", false))
+        .complete(&request())
+        .unwrap();
+        let sent = server.last_request();
+        assert!(!sent.contains(r#""reasoning""#), "{sent}");
+        assert!(!sent.contains("reasoning_effort"), "{sent}");
+    }
+
+    #[test]
+    fn a_provider_that_is_not_openrouter_still_gets_none() {
+        let server = MockServer::spawn(vec![Some(ok_body())]);
+        client(&server, None)
+            .with_reasoning_effort(effective_reasoning_effort("none", true))
+            .complete(&request())
+            .unwrap();
+        assert!(
+            server
+                .last_request()
+                .contains(r#""reasoning_effort":"none""#),
+            "{}",
+            server.last_request()
+        );
+    }
+
+    #[test]
+    fn openrouter_privacy_fields_share_the_provider_object() {
+        let server = MockServer::spawn(vec![Some(ok_body())]);
+        OpenAiCompatClient::new(
+            server.base_url(),
+            "z-ai/glm-5.3-flash",
+            None,
+            Duration::from_millis(700),
+            "openrouter",
+            false,
+        )
+        .unwrap()
+        .with_data_collection(Some("deny".into()))
+        .with_zdr(true)
+        .complete(&request())
+        .unwrap();
+        let sent = server.last_request();
+        assert!(sent.contains(r#""data_collection":"deny""#), "{sent}");
+        assert!(sent.contains(r#""zdr":true"#), "{sent}");
+    }
+
+    #[test]
+    fn openrouter_provider_routing_reaches_the_body() {
+        let server = MockServer::spawn(vec![Some(ok_body())]);
+        OpenAiCompatClient::new(
+            server.base_url(),
+            "z-ai/glm-5.3-flash",
+            None,
+            Duration::from_millis(700),
+            "openrouter",
+            false,
+        )
+        .unwrap()
+        .with_provider_order(vec!["groq".into(), "together".into()])
+        .with_allow_fallbacks(false)
+        .with_require_parameters(true)
+        .complete(&request())
+        .unwrap();
+        let sent = server.last_request();
+        assert!(sent.contains(r#""order":["groq","together"]"#), "{sent}");
+        assert!(sent.contains(r#""allow_fallbacks":false"#), "{sent}");
+        assert!(sent.contains(r#""require_parameters":true"#), "{sent}");
+    }
+
+    #[test]
+    fn a_config_without_a_hoster_order_sends_no_order_array() {
+        let server = MockServer::spawn(vec![Some(ok_body())]);
+        let cfg = LlmConfig {
+            provider: "openrouter".into(),
+            base_url: server.base_url(),
+            ..LlmConfig::default()
+        };
+        assert_eq!(cfg.provider_order, "");
+        OpenAiCompatClient::from_config(&cfg, None)
+            .unwrap()
+            .complete(&request())
+            .unwrap();
+        let sent = server.last_request();
+        // An empty array would read as "no provider at all" to the router
+        assert!(!sent.contains(r#""order""#), "{sent}");
+        assert!(sent.contains(r#""allow_fallbacks":true"#), "{sent}");
+        assert!(sent.contains(r#""require_parameters":false"#), "{sent}");
+    }
+
+    #[test]
+    fn the_hoster_order_from_the_config_is_trimmed_lower_case_and_unique() {
+        let server = MockServer::spawn(vec![Some(ok_body())]);
+        let cfg = LlmConfig {
+            provider: "openrouter".into(),
+            base_url: server.base_url(),
+            provider_order: " Groq , groq ,Together".into(),
+            ..LlmConfig::default()
+        };
+        OpenAiCompatClient::from_config(&cfg, None)
+            .unwrap()
+            .complete(&request())
+            .unwrap();
+        let sent = server.last_request();
+        assert!(sent.contains(r#""order":["groq","together"]"#), "{sent}");
+    }
+
+    #[test]
+    fn a_provider_that_is_not_openrouter_ignores_the_routing_fields() {
+        let server = MockServer::spawn(vec![Some(ok_body())]);
+        let cfg = LlmConfig {
+            provider: "groq".into(),
+            base_url: server.base_url(),
+            provider_order: "groq, together".into(),
+            allow_fallbacks: false,
+            require_parameters: true,
+            ..LlmConfig::default()
+        };
+        OpenAiCompatClient::from_config(&cfg, Some("sk-x".into()))
+            .unwrap()
+            .complete(&request())
+            .unwrap();
+        let sent = server.last_request();
+        assert!(!sent.contains("\"provider\""), "{sent}");
+        assert!(!sent.contains("allow_fallbacks"), "{sent}");
+        assert!(!sent.contains("require_parameters"), "{sent}");
+    }
+
+    #[test]
+    fn a_config_with_auto_effort_and_ollama_sends_none() {
         let server = MockServer::spawn(vec![Some(ok_body())]);
         let cfg = LlmConfig {
             base_url: server.base_url(),
             provider: "ollama".into(),
+            reasoning_effort: "auto".into(),
             ..LlmConfig::default()
         };
         OpenAiCompatClient::from_config(&cfg, None)
@@ -540,6 +853,44 @@ mod tests {
         assert!(server
             .last_request()
             .contains(r#""reasoning_effort":"none""#));
+    }
+
+    #[test]
+    fn the_default_setting_of_a_local_model_asks_for_no_reasoning() {
+        // `none` is the default of the settings: a reasoning model would otherwise spend the
+        // whole max_tokens on thinking and answer with an empty text
+        let server = MockServer::spawn(vec![Some(ok_body())]);
+        let cfg = LlmConfig {
+            base_url: server.base_url(),
+            provider: "ollama".into(),
+            ..LlmConfig::default()
+        };
+        assert_eq!(cfg.reasoning_effort, "none");
+        OpenAiCompatClient::from_config(&cfg, None)
+            .unwrap()
+            .complete(&request())
+            .unwrap();
+        assert!(server
+            .last_request()
+            .contains(r#""reasoning_effort":"none""#));
+    }
+
+    #[test]
+    fn the_default_setting_of_openrouter_sends_no_reasoning_field() {
+        let server = MockServer::spawn(vec![Some(ok_body())]);
+        let cfg = LlmConfig {
+            base_url: server.base_url(),
+            provider: "openrouter".into(),
+            model: "z-ai/glm-5.3-flash".into(),
+            ..LlmConfig::default()
+        };
+        assert_eq!(cfg.reasoning_effort, "none");
+        OpenAiCompatClient::from_config(&cfg, None)
+            .unwrap()
+            .complete(&request())
+            .unwrap();
+        let sent = server.last_request();
+        assert!(!sent.contains("reasoning"), "{sent}");
     }
 
     #[test]

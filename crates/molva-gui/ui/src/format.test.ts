@@ -9,6 +9,7 @@ import {
   downloadPercent,
   formatCount,
   formatDayTick,
+  formatElapsed,
   formatLatency,
   formatMegabytes,
   formatMinutes,
@@ -16,6 +17,7 @@ import {
   formatWpm,
   GROUP_SEPARATOR,
   renderFileResult,
+  renderSegment,
 } from "./format";
 import type { DayPoint, FileResult } from "./types";
 
@@ -177,6 +179,35 @@ describe("formatTimecode", () => {
 
   it("lets minutes pass 59 for a long recording", () => {
     expect(formatTimecode(3_723_500)).toBe("62:03.500");
+  });
+});
+
+describe("formatElapsed", () => {
+  it("renders minutes and seconds of a span", () => {
+    expect(formatElapsed(65_000)).toBe("01:05");
+    expect(formatElapsed(0)).toBe("00:00");
+  });
+
+  it("adds hours only when they exist", () => {
+    expect(formatElapsed(3_723_500)).toBe("1:02:03");
+  });
+
+  it("shows a dash for a missing span", () => {
+    expect(formatElapsed(null)).toBe("—");
+    expect(formatElapsed(Number.NaN)).toBe("—");
+    expect(formatElapsed(-5)).toBe("—");
+  });
+});
+
+describe("renderSegment", () => {
+  const segment = { start_ms: 2500, end_ms: 4000, text: " мир " };
+
+  it("writes the timecodes of one segment", () => {
+    expect(renderSegment(segment, true)).toBe("[00:02.500 → 00:04.000] мир");
+  });
+
+  it("leaves the timecodes out when they are off", () => {
+    expect(renderSegment(segment, false)).toBe("мир");
   });
 });
 

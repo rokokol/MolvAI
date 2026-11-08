@@ -28,6 +28,9 @@ use molva_core::Config;
 
 mod cmd;
 
+/// The generated table of the repository documents, which `search_docs` answers from
+mod docs_index;
+
 /// Exit codes shared by all subcommands: 0 ok, 2 arguments, 3 daemon unreachable, 4 busy,
 /// 5 engine error, 6 file error, 7 daemon already running
 mod exit {
@@ -273,7 +276,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             let mut stdout = std::io::stdout().lock();
             Ok(cmd::search::run(&args, &config()?, &mut stdout)?)
         }
-        Commands::Mcp => Ok(cmd::mcp::run(&config_path)?),
+        Commands::Mcp => Ok(cmd::mcp::run(&config_path, &socket)?),
         Commands::Models { action } => {
             let config = Config::load(&config_path)?;
             let mut stdout = std::io::stdout().lock();

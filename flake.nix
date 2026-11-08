@@ -38,10 +38,11 @@
               # The version is read from Cargo.toml and is not repeated here: two sources
               # drift apart, and the user is the first to notice
               version = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.version;
-              # Only what the build and `cargo test` read. With `src = self`, an edit of README
-              # or docs/ changed the hash of the derivation and rebuilt the binary.
-              # The list is inclusive, not exclusive: a forgotten source then breaks the build
-              # loudly, while a forgotten document would silently rebuild it every time
+              # Only what the build and `cargo test` read. The search_docs index is built
+              # into the binary, so the README, docs and site are part of the source too:
+              # a documentation edit rebuilds the binary, which is the price of a build-time
+              # index with no second copy. The list is inclusive, not exclusive: a forgotten
+              # source breaks the build loudly
               src = pkgs.lib.fileset.toSource {
                 root = ./.;
                 fileset = pkgs.lib.fileset.unions [
@@ -49,6 +50,9 @@
                   ./Cargo.lock
                   ./crates
                   ./models.toml
+                  ./README.md
+                  ./docs
+                  ./site
                   # The tests of the crates read fixtures and golden files from
                   # CARGO_MANIFEST_DIR/../../tests, so they are part of the source
                   ./tests/fixtures
@@ -132,6 +136,13 @@
           nixTools = with pkgs; [ nixfmt ];
 
           # The Rust toolchain and the tools of the gate
+          # The lock moved to a nixpkgs where the cargo-llvm-cov tests fail inside the
+          # sandbox while the tool itself builds. The check is what breaks the shell, so it is
+          # skipped here and the coverage recipe still gets the binary
+          cargoLlvmCov = pkgs.cargo-llvm-cov.overrideAttrs (_: {
+            doCheck = false;
+          });
+
           rustTools = with pkgs; [
             cargo
             rustc
@@ -141,7 +152,7 @@
             cargo-tauri
             cargo-deny
             cargo-about
-            cargo-llvm-cov
+            cargoLlvmCov
             cargo-audit
             cargo-machete
             cargo-cyclonedx
@@ -293,6 +304,10 @@
               want '.optedOut.packages | any(test("molva"))' "opting out of Hyprland drops the package"
               want '.lua.daemon | endswith("/bin/molva daemon")' "no user service runs the daemon"
               want '.noDaemon.daemon == ""' "daemon.enable = false is ignored"
+              want '.lua.guiAutostart | test("Exec=molva-gui")' "no GUI autostart entry"
+              want '.noDaemon.guiAutostart == ""' "daemon.enable = false still starts the GUI"
+              want '.noGuiAutostart.guiAutostart == ""' "guiAutostart.enable = false is ignored"
+              want '.customGuiCommand.guiAutostart | test("Exec=/run/current-system/sw/bin/molva-gui")' "guiAutostart.command is ignored"
               want '.lua.model == "gigaam-v3-e2e-rnnt-q4_k_m"' "the default model is not the Sber one"
               want '.lua.models | index("gigaam-v3-e2e-rnnt-q4_k_m")' "the default model is not fetched"
               want '.lua.configSource | test("molvai-config.toml$")' "no generated settings file"

@@ -55,6 +55,26 @@ pub struct Tokens {
     pub completion: u32,
 }
 
+/// What the model did with the text of a phrase: how much of it arrived translated
+///
+/// The texts themselves stay in `text_raw` (recognized) and `text_final` (what reached the
+/// field, translated when this is present), so the line never holds one text twice
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct TranslationInfo {
+    /// Target language, ISO 639-1
+    pub target: String,
+    /// Pieces that arrived translated
+    #[serde(default)]
+    pub translated: u32,
+    /// Pieces that kept the recognized text, because translation was impossible
+    #[serde(default)]
+    pub fallbacks: u32,
+    /// Why the last piece kept its text: `privacy`, `unavailable`, `queue_full`, `failed`,
+    /// `empty` or `timeout`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Entry {
     pub schema: u32,
@@ -97,6 +117,9 @@ pub struct Entry {
     pub text_final: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio_path: Option<String>,
+    /// Present when the phrase was translated: `text_final` then holds the translation
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub translation: Option<TranslationInfo>,
     /// Segments with timecodes of a file transcription; empty for a phrase from the microphone
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub segments: Vec<crate::domain::stt::Segment>,
@@ -161,6 +184,7 @@ mod tests {
             text_raw: Some("привет мир".into()),
             text_final: Some("Привет, мир.".into()),
             audio_path: None,
+            translation: None,
             segments: Vec::new(),
         }
     }
@@ -192,6 +216,34 @@ mod tests {
         assert!(!line.contains("\"llm_provider\""));
         assert!(!line.contains("\"tokens\""));
         assert!(line.contains("\"stt\":500"));
+    }
+
+    #[test]
+    fn a_journal_line_written_before_translation_appeared_still_reads() {
+        let mut line = serde_json::to_value(sample()).unwrap();
+        // A line of an older version carries no such field at all
+        line.as_object_mut().unwrap().remove("translation");
+        let back: Entry = serde_json::from_value(line).unwrap();
+        assert_eq!(back.translation, None);
+        assert_eq!(back.text_final.as_deref(), Some("Привет, мир."));
+    }
+
+    #[test]
+    fn a_translated_phrase_keeps_both_texts_apart() {
+        let mut entry = sample();
+        entry.translation = Some(TranslationInfo {
+            target: "en".into(),
+            translated: 3,
+            fallbacks: 1,
+            fallback: Some("failed".into()),
+        });
+        let line = serde_json::to_value(&entry).unwrap();
+        assert_eq!(line["text_raw"], "привет мир");
+        assert_eq!(line["text_final"], "Привет, мир.");
+        assert_eq!(line["translation"]["target"], "en");
+        assert_eq!(line["translation"]["fallbacks"], 1);
+        let back: Entry = serde_json::from_value(line).unwrap();
+        assert_eq!(back, entry);
     }
 
     #[test]

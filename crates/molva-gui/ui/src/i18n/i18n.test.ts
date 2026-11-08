@@ -15,6 +15,35 @@ describe("translate", () => {
     expect(ru["tray.quit"]).not.toBe(en["tray.quit"]);
   });
 
+  it("has the same keys in both languages and no empty text", () => {
+    const english: Record<string, string> = en;
+    const russian: Record<string, string> = ru;
+    expect(Object.keys(russian).sort()).toEqual(Object.keys(english).sort());
+    for (const [key, text] of Object.entries(english)) {
+      expect(text.trim(), key).not.toBe("");
+    }
+    for (const [key, text] of Object.entries(russian)) {
+      expect(text.trim(), key).not.toBe("");
+    }
+  });
+
+  it("keeps every placeholder of the English text in the Russian one", () => {
+    const english: Record<string, string> = en;
+    const russian: Record<string, string> = ru;
+    const placeholders = (text: string) =>
+      [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
+    for (const [key, text] of Object.entries(english)) {
+      expect(placeholders(russian[key] ?? ""), key).toEqual(placeholders(text));
+    }
+  });
+
+  it("has no key left from the removed Search tab", () => {
+    const english: Record<string, string> = en;
+    const russian: Record<string, string> = ru;
+    expect(english["nav.search"]).toBeUndefined();
+    expect(russian["nav.search"]).toBeUndefined();
+  });
+
   it("shows a missing key as it is", () => {
     expect(translate("ru", "no.such.key")).toBe("no.such.key");
   });

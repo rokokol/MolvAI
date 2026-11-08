@@ -35,6 +35,9 @@ jobs:
           mkdir -p _site
           cp -R site/. _site/
           mkdir -p _site/docs
+          # A checkout may carry site/docs/img as a symlink to the real folder; the artifact
+          # needs a real directory, so the link is replaced before the copy
+          rm -rf _site/docs/img
           cp -R docs/img _site/docs/img
 
       - uses: actions/upload-pages-artifact@v5

@@ -1,197 +1,236 @@
 <!DOCTYPE html>
-<html lang="en" class="no-js">
+<html lang="en" class="no-js" data-ddlc-heading="plain">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Settings and the Nix-managed mode — MolvAI documentation</title>
-<meta name="description" content="The MolvAI settings file: the keys worth knowing, their defaults, reload behavior, keys in the OS store, and what changes when the Home Manager module renders the settings and weights into the Nix store">
+<title data-ru="Настройки и режим под управлением Nix — документация MolvAI">Settings and the Nix-managed mode — MolvAI documentation</title>
+<meta name="description" content="The TOML settings file, the keys that matter, how a reload differs from a restart, and what changes when Home Manager owns the file" data-ru-content="Файл настроек TOML, важные ключи, чем перезагрузка отличается от перезапуска и что меняется, когда файлом владеет Home Manager">
 <meta name="color-scheme" content="dark light">
-<meta name="theme-color" content="#0a0c12">
-<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#222222" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="../assets/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/vendor/ddlc/ddlc-tokens.css">
+<link rel="stylesheet" href="../assets/vendor/ddlc/ddlc-ui.css">
+<link rel="stylesheet" href="../assets/vendor/ddlc/ddlc-report.css">
 <link rel="stylesheet" href="../assets/site.css">
-<script src="../assets/site.js" defer></script>
+<script>
+  (function () {
+    try {
+      var q = new URLSearchParams(location.search)
+      var pinned = q.get("theme")
+      var theme = pinned === "light" || pinned === "dark" ? pinned : localStorage.getItem("molvai-theme")
+      if (pinned === "light" || pinned === "dark") localStorage.setItem("molvai-theme", pinned)
+      if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme
+      var lang = q.get("lang")
+      var stored = localStorage.getItem("molvai-lang")
+      if (lang === "ru" || (lang !== "en" && stored === "ru")) document.documentElement.lang = "ru"
+    } catch (e) {}
+  })()
+</script>
+<script type="module" src="../assets/kit.js"></script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
-
-<header class="site-header">
-  <div class="wrap header-inner">
-    <a class="brand" href="../index.html" aria-label="MolvAI home">
-      <img src="../assets/logo.svg" alt="" width="26" height="26">
-      <span>Molv<span class="brand-ai">AI</span></span>
+<canvas class="cloud" id="cloud" aria-hidden="true"></canvas>
+<a class="skip" href="#main" data-ru="К содержанию">Skip to content</a>
+<header class="site-bar">
+  <div class="bar wrap bar-row">
+    <a class="brand" href="../index.html" aria-label="MolvAI home" data-ru-aria-label="MolvAI — главная">
+      <img src="../assets/logo.svg" alt="" width="22" height="22">
+      <span>MolvAI</span>
     </a>
-    <nav class="site-nav" id="site-nav" aria-label="Main">
-      <a href="../index.html">Home</a>
-      <a href="../features.html">Features</a>
-      <a href="../models.html">Models</a>
-      <a href="../cli.html">CLI</a>
-      <a href="./index.html" aria-current="page">Docs</a>
-      <a href="../faq.html">FAQ</a>
-      <a href="./status.html">Status</a>
-      <a class="nav-github" href="https://github.com/rokokol/MolvAI"><img src="../assets/icon-github.svg" alt="" width="15" height="15">GitHub</a>
+    <p class="tagline" data-ru="Голосовой ввод во все приложения">System-wide voice input, on your machine</p>
+    <nav class="tabs" aria-label="Main" data-ru-aria-label="Основное">
+      <a href="../index.html" data-ru="Главная">Home</a>
+      <a href="../features.html" data-ru="Возможности">Features</a>
+      <a href="../models.html" data-ru="Модели">Models</a>
+      <a href="../cli.html" data-ru="CLI">CLI</a>
+      <a href="../docs/index.html" aria-current="page" data-ru="Документация">Docs</a>
+      <a href="../faq.html" data-ru="FAQ">FAQ</a>
+      <a href="../docs/status.html" data-ru="Статус">Status</a>
     </nav>
-    <div class="header-tools">
-      <button class="icon-btn theme-toggle" type="button" data-theme-toggle aria-label="Switch between dark and light theme">
-        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8">
-          <circle cx="12" cy="12" r="8"></circle>
-          <path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"></path>
-        </svg>
+    <div class="bar-end">
+      <div class="segmented lang-switch" role="group" aria-label="Language" data-ru-aria-label="Язык">
+        <button type="button" data-lang-set="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang-set="ru" aria-pressed="false">RU</button>
+      </div>
+      <button class="icon-button" id="theme" type="button" aria-label="Theme: system" data-ru-aria-label="Тема">
+        <svg class="pixel" viewBox="0 0 8 8" aria-hidden="true"><path id="theme-icon"/></svg>
       </button>
-      <button class="icon-btn menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="site-nav">
-        <span class="menu-bars" aria-hidden="true"></span>
-        <span class="visually-hidden">Menu</span>
-      </button>
+      <a class="icon-button" href="https://github.com/rokokol/MolvAI" aria-label="MolvAI on GitHub" data-ru-aria-label="MolvAI на GitHub">
+        <img src="../assets/icon-github.svg" alt="" width="16" height="16">
+      </a>
     </div>
   </div>
 </header>
-
 <main id="main" class="wrap doc-layout">
-  <aside class="doc-nav" aria-label="Documentation">
-    <p class="doc-nav-title">Documentation</p>
+  <aside class="doc-nav" aria-label="Documentation" data-ru-aria-label="Документация">
+    <p class="doc-nav-title" data-ru="Документация">Documentation</p>
     <ul>
-      <li><a href="./index.html">Overview</a></li>
-      <li><a href="./install.html">Install and first run</a></li>
-      <li><a href="./models.html">Models and GigaAM</a></li>
-      <li><a href="./hotkeys.html">Hotkeys and compositors</a></li>
-      <li><a href="./settings.html" aria-current="page">Settings and Nix mode</a></li>
-      <li><a href="./cli.html">CLI guide</a></li>
-      <li><a href="./privacy.html">Privacy and journal</a></li>
-      <li><a href="./troubleshooting.html">Troubleshooting</a></li>
-      <li><a href="./status.html">Status and roadmap</a></li>
+      <li><a href="./index.html" data-ru="Обзор">Overview</a></li>
+      <li><a href="./install.html" data-ru="Установка и первый запуск">Install and first run</a></li>
+      <li><a href="./models.html" data-ru="Модели и GigaAM">Models and GigaAM</a></li>
+      <li><a href="./hotkeys.html" data-ru="Клавиши и композиторы">Hotkeys and compositors</a></li>
+      <li><a href="./settings.html" aria-current="page" data-ru="Настройки и режим Nix">Settings and Nix mode</a></li>
+      <li><a href="./cli.html" data-ru="Руководство по CLI">CLI guide</a></li>
+      <li><a href="./privacy.html" data-ru="Приватность и журнал">Privacy and journal</a></li>
+      <li><a href="./troubleshooting.html" data-ru="Если что-то не работает">Troubleshooting</a></li>
+      <li><a href="./status.html" data-ru="Статус и планы">Status and roadmap</a></li>
     </ul>
-    <p class="doc-nav-title">Elsewhere</p>
+    <p class="doc-nav-title" data-ru="Ещё">Elsewhere</p>
     <ul>
-      <li><a href="../cli.html">CLI reference</a></li>
-      <li><a href="../models.html">Model catalog</a></li>
-      <li><a href="../index.html">Home</a></li>
+      <li><a href="../cli.html" data-ru="Справочник CLI">CLI reference</a></li>
+      <li><a href="../models.html" data-ru="Каталог моделей">Model catalog</a></li>
+      <li><a href="../index.html" data-ru="Главная">Home</a></li>
     </ul>
   </aside>
-
   <article class="doc-body prose">
-    <h1>Settings and the Nix-managed mode</h1>
-    <p class="canonical">Canonical source: <a href="https://github.com/rokokol/MolvAI/blob/main/crates/molva-core/src/config.rs">crates/molva-core/src/config.rs</a>, <a href="https://github.com/rokokol/MolvAI/blob/main/nix/module.nix">nix/module.nix</a> and the settings table in the <a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README</a></p>
+<h1 data-ru="Настройки и режим под управлением Nix">Settings and the Nix-managed mode</h1>
+<p class="canonical" data-ru="Канонический источник: &lt;a href=&quot;https://github.com/rokokol/MolvAI/blob/main/crates/molva-core/src/config.rs&quot;&gt;crates/molva-core/src/config.rs&lt;/a&gt;, &lt;a href=&quot;https://github.com/rokokol/MolvAI/blob/main/nix/module.nix&quot;&gt;nix/module.nix&lt;/a&gt; и таблица настроек в &lt;a href=&quot;https://github.com/rokokol/MolvAI/blob/main/README.md&quot;&gt;README&lt;/a&gt;">Canonical source: <a href="https://github.com/rokokol/MolvAI/blob/main/crates/molva-core/src/config.rs">crates/molva-core/src/config.rs</a>, <a href="https://github.com/rokokol/MolvAI/blob/main/nix/module.nix">nix/module.nix</a> and the settings section of the <a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README</a></p>
 
-    <h2>The file</h2>
-    <p>The settings are one TOML file at <code>~/.config/molva/config.toml</code>, or the matching settings directory on Windows and macOS. It is created at the first start and stays readable by a human</p>
-    <p>An empty file is valid. Every skipped field comes from the defaults, so the file makes sense as a diff against them. A wrong value fails with the path of the file and the name of the key</p>
-    <div class="cmd"><code>molva config path</code><button class="copy" type="button" data-copy="molva config path">Copy</button></div>
-    <div class="cmd"><code>molva config validate</code><button class="copy" type="button" data-copy="molva config validate">Copy</button></div>
+<h2 data-ru="Файл">The file</h2>
+<p data-ru="Настройки — это один файл TOML в &lt;code&gt;~/.config/molva/config.toml&lt;/code&gt;, либо в соответствующем каталоге настроек в Windows и macOS. Он создаётся при первом запуске и остаётся читаемым человеком">The settings are one TOML file at <code>~/.config/molva/config.toml</code>, or the matching settings directory on Windows and macOS. It is created at the first start and stays readable by a human</p>
+<p data-ru="Пустой файл допустим. Каждое пропущенное поле берётся из значений по умолчанию, поэтому файл читается как диф к ним. Неверное значение падает с путём к файлу и именем ключа">An empty file is valid. Every skipped field comes from the defaults, so the file makes sense as a diff against them. A wrong value fails with the path of the file and the name of the key</p>
+<div class="cmd"><code>molva config path</code><button class="copy" type="button" data-copy="molva config path" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>molva config validate</code><button class="copy" type="button" data-copy="molva config validate" data-ru="Скопировать">Copy</button></div>
 
-    <h2>Keys worth knowing</h2>
-    <p>The defaults below are the ones this site's pages assume. The README lists every field; this table is the small set that changes the behaviour people notice</p>
-    <div class="table-wrap">
-      <table class="settings-table">
-        <caption>A short settings map, grouped by section</caption>
-        <thead><tr><th scope="col">Section</th><th scope="col">Key</th><th scope="col">Default</th><th scope="col">Effect</th></tr></thead>
-        <tbody>
-          <tr><th scope="row" rowspan="4"><code>stt</code></th><td><code>engine</code></td><td><code>auto</code></td><td>Follow the catalog entry of the model</td></tr>
-          <tr><td><code>model</code></td><td><code>gigaam-v3-e2e-rnnt-q4_k_m</code></td><td>The Russian default at 175 MiB</td></tr>
-          <tr><td><code>language</code></td><td><code>ru</code></td><td>A fixed language is the fastest path; <code>auto</code> detects</td></tr>
-          <tr><td><code>streaming_inject</code></td><td><code>true</code></td><td>Types each chunk while you speak</td></tr>
-          <tr><th scope="row" rowspan="3"><code>audio</code></th><td><code>device</code></td><td><code>default</code></td><td>A name from <code>molva devices</code></td></tr>
-          <tr><td><code>trim_silence</code></td><td><code>true</code></td><td>Cuts silence at the edges of the recording</td></tr>
-          <tr><td><code>sounds</code></td><td><code>true</code></td><td>Marks the start and the end; <code>false</code> is silence</td></tr>
-          <tr><th scope="row" rowspan="3"><code>output</code></th><td><code>mode</code></td><td><code>auto</code></td><td>Typing or paste, chosen from the length and the window</td></tr>
-          <tr><td><code>restore_clipboard</code></td><td><code>true</code></td><td>Returns the previous clipboard content after a paste</td></tr>
-          <tr><td><code>pre_inject_delay_ms</code></td><td>50</td><td>A pause before the paste; slow remotes want more</td></tr>
-          <tr><th scope="row" rowspan="2"><code>rules</code></th><td><code>enabled</code></td><td><code>true</code></td><td>Punctuation, fillers, repeats, digits, without a model</td></tr>
-          <tr><td><code>llm_min_words</code></td><td>10</td><td>Shorter phrases skip the language model</td></tr>
-          <tr><th scope="row" rowspan="3"><code>llm</code></th><td><code>enabled</code></td><td><code>false</code></td><td>The language model is off until you ask for it</td></tr>
-          <tr><td><code>provider</code></td><td><code>ollama</code></td><td><code>ollama</code>, <code>lmstudio</code>, <code>openrouter</code>, <code>groq</code>, <code>openai</code> or <code>custom</code></td></tr>
-          <tr><td><code>reasoning_effort</code></td><td><code>auto</code></td><td>Sends <code>none</code> to local providers so reasoning models answer</td></tr>
-          <tr><th scope="row" rowspan="3"><code>journal</code></th><td><code>include_text</code></td><td><code>true</code></td><td><code>false</code> writes the line without the phrase text</td></tr>
-          <tr><td><code>encrypt</code></td><td><code>false</code></td><td>Seals the texts with XChaCha20-Poly1305</td></tr>
-          <tr><td><code>max_entries</code></td><td>10000</td><td>How many phrases to keep</td></tr>
-          <tr><th scope="row" rowspan="3"><code>privacy</code></th><td><code>send_to_llm</code></td><td><code>true</code></td><td>Whether text may go to the configured model</td></tr>
-          <tr><td><code>no_record_mode</code></td><td><code>false</code></td><td>Turns the journal and the history off completely</td></tr>
-          <tr><td><code>telemetry</code></td><td><code>false</code></td><td>There is no telemetry; the key states it</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p>Hotkeys have their own page: <a href="./hotkeys.html">hotkeys and compositors</a>. Journal fields are explained in <a href="./privacy.html">privacy and journal</a></p>
+<h2 data-ru="Ключи, которые стоит знать">Keys worth knowing</h2>
+<p data-ru="Значения ниже — те, на которые опираются страницы этого сайта. README перечисляет все поля; в таблице — небольшой набор, который меняет заметное поведение">The defaults below are the ones this site's pages assume. The README lists every field; this table is the small set that changes the behaviour people notice</p>
+<div class="table-wrap">
+  <table class="settings-table">
+    <caption data-ru="Короткая карта настроек, сгруппированная по секциям">A short settings map, grouped by section</caption>
+    <thead>
+      <tr><th scope="col" data-ru="Секция">Section</th><th scope="col" data-ru="Ключ">Key</th><th scope="col" data-ru="По умолчанию">Default</th><th scope="col" data-ru="Что делает">Effect</th></tr>
+    </thead>
+    <tbody>
+      <tr><th scope="row" rowspan="4"><code>stt</code></th><td data-ru="&lt;code&gt;engine&lt;/code&gt;"><code>engine</code></td><td data-ru="&lt;code&gt;auto&lt;/code&gt;"><code>auto</code></td><td data-ru="Следовать записи каталога для модели">Follow the catalog entry of the model</td></tr>
+      <tr><td data-ru="&lt;code&gt;model&lt;/code&gt;"><code>model</code></td><td data-ru="&lt;code&gt;gigaam-v3-e2e-rnnt-q4_k_m&lt;/code&gt;"><code>gigaam-v3-e2e-rnnt-q4_k_m</code></td><td data-ru="Русская модель по умолчанию, 175 МиБ">The Russian default at 175 MiB</td></tr>
+      <tr><td data-ru="&lt;code&gt;language&lt;/code&gt;"><code>language</code></td><td data-ru="&lt;code&gt;ru&lt;/code&gt;"><code>ru</code></td><td data-ru="Фиксированный язык — самый быстрый путь; &lt;code&gt;auto&lt;/code&gt; определяет">A fixed language is the fastest path; <code>auto</code> detects</td></tr>
+      <tr><td data-ru="&lt;code&gt;streaming_inject&lt;/code&gt;"><code>streaming_inject</code></td><td data-ru="&lt;code&gt;false&lt;/code&gt;"><code>false</code></td><td data-ru="Выключено: текст приходит одним куском после отпускания">Off: the text arrives as one piece after the release</td></tr>
+      <tr><th scope="row" rowspan="3"><code>audio</code></th><td data-ru="&lt;code&gt;device&lt;/code&gt;"><code>device</code></td><td data-ru="&lt;code&gt;default&lt;/code&gt;"><code>default</code></td><td data-ru="Имя из &lt;code&gt;molva devices&lt;/code&gt;">A name from <code>molva devices</code></td></tr>
+      <tr><td data-ru="&lt;code&gt;trim_silence&lt;/code&gt;"><code>trim_silence</code></td><td data-ru="&lt;code&gt;true&lt;/code&gt;"><code>true</code></td><td data-ru="Срезает тишину по краям записи">Cuts silence at the edges of the recording</td></tr>
+      <tr><td data-ru="&lt;code&gt;sounds&lt;/code&gt;"><code>sounds</code></td><td data-ru="&lt;code&gt;true&lt;/code&gt;"><code>true</code></td><td data-ru="Отмечает начало и конец; &lt;code&gt;false&lt;/code&gt; — тишина">Marks the start and the end; <code>false</code> is silence</td></tr>
+      <tr><th scope="row" rowspan="3"><code>output</code></th><td data-ru="&lt;code&gt;mode&lt;/code&gt;"><code>mode</code></td><td data-ru="&lt;code&gt;auto&lt;/code&gt;"><code>auto</code></td><td data-ru="Печать или вставка — по длине фразы и по окну">Typing or paste, chosen from the length and the window</td></tr>
+      <tr><td data-ru="&lt;code&gt;restore_clipboard&lt;/code&gt;"><code>restore_clipboard</code></td><td data-ru="&lt;code&gt;true&lt;/code&gt;"><code>true</code></td><td data-ru="Возвращает прежнее содержимое буфера после вставки">Returns the previous clipboard content after a paste</td></tr>
+      <tr><td data-ru="&lt;code&gt;pre_inject_delay_ms&lt;/code&gt;"><code>pre_inject_delay_ms</code></td><td data-ru="&lt;code&gt;50&lt;/code&gt;"><code>50</code></td><td data-ru="Пауза перед вставкой; медленным удалённым сессиям нужно больше">A pause before the paste; slow remotes want more</td></tr>
+      <tr><th scope="row" rowspan="2"><code>rules</code></th><td data-ru="&lt;code&gt;enabled&lt;/code&gt;"><code>enabled</code></td><td data-ru="&lt;code&gt;true&lt;/code&gt;"><code>true</code></td><td data-ru="Пунктуация, слова-заполнители, повторы, цифры — без модели">Punctuation, fillers, repeats, digits, without a model</td></tr>
+      <tr><td data-ru="&lt;code&gt;llm_min_words&lt;/code&gt;"><code>llm_min_words</code></td><td data-ru="&lt;code&gt;10&lt;/code&gt;"><code>10</code></td><td data-ru="Более короткие фразы минуют языковую модель">Shorter phrases skip the language model</td></tr>
+      <tr><th scope="row" rowspan="3"><code>llm</code></th><td data-ru="&lt;code&gt;enabled&lt;/code&gt;"><code>enabled</code></td><td data-ru="&lt;code&gt;false&lt;/code&gt;"><code>false</code></td><td data-ru="Языковая модель выключена, пока её не попросишь">The language model is off until you ask for it</td></tr>
+      <tr><td data-ru="&lt;code&gt;provider&lt;/code&gt;"><code>provider</code></td><td data-ru="&lt;code&gt;ollama&lt;/code&gt;"><code>ollama</code></td><td data-ru="&lt;code&gt;ollama&lt;/code&gt;, &lt;code&gt;lmstudio&lt;/code&gt;, &lt;code&gt;openrouter&lt;/code&gt;, &lt;code&gt;groq&lt;/code&gt;, &lt;code&gt;openai&lt;/code&gt; или &lt;code&gt;custom&lt;/code&gt;"><code>ollama</code>, <code>lmstudio</code>, <code>openrouter</code>, <code>groq</code>, <code>openai</code> or <code>custom</code></td></tr>
+      <tr><td data-ru="&lt;code&gt;reasoning_effort&lt;/code&gt;"><code>reasoning_effort</code></td><td data-ru="&lt;code&gt;auto&lt;/code&gt;"><code>auto</code></td><td data-ru="Шлёт &lt;code&gt;none&lt;/code&gt; локальным провайдерам, чтобы рассуждающие модели отвечали">Sends <code>none</code> to local providers so reasoning models answer</td></tr>
+      <tr><th scope="row" rowspan="3"><code>journal</code></th><td data-ru="&lt;code&gt;include_text&lt;/code&gt;"><code>include_text</code></td><td data-ru="&lt;code&gt;true&lt;/code&gt;"><code>true</code></td><td data-ru="&lt;code&gt;false&lt;/code&gt; пишет строку без текста фразы"><code>false</code> writes the line without the phrase text</td></tr>
+      <tr><td data-ru="&lt;code&gt;encrypt&lt;/code&gt;"><code>encrypt</code></td><td data-ru="&lt;code&gt;false&lt;/code&gt;"><code>false</code></td><td data-ru="Запечатывает тексты XChaCha20-Poly1305">Seals the texts with XChaCha20-Poly1305</td></tr>
+      <tr><td data-ru="&lt;code&gt;max_entries&lt;/code&gt;"><code>max_entries</code></td><td data-ru="&lt;code&gt;10000&lt;/code&gt;"><code>10000</code></td><td data-ru="Сколько фраз хранить">How many phrases to keep</td></tr>
+      <tr><th scope="row" rowspan="3"><code>privacy</code></th><td data-ru="&lt;code&gt;send_to_llm&lt;/code&gt;"><code>send_to_llm</code></td><td data-ru="&lt;code&gt;true&lt;/code&gt;"><code>true</code></td><td data-ru="Может ли текст уходить в настроенную модель">Whether text may go to the configured model</td></tr>
+      <tr><td data-ru="&lt;code&gt;no_record_mode&lt;/code&gt;"><code>no_record_mode</code></td><td data-ru="&lt;code&gt;false&lt;/code&gt;"><code>false</code></td><td data-ru="Полностью выключает журнал и историю">Turns the journal and the history off completely</td></tr>
+      <tr><td data-ru="&lt;code&gt;telemetry&lt;/code&gt;"><code>telemetry</code></td><td data-ru="&lt;code&gt;false&lt;/code&gt;"><code>false</code></td><td data-ru="Телеметрии нет; ключ это и утверждает">There is no telemetry; the key states it</td></tr>
+      <tr><th scope="row" data-ru="&lt;code&gt;mcp&lt;/code&gt;"><code>mcp</code></th><td data-ru="&lt;code&gt;enabled&lt;/code&gt;"><code>enabled</code></td><td data-ru="&lt;code&gt;true&lt;/code&gt;"><code>true</code></td><td data-ru="Разрешает harness запускать stdio-сервер MCP. Выключенный ключ убирает команду из работы, не трогая конфигурацию harness">Lets a harness start the stdio MCP server. Switched off, it withdraws the command without touching the harness configuration</td></tr>
+    </tbody>
+  </table>
+</div>
+<p data-ru="У горячих клавиш своя страница: &lt;a href=&quot;./hotkeys.html&quot;&gt;клавиши и композиторы&lt;/a&gt;. Поля журнала объясняет раздел &lt;a href=&quot;./privacy.html&quot;&gt;приватность и журнал&lt;/a&gt;">Hotkeys have their own page: <a href="./hotkeys.html">hotkeys and compositors</a>. Journal fields are explained in <a href="./privacy.html">privacy and journal</a></p>
+<p data-ru="Провайдер модели задаёт и порядок вызовов. Облачному разрешено до четырёх одновременных вызовов, локальная модель получает запросы по одному">The model provider also decides how calls run. A cloud provider may answer up to four calls at once, and a local model takes requests one at a time</p>
 
-    <h2>Edit and apply</h2>
-    <div class="cmd"><code>molva config set stt.language auto</code><button class="copy" type="button" data-copy="molva config set stt.language auto">Copy</button></div>
-    <div class="cmd"><code>molva config edit</code><button class="copy" type="button" data-copy="molva config edit">Copy</button></div>
-    <div class="cmd"><code>molva config reload</code><button class="copy" type="button" data-copy="molva config reload">Copy</button></div>
-    <p>The reload passes the new settings to the running daemon. The recognizer and the paste chain are built when the daemon starts, so a changed model, engine or output method needs a restart. <code>molva doctor</code> shows what the daemon actually loaded</p>
+<h2 data-ru="Изменить и применить">Edit and apply</h2>
+<div class="cmd"><code>molva config set stt.language auto</code><button class="copy" type="button" data-copy="molva config set stt.language auto" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>molva config edit</code><button class="copy" type="button" data-copy="molva config edit" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>molva config reload</code><button class="copy" type="button" data-copy="molva config reload" data-ru="Скопировать">Copy</button></div>
+<p data-ru="Перезагрузка передаёт новые настройки запущенному демону. Распознаватель и цепочка вставки собираются при старте демона, поэтому смена модели, движка или способа вывода требует перезапуска. &lt;code&gt;molva doctor&lt;/code&gt; показывает, что демон на самом деле загрузил">The reload passes the new settings to the running daemon. The recognizer and the paste chain are built when the daemon starts, so a changed model, engine or output method needs a restart. <code>molva doctor</code> shows what the daemon actually loaded</p>
 
-    <h2>Keys never live in the file</h2>
-    <p>A cloud model key is read from the OS store, from a file with owner-only permissions, or from an environment variable, by <code>llm.api_key_source</code>. The journal key follows the same idea with <code>journal.key_source</code>. Values are written through stdin, so they never enter the shell history</p>
-    <div class="cmd"><code>printf '%s' "$KEY" | molva secret set llm</code><button class="copy" type="button" data-copy="printf '%s' &quot;$KEY&quot; | molva secret set llm">Copy</button></div>
-    <div class="cmd"><code>molva secret status</code><button class="copy" type="button" data-copy="molva secret status">Copy</button></div>
+<h2 data-ru="Страница настроек в интерфейсе">The settings page in the GUI</h2>
+<p data-ru="Окно правит тот же файл: страница настроек показывает значения из него и сохраняет их в него. Там, где файл сгенерирован Nix, она по умолчанию скрыта; &lt;code&gt;programs.molvai.showSettings = true&lt;/code&gt; показывает её только для просмотра, а запись остаётся запрещённой">The window edits the same file: the settings page reads the values from it and writes them back. Where Nix generated the file it is hidden by default; <code>programs.molvai.showSettings = true</code> shows it for inspection only, and writing stays refused</p>
+<ul>
+  <li data-ru="Провайдер распознавания: локальная модель или облачный API. Облачный путь помечен как недоступный в этой сборке, а не спрятан">The recognition provider: a local model or a cloud API. The cloud path is marked as unavailable in this build instead of hidden</li>
+  <li data-ru="Выбор модели с её состоянием: веса на диске или загрузка при старте демона">The model choice with its state: the weights on disk, or a download at the daemon start</li>
+  <li data-ru="Одно поле языка речи и список языков для автоопределения">One field for the speech language, and a list of languages for automatic detection</li>
+  <li data-ru="Микрофон со списком от демона и кнопкой обновления: демон поднимает сокет только после весов, и страница говорит об этом вместо пустого списка">The microphone, from the daemon's list, with a refresh button: the daemon raises the socket only after the weights, and the page says so instead of showing an empty list</li>
+  <li data-ru="Источник ключа для каждого секрета: хранилище ОС, переменная окружения или открытый текст в файле с предупреждением. Модель предупреждает отдельно, что текст уйдёт в облако">The key source of each secret: the OS store, an environment variable or plain text in the file with a warning. The model warns separately that text will leave for the cloud</li>
+  <li data-ru="Свои стили рядом со встроенными: идентификатор, название, признак вызова модели и системный промпт">Custom styles beside the built-in ones: an identifier, a name, whether the style calls the model, and a system prompt</li>
+  <li data-ru="Запись каждого сочетания клавиш: нажми сочетание, и страница его запишет">A recorder for every hotkey: press the combination and the page writes it</li>
+  <li data-ru="Раздел MCP: выключатель и готовая команда для Claude Code, Codex, Cursor, VS Code, Claude Desktop и терминала">An MCP section: the switch and the ready command for Claude Code, Codex, Cursor, VS Code, Claude Desktop and a terminal</li>
+</ul>
 
-    <h2>The Nix-managed mode</h2>
-    <p>The Home Manager module does not edit the same file at runtime. It renders the settings and the weights into the Nix store, and a switch is the only thing that changes them</p>
-    <ul>
-      <li><code>home.packages</code> gains <code>molva</code>, and <code>systemd.user.services.molva-daemon</code> runs <code>molva daemon</code> as part of the graphical session</li>
-      <li>The generated settings carry the engine and the model of the catalog entry, the language, <code>stt.auto_pull = false</code> and <code>streaming_inject = true</code>. They also carry the transcribe.cpp binary and backend, and <code>stt.model_path</code> pointing at a store directory of weights</li>
-      <li><code>xdg.configFile."molva/config.toml"</code> links the generated file into place with <code>force = true</code></li>
-      <li>The GUI hides its settings page, because every save would be refused. A banner explains that the settings are managed by Nix and names the option to change</li>
-      <li>Under Hyprland with a Lua config the module also writes and includes the binds on each switch. A failure there prints a warning and does not fail the generation</li>
-    </ul>
-    <div class="table-wrap">
-      <table>
-        <caption>The options of <code>programs.molvai</code></caption>
-        <thead><tr><th scope="col">Option</th><th scope="col">Meaning</th></tr></thead>
-        <tbody>
-          <tr><th scope="row"><code>enable</code></th><td>Installs the package and enables everything below</td></tr>
-          <tr><th scope="row"><code>model</code></th><td>The model name from <code>models.toml</code>, default <code>gigaam-v3-e2e-rnnt-q4_k_m</code></td></tr>
-          <tr><th scope="row"><code>models</code></th><td>Every model to fetch into the store; <code>model</code> must be one of them</td></tr>
-          <tr><th scope="row"><code>modelsDirectory</code></th><td>A directory that already holds the weights, for a machine that gets them another way</td></tr>
-          <tr><th scope="row"><code>language</code>, <code>uiLanguage</code></th><td>The speech language and the interface language</td></tr>
-          <tr><th scope="row"><code>transcribeBackend</code></th><td>The compute backend for transcribe.cpp: <code>auto</code>, <code>cpu</code>, <code>vulkan</code>, <code>cuda</code></td></tr>
-          <tr><th scope="row"><code>settings</code></th><td>Extra settings merged over the generated ones, in the shape of <code>molva config export</code></td></tr>
-          <tr><th scope="row"><code>daemon.enable</code></th><td>Runs the user service; on by default on Linux</td></tr>
-          <tr><th scope="row"><code>hyprland.enable</code></th><td>Writes the Hyprland Lua binds and includes the file</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p>A minimal configuration is short. Everything else has a default</p>
-<pre class="code"><code>programs.molvai = {
+<h2 data-ru="Ключи никогда не лежат в файле">Keys never live in the file</h2>
+<p data-ru="Ключ облачной модели читается из хранилища ОС, из файла с правами только для владельца или из переменной окружения — это задаёт &lt;code&gt;llm.api_key_source&lt;/code&gt;. Ключ журнала устроен так же через &lt;code&gt;journal.key_source&lt;/code&gt;. Значения пишутся через stdin, поэтому в историю команд они не попадают">A cloud model key is read from the OS store, from a file with owner-only permissions, or from an environment variable, by <code>llm.api_key_source</code>. The journal key follows the same idea with <code>journal.key_source</code>. Values are written through stdin, so they never enter the shell history</p>
+<div class="cmd"><code>printf '%s' &quot;$KEY&quot; | molva secret set llm</code><button class="copy" type="button" data-copy="printf '%s' &quot;$KEY&quot; | molva secret set llm" data-ru="Скопировать">Copy</button></div>
+<div class="cmd"><code>molva secret status</code><button class="copy" type="button" data-copy="molva secret status" data-ru="Скопировать">Copy</button></div>
+
+<h2 data-ru="Режим под управлением Nix">The Nix-managed mode</h2>
+<p data-ru="Модуль Home Manager не правит тот же файл во время работы. Он рендерит настройки и веса в хранилище Nix, и меняет их только переключение">The Home Manager module does not edit the same file at runtime. It renders the settings and the weights into the Nix store, and a switch is the only thing that changes them</p>
+<ul>
+  <li data-ru="В &lt;code&gt;home.packages&lt;/code&gt; появляется &lt;code&gt;molva&lt;/code&gt;, а &lt;code&gt;systemd.user.services.molva-daemon&lt;/code&gt; запускает &lt;code&gt;molva daemon&lt;/code&gt; в составе графической сессии"><code>home.packages</code> gains <code>molva</code>, and <code>systemd.user.services.molva-daemon</code> runs <code>molva daemon</code> as part of the graphical session</li>
+  <li data-ru="Сгенерированные настройки несут движок и модель из записи каталога, язык, &lt;code&gt;stt.auto_pull = false&lt;/code&gt; и &lt;code&gt;streaming_inject = false&lt;/code&gt;. А ещё бинарник и бэкенд transcribe.cpp и &lt;code&gt;stt.model_path&lt;/code&gt;, указывающий на каталог весов в хранилище">The generated settings carry the engine and the model of the catalog entry, the language, <code>stt.auto_pull = false</code> and <code>streaming_inject = false</code>. They also carry the transcribe.cpp binary and backend, and <code>stt.model_path</code> pointing at a store directory of weights</li>
+  <li data-ru="&lt;code&gt;xdg.configFile.&quot;molva/config.toml&quot;&lt;/code&gt; ставит сгенерированный файл на место с &lt;code&gt;force = true&lt;/code&gt;"><code>xdg.configFile."molva/config.toml"</code> links the generated file into place with <code>force = true</code></li>
+  <li data-ru="Вместе с демоном модуль пишет &lt;code&gt;~/.config/autostart/molvai-gui.desktop&lt;/code&gt;: иконка в трее принадлежит интерфейсу, а демон один её не создаёт. Поэтому &lt;code&gt;guiAutostart.enable&lt;/code&gt; по умолчанию равно &lt;code&gt;daemon.enable&lt;/code&gt;">With the daemon the module writes <code>~/.config/autostart/molvai-gui.desktop</code>: the tray icon belongs to the GUI, and the daemon alone does not create one. That is why <code>guiAutostart.enable</code> defaults to <code>daemon.enable</code></li>
+  <li data-ru="Интерфейс прячет страницу настроек, потому что любое сохранение было бы отклонено. Баннер объясняет, что настройками управляет Nix, и называет опцию, которую надо менять">The GUI hides its settings page, because every save would be refused. A banner explains that the settings are managed by Nix and names the option to change</li>
+  <li data-ru="Под Hyprland с конфигом на Lua модуль ещё пишет и подключает привязки при каждом переключении. Сбой там печатает предупреждение и не валит генерацию">Under Hyprland with a Lua config the module also writes and includes the binds on each switch. A failure there prints a warning and does not fail the generation</li>
+</ul>
+<div class="table-wrap">
+  <table>
+    <caption data-ru="Опции &lt;code&gt;programs.molvai&lt;/code&gt;">The options of <code>programs.molvai</code></caption>
+    <thead><tr><th scope="col" data-ru="Опция">Option</th><th scope="col" data-ru="Смысл">Meaning</th></tr></thead>
+    <tbody>
+            <tr><th scope="row" data-ru="&lt;code&gt;enable&lt;/code&gt;"><code>enable</code></th><td data-ru="Ставит пакет и включает всё перечисленное ниже">Installs the package and enables everything below</td></tr>
+            <tr><th scope="row" data-ru="&lt;code&gt;model&lt;/code&gt;"><code>model</code></th><td data-ru="Имя модели из &lt;code&gt;models.toml&lt;/code&gt;, по умолчанию &lt;code&gt;gigaam-v3-e2e-rnnt-q4_k_m&lt;/code&gt;">The model name from <code>models.toml</code>, default <code>gigaam-v3-e2e-rnnt-q4_k_m</code></td></tr>
+            <tr><th scope="row" data-ru="&lt;code&gt;models&lt;/code&gt;"><code>models</code></th><td data-ru="Все модели для загрузки в хранилище; &lt;code&gt;model&lt;/code&gt; обязана быть одной из них">Every model to fetch into the store; <code>model</code> must be one of them</td></tr>
+            <tr><th scope="row" data-ru="&lt;code&gt;modelsDirectory&lt;/code&gt;"><code>modelsDirectory</code></th><td data-ru="Каталог, где веса уже лежат, для машины, которая получает их иначе">A directory that already holds the weights, for a machine that gets them another way</td></tr>
+            <tr><th scope="row" data-ru="&lt;code&gt;language, uiLanguage&lt;/code&gt;"><code>language, uiLanguage</code></th><td data-ru="Язык речи и язык интерфейса">The speech language and the interface language</td></tr>
+            <tr><th scope="row" data-ru="&lt;code&gt;transcribeBackend&lt;/code&gt;"><code>transcribeBackend</code></th><td data-ru="Вычислительный бэкенд transcribe.cpp: &lt;code&gt;auto&lt;/code&gt;, &lt;code&gt;cpu&lt;/code&gt;, &lt;code&gt;vulkan&lt;/code&gt;, &lt;code&gt;cuda&lt;/code&gt;">The compute backend for transcribe.cpp: <code>auto</code>, <code>cpu</code>, <code>vulkan</code>, <code>cuda</code></td></tr>
+            <tr><th scope="row" data-ru="&lt;code&gt;settings&lt;/code&gt;"><code>settings</code></th><td data-ru="Дополнительные настройки поверх сгенерированных, в форме &lt;code&gt;molva config export&lt;/code&gt;">Extra settings merged over the generated ones, in the shape of <code>molva config export</code></td></tr>
+            <tr><th scope="row" data-ru="&lt;code&gt;daemon.enable&lt;/code&gt;"><code>daemon.enable</code></th><td data-ru="Запускает пользовательский сервис; в Linux включено по умолчанию">Runs the user service; on by default on Linux</td></tr>
+            <tr><th scope="row" data-ru="&lt;code&gt;guiPackage&lt;/code&gt;"><code>guiPackage</code></th><td data-ru="Пакет интерфейса, который модуль ставит. По умолчанию &lt;code&gt;null&lt;/code&gt;: интерфейс не ставится, и тогда &lt;code&gt;guiAutostart.command&lt;/code&gt; должен называть команду, уже лежащую в &lt;code&gt;PATH&lt;/code&gt;, например AppImage">The GUI package the module installs. The default is <code>null</code>, which installs no GUI, and then <code>guiAutostart.command</code> must name a command already on <code>PATH</code>, such as an AppImage</td></tr>
+            <tr><th scope="row" data-ru="&lt;code&gt;guiAutostart.enable&lt;/code&gt;"><code>guiAutostart.enable</code></th><td data-ru="Запись автозапуска для интерфейса при входе в систему. По умолчанию равно &lt;code&gt;daemon.enable&lt;/code&gt;, поэтому запись появляется вместе с демоном">An autostart entry for the GUI at login. It defaults to <code>daemon.enable</code>, so the entry is written together with the daemon</td></tr>
+            <tr><th scope="row" data-ru="&lt;code&gt;guiAutostart.command&lt;/code&gt;"><code>guiAutostart.command</code></th><td data-ru="Команда, которую запускает запись. По умолчанию &lt;code&gt;guiPackage&lt;/code&gt;, а если его нет — &lt;code&gt;molva-gui&lt;/code&gt; из &lt;code&gt;PATH&lt;/code&gt;">The command the entry runs. The default is <code>guiPackage</code>, and <code>molva-gui</code> from <code>PATH</code> when there is no package</td></tr>
+            <tr><th scope="row" data-ru="&lt;code&gt;hyprland.enable&lt;/code&gt;"><code>hyprland.enable</code></th><td data-ru="Пишет привязки Hyprland на Lua и подключает файл">Writes the Hyprland Lua binds and includes the file</td></tr>
+    </tbody>
+  </table>
+</div>
+<p data-ru="Минимальная конфигурация короткая. У всего остального есть значение по умолчанию">A minimal configuration is short. Everything else has a default</p>
+<pre data-lang="nix"><code>programs.molvai = {
   enable = true;
   model = "gigaam-v3-e2e-rnnt-q4_k_m";
   settings.stt.chunk_pause_ms = 400;
 };</code></pre>
-    <p>The rule is the same as for any Nix option: edit the configuration and run your switch. If a value did not take, the banner in the GUI says why</p>
+<p data-ru="Правило то же, что у любой опции Nix: правь конфигурацию и запускай переключение. Если значение не применилось, баннер в интерфейсе скажет почему">The rule is the same as for any Nix option: edit the configuration and run your switch. If a value did not take, the banner in the GUI says why</p>
 
-    <p class="to-top"><a href="./cli.html">Next: CLI guide →</a> · <a href="#main">Back to top</a></p>
+<p class="to-top"><a href="./cli.html" data-ru="Дальше: руководство по CLI →">Next: CLI guide →</a> · <a href="#main" data-ru="К началу">Back to top</a></p>
   </article>
 </main>
-
 <footer class="site-footer">
-  <div class="wrap footer-grid">
-    <div class="footer-brand">
+  <div class="wrap footer-inner">
+    <div>
       <a class="brand" href="../index.html">
-        <img src="../assets/logo.svg" alt="" width="26" height="26">
-        <span>Molv<span class="brand-ai">AI</span></span>
+        <img src="../assets/logo.svg" alt="" width="22" height="22">
+        <span>MolvAI</span>
       </a>
-      <p>Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
-      <p class="footer-note">MIT licensed · no trackers · no external fonts</p>
+      <p data-ru="Открытый голосовой ввод во все приложения. Зажми клавишу, говори, отпусти — текст оказывается в активном поле">Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
+      <p class="footer-note" data-ru="MIT · без трекеров · без внешних шрифтов">MIT licensed · no trackers · no external fonts</p>
+      <p class="footer-note"><a href="../ASSETS.md" data-ru="Ассеты и лицензии">Assets and licences</a></p>
     </div>
-    <nav aria-label="Project links">
-      <p class="footer-title">Project</p>
+    <nav aria-label="Project links" data-ru-aria-label="Ссылки проекта">
+      <p class="footer-title" data-ru="Проект">Project</p>
       <ul>
         <li><a href="https://github.com/rokokol/MolvAI">GitHub</a></li>
-        <li><a href="https://github.com/rokokol/MolvAI/releases">Releases</a></li>
-        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE">License (MIT)</a></li>
-        <li><a href="https://github.com/rokokol/MolvAI/issues">Issues</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/releases" data-ru="Релизы">Releases</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE" data-ru="Лицензия (MIT)">License (MIT)</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/issues" data-ru="Задачи">Issues</a></li>
       </ul>
     </nav>
-    <nav aria-label="Site links">
-      <p class="footer-title">Site</p>
+    <nav aria-label="Site links" data-ru-aria-label="Страницы сайта">
+      <p class="footer-title" data-ru="Сайт">Site</p>
       <ul>
-        <li><a href="../features.html">Features</a></li>
-        <li><a href="../models.html">Models</a></li>
-        <li><a href="../cli.html">CLI reference</a></li>
-        <li><a href="./index.html">Documentation</a></li>
+        <li><a href="../features.html" data-ru="Возможности">Features</a></li>
+        <li><a href="../models.html" data-ru="Модели">Models</a></li>
+        <li><a href="../cli.html" data-ru="Справочник CLI">CLI reference</a></li>
+        <li><a href="../docs/index.html" data-ru="Документация">Documentation</a></li>
         <li><a href="../faq.html">FAQ</a></li>
-        <li><a href="./status.html">Status and roadmap</a></li>
+        <li><a href="../docs/status.html" data-ru="Статус и планы">Status and roadmap</a></li>
       </ul>
     </nav>
     <div>
-      <p class="footer-title">Canonical docs</p>
-      <p class="footer-note">The repository is the source of truth. These pages summarize it and link back</p>
+      <p class="footer-title" data-ru="Канонические документы">Canonical docs</p>
+      <p class="footer-note" data-ru="Источник истины — репозиторий. Эти страницы его пересказывают и дают ссылки">
+        The repository is the source of truth. These pages summarize it and link back
+      </p>
       <ul>
         <li><a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README</a></li>
         <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></li>
@@ -201,9 +240,10 @@
     </div>
   </div>
   <div class="wrap footer-credit">
-    <p>MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
-    <p>This site runs without cookies, analytics or third-party assets</p>
+    <p data-ru="MolvAI сделан на хакатоне V0ICE (Казань, 2026) и находится в разработке">MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
+    <p data-ru="Сайт работает без cookies, аналитики и сторонних ассетов">This site runs without cookies, analytics or third-party assets</p>
   </div>
 </footer>
+<script src="../assets/site.js"></script>
 </body>
 </html>

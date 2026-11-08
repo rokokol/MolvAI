@@ -7,15 +7,15 @@
 System-wide voice input that runs on your computer: hold a key, speak, release, and the text appears in the active field of any application. Russian speech uses the Sber GigaAM-v3 model by default, at the same Q4_K_M quantization as the agent on the station, and the model is fast enough on a processor for speech to be typed while you are still talking
 
 > [!NOTE]
-> MolvAI started at the V0ICE hackathon in Kazan and is in development. What works and what is cut is in [docs/STATUS.md](docs/STATUS.md)
+> MolvAI started at the V0ICE hackathon in Kazan and is in development. What works and what is cut is in [docs/STATUS.md](docs/STATUS.md), and the external defects the code works around are in [WORKAROUNDS.md](WORKAROUNDS.md)
 
 ## What it does
 
 - **Dictation anywhere**: the text goes to the active window through the keyboard or the clipboard, and the method is chosen by the application
-- **Real-time chunks**: a phrase is cut at pauses during the recording, each chunk is recognized and typed at once, and only the tail waits for the key release
+- **Real-time chunks**: a phrase is cut at pauses during the recording, each chunk is recognized at once for the draft, and the text reaches the field as one piece after the key release
 - **Voice editing**: select text, say "сделай официальнее" ("make it more formal"), and the answer replaces the selection
-- **Audio and video to text**: `molva transcribe` reads a file or a whole directory and prints timecodes; the GUI shows segments and copies them with or without timecodes
-- **Search over transcripts**: `molva search` and the Search tab find a phrase across every transcribed file and show the file and the timecode
+- **Audio and video to text**: the Files tab hands a file to the daemon over IPC, and the daemon recognizes it with the recognizer and the model that dictation already holds; `molva transcribe` stays the standalone entry for an offline batch and prints timecodes
+- **Search over transcripts**: `molva search` and the search inside the Files tab find a phrase across every transcribed file and show the file and the timecode
 - **Local by default**: recognition, the dictionary, the rules and the journal stay on your computer; a language model is optional and works through any OpenAI-compatible API
 - **Declarative on NixOS**: the Home Manager module renders settings and model weights into the Nix store, so a switch is the only way to change them and the GUI has no settings page to drift from the config
 
@@ -23,11 +23,11 @@ More about the arrangement: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The jo
 
 ## What it looks like
 
-| The panel at rest | Recording is on |
+| The statistics | Recording is on |
 | --- | --- |
-| ![The MolvAI panel: the style, the last phrase and the statistics for today](docs/img/panel-idle.png) | ![The panel during recording: the indicator, the signal level and the stop buttons](docs/img/panel-recording.png) |
+| ![The MolvAI statistics: words, pace, streak and saved time](docs/img/panel-idle-2026.png) | ![The panel during recording: the indicator, the signal level and the stop buttons](docs/img/panel-recording-2026.png) |
 
-The panel shows the daemon state, the live signal level, the style, the last phrase with its pace and the statistics for today. The History, Search, Files and Stats tabs read the same journal as the CLI
+The panel shows the daemon state, the live signal level, the style, the last phrase with its pace and the statistics for today. The History, Files (with transcript search) and Stats tabs read the same journal as the CLI
 
 ## Installation
 
@@ -72,7 +72,7 @@ git clone https://github.com/rokokol/MolvAI && cd MolvAI
 ./install.sh           # the binary goes to ~/.local/bin, no administrator rights needed
 ```
 
-The script installs nothing itself: it prints the commands for Debian, Fedora, Arch, openSUSE, macOS and Windows, and a person makes the decision. Ready builds for Linux, Windows and macOS are on the [releases page](https://github.com/rokokol/MolvAI/releases): the CLI archive, AppImage, deb, dmg and the Windows installer, each with a SHA-256 sum. The Linux and Windows builds compute whisper on the video card through Vulkan and fall back to the processor without a Vulkan device
+The script installs nothing itself: it prints the commands for Debian, Fedora, Arch, openSUSE, macOS and Windows, and a person makes the decision. Ready builds for Linux, Windows and macOS are on the [releases page](https://github.com/rokokol/MolvAI/releases): the CLI archive, AppImage, deb, dmg and the Windows installer, each with a SHA-256 sum. The Linux and Windows builds compute whisper on the video card through Vulkan and fall back to the processor without a Vulkan device. Optional CUDA archives for Linux and Windows carry the NVIDIA runtime separately
 
 The default GigaAM weights run through `transcribe-cli` from [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp). The Nix module supplies it. On another system, install `transcribe-cli` and put it on `PATH`, or run whisper instead:
 
@@ -105,6 +105,20 @@ molva status                 # daemon state
 
 `molva doctor` names the missing piece and the command that fixes it. If the daemon is not running, `molva record start` exits with code 3; the GUI starts the daemon itself
 
+## The daemon
+
+One process holds the microphone, the recognizer and the model. `molva daemon` starts it, and the socket and the settings file are the same for every client, so the CLI, the GUI and the MCP server share one recognizer instead of loading a model each
+
+The GUI starts the daemon when a recording or a file needs it and nobody answers on the socket. It waits up to three minutes, because a clean machine also downloads the weights, and a daemon that dies before the socket shows its last line in the panel. Quit stops only the daemon that the window started itself: a process started by the Home Manager service or by hand keeps running, and the next window reuses it
+
+### A file while a phrase is being dictated
+
+File transcription is an IPC request (`file.transcribe`), not a second process. The daemon reads the file with the recognizer it already holds: the same model, language, dictionary and rules as dictation. `molva transcribe` remains only the standalone CLI entry for offline batched use: it loads its own engine, talks to no daemon and fits a script or CI
+
+A file job does not move the state machine. It sets `job = "file"` while the state stays `idle`, and `molva status` and the panel read that as "transcribing a file". A recording during a file is accepted and queued behind it, then processed right after, because the audio cannot be repeated
+
+A file is refused with `busy` while a phrase records or processes. The CLI turns that answer into exit code 4, and `molva transcribe` does not go through the daemon at all. The GUI keeps asking for up to half an hour, so a person who happens to dictate does not lose the file, and the MCP server waits thirty seconds before it reports the refusal. One recognizer transcribes one file at a time, so a second file waits for the first
+
 ## Audio and video to text
 
 ```sh
@@ -118,7 +132,9 @@ molva search "нейронные сети" --limit 10
 
 Video is read through its audio track. MP4 and M4A use the built-in decoder; Matroska, WebM, MOV and AVI go through `ffmpeg` when it is installed. A missing `ffmpeg` gives an error that names the container, not a silent skip
 
-In the GUI, the Files tab accepts a path or a drag-and-drop, shows every segment with its timecode, and copies with or without timecodes. The Search tab is separate from History: it searches the transcripts of files, shows the file and the timecode, and copies a hit
+In the GUI, the Files tab accepts a path or a drag-and-drop and sends it to the daemon, shows every segment with its timecode, and copies with or without timecodes; a timecodes button hides them in the list and in the copy. The same tab searches the transcripts of files, shows the file and the timecode, and copies a hit; the old separate Search tab is gone
+
+Media preview and the audio spectrogram are temporarily off: WebKit and GStreamer hung the window. The transcript, the timecodes, the search, the copy and opening the file in the system player still work. The queue and the loaded history persist, so leaving the tab and returning does not clear them, and a completed job survives a window restart
 
 ## Models
 
@@ -136,11 +152,11 @@ The weights are not part of the repository, and the project license does not cov
 
 ## Real-time dictation
 
-The microphone stream is cut at pauses while you speak. Each chunk goes to the model, and `stt.streaming_inject = true` types it into the active field immediately; the key release only waits for the tail. This is why the text appears in pieces instead of after the whole phrase
+Live typing while you speak is disabled in this build. The phrase is recognized as chunks for the draft, but the text reaches the active field as one piece after the key release; the same whole phrase is what the model sees for post-processing or translation. This removes the ordering and duplication problems that the per-chunk path showed
 
-The model is not called on the streamed prefix: its answer would rewrite text that is already in the field. A chunk goes through the dictionary and the rules, and the tail goes through the same rules. When streaming is on, the language model is not called for that phrase; turn `stt.streaming_inject` off for a style that needs it
+The old streaming translator is gone. Whole-file and whole-phrase translation now go through one `whole_text` function, and a translation that keeps context between chunks is a later task
 
-`stt.streaming_preview` keeps the draft in the panel, `stt.chunked = false` restores the old whole-phrase path, and `stt.chunk_pause_ms` changes the pause that cuts a chunk. A failed chunk paste leaves the typed prefix in place, stops further streaming for that phrase, and does not paste the prefix twice
+`stt.streaming_preview` keeps the draft in the panel, `stt.chunked = false` turns chunk recognition off, and `stt.chunk_pause_ms` changes the pause that cuts a chunk. `stt.streaming_inject = false` is the shipped default; the live typing and streaming translation path has its own roadmap item
 
 ## Hotkeys
 
@@ -150,6 +166,8 @@ On Hyprland the binds come from `molva setup hyprland --write`; on GNOME and KDE
 
 ## Privacy
 
+The principle is simple: you control the microphone, not the program. Data does not go to the network without your knowledge
+
 The microphone stream opens at the key press and closes right after the release. Outside a recording, MolvAI listens to nothing, and the system recording indicator is off. The close does not depend on how the phrase ended: a cancel, an error and an abnormal exit all release the stream, and the journal records the delay from the key release to the close
 
 The journal is a local JSONL file. Its texts can be encrypted with XChaCha20-Poly1305, the key can live in the OS store, and `privacy.no_record_mode` turns the journal off completely. There is no telemetry
@@ -158,6 +176,8 @@ The journal is a local JSONL file. Its texts can be encrypted with XChaCha20-Pol
 
 The language model is off by default and works through any OpenAI-compatible API. It is called only for phrases longer than `rules.llm_min_words` words and only by styles that need it; a failure returns the text after the rules instead of losing the phrase
 
+A local model stays serial: one request at a time, because two at once answer slower and worse. A cloud provider answers up to four calls beside each other, and one executor holds that policy, so no stage decides on its own to wait beside another. The post-processing of a phrase runs on the daemon worker, the translation calls belong to the executor, and one finished text is one call today
+
 ```sh
 molva config set llm.enabled true
 molva config set llm.base_url http://localhost:11434/v1
@@ -165,7 +185,7 @@ molva config set llm.model qwen3.5:4b
 printf '%s' "$KEY" | molva secret set llm
 ```
 
-The key never enters the settings file: `llm.api_key_source` chooses the OS store, a file next to the settings, or an environment variable. `molva secret status` shows which entries exist without printing them
+By default the key never enters the settings file: `llm.api_key_source` chooses the OS store, a file next to the settings, or an environment variable. `molva secret status` shows which entries exist without printing them. The opt-in `plain` source keeps the key in the TOML file in clear text; the GUI marks it as unsafe
 
 ## Exit codes
 
@@ -185,9 +205,13 @@ The key never enters the settings file: `llm.api_key_source` chooses the OS stor
 
 On NixOS the file is generated by `programs.molvai` and is read-only. On another system it is `~/.config/molva/config.toml`, created at the first start, and a wrong value gives an error with the key and the file
 
+The GUI settings page edits the same file. It covers the recognition provider, the model with its download state, one language field with a list for automatic detection, the input device with a retry when the daemon reports none, the key source of every secret, custom styles beside the built-in ones, a recorder for each hotkey and a section for the MCP server
+
 ## MCP server
 
-`molva mcp` speaks the Model Context Protocol over standard input and output: the MCP client starts the process itself, so there is no port and no listener. The server exposes transcription, search, statistics, history and the model catalog; it does not read or write the settings
+`molva mcp` speaks the Model Context Protocol over standard input and output: the MCP client starts the process itself, so there is no port, no URL and no autostart. The server exposes transcription, search, statistics, history, the model catalog and its own documentation; it does not read or write the settings
+
+A transcription goes to the daemon: the server starts the daemon when nobody answers on the socket and reuses its recognizer and model, so an MCP call does not load a second copy of the weights. `mcp.enabled` gates the server, and the GUI settings page turns it off without touching the harness configuration
 
 | Tool | What it returns |
 | --- | --- |
@@ -196,6 +220,9 @@ On NixOS the file is generated by `programs.molvai` and is read-only. On another
 | `stats_summary` | words, speed, latency and the count of MCP transcriptions |
 | `history_list` | journal entries filtered by text, application and time |
 | `models_list` | the catalog and the weights on disk |
+| `search_docs` | hits in this README, `docs/` and the site pages: the path, title, language, a snippet and a URL; `lang` keeps one language |
+
+`search_docs` reads an index that the build writes into the binary from those same files. So the documentation has one copy, and the call reaches no network. A page the site translates is indexed once per language. A build that carries no documents answers with an empty index, and `indexed` says how many pages it searched
 
 An MCP transcription is a file in the journal with `source = "mcp"`, so search finds it and the statistics count it apart from dictation and from `molva transcribe`. Settings are not a tool: on NixOS they belong to `programs.molvai`, and elsewhere the user edits the file where they can see it
 

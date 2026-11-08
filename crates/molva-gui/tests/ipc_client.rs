@@ -128,6 +128,7 @@ fn events_arriving_before_the_answer_do_not_confuse_the_client() {
             serde_json::to_string(&Event::State {
                 state: DaemonState::Recording,
                 mode: Some(Mode::Dictation),
+                job: None,
             })
             .unwrap(),
             ok_line(request.id, serde_json::json!({"ok": true})),
@@ -144,8 +145,9 @@ fn events_arriving_before_the_answer_do_not_confuse_the_client() {
 }
 
 #[test]
-fn answer_to_a_foreign_id_is_skipped() {
-    // The client must skip a response with a foreign identifier, not take it as its own
+fn answer_to_a_foreign_id_is_an_error() {
+    // A response belongs to one request. Skipping a foreign id would wait forever on a daemon
+    // that ignored the request id, which is exactly the old-protocol hang
     let daemon = FakeDaemon::start(|request| {
         Some(vec![
             ok_line(request.id + 1000, serde_json::json!({"foreign": true})),
@@ -153,9 +155,8 @@ fn answer_to_a_foreign_id_is_skipped() {
         ])
     });
     let mut connection = Connection::connect_at(daemon.path()).expect("connection");
-    let result = connection.request(Command::Ping).expect("response");
-    assert_eq!(result["own"], true);
-    assert!(result.get("foreign").is_none());
+    let err = connection.request(Command::Ping).unwrap_err();
+    assert!(err.to_string().contains("answered request"), "{err}");
 }
 
 #[test]
@@ -190,6 +191,9 @@ fn subscription_streams_events_until_the_daemon_closes() {
                 serde_json::to_string(&Event::State {
                     state: DaemonState::Recording,
                     mode: None,
+                    // The worker is busy with a file while the phrase records: the window must
+                    // get both facts, not one of them
+                    job: Some(molva_core::ipc::WorkerJob::File),
                 })
                 .unwrap(),
                 serde_json::to_string(&Event::Level { rms: 0.125 }).unwrap(),
@@ -216,7 +220,8 @@ fn subscription_streams_events_until_the_daemon_closes() {
         events[0],
         Event::State {
             state: DaemonState::Recording,
-            mode: None
+            mode: None,
+            job: Some(molva_core::ipc::WorkerJob::File)
         }
     );
     assert_eq!(events[1], Event::Level { rms: 0.125 });

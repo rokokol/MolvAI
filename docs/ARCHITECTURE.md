@@ -3,10 +3,19 @@
 ## Processes
 
 - **`molva daemon`** (`molvad`) owns the microphone, the recognition model and the state. There is one instance per user; a second copy exits with a message
-- **`molva`** is the CLI. It sends commands to the daemon over IPC (`record start|stop|toggle|cancel`, `status`), works with the journal and the statistics directly through the file, and transcribes files offline without the daemon
-- **`molva-gui`** is Tauri 2: the tray, the settings, the history and the statistics. It is an IPC client of the daemon and starts the daemon if it is not running
+- **`molva`** is the CLI. It sends commands to the daemon over IPC (`record start|stop|toggle|cancel`, `status`), works with the journal and the statistics directly through the file, and transcribes files offline without the daemon: `molva transcribe` loads its own engine, which is what an offline batch or CI needs
+- **`molva-gui`** is Tauri 2: the tray, the settings, the history and the statistics. It is an IPC client of the daemon and starts the daemon itself when a recording or a file needs one, with the same settings file and the same socket. Quit stops only the daemon that the window started: a process from the Home Manager service or from a terminal survives
+- **`molva mcp`** is a stdio MCP server. It has no port, no URL and no autostart: the harness starts it. A transcription goes to the daemon, which the server starts when nobody answers on the socket, so it reuses the recognizer that is already loaded. `mcp.enabled` gates the server
 
 The compositor binds on Wayland, evdev, and the global-hotkey plugin in the GUI are three event sources. All of them meet in one place: the IPC commands of the daemon
+
+## File transcription
+
+A file is one IPC command, `file.transcribe`, not a second process. The daemon reads it with the recognizer and the model it already holds, so the language, the dictionary and the rules are the ones of dictation. The answer has the shape of `molva transcribe --json`. The journal line carries the source of the request: `file` when the GUI or the CLI asked, and `mcp` when an MCP client did, so the statistics count the two apart
+
+The request never moves the state machine. The worker sets the `job` field to `file` while the state stays `idle`, and `molva status` and the panel read that pair as "transcribing a file". Two rules keep one recognizer honest: a phrase in recording or in processing comes first, so a file is refused with `busy` then, and one file job holds the worker at a time, so a second file waits. A recording that starts during a file is accepted and queued behind it, because the audio cannot be repeated
+
+A client decides what to do with the refusal. `molva transcribe` never meets it, because it runs its own engine. The GUI repeats the request for up to half an hour, so a person who dictates in the middle of a file does not lose it, and the MCP server waits thirty seconds before it reports the refusal to the harness
 
 ## Layers of `molva-core`
 
@@ -36,7 +45,13 @@ hotkey ──▶ RecordStart ──▶ microphone open, level shown in the GUI
 
 The chunks (`stt.chunked`) are recognized while the person speaks. So after the key release only the tail is left, not the whole phrase. `latency_ms.total` counts from the release, and `latency_ms.first_hypothesis` counts from the start of the recording to the first chunk. There can be no chunks at all, for example a short phrase or a source without streaming capture. Then the path is the same as it always was: the whole recording in one run
 
+A chunk boundary always falls in the middle of a pause, never on a timer, because a cut inside a syllable makes the model print a wrong word. The pause that counts is `stt.chunk_pause_ms`, 700 ms by default. After ten seconds of one chunk the requirement relaxes to 200 ms: a long sentence may hold no pause of 700 ms, and the wait for one then costs more than a less ideal boundary. There is no forced cut, so a stream without an acceptable pause keeps growing, and such a phrase pays for it with memory and a late first hypothesis
+
+Neighbouring chunks overlap by 150 ms, so a quiet consonant at the boundary reaches both chunks. The overlap and the hint of the previous text also pull the model into repeating the last word of the previous chunk, so a chunk loses one leading word that repeats it. A repetition inside a chunk stays, because the overlap cannot explain it
+
 If the post-processing model fails, the daemon returns the text after the rules. If the paste fails, the text stays in the clipboard and the daemon notifies the user. The phrase goes to the journal in any case, with the `error` field on a failure
+
+Model calls go through one policy (`app::llm_executor`). A local provider takes one request at a time behind a mutex, and a cloud provider answers up to four calls at once. Post-processing of a phrase stays on the worker thread, and the translation calls belong to the executor. Translation itself is one `whole_text` call for one finished text, and a translator that keeps context between chunks is a later task
 
 ## Daemon states
 

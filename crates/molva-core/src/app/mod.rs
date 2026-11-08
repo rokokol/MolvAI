@@ -8,6 +8,7 @@
 
 pub mod audio;
 pub mod bench;
+pub mod bench_latency;
 pub mod command_mode;
 pub mod daemon;
 pub mod dictionary;
@@ -16,6 +17,7 @@ pub mod file_result;
 pub mod hotkeys;
 pub mod journal;
 pub mod journal_crypto;
+pub mod llm_executor;
 pub mod llm_output;
 pub mod models;
 pub mod pipeline;
@@ -24,4 +26,5 @@ pub mod search;
 pub mod secrets;
 pub mod stats;
 pub mod styles;
+pub mod translate;
 pub mod wer;
