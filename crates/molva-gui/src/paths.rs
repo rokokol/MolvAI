@@ -96,7 +96,7 @@ fn split_for_listing(input: &str) -> Option<(String, String)> {
     if trimmed == "~" {
         return Some(("~/".to_string(), String::new()));
     }
-    if !(trimmed.starts_with('/') || trimmed.starts_with('~')) {
+    if !(trimmed.starts_with('~') || Path::new(trimmed).is_absolute()) {
         return None;
     }
     match trimmed.rfind(is_separator) {
