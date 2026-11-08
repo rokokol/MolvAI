@@ -16,7 +16,7 @@ System-wide voice input that runs on your computer: hold a key, speak, release, 
 - **Dictation anywhere**: the text goes to the active window through the keyboard or the clipboard, and the method is chosen by the application
 - **Real-time chunks**: a phrase is cut at pauses during the recording, each chunk is recognized at once for the draft, and the text reaches the field as one piece after the key release
 - **Voice editing**: select text, say "сделай официальнее" ("make it more formal"), and the answer replaces the selection
-- **Snippets**: a phrase such as "ответь клиенту" returns a prepared reply at once. A `*` in the phrase matches any text, the whole phrase must match after the dictionary and the rules, and the replacement bypasses the model entirely
+- **Snippets**: a phrase such as "reply to a client" returns a prepared reply at once. A `*` in the phrase matches any text, the whole phrase must match after the dictionary and the rules, and the replacement bypasses the model entirely
 - **Audio and video to text**: the Files tab hands a file to the daemon over IPC, and the daemon recognizes it with the recognizer and the model that dictation already holds; `molva transcribe` stays the standalone entry for an offline batch and prints timecodes
 - **Search over transcripts**: `molva search` and the search inside the Files tab find a phrase across every transcribed file and show the file and the timecode
 - **Local by default**: recognition, the dictionary, the rules and the journal stay on your computer; a language model is optional and works through any OpenAI-compatible API
