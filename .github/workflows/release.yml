@@ -395,7 +395,7 @@ jobs:
           for lib in libcudart.so.12 libcublas.so.12 libcublasLt.so.12; do
             cp -L "/usr/local/cuda/lib64/$lib" "$stage/lib/" || echo "::warning::no $lib in /usr/local/cuda/lib64"
           done
-          patchelf --set-rpath '$ORIGIN/lib' "$stage/molva"
+          patchelf --set-rpath "\$ORIGIN/lib" "$stage/molva"
           cp README.md LICENSE NOTICE THIRD-PARTY.md "$stage/"
           tar -czf "dist/$stage.tar.gz" "$stage"
 

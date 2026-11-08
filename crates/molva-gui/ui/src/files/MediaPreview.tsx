@@ -10,7 +10,7 @@ import { asCommandError } from "../api";
 import { useI18n } from "../i18n";
 import type { MediaInfo } from "../types";
 import type { SeekRequest } from "./jobs";
-import Spectrogram from "./Spectrogram";
+import Spectrogram from "./SpectrogramView";
 
 export interface MediaPreviewProps {
   path: string;
