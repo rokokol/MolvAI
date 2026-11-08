@@ -32,36 +32,38 @@
         pkgs:
         let
           isLinux = pkgs.stdenv.hostPlatform.isLinux;
+          # Only what the builds and `cargo test` read. The search_docs index is built into
+          # the binary, so the README, docs and site are part of the source too: a
+          # documentation edit rebuilds the binary, which is the price of a build-time index
+          # with no second copy. The list is inclusive, not exclusive: a forgotten source
+          # breaks the build loudly
+          source = pkgs.lib.fileset.toSource {
+            root = ./.;
+            fileset = pkgs.lib.fileset.unions [
+              ./Cargo.toml
+              ./Cargo.lock
+              ./crates
+              ./models.toml
+              ./README.md
+              ./docs
+              ./site
+              # The tests of the crates read fixtures and golden files from
+              # CARGO_MANIFEST_DIR/../../tests, so they are part of the source
+              ./tests/fixtures
+              ./tests/golden
+              ./rust-toolchain.toml
+              ./rustfmt.toml
+              ./clippy.toml
+            ];
+          };
+          version = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.version;
+          # npmDepsHash pins the UI lockfile; the package receives it from here
+          npmDepsHash = "sha256-vyf8I1Ej0PC1gdWFDVxHc9ug1jyqp3fgAE4NhK6oWZA=";
           molva =
             pkgs.rustPlatform.buildRustPackage {
               pname = "molva";
-              # The version is read from Cargo.toml and is not repeated here: two sources
-              # drift apart, and the user is the first to notice
-              version = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.version;
-              # Only what the build and `cargo test` read. The search_docs index is built
-              # into the binary, so the README, docs and site are part of the source too:
-              # a documentation edit rebuilds the binary, which is the price of a build-time
-              # index with no second copy. The list is inclusive, not exclusive: a forgotten
-              # source breaks the build loudly
-              src = pkgs.lib.fileset.toSource {
-                root = ./.;
-                fileset = pkgs.lib.fileset.unions [
-                  ./Cargo.toml
-                  ./Cargo.lock
-                  ./crates
-                  ./models.toml
-                  ./README.md
-                  ./docs
-                  ./site
-                  # The tests of the crates read fixtures and golden files from
-                  # CARGO_MANIFEST_DIR/../../tests, so they are part of the source
-                  ./tests/fixtures
-                  ./tests/golden
-                  ./rust-toolchain.toml
-                  ./rustfmt.toml
-                  ./clippy.toml
-                ];
-              };
+              inherit version;
+              src = source;
               cargoLock.lockFile = ./Cargo.lock;
               cargoBuildFlags = [
                 "--bin"
@@ -91,6 +93,7 @@
                 ++ pkgs.lib.optionals isLinux [
                   alsa-lib
                   libxkbcommon
+                  wayland
                 ];
 
               # The whisper-rs bindings are in the crate, so the build does not need libclang
@@ -118,6 +121,9 @@
         in
         {
           inherit molva;
+          molva-gui = pkgs.callPackage ./nix/molva-gui.nix {
+            inherit source version npmDepsHash;
+          };
           transcribe-cpp = pkgs.callPackage ./nix/transcribe-cpp.nix {
             src = transcribeSource;
           };
