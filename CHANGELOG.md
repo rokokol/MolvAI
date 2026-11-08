@@ -6,13 +6,12 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ## Unreleased
 
-## Unreleased
+## [0.2.4] - 2026-11-08
 
 ### Fixed
 
 - Command mode sends Ctrl+C with the Lua dispatcher of a Hyprland Lua config, and keeps the old `dispatch sendshortcut` form for an older compositor
 - A refused copy shortcut no longer ends command mode: the uinput virtual keyboard copies the selection when the compositor does not
-
 
 ## [0.2.3] - 2026-11-08
 
@@ -217,7 +216,8 @@ Nightly snapshot of the hackathon: all tracks merged and CI green on three opera
 - A term dictionary with exact and fuzzy match
 - A file journal of phrases in JSONL
 
-[Unreleased]: https://github.com/rokokol/MolvAI/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/rokokol/MolvAI/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/rokokol/MolvAI/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/rokokol/MolvAI/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/rokokol/MolvAI/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/rokokol/MolvAI/compare/v0.2.0...v0.2.1
