@@ -6,6 +6,16 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ## Unreleased
 
+## [0.2.6] - 2026-11-08
+
+### Fixed
+
+- The Linux CUDA release job asks the toolkit action only for `nvcc` and `cudart`, then installs `libcublas-12-6` and `libcublas-dev-12-6` directly. The 0.2.5 attempt still passed `libcublas` through the action, which prefixed it with `cuda-`
+
+### Documentation
+
+- Add the FlakeHub badge to the README
+
 ## [0.2.5] - 2026-11-08
 
 ### Fixed
@@ -222,7 +232,8 @@ Nightly snapshot of the hackathon: all tracks merged and CI green on three opera
 - A term dictionary with exact and fuzzy match
 - A file journal of phrases in JSONL
 
-[Unreleased]: https://github.com/rokokol/MolvAI/compare/v0.2.5...HEAD
+[Unreleased]: https://github.com/rokokol/MolvAI/compare/v0.2.6...HEAD
+[0.2.6]: https://github.com/rokokol/MolvAI/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/rokokol/MolvAI/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/rokokol/MolvAI/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/rokokol/MolvAI/compare/v0.2.2...v0.2.3
