@@ -22,6 +22,8 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 - The GUI wrapper puts `libayatana-appindicator3` on its library path, so the tray icon starts
 
+- The window has one scrollbar: the page column owns it and the body no longer grows a second one
+
 ## [0.2.7] - 2026-11-08
 
 ### Added

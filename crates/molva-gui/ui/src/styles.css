@@ -78,6 +78,7 @@ body,
 #root {
   height: 100%;
   margin: 0;
+  overflow: hidden;
 }
 
 /* The report sheet is a 46 rem column with its own margins; a window is neither */
@@ -252,6 +253,9 @@ body {
 
 .content {
   min-width: 0;
+  /* The scroll belongs to the page column alone: without this the grid item keeps its
+     min-content height and the window body grows a second scrollbar */
+  min-height: 0;
   overflow-y: auto;
   padding: 1.5rem 2.25rem 2.75rem;
 }
