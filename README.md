@@ -10,7 +10,7 @@
 System-wide voice input that runs on your computer: hold a key, speak, release, and the text appears in the active field of any application. Russian speech uses the Sber GigaAM-v3 model by default, at the same Q4_K_M quantization as the agent on the station, and the model is fast enough on a processor for speech to be typed while you are still talking
 
 > [!NOTE]
-> MolvAI started at the V0ICE hackathon in Kazan and is in development. What works and what is cut is in [docs/STATUS.md](docs/STATUS.md), and the external defects the code works around are in [WORKAROUNDS.md](WORKAROUNDS.md)
+> MolvAI started at the V0ICE hackathon in Kazan and is in development. What changed in each release is in [CHANGELOG.md](CHANGELOG.md), and the external defects the code works around are in [WORKAROUNDS.md](WORKAROUNDS.md)
 
 ## What it does
 
@@ -247,7 +247,7 @@ CI calls the same `just` recipes, so a green Actions run means the same as a gre
 ## Documentation
 
 - [docs/install.md](docs/install.md): installation by an agent or by hand
-- [docs/STATUS.md](docs/STATUS.md): what works, what is cut, and why
+- [CHANGELOG.md](CHANGELOG.md): what changed in each release
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): processes, layers and the phrase pipeline
 - [docs/journal-schema.md](docs/journal-schema.md): the JSONL journal
 - [docs/hotkeys-wayland.md](docs/hotkeys-wayland.md): Hyprland, Sway and X11

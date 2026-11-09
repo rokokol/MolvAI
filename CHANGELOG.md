@@ -6,6 +6,10 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ## Unreleased
 
+### Changed
+
+- `docs/STATUS.md` is gone; release history lives in the changelog and the site status page keeps only the current summary
+
 ### Fixed
 
 - An HTTP 403 from a model provider is reported as unavailable with the provider's reason, not as a rejected API key

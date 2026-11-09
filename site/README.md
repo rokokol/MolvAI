@@ -51,7 +51,7 @@ Every page is complete in both languages: the product pages, the documentation h
 The repository is canonical. Every docs page carries a visible "canonical source" link to the file that owns its subject:
 
 - `README.md` for the overview, the settings table and the project's own features
-- `docs/STATUS.md` for what works and what is cut
+- `CHANGELOG.md` for what changed in each release
 - `docs/ARCHITECTURE.md` for the pipeline and the processes
 - `docs/install.md` for installation as a step-by-step prompt
 - `docs/journal-schema.md` for every journal field

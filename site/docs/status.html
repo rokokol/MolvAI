@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title data-ru="Статус и планы — документация MolvAI">Status and roadmap — MolvAI documentation</title>
-<meta name="description" content="What works in MolvAI today, what is not ready, the newest release, and where the canonical status log and changelog live" data-ru-content="Что в MolvAI работает сегодня, что не готово, какой релиз последний и где лежат канонический журнал статуса и чейнджлог">
+<meta name="description" content="What works in MolvAI today, what is not ready, and the newest release" data-ru-content="Что в MolvAI работает сегодня, что не готово и какой релиз последний">
 <meta name="color-scheme" content="dark light">
 <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#222222" media="(prefers-color-scheme: dark)">
@@ -85,10 +85,10 @@
   </aside>
   <article class="doc-body prose">
 <h1 data-ru="Статус и планы">Status and roadmap</h1>
-<p class="canonical" data-ru="Канонический источник: &lt;a href=&quot;https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md&quot;&gt;docs/STATUS.md&lt;/a&gt; и &lt;a href=&quot;https://github.com/rokokol/MolvAI/blob/main/CHANGELOG.md&quot;&gt;CHANGELOG.md&lt;/a&gt;">Canonical source: <a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></p>
+<p class="canonical" data-ru="Канонический источник: &lt;a href=&quot;https://github.com/rokokol/MolvAI/blob/main/CHANGELOG.md&quot;&gt;CHANGELOG.md&lt;/a&gt;">Canonical source: <a href="https://github.com/rokokol/MolvAI/blob/main/CHANGELOG.md">CHANGELOG.md</a></p>
 
 <p data-ru="MolvAI начался на хакатоне V0ICE в Казани в сентябре 2026 года и находится в разработке. В репозитории выпущена &lt;strong&gt;v0.2.11&lt;/strong&gt;, а изменения после этого тега лежат в разделе Unreleased в чейнджлоге">MolvAI started at the V0ICE hackathon in Kazan in September 2026 and is in development. The repository has released <strong>v0.2.11</strong>, and the changes after that tag are in the Unreleased section of the changelog</p>
-<p data-ru="Эта страница — указатель, а не второй файл статуса. Журнал контрольных точек, результаты проверок и список вырезанного живут в &lt;a href=&quot;https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md&quot;&gt;docs/STATUS.md&lt;/a&gt;, а выпущенные изменения — в &lt;a href=&quot;https://github.com/rokokol/MolvAI/blob/main/CHANGELOG.md&quot;&gt;чейнджлоге&lt;/a&gt;">This page is a signpost, not a second status file. The checkpoint log, the results of the checks and the cut list live in <a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a>, and the released changes live in the <a href="https://github.com/rokokol/MolvAI/blob/main/CHANGELOG.md">changelog</a></p>
+<p data-ru="Эта страница кратко пересказывает, что работает и что пока не готово. Что изменилось в каждом релизе — в чейнджлоге; незакрытые задачи — в issues">This page summarizes what works and what is not ready. What changed in each release is in the changelog; open work is in the issues</p>
 
 <h2 data-ru="Что работает">What works</h2>
 <ul>
@@ -113,7 +113,7 @@
 
 <h2 data-ru="Что не готово">What is not ready</h2>
 <ul>
-  <li data-ru="Часть живых проверок всё ещё не подтверждена: среди них вставка в русской раскладке на Windows и открытие ad hoc подписанного dmg на Mac. Актуальный список — в &lt;a href=&quot;https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md&quot;&gt;docs/STATUS.md&lt;/a&gt;">Some live checks are still unverified, among them pasting in the Russian layout on Windows and opening the ad hoc signed dmg on a Mac. The current list is in <a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></li>
+  <li data-ru="Часть живых проверок всё ещё не подтверждена: среди них вставка в русской раскладке на Windows и открытие ad hoc подписанного dmg на Mac">Some live checks are still unverified, among them pasting in the Russian layout on Windows and opening the ad hoc signed dmg on a Mac</li>
   <li data-ru="CUDA-архивы выходят отдельно для Windows и Linux. В основных пакетах Linux и Windows считают через Vulkan">CUDA archives ship separately for Windows and Linux. Linux and Windows compute through Vulkan in the main packages</li>
   <li data-ru="Звук до нажатия не пишется нарочно: между фразами микрофон должен оставаться закрытым">Pre-roll audio is not captured, by design: the microphone must stay closed between phrases</li>
   <li data-ru="Проект не публикует GPU-бенчмарк для GigaAM: сборка transcribe.cpp в репозитории идёт на CPU. Цифры на главной — собственные замеры CPU, а не апстрим">The project publishes no GigaAM GPU benchmark: the repository's transcribe.cpp build is CPU-only. The figures on the home page are this project's own CPU measurements, not upstream</li>
@@ -123,10 +123,9 @@
 </ul>
 
 <h2 data-ru="Планы">Roadmap</h2>
-<p data-ru="Проект не публикует дат. Что будет дальше — это раздел Unreleased в чейнджлоге, где перечислены изменения, уже лежащие в дереве. Строка «Next» у каждой контрольной точки в журнале статуса говорит то же самое">The project publishes no dates. What comes next is the Unreleased section of the changelog, which lists the changes already in the tree. The "Next" line of each checkpoint in the status log says the same</p>
+<p data-ru="Проект не публикует дат. Что уже лежит в дереве — в разделе Unreleased чейнджлога">The project publishes no dates. What is already in the tree is in the Unreleased section of the changelog</p>
 <ul>
   <li data-ru="&lt;a href=&quot;https://github.com/rokokol/MolvAI/blob/main/CHANGELOG.md&quot;&gt;Невыпущенные изменения&lt;/a&gt;"><a href="https://github.com/rokokol/MolvAI/blob/main/CHANGELOG.md">Unreleased changes</a></li>
-  <li data-ru="&lt;a href=&quot;https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md&quot;&gt;Контрольные точки и списки вырезанного&lt;/a&gt;"><a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">Checkpoints and cut lists</a></li>
   <li data-ru="&lt;a href=&quot;https://github.com/rokokol/MolvAI/releases&quot;&gt;Релизы&lt;/a&gt;"><a href="https://github.com/rokokol/MolvAI/releases">Releases</a></li>
   <li data-ru="&lt;a href=&quot;https://github.com/rokokol/MolvAI/issues&quot;&gt;Открытые задачи&lt;/a&gt;"><a href="https://github.com/rokokol/MolvAI/issues">Open issues</a></li>
   <li data-ru="Настроить шифрование журнала: включить journal.encrypt, положить ключ в хранилище ОС и проверить, что старые записи читаются">Set up journal encryption: enable journal.encrypt, keep the key in the OS store, and check that old entries still open</li>
@@ -144,7 +143,7 @@
 
 <div class="callout">
   <span class="callout-title" data-ru="Честная мера зелёного прогона">The honest measure of a green run</span>
-  <p data-ru="Репозиторий пропускает изменения через &lt;code&gt;just check&lt;/code&gt;: форматтер, линтер, тесты, проверки зависимостей и заголовки SPDX. Журнал статуса записывает число тестов и показывает проверки, которые видели красными до того, как они стали зелёными">The repository gates changes on <code>just check</code>, which runs the formatter, the linter, the tests, the dependency checks and the SPDX headers. The status log records the test count and shows the checks that were seen red before they turned green</p>
+  <p data-ru="Репозиторий пропускает изменения через &lt;code&gt;just check&lt;/code&gt;: форматтер, линтер, тесты, проверки зависимостей и заголовки SPDX">The repository gates changes on <code>just check</code>, which runs the formatter, the linter, the tests, the dependency checks and the SPDX headers</p>
 </div>
 
 <p class="to-top"><a href="./index.html" data-ru="Назад к обзору документации">Back to the documentation overview</a> · <a href="#main" data-ru="К началу">Back to top</a></p>
@@ -188,8 +187,7 @@
       </p>
       <ul>
         <li><a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README</a></li>
-        <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/STATUS.md">docs/STATUS.md</a></li>
-        <li><a href="https://github.com/rokokol/MolvAI/blob/main/CHANGELOG.md">CHANGELOG</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/CHANGELOG.md">CHANGELOG.md</a></li>
         <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a></li>
       </ul>
     </div>
