@@ -165,6 +165,21 @@ fn handle_event(app: &AppHandle, event: Event) {
                 serde_json::json!({ "message": detailed, "hint": hint }),
             );
         }
+        Event::StyleChanged { style } => {
+            let state = app.state::<AppState>();
+            let mut config = state.config();
+            config.style.default.clone_from(&style);
+            if let Err(err) = state.replace_config(config) {
+                tracing::warn!(%err, "the style was not written to the settings file");
+            }
+            let name = commands::builtin_style_options(&state.config())
+                .into_iter()
+                .find(|(id, _)| id == &style)
+                .map_or(style, |(_, name)| name);
+            notify_style(app, &name);
+            let _ = app.emit("molva://config", ());
+            refresh_tray(app);
+        }
         Event::ConfigReloaded => {
             let _ = app.emit("molva://config", ());
             refresh_tray(app);

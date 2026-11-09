@@ -19,6 +19,7 @@ use std::time::{Duration, Instant};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
+use crate::app::styles::Styles;
 use crate::config::Config;
 use crate::domain::audio::{AudioSource, PcmAudio};
 use crate::domain::clock::Clock;
@@ -911,6 +912,13 @@ impl DaemonHandle {
         }
     }
 
+    /// Tell the window and the tray that a style became the default
+    fn publish_style(&self, style: &str) {
+        self.shared.publish(&Event::StyleChanged {
+            style: style.to_string(),
+        });
+    }
+
     /// Reread the settings file and send it to the state machine and to the pipeline
     /// `style` replaces the default style: this is how `style.set` works from the tray and the CLI
     pub fn reload_config(&self, style: Option<String>) -> Result<Config, IpcError> {
@@ -931,6 +939,13 @@ impl DaemonHandle {
         })?;
         if let Some(style) = style {
             config.style.default = style;
+            if !Config::is_managed(&path) {
+                config.save(&path).map_err(|e| IpcError {
+                    code: ErrorCode::BadRequest,
+                    message: format!("settings not saved: {e}"),
+                    hint: Some("check the file: molva config validate".into()),
+                })?;
+            }
         }
         let tx = self.shared.tx.lock().map_err(|_| internal("daemon busy"))?;
         tx.send(Ctl::Reload(Box::new(config.clone())))
@@ -996,7 +1011,19 @@ impl RequestHandler for DaemonHandle {
             }
             Command::StyleSet { style } => {
                 let config = self.reload_config(Some(style))?;
-                Ok(serde_json::json!({ "style": config.style.default }))
+                let style = config.style.default.clone();
+                self.publish_style(&style);
+                Ok(serde_json::json!({ "style": style }))
+            }
+            Command::StyleNext => {
+                let config = self.reload_config(None)?;
+                let next = Styles::from_config(&config.style)
+                    .next(&config.style.default)
+                    .to_string();
+                let config = self.reload_config(Some(next))?;
+                let style = config.style.default.clone();
+                self.publish_style(&style);
+                Ok(serde_json::json!({ "style": style }))
             }
             Command::Shutdown => {
                 // The reply must leave before the process disappears

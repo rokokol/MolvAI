@@ -70,6 +70,13 @@ pub fn lua(hotkeys: &HotkeysConfig) -> Result<String, HotkeyError> {
             release: false,
             passes_through: true,
         },
+        Bind {
+            keys: &hotkeys.style_next,
+            command: "molva styles next",
+            description: "MolvAI: switch the post-processing style",
+            release: false,
+            passes_through: false,
+        },
     ];
     let mut text = String::from(
         "-- MolvAI hotkeys for Hyprland, written by MolvAI from its settings\n\
@@ -212,6 +219,7 @@ mod tests {
             ("CTRL + ALT + Z", "molva record toggle\""),
             ("SHIFT + SUPER + X", "molva record toggle --mode command"),
             ("CTRL + SHIFT + Escape", "molva record cancel"),
+            ("CTRL + ALT + S", "molva styles next"),
         ] {
             assert!(
                 lines(&text)
@@ -243,7 +251,7 @@ mod tests {
         };
         let text = lua(&config).unwrap();
         assert!(!text.contains("molva record cancel"), "{text}");
-        assert_eq!(lines(&text).len(), 4, "{text}");
+        assert_eq!(lines(&text).len(), 5, "{text}");
     }
 
     #[test]

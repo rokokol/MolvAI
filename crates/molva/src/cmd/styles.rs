@@ -3,6 +3,8 @@
 
 use clap::Subcommand;
 use molva_core::app::styles::Styles;
+use molva_core::infra::ipc::Client;
+use molva_core::ipc::protocol::Command;
 use molva_core::Config;
 
 #[derive(Debug, Subcommand)]
@@ -11,9 +13,15 @@ pub(crate) enum StylesAction {
     List,
     /// Show the system prompt of one style
     Show { id: String },
+    /// Switch to the next style in a circle
+    Next,
 }
 
-pub(crate) fn run(action: StylesAction, config: &Config) -> anyhow::Result<()> {
+pub(crate) fn run(
+    action: StylesAction,
+    config: &Config,
+    socket: &std::path::Path,
+) -> anyhow::Result<()> {
     let styles = Styles::from_config(&config.style);
     match action {
         StylesAction::List => {
@@ -56,6 +64,14 @@ pub(crate) fn run(action: StylesAction, config: &Config) -> anyhow::Result<()> {
                 } else {
                     println!("prompt (other languages):\n{}", style.system_prompt);
                 }
+            }
+            Ok(())
+        }
+        StylesAction::Next => {
+            let mut client = Client::connect(socket)?;
+            let answer = client.call_ok(Command::StyleNext)?;
+            if let Some(style) = answer.get("style").and_then(|value| value.as_str()) {
+                println!("{style}");
             }
             Ok(())
         }

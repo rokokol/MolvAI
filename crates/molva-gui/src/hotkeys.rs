@@ -83,6 +83,7 @@ mod platform {
             &config.toggle,
             &config.command,
             &config.cancel,
+            &config.style_next,
         ] {
             let Ok(shortcut) = Shortcut::from_str(binding) else {
                 tracing::warn!(binding, "cannot parse the key combination");
@@ -129,6 +130,8 @@ mod platform {
             }
         } else if binding == hotkeys.cancel {
             Command::RecordCancel
+        } else if binding == hotkeys.style_next {
+            Command::StyleNext
         } else {
             return;
         };

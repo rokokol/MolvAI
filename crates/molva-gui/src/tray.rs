@@ -429,15 +429,7 @@ fn update_config(app: &AppHandle, change: impl FnOnce(&mut molva_core::Config)) 
 
 pub(crate) fn set_style(app: &AppHandle, style: &str) {
     let style = style.to_string();
-    let previous = app.state::<AppState>().config().style.default.clone();
     update_config(app, |config| config.style.default.clone_from(&style));
-    if previous != style {
-        let name = builtin_style_options(&app.state::<AppState>().config())
-            .into_iter()
-            .find(|(id, _)| id == &style)
-            .map_or_else(|| style.clone(), |(_, name)| name);
-        crate::notify_style(app, &name);
-    }
     send_async(app, Command::StyleSet { style });
 }
 

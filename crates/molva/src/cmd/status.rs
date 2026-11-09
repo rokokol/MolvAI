@@ -69,6 +69,7 @@ pub(crate) fn describe_event(event: &Event) -> Option<String> {
         Event::Error { message, .. } => Some(format!("error: {message}")),
         // The signal level comes dozens of times per second: it does not fit into a text output
         Event::Level { .. } | Event::Hypothesis { .. } => None,
+        Event::StyleChanged { style } => Some(format!("style: {style}")),
         Event::ConfigReloaded => Some("settings reloaded".into()),
         Event::DevicesChanged => Some("the device list changed".into()),
     }

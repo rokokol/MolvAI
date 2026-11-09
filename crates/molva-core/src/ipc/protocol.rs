@@ -249,6 +249,10 @@ pub enum Event {
         hint: Option<String>,
     },
     ConfigReloaded,
+    /// The default post-processing style changed, and its identifier
+    StyleChanged {
+        style: String,
+    },
     DevicesChanged,
 }
 
