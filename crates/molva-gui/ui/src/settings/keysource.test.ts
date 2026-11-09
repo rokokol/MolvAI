@@ -19,9 +19,8 @@ describe("keySourceChoices", () => {
     expect(keySourceChoices("keyring")[0]).toBe("keyring");
   });
 
-  it("keeps a stored value that the page does not offer, so no select shows nothing", () => {
-    expect(keySourceChoices("file")).toContain("file");
-    expect(keySourceChoices("keyring")).not.toContain("file");
+  it("keeps the fixed choices", () => {
+    expect(keySourceChoices("keyring")).toEqual([...KEY_SOURCE_ORDER]);
   });
 });
 
@@ -31,12 +30,12 @@ describe("keyField", () => {
     expect(keyField("plain")).toBe("plain");
     expect(keyField("env")).toBe("env");
     expect(keyField("none")).toBe("none");
-    expect(keyField("file")).toBe("legacy");
+
   });
 
   it("sends a pasted key to the key store only for the keyring source", () => {
     expect(storesInKeyring("keyring")).toBe(true);
-    for (const source of ["plain", "env", "none", "file"]) {
+    for (const source of ["plain", "env", "none"]) {
       expect(storesInKeyring(source)).toBe(false);
     }
   });

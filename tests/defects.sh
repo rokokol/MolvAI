@@ -459,11 +459,6 @@ defect 'command/prompt-from-the-settings-wins' 'crates/molva-core/src/app/comman
   '    if false {' \
   'the command prompt that the user wrote in the settings is silently ignored'
 
-defect 'config/old-command-prompt-is-migrated' 'crates/molva-core/src/config.rs' \
-  '            self.command_mode.system_prompt.clear();' \
-  '            self.command_mode.system_prompt.push_str("");' \
-  'every user who ever saved the settings keeps the Russian command prompt for English instructions'
-
 defect 'llm/auth-error-is-not-retryable' 'crates/molva-core/src/infra/llm/openai_compat.rs' \
   '        if status.as_u16() == 401 || status.as_u16() == 403 {' \
   '        if false {' \

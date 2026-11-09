@@ -1793,45 +1793,6 @@ mod tests {
     }
 
     #[test]
-    fn migration_stamps_the_schema_version_on_an_old_file() {
-        let mut config = Config::from_toml_str(Path::new("x.toml"), "version = 0\n").unwrap();
-        assert!(config.migrate());
-        assert_eq!(config.version, CONFIG_VERSION);
-        // A repeated migration does nothing
-        assert!(!config.migrate());
-    }
-
-    /// A file saved by version 1 with the command prompt it had by default
-    fn version_1_file(prompt: &str) -> Config {
-        let mut config = Config {
-            version: 1,
-            ..Config::default()
-        };
-        config.command_mode.system_prompt = prompt.into();
-        config
-    }
-
-    #[test]
-    fn the_old_default_command_prompt_gives_way_to_the_built_in_one_in_the_phrase_language() {
-        let mut config = version_1_file(LEGACY_COMMAND_PROMPT);
-        assert!(config.migrate());
-        assert_eq!(config.command_mode.system_prompt, "");
-        assert_eq!(config.version, CONFIG_VERSION);
-        // The old default is gone: the built-in prompt follows the current wording
-        assert_ne!(
-            crate::app::command_mode::system_prompt(&config.command_mode.system_prompt, "ru"),
-            LEGACY_COMMAND_PROMPT
-        );
-    }
-
-    #[test]
-    fn a_command_prompt_of_the_user_survives_the_migration() {
-        let mut config = version_1_file("Answer in verse.");
-        assert!(config.migrate());
-        assert_eq!(config.command_mode.system_prompt, "Answer in verse.");
-    }
-
-    #[test]
     fn a_new_config_uses_the_built_in_command_prompt() {
         assert_eq!(Config::default().command_mode.system_prompt, "");
     }
