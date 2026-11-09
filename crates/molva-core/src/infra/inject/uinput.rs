@@ -31,10 +31,22 @@ const UINPUT_PATH: &str = "/dev/uinput";
 /// unsupported session simply has no guard
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum LayoutTarget {
-    Hyprland { device: String, restore: u32 },
-    Sway { device: String, restore: u32 },
-    Kde { restore: u32 },
-    Gnome { restore: usize },
+    Hyprland {
+        device: String,
+        physical: String,
+        restore: u32,
+    },
+    Sway {
+        device: String,
+        physical: String,
+        restore: u32,
+    },
+    Kde {
+        restore: u32,
+    },
+    Gnome {
+        restore: usize,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,8 +77,24 @@ impl LayoutGuard {
 
     fn after(&self) {
         match &self.target {
-            LayoutTarget::Hyprland { device, restore } => switch_hyprland(device, *restore),
-            LayoutTarget::Sway { device, restore } => switch_sway(device, *restore),
+            LayoutTarget::Hyprland {
+                device,
+                physical,
+                restore,
+            } => {
+                // The compositor can move the real keyboard too when the virtual one owns the
+                // modifier; putting both back is what makes the next typed letter correct
+                switch_hyprland(device, *restore);
+                switch_hyprland(physical, *restore);
+            }
+            LayoutTarget::Sway {
+                device,
+                physical,
+                restore,
+            } => {
+                switch_sway(device, *restore);
+                switch_sway(physical, *restore);
+            }
             LayoutTarget::Kde { restore } => switch_kde(*restore),
             LayoutTarget::Gnome { restore } => switch_gnome(*restore),
         }
@@ -100,12 +128,17 @@ fn hyprland_target() -> Option<LayoutTarget> {
         .find(|keyboard| keyboard.get("main").and_then(Value::as_bool) == Some(true))
         .or_else(|| keyboards.iter().find(|keyboard| !is_virtual(keyboard)))?;
     let restore = u32::try_from(main.get("active_layout_index")?.as_u64()?).ok()?;
+    let physical = main.get("name")?.as_str()?.to_string();
     let device = keyboards
         .iter()
         .find(|keyboard| is_virtual(keyboard))
         .and_then(|keyboard| keyboard.get("name")?.as_str().map(str::to_string))
         .unwrap_or_else(|| "molvai-virtual-keyboard".to_string());
-    Some(LayoutTarget::Hyprland { device, restore })
+    Some(LayoutTarget::Hyprland {
+        device,
+        physical,
+        restore,
+    })
 }
 
 fn switch_hyprland(device: &str, index: u32) {
@@ -128,12 +161,21 @@ fn sway_target() -> Option<LayoutTarget> {
         !is_virtual(input) && input.get("type").and_then(Value::as_str) == Some("keyboard")
     })?;
     let restore = u32::try_from(physical.get("xkb_active_layout_index")?.as_u64()?).ok()?;
+    let physical = physical
+        .get("identifier")
+        .or_else(|| physical.get("name"))
+        .and_then(Value::as_str)?
+        .to_string();
     let device = inputs
         .iter()
         .find(|input| is_virtual(input))
         .and_then(|input| input.get("identifier")?.as_str().map(str::to_string))
         .unwrap_or_else(|| "molvai-virtual-keyboard".to_string());
-    Some(LayoutTarget::Sway { device, restore })
+    Some(LayoutTarget::Sway {
+        device,
+        physical,
+        restore,
+    })
 }
 
 fn switch_sway(device: &str, index: u32) {
