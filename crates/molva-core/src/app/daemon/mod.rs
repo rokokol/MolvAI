@@ -156,6 +156,9 @@ struct Shared {
     job: Mutex<Option<WorkerJob>>,
     /// Settings file for `config.reload`; `None` means the default path
     config_path: Mutex<Option<PathBuf>>,
+    /// The style that this daemon currently uses, including a change that a managed file
+    /// cannot store
+    current_style: Mutex<Option<String>>,
 }
 
 impl Shared {
@@ -300,6 +303,7 @@ impl Daemon {
             auto_type_max_chars: config.output.auto_type_max_chars,
             job: Mutex::new(None),
             config_path: Mutex::new(None),
+            current_style: Mutex::new(Some(config.style.default.clone())),
         });
 
         let mut machine = Machine::new(config.hotkeys.clone(), clock.clone());
@@ -912,6 +916,15 @@ impl DaemonHandle {
         }
     }
 
+    /// The style used by this daemon, even when the settings file is a managed store path
+    fn remembered_style(&self) -> Option<String> {
+        self.shared
+            .current_style
+            .lock()
+            .ok()
+            .and_then(|style| style.clone())
+    }
+
     /// Tell the window and the tray that a style became the default
     fn publish_style(&self, style: &str) {
         self.shared.publish(&Event::StyleChanged {
@@ -946,6 +959,9 @@ impl DaemonHandle {
                     hint: Some("check the file: molva config validate".into()),
                 })?;
             }
+        }
+        if let Ok(mut current) = self.shared.current_style.lock() {
+            *current = Some(config.style.default.clone());
         }
         let tx = self.shared.tx.lock().map_err(|_| internal("daemon busy"))?;
         tx.send(Ctl::Reload(Box::new(config.clone())))
@@ -1016,9 +1032,11 @@ impl RequestHandler for DaemonHandle {
                 Ok(serde_json::json!({ "style": style }))
             }
             Command::StyleNext => {
+                let remembered = self.remembered_style();
                 let config = self.reload_config(None)?;
+                let current = remembered.unwrap_or_else(|| config.style.default.clone());
                 let next = Styles::from_config(&config.style)
-                    .next(&config.style.default)
+                    .next(&current)
                     .to_string();
                 let config = self.reload_config(Some(next))?;
                 let style = config.style.default.clone();

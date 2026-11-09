@@ -167,10 +167,14 @@ fn handle_event(app: &AppHandle, event: Event) {
         }
         Event::StyleChanged { style } => {
             let state = app.state::<AppState>();
-            let mut config = state.config();
-            config.style.default.clone_from(&style);
-            if let Err(err) = state.replace_config(config) {
-                tracing::warn!(%err, "the style was not written to the settings file");
+            if state.managed() {
+                state.remember_style(&style);
+            } else {
+                let mut config = state.config();
+                config.style.default.clone_from(&style);
+                if let Err(err) = state.replace_config(config) {
+                    tracing::warn!(%err, "the style was not written to the settings file");
+                }
             }
             let name = commands::builtin_style_options(&state.config())
                 .into_iter()

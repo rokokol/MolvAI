@@ -855,6 +855,11 @@ impl AppState {
         lock(&self.config).clone()
     }
 
+    /// Keep a style that a managed store cannot write; the next start reads the store again
+    pub fn remember_style(&self, style: &str) {
+        lock(&self.config).style.default = style.to_string();
+    }
+
     pub fn config_path(&self) -> &PathBuf {
         &self.config_path
     }
