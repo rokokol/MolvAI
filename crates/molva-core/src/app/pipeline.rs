@@ -363,6 +363,7 @@ impl Pipeline {
 
     /// Run already decoded audio through the file path: decoding is the only difference
     /// between a file on disk and a stream on standard input
+    #[allow(clippy::needless_pass_by_value)]
     pub fn transcribe_audio(
         &mut self,
         label: String,

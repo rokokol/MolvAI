@@ -6,6 +6,12 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ## Unreleased
 
+## [0.2.10] - 2026-11-09
+
+### Fixed
+
+- Clippy accepts the decoded audio passed into the shared file pipeline
+
 ## [0.2.9] - 2026-11-09
 
 ### Added
@@ -284,7 +290,8 @@ Nightly snapshot of the hackathon: all tracks merged and CI green on three opera
 - A term dictionary with exact and fuzzy match
 - A file journal of phrases in JSONL
 
-[Unreleased]: https://github.com/rokokol/MolvAI/compare/v0.2.9...HEAD
+[Unreleased]: https://github.com/rokokol/MolvAI/compare/v0.2.10...HEAD
+[0.2.10]: https://github.com/rokokol/MolvAI/compare/v0.2.9...v0.2.10
 [0.2.9]: https://github.com/rokokol/MolvAI/compare/v0.2.8...v0.2.9
 [0.2.8]: https://github.com/rokokol/MolvAI/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/rokokol/MolvAI/compare/v0.2.6...v0.2.7
