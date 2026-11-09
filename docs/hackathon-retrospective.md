@@ -1,6 +1,6 @@
 # MolvAI at V0ICE: notes on the hackathon of 5–6 September 2026
 
-A detailed retelling of two days: what we did, in what order, where we stumbled and what cured it. We wrote it right after the final, from the session logs, the commit log and `docs/STATUS.md`. The result: first place, 314 of 332 automatic criteria in the last run of the jury checker, releases up to `v0.1.5` for three operating systems
+A detailed retelling of two days: what we did, in what order, where we stumbled and what cured it. We wrote it right after the final, from the session logs, the commit log and the status notes. The result: first place, 314 of 332 automatic criteria in the last run of the jury checker, releases up to `v0.1.5` for three operating systems
 
 ## In short
 
@@ -18,7 +18,7 @@ A detailed retelling of two days: what we did, in what order, where we stumbled 
 - 17:00 six tracks started on Opus: A capture and whisper, B GUI, C Nix, CI, licenses, installation, D rules, dictionary, styles, LLM, journal, statistics, E file decoder, models, WER, bench, F daemon, IPC, paste chain, hotkeys
 - 18:13 whisper, cpal, the journal and the pipeline joined into the daemon. 18:20 all tracks in `main`, 610 tests
 - Evening: CI brought to green after eight separate failures on Windows and macOS. End-to-end dictation checked on Hyprland. CUDA build through `nix develop .#cuda`. The leaderboard of the organizers, run 07 at 18:31: first place, 272 of 296
-- 23:58 a cut in `docs/STATUS.md`, tasks for the night, and the start of tracks G linters and name entropy, H checker signs, sound, `history paste`, I cutting at pauses, draft, language
+- 23:58 a cut in the status notes, tasks for the night, and the start of tracks G linters and name entropy, H checker signs, sound, `history paste`, I cutting at pauses, draft, language
 
 ### The night from 5 to 6 September
 
@@ -30,7 +30,7 @@ A detailed retelling of two days: what we did, in what order, where we stumbled 
 - 03:00 Windows is red again, now the test of the dictionary reload: two file writes in a row get the same timestamp. The file fingerprint is mtime and size, and the test uses `File::set_modified`
 - 04:10 track G merged: `clippy::pedantic` on the whole workspace, a ban on `unwrap` and `panic` outside tests, cargo-machete in the gate, 466 abbreviations in names expanded. Two pedantic findings under `cfg` for macOS and Windows came only from the CI matrix
 - 04:40 `molva doctor` learned to check the whisper weights by sha256 and the model provider through `GET /models`. The documentation called a nonexistent command `molva model download`, and we fixed it to `molva models pull`
-- 07:33 the tag `v0.1.0-alpha`: the CLI archives built, but the GUI did not, because `tauri-action` does not install the npm dependencies. An `npm ci` step and the tag `v0.1.0-alpha.1`, the release in full. At the same time it turned out that my timestamps in STATUS were two hours ahead: I went by feel and not by `date`
+- 07:33 the tag `v0.1.0-alpha`: the CLI archives built, but the GUI did not, because `tauri-action` does not install the npm dependencies. An `npm ci` step and the tag `v0.1.0-alpha.1`, the release in full. At the same time it turned out that my timestamps in the status notes were two hours ahead: I went by feel and not by `date`
 - 08:40 the full `just falsify` on the final main: 125 of 127, two entries `stale`, because `list_models` duplicated the lines of the client. We moved out a common `send`, and all entries are caught
 
 ### 6 September, morning: the live rehearsal
