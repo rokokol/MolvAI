@@ -6,7 +6,7 @@ members = ["crates/molva-core", "crates/molva", "crates/molva-gui"]
 # The single source of the version: the CLI (`molva --version`), the GUI packages (tauri.conf.json
 # does not set a version and takes it from here) and the release tag `v<version>`. release.yml
 # compares them before the build
-version = "0.2.10"
+version = "0.2.11"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/rokokol/MolvAI"
