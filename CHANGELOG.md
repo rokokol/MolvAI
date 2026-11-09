@@ -6,6 +6,8 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ## Unreleased
 
+## [0.2.8] - 2026-11-09
+
 ### Added
 
 - Shell completions for `molva` in bash, zsh and fish
@@ -18,11 +20,19 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 - `gui.show_managed_notice` and `programs.molvai.showNotice` control the Nix-managed banner; the notice is off by default
 
+- The interface language defaults to `auto` and follows the system
+
+- The generated Nix settings no longer disable `stt.auto_pull`, so a missing model is downloaded at the daemon start
+
 ### Fixed
 
 - The GUI wrapper puts `libayatana-appindicator3` on its library path, so the tray icon starts
 
+- The GUI reports the XDG autostart entry written by the Nix module as enabled
+
 - The window has one scrollbar: the page column owns it and the body no longer grows a second one
+
+- The legacy settings migration and legacy key-source tests are gone
 
 ## [0.2.7] - 2026-11-08
 
@@ -260,7 +270,8 @@ Nightly snapshot of the hackathon: all tracks merged and CI green on three opera
 - A term dictionary with exact and fuzzy match
 - A file journal of phrases in JSONL
 
-[Unreleased]: https://github.com/rokokol/MolvAI/compare/v0.2.7...HEAD
+[Unreleased]: https://github.com/rokokol/MolvAI/compare/v0.2.8...HEAD
+[0.2.8]: https://github.com/rokokol/MolvAI/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/rokokol/MolvAI/compare/v0.2.6...v0.2.7
 [0.2.6]: https://github.com/rokokol/MolvAI/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/rokokol/MolvAI/compare/v0.2.4...v0.2.5
