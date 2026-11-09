@@ -6,6 +6,10 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ## Unreleased
 
+### Fixed
+
+- An HTTP 403 from a model provider is reported as unavailable with the provider's reason, not as a rejected API key
+
 ## [0.2.11] - 2026-11-09
 
 ### Fixed

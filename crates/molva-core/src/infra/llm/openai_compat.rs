@@ -300,7 +300,7 @@ impl OpenAiCompatClient {
         let url = format!("{}/models", self.base_url);
         let response = self.send(self.http.get(&url), &url)?;
         let status = response.status();
-        if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+        if status == reqwest::StatusCode::UNAUTHORIZED {
             return Err(LlmError::Auth);
         }
         if !status.is_success() {
@@ -445,7 +445,7 @@ impl LlmClient for OpenAiCompatClient {
             .text()
             .map_err(|err| LlmError::BadResponse(with_causes(&err)))?;
 
-        if status.as_u16() == 401 || status.as_u16() == 403 {
+        if status.as_u16() == 401 {
             warn!(provider = %self.provider_id, status = status.as_u16(), "the provider rejected the key");
             return Err(LlmError::Auth);
         }
@@ -988,16 +988,30 @@ mod tests {
 
     #[test]
     fn rejected_credentials_become_an_auth_error() {
-        for status in ["401 Unauthorized", "403 Forbidden"] {
-            let server = MockServer::spawn(vec![Some(http(
-                status,
-                r#"{"error":{"message":"Invalid API key"}}"#,
-            ))]);
-            let err = client(&server, Some("sk-bad"))
-                .complete(&request())
-                .unwrap_err();
-            assert_eq!(err, LlmError::Auth, "{status}");
-        }
+        let server = MockServer::spawn(vec![Some(http(
+            "401 Unauthorized",
+            r#"{"error":{"message":"Invalid API key"}}"#,
+        ))]);
+        let err = client(&server, Some("sk-bad"))
+            .complete(&request())
+            .unwrap_err();
+        assert_eq!(err, LlmError::Auth);
+    }
+
+    #[test]
+    fn a_forbidden_request_is_unavailable_and_keeps_the_provider_reason() {
+        let server = MockServer::spawn(vec![Some(http(
+            "403 Forbidden",
+            r#"{"error":{"message":"Access denied by security policy"}}"#,
+        ))]);
+        let err = client(&server, Some("sk-good"))
+            .complete(&request())
+            .unwrap_err();
+        let LlmError::Unavailable(detail) = err else {
+            panic!("expected unavailable, got {err:?}");
+        };
+        assert!(detail.contains("403"), "{detail}");
+        assert!(detail.contains("security policy"), "{detail}");
     }
 
     #[test]
