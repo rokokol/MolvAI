@@ -309,6 +309,7 @@
   "daemonError.injectFailed": "The text was not pasted",
   "daemonError.badRequest": "The daemon rejected the request",
   "daemonError.internal": "Daemon error",
+  "style.changed": "Style: {name}",
   "style.verbatim": "As spoken",
   "style.cleanup": "Cleanup",
   "style.messenger": "Messenger",

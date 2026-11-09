@@ -309,6 +309,7 @@
   "daemonError.injectFailed": "Текст не вставлен",
   "daemonError.badRequest": "Демон отклонил запрос",
   "daemonError.internal": "Ошибка демона",
+  "style.changed": "Стиль: {name}",
   "style.verbatim": "Как сказано",
   "style.cleanup": "Чистка",
   "style.messenger": "Мессенджер",

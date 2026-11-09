@@ -101,6 +101,13 @@ fn system_notification(app: &AppHandle, message: &str, hint: Option<&str>) {
     }
 }
 
+/// A hidden window announces the style that the person just switched to
+pub(crate) fn notify_style(app: &AppHandle, name: &str) {
+    if window_hidden(app) {
+        system_notification(app, &i18n::tv("style.changed", &[("name", name)]), None);
+    }
+}
+
 /// Error notice with a next step: the window always gets it; the toast only when hidden
 pub fn notify_error(app: &AppHandle, message: &str, hint: Option<&str>) {
     if window_hidden(app) {
