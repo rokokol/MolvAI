@@ -258,6 +258,9 @@ impl Default for DictionaryConfig {
 #[serde(default)]
 pub struct RulesConfig {
     pub enabled: bool,
+    /// Voice commands that cut the text into lines or lists: `новая строка`, `абзац`,
+    /// `маркированный список`
+    pub structure: bool,
     pub spoken_punctuation: bool,
     pub auto_punctuation: bool,
     pub remove_fillers: bool,
@@ -272,6 +275,7 @@ impl Default for RulesConfig {
     fn default() -> Self {
         Self {
             enabled: true,
+            structure: true,
             spoken_punctuation: true,
             auto_punctuation: true,
             remove_fillers: true,
@@ -640,12 +644,10 @@ pub struct GuiConfig {
     /// processing), so it updates only a few times per phrase, and not on every signal level
     /// event. Whoever needs a blinking indicator more than a calm tray sets `true`
     pub tray_animation: bool,
-    /// Show the Settings tab while the config is a Nix store path; the tab stays read-only
+    /// Show the notice that Nix owns the settings file
     ///
-    /// A managed home hides it by default: every save is refused, so a form that cannot
-    /// change anything only misleads. The Nix module turns this on when the owner wants to
-    /// inspect the effective settings inside the application
-    pub show_managed_settings: bool,
+    /// It is off by default, so a managed home opens without a banner
+    pub show_managed_notice: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

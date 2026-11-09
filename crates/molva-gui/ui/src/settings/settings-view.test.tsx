@@ -57,6 +57,7 @@ function config(change: (draft: Config) => void = () => undefined): Config {
     dictionary: { path: "", fuzzy: true, in_prompt: true },
     rules: {
       enabled: true,
+      structure: true,
       spoken_punctuation: true,
       auto_punctuation: true,
       remove_fillers: true,
@@ -130,7 +131,10 @@ function config(change: (draft: Config) => void = () => undefined): Config {
       telemetry: false,
     },
     mcp: { enabled: true },
-    gui: { tray_animation: false, show_managed_settings: false },
+    gui: {
+      tray_animation: false,
+      show_managed_notice: false,
+    },
     log: { level: "info", max_size_mb: 10 },
   };
   change(draft);

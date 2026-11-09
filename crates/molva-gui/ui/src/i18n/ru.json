@@ -258,6 +258,7 @@
   "settings.streamingPreview": "Черновик во время записи",
   "settings.rules": "Правила без модели",
   "settings.rules.enabled": "Применять правила",
+  "settings.rules.structure": "Команды структуры",
   "settings.rules.spokenPunctuation": "Пунктуация словами",
   "settings.rules.autoPunctuation": "Автопунктуация",
   "settings.rules.removeFillers": "Убирать слова-паразиты",

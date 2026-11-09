@@ -115,8 +115,8 @@ cargo build --release --bin molva
 <pre data-lang="nix"><code># flake inputs: molvai.url = "github:rokokol/MolvAI";
 imports = [ inputs.molvai.homeModules.default ];
 programs.molvai.enable = true;
-# показать страницу настроек только для просмотра; запись всё равно запрещена
-programs.molvai.showSettings = true;</code></pre>
+# баннер о том, что настройками управляет Nix; false по умолчанию
+programs.molvai.showNotice = true;</code></pre>
 <p data-ru="В этом режиме файл настроек и веса рендерятся в хранилище. Что именно это меняет, объясняет &lt;a href=&quot;./settings.html&quot;&gt;страница настроек&lt;/a&gt;">In this mode the settings file and the weights are rendered into the store. The <a href="./settings.html">settings page</a> explains what that changes</p>
 
 <h2 data-ru="Установка без Nix">Install without Nix</h2>

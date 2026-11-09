@@ -228,18 +228,11 @@ export default function App() {
 
   const i18n = useMemo(() => ({ lang, t }), [lang, t]);
 
-  // A managed config hides its settings page by default: every attempt to save is refused.
-  // The Nix module can turn the page on for inspection, and it stays read-only then
-  const settingsVisible =
-    !managed || config?.gui.show_managed_settings === true;
-  const tabs = settingsVisible
-    ? TABS
-    : TABS.filter((item) => item !== "settings");
-  useEffect(() => {
-    if (!settingsVisible && tab === "settings") {
-      setTab("dashboard");
-    }
-  }, [settingsVisible, tab]);
+  // The settings page stays visible on a managed config, but the form is disabled: a
+  // store file is changed in Nix, not in the window. The notice is opt-in
+  const managedNotice =
+    managed && config?.gui.show_managed_notice === true;
+  const tabs = TABS;
 
   const shared = {
     config,
@@ -282,7 +275,7 @@ export default function App() {
               </div>
             </nav>
             <main className="content" id="main" tabIndex={-1}>
-              {managed && (
+              {managedNotice && (
                 <div className="notice">
                   <strong>{t("app.managed")}</strong>
                   <p>{t("app.managedHint")}</p>

@@ -6,6 +6,22 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ## Unreleased
 
+### Added
+
+- Shell completions for `molva` in bash, zsh and fish
+
+- `rules.structure` switches the voice commands for new lines, paragraphs and lists
+
+### Changed
+
+- The Settings tab stays visible under Nix but is fully disabled; `programs.molvai.showSettings` is gone
+
+- `gui.show_managed_notice` and `programs.molvai.showNotice` control the Nix-managed banner; the notice is off by default
+
+### Fixed
+
+- The GUI wrapper puts `libayatana-appindicator3` on its library path, so the tray icon starts
+
 ## [0.2.7] - 2026-11-08
 
 ### Added

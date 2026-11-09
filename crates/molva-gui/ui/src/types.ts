@@ -306,6 +306,7 @@ export interface Config {
   dictionary: { path: string; fuzzy: boolean; in_prompt: boolean };
   rules: {
     enabled: boolean;
+    structure: boolean;
     spoken_punctuation: boolean;
     auto_punctuation: boolean;
     remove_fillers: boolean;
@@ -391,7 +392,10 @@ export interface Config {
   /** The stdio MCP server may be started by a harness; this switch turns it off without
    * touching the harness configuration */
   mcp: { enabled: boolean };
-  gui: { tray_animation: boolean; show_managed_settings: boolean };
+  gui: {
+    tray_animation: boolean;
+    show_managed_notice: boolean;
+  };
   log: { level: string; max_size_mb: number };
 }
 

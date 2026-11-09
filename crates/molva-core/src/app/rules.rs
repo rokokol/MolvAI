@@ -1071,8 +1071,10 @@ impl RuleSet {
         if !cfg.enabled {
             return Self { rules };
         }
-        rules.push(Box::new(Lists));
-        rules.push(Box::new(NewLine));
+        if cfg.structure {
+            rules.push(Box::new(Lists));
+            rules.push(Box::new(NewLine));
+        }
         if cfg.spoken_punctuation {
             rules.push(Box::new(SpokenPunctuation));
         }
@@ -1388,6 +1390,19 @@ mod tests {
         assert!(!set.ids().contains(&"remove-fillers"));
         assert!(set.ids().contains(&"spoken-punctuation"));
         assert_eq!(set.apply("ну привет точка", "ru"), "ну привет.");
+    }
+
+    #[test]
+    fn structure_switch_keeps_the_words() {
+        let cfg = RulesConfig {
+            structure: false,
+            ..RulesConfig::default()
+        };
+        let set = RuleSet::from_config(&cfg);
+        assert_eq!(
+            set.apply("первая строка с новой строки вторая строка", "ru"),
+            "Первая строка с новой строки вторая строка"
+        );
     }
 
     #[test]

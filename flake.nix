@@ -85,8 +85,17 @@
 
               nativeBuildInputs = with pkgs; [
                 cmake
+                installShellFiles
                 pkg-config
               ];
+              # The completion command reads only the clap definition, so it can run in the
+              # build sandbox. Bash, zsh and fish are the three shells the package installs
+              postInstall = ''
+                installShellCompletion --cmd molva \
+                  --bash <($out/bin/molva completions bash) \
+                  --zsh <($out/bin/molva completions zsh) \
+                  --fish <($out/bin/molva completions fish)
+              '';
               buildInputs =
                 with pkgs;
                 [ openssl ]
@@ -306,7 +315,7 @@
               want() { jq -e "$1" "$dumpPath" >/dev/null || { echo "module wiring: $2"; exit 1; }; }
 
               want '.lua.packages | any(test("molva"))' "no package installed"
-              want '.lua.extraConfig == "" and .lua.activation == ""' "the module edits hyprland.lua or runs an activation command"
+              want '(.lua.extraConfig | test("pcall\\(dofile, os.getenv\\(\"HOME\"\\) \\.\\. \"/.config/hypr/molvai.lua\"\\)")) and .lua.activation == ""' "no include line or an activation command"
               want '.lua.binds | endswith("molvai-hyprland.lua")' "no generated Hyprland bind file"
               want '.hyprlang.extraConfig == "" and .hyprlang.activation == "" and .hyprlang.binds == ""' "a Lua line reaches a hyprlang config"
               want '.optedOut.extraConfig == "" and .optedOut.activation == "" and .optedOut.binds == ""' "hyprland.enable = false is ignored"

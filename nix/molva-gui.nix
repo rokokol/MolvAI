@@ -70,6 +70,12 @@ rustPlatform.buildRustPackage (finalAttrs: {
   GGML_NATIVE = "OFF";
   doCheck = false;
 
+  # The tray crate loads libayatana-appindicator3 at runtime, so no NEEDED entry puts it
+  # into RUNPATH; the wrapper has to name it
+  preFixup = ''
+    gappsWrapperArgs+=(--prefix LD_LIBRARY_PATH : "${libayatana-appindicator}/lib")
+  '';
+
   meta = {
     description = "Desktop window and tray for MolvAI, system-wide voice input";
     homepage = "https://github.com/rokokol/MolvAI";

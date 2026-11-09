@@ -258,6 +258,7 @@
   "settings.streamingPreview": "Draft while recording",
   "settings.rules": "Rules without a model",
   "settings.rules.enabled": "Apply rules",
+  "settings.rules.structure": "Structure commands",
   "settings.rules.spokenPunctuation": "Spoken punctuation",
   "settings.rules.autoPunctuation": "Automatic punctuation",
   "settings.rules.removeFillers": "Remove fillers",

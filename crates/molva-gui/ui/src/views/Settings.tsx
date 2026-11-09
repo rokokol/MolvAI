@@ -65,6 +65,7 @@ const THEMES: Theme[] = ["system", "light", "dark"];
 const HOTKEY_KEYS = ["push_to_talk", "toggle", "command", "cancel", "style_next"] as const;
 const RULE_KEYS = [
   "enabled",
+  "structure",
   "spoken_punctuation",
   "auto_punctuation",
   "remove_fillers",
@@ -339,7 +340,7 @@ export default function Settings({
       <h1>{t("settings.title")}</h1>
 
       <section className="card settings-section settings-actions">
-        {managed && (
+        {managed && config?.gui.show_managed_notice === true && (
           <div className="notice" role="status">
             <strong>{t("app.managed")}</strong>
             <p>{t("app.managedHint")}</p>
@@ -394,7 +395,7 @@ export default function Settings({
           </div>
           <button
             type="button"
-            disabled={importPath.trim() === ""}
+            disabled={managed || importPath.trim() === ""}
             onClick={() =>
               api
                 .importConfig(importPath.trim())
@@ -414,6 +415,8 @@ export default function Settings({
           </button>
         </div>
       </section>
+
+      <fieldset className="settings-form" disabled={managed}>
 
       {invalid && (
         <div className="notice error" role="alert">
@@ -1477,6 +1480,7 @@ export default function Settings({
         <p className="small muted">{t("settings.privacy.telemetry")}</p>
       </Section>
 
+      </fieldset>
     </>
   );
 }
