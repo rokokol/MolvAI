@@ -83,7 +83,6 @@ let
       model = cfg.model;
       model_path = "${weights}";
       language = cfg.language;
-      auto_pull = false;
       streaming_inject = false;
       transcribe_cli = cli;
       transcribe_backend = cfg.transcribeBackend;
@@ -145,8 +144,8 @@ in
 
     uiLanguage = lib.mkOption {
       type = lib.types.str;
-      default = "ru";
-      description = "Interface language: `auto`, `ru` or `en`";
+      default = "auto";
+      description = "Interface language: `auto`, `ru` or `en`; `auto` follows the system";
     };
 
     language = lib.mkOption {

@@ -1486,8 +1486,19 @@ pub async fn set_autostart<R: Runtime>(
     .map_err(|error| CommandError::new("internal", error.to_string()))?
 }
 
+/// The XDG autostart entry that the Nix module writes, independent of the plugin's own file
+fn managed_autostart_file() -> Option<PathBuf> {
+    let config = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))?;
+    Some(config.join("autostart/molvai-gui.desktop"))
+}
+
 #[tauri::command]
 pub async fn get_autostart<R: Runtime>(app: AppHandle<R>) -> bool {
+    if managed_autostart_file().is_some_and(|path| path.exists()) {
+        return true;
+    }
     tauri::async_runtime::spawn_blocking(move || {
         use tauri_plugin_autostart::ManagerExt;
         app.autolaunch().is_enabled().unwrap_or(false)
