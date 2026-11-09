@@ -379,12 +379,6 @@ export default function Settings({
           >
             {t("common.export")}
           </button>
-          <button type="button" disabled={sttProbe.pending} onClick={() => void testStt()}>
-            {sttProbe.pending ? t("settings.sttTest.testing") : t("settings.sttTest.button")}
-          </button>
-          <button type="button" disabled={llmProbe.pending} onClick={() => void testLlm()}>
-            {llmProbe.pending ? t("settings.llm.testing") : t("settings.llm.test")}
-          </button>
         </div>
         {exportedTo && (
           <p className="small muted">{t("stats.exported", { path: exportedTo })}</p>
@@ -700,10 +694,6 @@ export default function Settings({
           )}
         </div>
 
-        <div className="field">
-          <p className="small muted">{t("settings.sttTest.hint")}</p>
-          <SttProbeResult state={sttProbe} />
-        </div>
 
         {engine === REMOTE_ENGINE ? (
           <>
@@ -1091,10 +1081,6 @@ export default function Settings({
           </>
         )}
 
-        <div className="field">
-          <p className="small muted">{t("settings.llm.testHint")}</p>
-          <LlmProbeResult state={llmProbe} />
-        </div>
 
         {llmCloud && (
           <>
@@ -1479,6 +1465,23 @@ export default function Settings({
       </Section>
 
       </fieldset>
+
+      <Section title={t("settings.tests")}>
+        <div className="field">
+          <button type="button" disabled={sttProbe.pending} onClick={() => void testStt()}>
+            {sttProbe.pending ? t("settings.sttTest.testing") : t("settings.sttTest.button")}
+          </button>
+          <p className="small muted">{t("settings.sttTest.hint")}</p>
+          <SttProbeResult state={sttProbe} />
+        </div>
+        <div className="field">
+          <button type="button" disabled={llmProbe.pending} onClick={() => void testLlm()}>
+            {llmProbe.pending ? t("settings.llm.testing") : t("settings.llm.test")}
+          </button>
+          <p className="small muted">{t("settings.llm.testHint")}</p>
+          <LlmProbeResult state={llmProbe} />
+        </div>
+      </Section>
     </>
   );
 }

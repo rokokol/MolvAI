@@ -145,6 +145,11 @@ fn handle_event(app: &AppHandle, event: Event) {
             let _ = app.emit("molva://hypothesis", text);
         }
         Event::Entry { entry } => {
+            // A phrase that reached the field with a failed model or paste is not silent: the
+            // entry carries the reason, and the window must show it
+            if let Some(error) = entry.error.as_deref() {
+                notify_error(app, error, None);
+            }
             let _ = app.emit("molva://entry", entry);
         }
         Event::Error {

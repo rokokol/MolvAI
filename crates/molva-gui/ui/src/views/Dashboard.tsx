@@ -264,6 +264,12 @@ export default function Dashboard({
             <p className="text">
               {lastEntry.text_final ?? lastEntry.text_raw ?? t("history.noText")}
             </p>
+            {lastEntry.error && (
+              <div className="notice warning" role="alert">
+                <strong>{t("dashboard.lastError")}</strong>
+                <p>{lastEntry.error}</p>
+              </div>
+            )}
             <div className="row">
               <button
                 type="button"

@@ -6,6 +6,12 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ## Unreleased
 
+### Fixed
+
+- An entry that finished with a model or paste error shows the reason on the Dashboard, and a hidden window gets a notification
+
+- The LLM and recognition test buttons stay next to their status inside Settings, outside the disabled fieldset
+
 ### Changed
 
 - `docs/STATUS.md` is gone; release history lives in the changelog and the site status page keeps only the current summary
