@@ -4,12 +4,26 @@
 //! All fields have default values, so an empty file is a valid config, and a partial file is
 //! filled in. API keys are not stored in the file: only the name of an environment variable or a
 //! keystore
+//!
+//! A managed file, a symlink into the Nix store, cannot be written. `load` and `save` work with
+//! the effective settings: runtime changes go into a second file beside the declarative one.
+//! That file carries the resolved path of the base, so a rebuild that changes the declarative
+//! settings leaves the old runtime values behind. `save_plain` writes a settings profile without
+//! that redirection; export and the editor use it
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+/// Runtime values that stand in for a managed file until the declarative file changes
+#[derive(Debug, Serialize, Deserialize)]
+struct RuntimeConfig {
+    /// Resolved path of the declarative file these values were written against
+    base: String,
+    config: Config,
+}
 
 /// Config schema version, for future migrations
 ///
@@ -49,10 +63,6 @@ pub enum ConfigError {
     NoHome,
     #[error("no such setting: {0}")]
     UnknownKey(String),
-    #[error(
-        "the settings file {path} is managed by Nix and is read-only; change programs.molvai instead"
-    )]
-    Managed { path: PathBuf },
     #[error("{key} = {value:?}: {message}")]
     BadValue {
         key: String,
@@ -644,10 +654,6 @@ pub struct GuiConfig {
     /// processing), so it updates only a few times per phrase, and not on every signal level
     /// event. Whoever needs a blinking indicator more than a calm tray sets `true`
     pub tray_animation: bool,
-    /// Show the notice that Nix owns the settings file
-    ///
-    /// It is off by default, so a managed home opens without a banner
-    pub show_managed_notice: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -712,8 +718,12 @@ impl Config {
         toml::to_string_pretty(self).map_err(|e| ConfigError::Serialize(e.to_string()))
     }
 
-    /// Read the file; a missing file means the default settings
+    /// Read the declarative file and then the runtime values that stand in for it
     pub fn load(path: &Path) -> Result<Self, ConfigError> {
+        Self::load_with_override(path, Self::runtime_path(path)?.as_deref())
+    }
+
+    fn load_plain(path: &Path) -> Result<Self, ConfigError> {
         match std::fs::read_to_string(path) {
             Ok(text) => Self::from_toml_str(path, &text),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
@@ -724,39 +734,126 @@ impl Config {
         }
     }
 
+    /// Runtime values win only while they describe the same declarative file
+    ///
+    /// A rebuild changes the resolved store path. Values from the old base then no longer
+    /// describe what the store says, so the declarative file decides again.
+    fn load_with_override(path: &Path, runtime: Option<&Path>) -> Result<Self, ConfigError> {
+        let base = Self::load_plain(path)?;
+        let Some(runtime) = runtime else {
+            return Ok(base);
+        };
+        let text = match std::fs::read_to_string(runtime) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(base),
+            Err(source) => {
+                return Err(ConfigError::Read {
+                    path: runtime.to_path_buf(),
+                    source,
+                })
+            }
+        };
+        let saved: RuntimeConfig = match toml::from_str(&text) {
+            Ok(saved) => saved,
+            Err(err) => {
+                tracing::warn!(%err, "runtime settings are damaged; the declarative values are used");
+                return Ok(base);
+            }
+        };
+        if saved.base != Self::base_identity(path) {
+            // The values belong to another declarative file. Leaving them in place would
+            // resurrect them on a rollback to that store path
+            tracing::info!(path = %runtime.display(), "old runtime settings are discarded");
+            let _ = std::fs::remove_file(runtime);
+            return Ok(base);
+        }
+        Ok(saved.config)
+    }
+
     /// Read the file, and if it does not exist, create it with the default values
     pub fn load_or_create(path: &Path) -> Result<Self, ConfigError> {
         if !path.exists() {
             let config = Self::default();
-            config.save(path)?;
+            config.save_plain(path)?;
             return Ok(config);
         }
         Self::load(path)
     }
 
     pub fn save(&self, path: &Path) -> Result<(), ConfigError> {
-        if Self::is_managed(path) {
-            return Err(ConfigError::Managed {
-                path: path.to_path_buf(),
-            });
+        match Self::runtime_path(path)? {
+            Some(runtime) => self.save_with_override(path, &runtime),
+            None => self.save_plain(path),
         }
+    }
+
+    /// Write a settings profile as plain TOML, without runtime redirection
+    ///
+    /// Export and the editor need a file that another program can read back as settings
+    pub fn save_plain(&self, path: &Path) -> Result<(), ConfigError> {
+        Self::write(path, &self.to_toml_string()?)
+    }
+
+    /// A managed file stays untouched; the values go into the runtime file beside it
+    fn save_with_override(&self, path: &Path, runtime: &Path) -> Result<(), ConfigError> {
+        let saved = RuntimeConfig {
+            base: Self::base_identity(path),
+            config: self.clone(),
+        };
+        let text =
+            toml::to_string_pretty(&saved).map_err(|e| ConfigError::Serialize(e.to_string()))?;
+        Self::write(runtime, &text)
+    }
+
+    /// Replace a file in one step: a reader never sees a half-written TOML
+    fn write(path: &Path, text: &str) -> Result<(), ConfigError> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|source| ConfigError::Write {
                 path: path.to_path_buf(),
                 source,
             })?;
         }
-        std::fs::write(path, self.to_toml_string()?).map_err(|source| ConfigError::Write {
+        // The window and the daemon can write the same runtime file at once. A process owns
+        // its own staging file, so neither truncates the other's
+        let mut staged = path.as_os_str().to_os_string();
+        staged.push(format!(".{}.tmp", std::process::id()));
+        let staged = PathBuf::from(staged);
+        std::fs::write(&staged, text).map_err(|source| ConfigError::Write {
+            path: staged.clone(),
+            source,
+        })?;
+        std::fs::rename(&staged, path).map_err(|source| ConfigError::Write {
             path: path.to_path_buf(),
             source,
         })
     }
 
+    /// Where runtime values live: `MOLVA_RUNTIME_CONFIG` or the config directory of the user
+    ///
+    /// A managed path can point straight into the store through `--config`. Its parent is then
+    /// read-only, so the user's own config directory holds the file instead
+    pub fn runtime_path(path: &Path) -> Result<Option<PathBuf>, ConfigError> {
+        if let Some(explicit) = std::env::var_os("MOLVA_RUNTIME_CONFIG") {
+            return Ok(Some(PathBuf::from(explicit)));
+        }
+        if !Self::is_managed(path) {
+            return Ok(None);
+        }
+        Ok(Some(Self::default_dir()?.join("runtime.toml")))
+    }
+
+    /// Identity of the declarative file that runtime values were written against
+    fn base_identity(path: &Path) -> String {
+        std::fs::canonicalize(path)
+            .unwrap_or_else(|_| path.to_path_buf())
+            .to_string_lossy()
+            .into_owned()
+    }
+
     /// Whether the settings come from a read-only Nix store path
     ///
     /// Home Manager writes the config as a symlink to the store. The link itself is in the
-    /// user's directory, so `writable` there says nothing; the resolved target is what
-    /// decides. The GUI hides its settings page and `molva config set` refuses to write.
+    /// user's directory, so `writable` there says nothing; the resolved target is what decides.
     pub fn is_managed(path: &Path) -> bool {
         std::fs::canonicalize(path).is_ok_and(|target| target.starts_with("/nix/store"))
     }
@@ -771,6 +868,39 @@ impl Config {
         directories::ProjectDirs::from("", "", "molva")
             .map(|dirs| dirs.data_dir().to_path_buf())
             .ok_or(ConfigError::NoHome)
+    }
+
+    /// The pause marker for compositor hotkeys: a state file, not a setting
+    ///
+    /// A pause is a runtime action, not a value the declarative config owns. Keeping it out of
+    /// `Config` means a full settings write cannot silently unpause the binds
+    pub fn hotkeys_paused_path() -> Result<PathBuf, ConfigError> {
+        Ok(Self::hotkeys_paused_path_in(&Self::data_dir()?))
+    }
+
+    pub fn hotkeys_paused() -> bool {
+        Self::hotkeys_paused_path().is_ok_and(|path| path.exists())
+    }
+
+    /// A compositor bind calls `molva --hotkey`, which checks the marker before it acts
+    pub fn set_hotkeys_paused(paused: bool) -> Result<(), ConfigError> {
+        Self::set_hotkeys_paused_in(&Self::data_dir()?, paused)
+    }
+
+    fn set_hotkeys_paused_in(directory: &Path, paused: bool) -> Result<(), ConfigError> {
+        let path = Self::hotkeys_paused_path_in(directory);
+        if paused {
+            return Self::write(&path, "");
+        }
+        match std::fs::remove_file(&path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(source) => Err(ConfigError::Write { path, source }),
+        }
+    }
+
+    fn hotkeys_paused_path_in(directory: &Path) -> PathBuf {
+        directory.join("hotkeys-paused")
     }
 
     /// Path to the journal: from the settings, or `<data_dir>/journal.jsonl`
@@ -825,7 +955,7 @@ impl Config {
         match Self::load(path) {
             Ok(mut config) => {
                 let migrated = config.migrate();
-                if migrated && !managed {
+                if migrated {
                     config.save(path)?;
                 }
                 Ok((config, None))
@@ -847,7 +977,7 @@ impl Config {
                     source,
                 })?;
                 let config = Self::default();
-                config.save(path)?;
+                config.save_plain(path)?;
                 let warning = format!(
                     "the settings file is damaged ({message}); it is saved as {} and replaced \
                      with the default values",
@@ -1276,7 +1406,7 @@ impl Config {
 
     /// Write the settings to a file — the same format as the working config
     pub fn export(&self, path: &Path) -> Result<(), ConfigError> {
-        self.save(path)
+        self.save_plain(path)
     }
 
     /// Load the settings from a profile file; a damaged or invalid file is not applied
@@ -1466,6 +1596,94 @@ mod tests {
         assert_eq!(created, Config::default());
         let loaded = Config::load(&path).unwrap();
         assert_eq!(loaded, created);
+    }
+
+    #[test]
+    fn runtime_values_win_while_the_declarative_file_is_the_same() {
+        let directory = tempfile::tempdir().unwrap();
+        let first = directory.path().join("first");
+        let second = directory.path().join("second");
+        std::fs::create_dir_all(&first).unwrap();
+        std::fs::create_dir_all(&second).unwrap();
+        let base = first.join("config.toml");
+        let rebuilt = second.join("config.toml");
+        let runtime = directory.path().join("runtime.toml");
+
+        let mut declarative = Config::default();
+        declarative.audio.device = "declarative".into();
+        declarative.save_plain(&base).unwrap();
+        declarative.save_plain(&rebuilt).unwrap();
+
+        let mut changed = declarative.clone();
+        changed.audio.device = "runtime".into();
+        changed.output.mode = "paste".into();
+        changed.save_with_override(&base, &runtime).unwrap();
+
+        let effective = Config::load_with_override(&base, Some(&runtime)).unwrap();
+        assert_eq!(effective.audio.device, "runtime");
+        assert_eq!(effective.output.mode, "paste");
+        // A rebuild points at another declarative file, so the old values no longer apply
+        let after_rebuild = Config::load_with_override(&rebuilt, Some(&runtime)).unwrap();
+        assert_eq!(after_rebuild.audio.device, "declarative");
+        assert_eq!(after_rebuild.output.mode, "auto");
+    }
+
+    #[test]
+    fn the_pause_marker_is_a_file_that_comes_and_goes() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = Config::hotkeys_paused_path_in(directory.path());
+        assert!(!path.exists());
+        Config::set_hotkeys_paused_in(directory.path(), true).unwrap();
+        assert!(path.exists(), "a paused hotkey leaves a marker");
+        Config::set_hotkeys_paused_in(directory.path(), false).unwrap();
+        assert!(!path.exists(), "resuming removes the marker");
+        // Removing an absent marker is not an error
+        Config::set_hotkeys_paused_in(directory.path(), false).unwrap();
+    }
+
+    #[test]
+    fn an_export_is_plain_settings_that_import_can_read() {
+        let directory = tempfile::tempdir().unwrap();
+        let file = directory.path().join("profile.toml");
+        Config::default().export(&file).unwrap();
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(!text.contains("base ="), "{text}");
+        assert_eq!(
+            Config::from_toml_str(&file, &text).unwrap(),
+            Config::default()
+        );
+    }
+
+    #[test]
+    fn a_damaged_runtime_file_leaves_the_declarative_values_in_place() {
+        let directory = tempfile::tempdir().unwrap();
+        let base = directory.path().join("config.toml");
+        let runtime = directory.path().join("runtime.toml");
+        let mut config = Config::default();
+        config.audio.device = "declarative".into();
+        config.save_plain(&base).unwrap();
+        std::fs::write(&runtime, "not = = toml").unwrap();
+
+        let loaded = Config::load_with_override(&base, Some(&runtime)).unwrap();
+        assert_eq!(loaded.audio.device, "declarative");
+    }
+
+    #[test]
+    fn an_imperative_set_writes_the_runtime_file_not_the_base() {
+        let directory = tempfile::tempdir().unwrap();
+        let base = directory.path().join("config.toml");
+        let runtime = directory.path().join("runtime.toml");
+        Config::default().save_plain(&base).unwrap();
+
+        let mut config = Config::load_with_override(&base, Some(&runtime)).unwrap();
+        config.set_by_path("audio.device", "usb mic").unwrap();
+        config.set_by_path("output.mode", "type").unwrap();
+        config.save_with_override(&base, &runtime).unwrap();
+
+        assert!(!std::fs::read_to_string(&base).unwrap().contains("usb mic"));
+        let loaded = Config::load_with_override(&base, Some(&runtime)).unwrap();
+        assert_eq!(loaded.audio.device, "usb mic");
+        assert_eq!(loaded.output.mode, "type");
     }
 
     #[test]

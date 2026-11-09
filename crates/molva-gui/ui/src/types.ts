@@ -104,7 +104,6 @@ export interface Status {
   /** A file transcription holds the recognizer while `state` stays `idle` */
   job: WorkerJob | null;
   style: string | null;
-  hotkeys_paused: boolean;
   message?: string;
   hint?: string;
   /** The daemon has not opened the socket yet, because it downloads model weights */
@@ -394,7 +393,6 @@ export interface Config {
   mcp: { enabled: boolean };
   gui: {
     tray_animation: boolean;
-    show_managed_notice: boolean;
   };
   log: { level: string; max_size_mb: number };
 }

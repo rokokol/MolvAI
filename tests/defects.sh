@@ -430,9 +430,14 @@ defect 'styles/verbatim-skips-the-model' 'crates/molva-core/src/app/styles.rs' \
   'the verbatim style calls the model: passwords and commands go to post-processing'
 
 defect 'styles/prompts-forbid-inventing' 'crates/molva-core/src/app/styles.rs' \
-  '" Сохрани язык входного текста. Не добавляй фактов, которых нет в' \
+  '" Сохрани язык. Не добавляй фактов. Выведи только результат без' \
   '" Переводи на английский. Дополняй текст деталями, которых нет в' \
   'the model adds facts and chatters with introductions right into the field of the user'
+
+defect 'styles/cleanup-keeps-words' 'crates/molva-core/src/app/styles.rs' \
+  'slips and fillers. Keep all other words, meaning and terms.' \
+  'slips and fillers. Rewrite freely.' \
+  'the model drops forms of address, names and terms of endearment from the phrase'
 
 defect 'styles/explicit-choice-wins' 'crates/molva-core/src/app/styles.rs' \
   '            Some(id) if self.get(id).is_some() => id.to_string(),' \
@@ -523,6 +528,16 @@ defect 'config/validation-collects-every-issue' 'crates/molva-core/src/config.rs
   '        issues.push(ConfigIssue::allowed(key, value, allowed));' \
   '        let _ = (key, value, allowed);' \
   'a wrong value from the list of allowed ones passes the check silently'
+
+defect 'config/runtime-override-invalidation' 'crates/molva-core/src/config.rs' \
+  '        if saved.base != Self::base_identity(path) {' \
+  '        if false {' \
+  'a rebuild that changes the declarative config keeps the stale runtime values'
+
+defect 'config/pause-marker' 'crates/molva-core/src/config.rs' \
+  '            return Self::write(&path, "");' \
+  '            return Ok(());' \
+  'the Pause hotkeys switch writes no marker, so compositor binds keep firing'
 
 # --- track H: signals for the checker ---
 

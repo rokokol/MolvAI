@@ -19,7 +19,6 @@ import LevelSignal from "../components/LevelSignal";
 import StateBadge from "../components/StateBadge";
 
 interface Props extends ViewProps {
-  level: number;
   zeroLevel: boolean;
   lastEntry: Entry | null;
   hypothesis: string;
@@ -31,7 +30,6 @@ export default function Dashboard({
   refreshStatus,
   reloadConfig,
   onError,
-  level,
   zeroLevel,
   lastEntry,
   hypothesis,
@@ -197,7 +195,7 @@ export default function Dashboard({
 
       <section className="card">
         <h2>{t("dashboard.level")}</h2>
-        <LevelSignal level={level} active={recording} />
+        <LevelSignal active={recording} />
         {zeroLevel && (
           <div className="notice warning" role="alert">
             <strong>{t("dashboard.levelZero")}</strong>

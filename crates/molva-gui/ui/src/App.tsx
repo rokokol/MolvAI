@@ -6,6 +6,7 @@ import { emit, listen } from "@tauri-apps/api/event";
 
 import { api, asCommandError } from "./api";
 import AppMark from "./components/AppMark";
+import { publishLevel } from "./components/level-store";
 import { FilesProvider } from "./files/FilesProvider";
 import { HistoryProvider } from "./history/HistoryProvider";
 import { I18nContext, isLang, translate, type Lang } from "./i18n";
@@ -51,11 +52,8 @@ function storedTheme(): Theme {
 export default function App() {
   const [tab, setTab] = useState<Tab>("dashboard");
   const [config, setConfig] = useState<Config | null>(null);
-  const [configPath, setConfigPath] = useState("");
-  const [managed, setManaged] = useState(false);
   const [theme, setThemeState] = useState<Theme>(storedTheme);
   const [status, setStatus] = useState<Status | null>(null);
-  const [level, setLevel] = useState(0);
   const [zeroLevel, setZeroLevel] = useState(false);
   const [lastEntry, setLastEntry] = useState<Entry | null>(null);
   const [hypothesis, setHypothesis] = useState("");
@@ -127,12 +125,7 @@ export default function App() {
     void (async () => {
       await reloadConfig();
       await refreshStatus();
-      const [isManaged, path] = await Promise.all([
-        api.configManaged().catch(() => false),
-        api.getConfigPath().catch(() => ""),
-      ]);
-      setManaged(isManaged);
-      setConfigPath(path);
+      const isManaged = await api.configManaged().catch(() => false);
       try {
         if (!isManaged && (await api.isFirstRun())) {
           setTab("settings");
@@ -161,7 +154,6 @@ export default function App() {
                 state: event.payload.state,
                 job: event.payload.job ?? null,
                 style: null,
-                hotkeys_paused: false,
               },
         );
         if (event.payload.state === "recording") {
@@ -171,11 +163,11 @@ export default function App() {
         } else {
           // Outside recording there is no level: the bar must drop, not freeze
           // at the last value and pretend to be a live microphone
-          setLevel(0);
+          publishLevel(0);
         }
       }),
       listen<number>("molva://level", (event) => {
-        setLevel(event.payload);
+        publishLevel(event.payload);
         if (event.payload > SILENCE_RMS) {
           lastSoundAt.current = Date.now();
           setZeroLevel(false);
@@ -192,7 +184,7 @@ export default function App() {
       listen<DaemonPresence>("molva://daemon", (event) => {
         void refreshStatus();
         if (!event.payload.connected) {
-          setLevel(0);
+          publishLevel(0);
         }
       }),
       listen("molva://config", () => void reloadConfig()),
@@ -228,10 +220,6 @@ export default function App() {
 
   const i18n = useMemo(() => ({ lang, t }), [lang, t]);
 
-  // The settings page stays visible on a managed config, but the form is disabled: a
-  // store file is changed in Nix, not in the window. The notice is opt-in
-  const managedNotice =
-    managed && config?.gui.show_managed_notice === true;
   const tabs = TABS;
 
   const shared = {
@@ -275,13 +263,6 @@ export default function App() {
               </div>
             </nav>
             <main className="content" id="main" tabIndex={-1}>
-              {managedNotice && (
-                <div className="notice">
-                  <strong>{t("app.managed")}</strong>
-                  <p>{t("app.managedHint")}</p>
-                  {configPath && <p className="mono small">{configPath}</p>}
-                </div>
-              )}
               {error && (
                 <div className="notice error" role="alert">
                   <strong>{t("error.title")}</strong>
@@ -303,7 +284,6 @@ export default function App() {
               {tab === "dashboard" && (
                 <Dashboard
                   {...shared}
-                  level={level}
                   zeroLevel={zeroLevel}
                   lastEntry={lastEntry}
                   hypothesis={hypothesis}
@@ -312,14 +292,9 @@ export default function App() {
               {tab === "history" && <History />}
               {tab === "stats" && <Stats {...shared} />}
               {tab === "files" && <Files {...shared} />}
-              {tab === "snippets" && <Snippets {...shared} managed={managed} />}
+              {tab === "snippets" && <Snippets {...shared} />}
               {tab === "settings" && (
-                <Settings
-                  {...shared}
-                  theme={theme}
-                  onThemeChange={setTheme}
-                  managed={managed}
-                />
+                <Settings {...shared} theme={theme} onThemeChange={setTheme} />
               )}
             </main>
           </div>

@@ -15,7 +15,7 @@ import {
 
 const builtins: StyleOption[] = [
   { id: "cleanup", name: "Cleanup" },
-  { id: "mail", name: "Email" },
+  { id: "formal", name: "Formal" },
 ];
 
 function style(change: Partial<CustomStyle> = {}): CustomStyle {
@@ -94,8 +94,8 @@ describe("newCustomStyle", () => {
 
 describe("overridesBuiltin", () => {
   it("says when the entry takes a built-in place", () => {
-    expect(overridesBuiltin("mail", builtins)).toBe(true);
-    expect(overridesBuiltin(" mail ", builtins)).toBe(true);
+    expect(overridesBuiltin("formal", builtins)).toBe(true);
+    expect(overridesBuiltin(" formal ", builtins)).toBe(true);
     expect(overridesBuiltin("polite", builtins)).toBe(false);
   });
 });

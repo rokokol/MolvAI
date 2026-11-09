@@ -9,7 +9,6 @@
 #![allow(clippy::needless_pass_by_value)]
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -18,7 +17,7 @@ use molva_core::app::engine::{self, build_stt_with, EngineChoice, EngineError};
 use molva_core::app::hotkeys::HotkeySpec;
 use molva_core::app::models::{self, DownloadProgress};
 use molva_core::app::secrets::{self, SecretError, SecretStore};
-use molva_core::config::{invalid_provider_slug, ConfigError};
+use molva_core::config::{invalid_provider_slug, ConfigError, HotkeysConfig};
 use molva_core::domain::entry::{Mode, Source};
 use molva_core::domain::llm::{ChatRequest, LlmClient, LlmError};
 use molva_core::domain::{DeviceInfo, Entry, OutputMode};
@@ -237,10 +236,9 @@ pub fn is_cloud_provider(provider: &str) -> bool {
 }
 
 /// Built-in post-processing styles; the menu label of each is `style.<id>` in the dictionaries
-// The ids match `molva_core::app::styles::builtin`: the daemon accepts only these, and an
-// unknown id would silently fall back to the default style
-pub const BUILTIN_STYLES: [&str; 6] =
-    ["verbatim", "cleanup", "messenger", "mail", "code", "formal"];
+// The ids match `molva_core::app::styles::builtin`. An id outside this list and the custom
+// styles resolves to the default style
+pub const BUILTIN_STYLES: [&str; 3] = ["verbatim", "cleanup", "formal"];
 
 /// Built-in styles plus the user's own from the config, without repeated ids
 pub fn builtin_style_options(config: &Config) -> Vec<(String, String)> {
@@ -786,12 +784,11 @@ pub fn check_hotkey(value: String) -> Result<HotkeyCheck, CommandError> {
 pub struct AppState {
     config: Mutex<Config>,
     config_path: PathBuf,
-    /// The config resolves into the Nix store: the settings page is hidden and writes are refused
+    /// The config resolves into the Nix store: writes go to a runtime file beside it
     managed: bool,
     /// There was no settings file: the interface opens on the Settings tab at once
     first_run: bool,
     daemon: Mutex<Daemon>,
-    hotkeys_paused: AtomicBool,
     last_state: Mutex<Option<DaemonState>>,
     /// The device list is cached: the tray menu is rebuilt often, and a daemon query is not cheap
     devices: Mutex<Vec<DeviceInfo>>,
@@ -827,7 +824,6 @@ impl AppState {
             managed,
             first_run,
             daemon: Mutex::new(Daemon::default()),
-            hotkeys_paused: AtomicBool::new(false),
             last_state: Mutex::new(None),
             devices: Mutex::new(Vec::new()),
             media: Mutex::new(None),
@@ -855,8 +851,8 @@ impl AppState {
         lock(&self.config).clone()
     }
 
-    /// Keep a style that a managed store cannot write; the next start reads the store again
-    pub fn remember_style(&self, style: &str) {
+    /// Keep the style that the daemon published; the daemon has already written the settings
+    pub fn set_style(&self, style: &str) {
         lock(&self.config).style.default = style.to_string();
     }
 
@@ -872,12 +868,18 @@ impl AppState {
         self.first_run
     }
 
-    pub fn hotkeys_paused(&self) -> bool {
-        self.hotkeys_paused.load(Ordering::Relaxed)
+    /// Only the hotkey table, not a clone of every setting
+    pub fn hotkeys(&self) -> HotkeysConfig {
+        lock(&self.config).hotkeys.clone()
     }
 
-    pub fn set_hotkeys_paused(&self, paused: bool) {
-        self.hotkeys_paused.store(paused, Ordering::Relaxed);
+    pub fn hotkeys_paused(&self) -> bool {
+        Config::hotkeys_paused()
+    }
+
+    /// A compositor bind calls `molva --hotkey`, which reads the same marker
+    pub fn set_hotkeys_paused(&self, paused: bool) -> Result<(), ConfigError> {
+        Config::set_hotkeys_paused(paused)
     }
 
     pub fn remember_state(&self, state: Option<DaemonState>) {
@@ -921,7 +923,6 @@ pub struct Status {
     /// A file transcription holds the recognizer while `state` stays `idle`
     pub job: Option<WorkerJob>,
     pub style: Option<String>,
-    pub hotkeys_paused: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -940,7 +941,6 @@ fn unreachable_status(
     config: &Config,
     daemon_ours: bool,
     failure: Option<&DaemonFailure>,
-    hotkeys_paused: bool,
     err: CommandError,
 ) -> Status {
     let download = models::active_download(
@@ -968,7 +968,6 @@ fn unreachable_status(
         state: None,
         job: None,
         style: None,
-        hotkeys_paused,
         message: Some(err.message),
         hint: err.hint,
         download,
@@ -1096,7 +1095,6 @@ pub async fn get_status(state: State<'_, AppState>) -> Result<Status, CommandErr
                 state: daemon_state.or(Some(DaemonState::Idle)),
                 job,
                 style,
-                hotkeys_paused: state.hotkeys_paused(),
                 message: None,
                 hint: None,
                 download: None,
@@ -1110,7 +1108,6 @@ pub async fn get_status(state: State<'_, AppState>) -> Result<Status, CommandErr
                 &state.config(),
                 daemon_ours,
                 failure.as_ref(),
-                state.hotkeys_paused(),
                 err,
             ))
         }
@@ -1279,6 +1276,15 @@ pub fn get_config_path(state: State<'_, AppState>) -> String {
     state.config_path().display().to_string()
 }
 
+/// Where a settings edit lands when the declarative file is a store symlink
+#[tauri::command]
+pub fn get_runtime_config_path(state: State<'_, AppState>) -> Option<String> {
+    Config::runtime_path(state.config_path())
+        .ok()
+        .flatten()
+        .map(|path| path.display().to_string())
+}
+
 #[tauri::command]
 pub fn is_first_run(state: State<'_, AppState>) -> bool {
     state.first_run()
@@ -1289,20 +1295,30 @@ pub fn config_managed(state: State<'_, AppState>) -> bool {
     state.managed()
 }
 
-/// A managed config is a store symlink: a write fails at the file system with a message that
-/// does not name Nix. This check answers before the write and names the place to change.
-fn refuse_managed(state: &AppState) -> Result<(), CommandError> {
-    if state.managed() {
-        return Err(CommandError::new(
-            "config",
-            "the settings are managed by Nix; change programs.molvai and run switch",
-        ));
+/// Write the settings and bring the daemon and the compositor binds in step with them
+///
+/// The window, the tray and the pause switch use this one path. A device or engine change
+/// rebuilds the pipeline; a change of the binds rewrites the Hyprland file
+pub(crate) fn apply_config(state: &AppState, config: Config) -> Result<(), CommandError> {
+    validate_config(&config)?;
+    let previous = state.config();
+    let hotkeys_changed = previous.hotkeys != config.hotkeys;
+    // A recogniser is built from the engine, the model and the audio device. The running
+    // daemon holds the old pipeline, so those changes need a fresh process; the rest are
+    // applied by `config.reload` without dropping the model
+    let restart = previous.stt != config.stt || previous.audio != config.audio;
+    state.replace_config(config)?;
+    if restart {
+        restart_daemon(state);
+    } else {
+        notify_config_reload();
+    }
+    if hotkeys_changed {
+        refresh_hyprland_binds(&state.config().hotkeys);
     }
     Ok(())
 }
 
-/// Write the settings, keep them, and bring the hotkeys in step with them
-///
 /// A command that is not `async` runs on the main thread, and this one writes files and runs
 /// `hyprctl reload`: a subprocess that waits for the compositor would stop the window from
 /// painting until it answers. The write therefore runs on a thread of the blocking pool, and
@@ -1312,24 +1328,7 @@ pub async fn save_config(app: AppHandle, config: Config) -> Result<(), CommandEr
     let write = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let state = write.state::<AppState>();
-        refuse_managed(&state)?;
-        validate_config(&config)?;
-        let previous = state.config();
-        let hotkeys_changed = previous.hotkeys != config.hotkeys;
-        // A recogniser is built from the engine, the model and the audio device. The running
-        // daemon holds the old pipeline, so those changes need a fresh process; the rest are
-        // applied by `config.reload` without dropping the model
-        let restart = previous.stt != config.stt || previous.audio != config.audio;
-        state.replace_config(config)?;
-        if restart {
-            restart_daemon(&state);
-        } else {
-            notify_config_reload();
-        }
-        if hotkeys_changed {
-            refresh_hyprland_binds(&state.config().hotkeys);
-        }
-        Ok::<(), CommandError>(())
+        apply_config(&state, config)
     })
     .await
     .map_err(|err| {
@@ -1365,7 +1364,6 @@ pub fn export_config(state: State<'_, AppState>) -> Result<String, CommandError>
 /// Import settings from a TOML file: the file is checked before it replaces the current settings
 #[tauri::command]
 pub fn import_config(state: State<'_, AppState>, path: String) -> Result<Config, CommandError> {
-    refuse_managed(&state)?;
     let path = PathBuf::from(path);
     let text = std::fs::read_to_string(&path)
         .map_err(|e| CommandError::new("config", format!("{}: {e}", path.display())))?;
@@ -1378,7 +1376,6 @@ pub fn import_config(state: State<'_, AppState>, path: String) -> Result<Config,
 
 #[tauri::command]
 pub fn reset_config(state: State<'_, AppState>) -> Result<Config, CommandError> {
-    refuse_managed(&state)?;
     let config = Config::default();
     state.replace_config(config.clone())?;
     notify_config_reload();
@@ -1455,7 +1452,7 @@ fn restart_daemon(state: &AppState) {
 
 /// After a hotkey change, write the binds file inside a Hyprland session. The file is the
 /// single place those keys live, so a save must not leave the old ones behind
-fn refresh_hyprland_binds(hotkeys: &molva_core::config::HotkeysConfig) {
+fn refresh_hyprland_binds(hotkeys: &HotkeysConfig) {
     if std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_none() {
         return;
     }
@@ -1512,13 +1509,6 @@ pub async fn get_autostart<R: Runtime>(app: AppHandle<R>) -> bool {
     .unwrap_or(false)
 }
 
-#[tauri::command]
-pub fn toggle_hotkeys_paused(state: State<'_, AppState>) -> bool {
-    let paused = !state.hotkeys_paused();
-    state.set_hotkeys_paused(paused);
-    paused
-}
-
 // --- History ---
 
 #[tauri::command]
@@ -1528,7 +1518,7 @@ pub fn history_list(
 ) -> Result<Vec<Entry>, CommandError> {
     let entries = history::load_for(&state.config())?;
     Ok(history::filter_entries(
-        &entries,
+        entries,
         &filter.unwrap_or_default(),
     ))
 }
@@ -1919,7 +1909,7 @@ mod tests {
         )
         .unwrap();
 
-        let status = unreachable_status(&config, false, None, false, CommandError::new("x", "no"));
+        let status = unreachable_status(&config, false, None, CommandError::new("x", "no"));
         let json = serde_json::to_value(&status).unwrap();
         assert_eq!(json["daemon_running"], false);
         assert_eq!(json["download"]["model"], info.name);
@@ -1938,7 +1928,6 @@ mod tests {
             &config,
             true,
             Some(&failure),
-            false,
             CommandError::new("daemon_unavailable", "daemon does not answer"),
         );
         let reason = status.exit_reason.unwrap();
@@ -1951,7 +1940,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let mut config = Config::default();
         config.stt.model_path = directory.path().display().to_string();
-        let status = unreachable_status(&config, false, None, false, CommandError::new("x", "no"));
+        let status = unreachable_status(&config, false, None, CommandError::new("x", "no"));
         let json = serde_json::to_value(&status).unwrap();
         assert!(json.get("download").is_none(), "{json}");
         assert!(json.get("exit_reason").is_none(), "{json}");

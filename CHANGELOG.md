@@ -6,17 +6,35 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ## Unreleased
 
-### Fixed
+### Added
 
-- An entry that finished with a model or paste error shows the reason on the Dashboard, and a hidden window gets a notification
+- Runtime settings overrides: a managed Nix config stays editable in the GUI and through `molva config set`; changes go to `~/.config/molva/runtime.toml` and last until a rebuild changes the declarative config
 
-- The LLM and recognition test buttons stay next to their status inside Settings, outside the disabled fieldset
+- `molva config path` prints the runtime file too, `molva config edit` edits a plain copy, and the Settings page shows where the changes land
+
+- The Pause hotkeys tray switch stops the binds that start a phrase; the GUI and MCP commands, the key release and cancel stay live
 
 ### Changed
+
+- The built-in styles are "As spoken", Cleanup and Formal; "As spoken" never calls the model
+
+- Built-in style prompts and the command-mode prompt are shorter and send fewer tokens
+
+- `programs.molvai.showNotice` and `gui.show_managed_notice` are gone: settings are editable at runtime, so the managed banner has nothing left to say
 
 - `docs/STATUS.md` is gone; release history lives in the changelog and the site status page keeps only the current summary
 
 ### Fixed
+
+- A failed phrase opens one system notification with the reason, instead of two; the notification icon uses a stable content-addressed path
+
+- Opening a spectrogram of a long stereo file no longer doubles the decoded audio in memory
+
+- An entry that finished with a model or paste error shows the reason on the Dashboard
+
+- The LLM and recognition test buttons sit next to their status inside Settings
+
+- Selecting a style in the GUI applies it on a managed config
 
 - An HTTP 403 from a model provider is reported as unavailable with the provider's reason, not as a rejected API key
 

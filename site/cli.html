@@ -289,7 +289,7 @@
         </tbody>
       </table>
     </div>
-    <p class="footnote" data-ru="Распознаватель и цепочка вставки собираются при старте демона, поэтому смена модели, движка или способа вывода требует перезапуска. &lt;code&gt;molva config reload&lt;/code&gt; передаёт остальные настройки запущенному демону">The recognizer and the paste chain are built when the daemon starts, so a changed model, engine or output method needs a daemon restart. <code>molva config reload</code> passes the other settings to the running daemon</p>
+    <p class="footnote" data-ru="Распознаватель и цепочка вставки собираются при старте демона, поэтому смена модели, движка или способа вывода требует перезапуска. &lt;code&gt;molva config reload&lt;/code&gt; передаёт остальные настройки запущенному демону. На управляемом конфиге Nix &lt;code&gt;molva config set&lt;/code&gt; пишет &lt;code&gt;runtime.toml&lt;/code&gt; рядом с файлом, и перезагрузка применяет эти значения">The recognizer and the paste chain are built when the daemon starts, so a changed model, engine or output method needs a daemon restart. <code>molva config reload</code> passes the other settings to the running daemon. On a managed Nix config <code>molva config set</code> writes <code>runtime.toml</code> beside the file, and the reload applies those values</p>
   </div>
 </section>
 

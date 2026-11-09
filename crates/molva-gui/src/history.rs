@@ -81,8 +81,11 @@ pub struct Filter {
 }
 
 /// Select entries with the core filters, in the order the CLI applies them
-pub fn filter_entries(entries: &[Entry], filter: &Filter) -> Vec<Entry> {
-    let mut out = entries.to_vec();
+///
+/// The journal is already a vector of owned entries, so the caller hands it over instead of
+/// lending a slice that would be cloned again
+pub fn filter_entries(entries: Vec<Entry>, filter: &Filter) -> Vec<Entry> {
+    let mut out = entries;
     if !filter.query.trim().is_empty() {
         out = journal::search_entries(&out, &filter.query);
     }
@@ -160,7 +163,7 @@ mod tests {
             query: "привет".into(),
             ..Filter::default()
         };
-        let found = filter_entries(&sample(), &filter);
+        let found = filter_entries(sample(), &filter);
         assert_eq!(found.len(), 2);
     }
 
@@ -172,7 +175,7 @@ mod tests {
             since: Some(Utc.with_ymd_and_hms(2026, 9, 2, 0, 0, 0).unwrap()),
             ..Filter::default()
         };
-        assert_eq!(filter_entries(&sample(), &filter).len(), 1);
+        assert_eq!(filter_entries(sample(), &filter).len(), 1);
     }
 
     #[test]
@@ -181,7 +184,7 @@ mod tests {
             limit: 1,
             ..Filter::default()
         };
-        let found = filter_entries(&sample(), &filter);
+        let found = filter_entries(sample(), &filter);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].text_final.as_deref(), Some("ПРИВЕТ ещё раз"));
     }

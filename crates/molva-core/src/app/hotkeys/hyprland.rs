@@ -34,12 +34,14 @@ pub fn lua(hotkeys: &HotkeysConfig) -> Result<String, HotkeyError> {
     let binds = [
         Bind {
             keys: &hotkeys.push_to_talk,
-            command: "molva record start",
+            command: "molva record start --hotkey",
             description: "MolvAI: dictate while the key is held",
             release: false,
             passes_through: false,
         },
-        // Push-to-talk needs the release as well: it ends the phrase and pastes the text
+        // Push-to-talk needs the release as well: it ends the phrase and pastes the text.
+        // The release stays live while the binds are paused, so a phrase already recording
+        // can always be finished
         Bind {
             keys: &hotkeys.push_to_talk,
             command: "molva record stop",
@@ -49,20 +51,21 @@ pub fn lua(hotkeys: &HotkeysConfig) -> Result<String, HotkeyError> {
         },
         Bind {
             keys: &hotkeys.toggle,
-            command: "molva record toggle",
+            command: "molva record toggle --hotkey",
             description: "MolvAI: start or stop a recording",
             release: false,
             passes_through: false,
         },
         Bind {
             keys: &hotkeys.command,
-            command: "molva record toggle --mode command",
+            command: "molva record toggle --mode command --hotkey",
             description: "MolvAI: edit the selected text by voice",
             release: false,
             passes_through: false,
         },
         // Cancel matters only during a recording, and its key usually means something in the
-        // application too. A bind on a bare Escape would take Escape away from every program
+        // application too. A bind on a bare Escape would take Escape away from every program.
+        // Cancel stays live while the other binds are paused, so a phrase can always be dropped
         Bind {
             keys: &hotkeys.cancel,
             command: "molva record cancel",
@@ -72,7 +75,7 @@ pub fn lua(hotkeys: &HotkeysConfig) -> Result<String, HotkeyError> {
         },
         Bind {
             keys: &hotkeys.style_next,
-            command: "molva styles next",
+            command: "molva styles next --hotkey",
             description: "MolvAI: switch the post-processing style",
             release: false,
             passes_through: false,
@@ -193,7 +196,7 @@ mod tests {
         let binds = lines(&text);
         let press = binds
             .iter()
-            .find(|l| l.contains("\"molva record start\""))
+            .find(|l| l.contains("\"molva record start --hotkey\""))
             .unwrap();
         let release = binds
             .iter()
@@ -216,10 +219,13 @@ mod tests {
         };
         let text = lua(&config).unwrap();
         for (keys, command) in [
-            ("CTRL + ALT + Z", "molva record toggle\""),
-            ("SHIFT + SUPER + X", "molva record toggle --mode command"),
+            ("CTRL + ALT + Z", "molva record toggle --hotkey\""),
+            (
+                "SHIFT + SUPER + X",
+                "molva record toggle --mode command --hotkey",
+            ),
             ("CTRL + SHIFT + Escape", "molva record cancel"),
-            ("CTRL + ALT + S", "molva styles next"),
+            ("CTRL + ALT + S", "molva styles next --hotkey"),
         ] {
             assert!(
                 lines(&text)

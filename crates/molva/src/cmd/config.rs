@@ -37,6 +37,9 @@ pub(crate) fn run(action: ConfigAction, config_path: &Path, socket: &Path) -> an
     match action {
         ConfigAction::Path => {
             println!("{}", config_path.display());
+            if let Some(runtime) = Config::runtime_path(config_path)? {
+                println!("{}", runtime.display());
+            }
             Ok(())
         }
         ConfigAction::Reload => {
@@ -69,15 +72,25 @@ pub(crate) fn run(action: ConfigAction, config_path: &Path, socket: &Path) -> an
             let editor = std::env::var("VISUAL")
                 .or_else(|_| std::env::var("EDITOR"))
                 .unwrap_or_else(|_| "vi".to_string());
-            // The file must exist, otherwise the editor opens emptiness instead of the settings
-            Config::load_or_create(config_path)?;
-            let status = std::process::Command::new(&editor)
-                .arg(config_path)
-                .status()?;
+            // A managed file is a store symlink. The editor gets a plain copy of the effective
+            // settings, and the edited copy goes back through the runtime path
+            let config = load(config_path)?;
+            let file =
+                std::env::temp_dir().join(format!("molva-config-{}.toml", std::process::id()));
+            config.save_plain(&file)?;
+            let status = std::process::Command::new(&editor).arg(&file).status()?;
             if !status.success() {
+                let _ = std::fs::remove_file(&file);
                 anyhow::bail!("the editor {editor} exited with an error");
             }
-            validate(config_path)
+            let edited = Config::import(&file)?;
+            let _ = std::fs::remove_file(&file);
+            edited.save(config_path)?;
+            println!(
+                "Settings edited: {}",
+                effective_path(config_path)?.display()
+            );
+            Ok(())
         }
         ConfigAction::Validate => validate(config_path),
         ConfigAction::Reset { yes } => {
@@ -89,7 +102,7 @@ pub(crate) fn run(action: ConfigAction, config_path: &Path, socket: &Path) -> an
                 return Ok(());
             }
             Config::default().save(config_path)?;
-            println!("Settings reset: {}", config_path.display());
+            println!("Settings reset: {}", effective_path(config_path)?.display());
             Ok(())
         }
         ConfigAction::Export { file } => {
@@ -103,11 +116,16 @@ pub(crate) fn run(action: ConfigAction, config_path: &Path, socket: &Path) -> an
             println!(
                 "Profile applied: {} → {}",
                 file.display(),
-                config_path.display()
+                effective_path(config_path)?.display()
             );
             Ok(())
         }
     }
+}
+
+/// Where a settings change lands: the runtime file for a managed config, else the file itself
+fn effective_path(config_path: &Path) -> anyhow::Result<PathBuf> {
+    Ok(Config::runtime_path(config_path)?.unwrap_or_else(|| config_path.to_path_buf()))
 }
 
 /// Read the settings; replace a damaged file with the defaults and say so

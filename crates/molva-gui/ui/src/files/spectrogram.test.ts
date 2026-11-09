@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   computeSpectrogram,
-  monoMix,
   peakRow,
   rowFrequency,
 } from "./spectrogram";
@@ -21,26 +20,19 @@ function tone(hz: number, secs: number, amplitude = 0.8): Float32Array {
   return samples;
 }
 
-describe("monoMix", () => {
-  it("averages the channels", () => {
-    const left = Float32Array.from([1, 0, 1, 0]);
-    const right = Float32Array.from([0, 1, 0, 1]);
-    const mixed = monoMix({
+describe("decoded input", () => {
+  it("reads the channels without building a mixed copy", () => {
+    const samples = tone(1000, 1);
+    const buffer = {
       numberOfChannels: 2,
-      length: 4,
-      getChannelData: (channel) => (channel === 0 ? left : right),
-    });
-    expect(Array.from(mixed)).toEqual([0.5, 0.5, 0.5, 0.5]);
-  });
-
-  it("returns a single channel untouched instead of copying it", () => {
-    const samples = Float32Array.from([0.1, 0.2]);
-    const mixed = monoMix({
-      numberOfChannels: 1,
-      length: 2,
+      length: samples.length,
       getChannelData: () => samples,
-    });
-    expect(mixed).toBe(samples);
+    };
+    const options = { cols: 16, rows: 24 };
+    const fromBuffer = computeSpectrogram(buffer, RATE, options);
+    const fromSamples = computeSpectrogram(samples, RATE, options);
+    expect(Array.from(fromBuffer.values)).toEqual(Array.from(fromSamples.values));
+    expect(fromBuffer.durationMs).toBe(fromSamples.durationMs);
   });
 });
 

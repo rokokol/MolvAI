@@ -11,7 +11,6 @@ import { useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import {
   computeSpectrogram,
-  monoMix,
   spectrogramColor,
   type Spectrogram as SpectrogramData,
 } from "./spectrogram";
@@ -62,24 +61,27 @@ export default function Spectrogram({
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
-        const bytes = await response.arrayBuffer();
-        // A 16 kHz context makes the decoder resample: the allocation is a third of 48 kHz
-        let context: AudioContext;
-        try {
-          context = new AudioContext({ sampleRate: DECODE_RATE });
-        } catch {
-          context = new AudioContext();
-        }
+        // The compressed bytes leave scope before the frames are computed, so only the
+        // decoded buffer and the finished picture stay alive
         let buffer: AudioBuffer;
-        try {
-          buffer = await context.decodeAudioData(bytes);
-        } finally {
-          void context.close().catch(() => undefined);
+        {
+          const bytes = await response.arrayBuffer();
+          // A 16 kHz context makes the decoder resample: the allocation is a third of 48 kHz
+          let context: AudioContext;
+          try {
+            context = new AudioContext({ sampleRate: DECODE_RATE });
+          } catch {
+            context = new AudioContext();
+          }
+          try {
+            buffer = await context.decodeAudioData(bytes);
+          } finally {
+            void context.close().catch(() => undefined);
+          }
         }
         if (cancelled) {
           return;
         }
-        const samples = monoMix(buffer);
         // Let the loading state paint before the frames are computed
         await new Promise((resolve) => setTimeout(resolve, 0));
         if (cancelled) {
@@ -87,7 +89,7 @@ export default function Spectrogram({
         }
         setState({
           kind: "ready",
-          spec: computeSpectrogram(samples, buffer.sampleRate, {
+          spec: computeSpectrogram(buffer, buffer.sampleRate, {
             cols: 900,
             rows: 120,
           }),

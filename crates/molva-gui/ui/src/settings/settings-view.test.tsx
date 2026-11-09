@@ -133,7 +133,6 @@ function config(change: (draft: Config) => void = () => undefined): Config {
     mcp: { enabled: true },
     gui: {
       tray_animation: false,
-      show_managed_notice: false,
     },
     log: { level: "info", max_size_mb: 10 },
   };

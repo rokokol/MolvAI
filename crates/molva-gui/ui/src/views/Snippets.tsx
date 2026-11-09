@@ -3,7 +3,7 @@
 //
 // The editor keeps a draft of the config: adding, editing or removing a snippet changes only
 // this page until Save writes the whole file. The page can filter its cards by phrase or
-// replacement; a managed config stays read-only, because the Nix store is the source of truth
+// replacement
 
 import { useEffect, useState } from "react";
 
@@ -12,14 +12,11 @@ import { useI18n } from "../i18n";
 import type { Snippet } from "../types";
 import type { ViewProps } from "../App";
 
-interface Props extends ViewProps {
-  /** The config comes from the Nix store: the page is visible only for inspection */
-  managed?: boolean;
-}
+type Props = ViewProps;
 
 const MAX_SNIPPETS = 100;
 
-export default function Snippets({ config, reloadConfig, onError, managed = false }: Props) {
+export default function Snippets({ config, reloadConfig, onError }: Props) {
   const { t } = useI18n();
   const [draft, setDraft] = useState(config);
   const [saved, setSaved] = useState(false);
@@ -91,7 +88,6 @@ export default function Snippets({ config, reloadConfig, onError, managed = fals
             <input
               type="checkbox"
               checked={enabled}
-              disabled={managed}
               onChange={(event) => change({ enabled: event.target.checked })}
             />
             {t("snippets.enabledCheck")}
@@ -130,7 +126,6 @@ export default function Snippets({ config, reloadConfig, onError, managed = fals
                   id={`snippet-phrase-${index}`}
                   type="text"
                   value={item.phrase}
-                  disabled={managed}
                   placeholder={t("snippets.phrasePlaceholder")}
                   onChange={(event) => replace(index, { phrase: event.target.value })}
                 />
@@ -142,7 +137,6 @@ export default function Snippets({ config, reloadConfig, onError, managed = fals
                 <textarea
                   id={`snippet-replacement-${index}`}
                   value={item.replacement}
-                  disabled={managed}
                   rows={4}
                   placeholder={t("snippets.replacementPlaceholder")}
                   onChange={(event) =>
@@ -153,7 +147,6 @@ export default function Snippets({ config, reloadConfig, onError, managed = fals
               <button
                 type="button"
                 className="danger chip"
-                disabled={managed}
                 onClick={() => change({ items: items.filter((_item, at) => at !== index) })}
               >
                 {t("snippets.remove")}
@@ -165,7 +158,7 @@ export default function Snippets({ config, reloadConfig, onError, managed = fals
         <div className="row">
           <button
             type="button"
-            disabled={managed || items.length >= MAX_SNIPPETS}
+            disabled={items.length >= MAX_SNIPPETS}
             onClick={() => change({ items: [...items, { phrase: "", replacement: "" }] })}
           >
             {t("snippets.add")}
@@ -173,14 +166,13 @@ export default function Snippets({ config, reloadConfig, onError, managed = fals
           <button
             type="button"
             className="primary"
-            disabled={managed || busy}
+            disabled={busy}
             onClick={() => void save()}
           >
             {busy ? t("snippets.saving") : t("common.save")}
           </button>
           {saved && <span className="small muted">{t("settings.saved")}</span>}
         </div>
-        {managed && <p className="small muted">{t("snippets.managed")}</p>}
       </section>
 
       <section className="card">

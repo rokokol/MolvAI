@@ -76,11 +76,12 @@ export const api = {
   stopDaemon: () => invoke<void>("stop_daemon"),
 
   getConfig: () => invoke<Config>("get_config"),
-  /** The config is a read-only file from the Nix store, so the settings page is hidden */
+  /** A managed config has a declarative file already in place, so it is not a first run */
   configManaged: () => invoke<boolean>("config_managed"),
   /** The resolved interface language; the Rust side resolves it so the tray agrees */
   uiLanguage: () => invoke<string>("ui_language"),
   getConfigPath: () => invoke<string>("get_config_path"),
+  getRuntimeConfigPath: () => invoke<string | null>("get_runtime_config_path"),
   isFirstRun: () => invoke<boolean>("is_first_run"),
   saveConfig: (config: Config) => invoke<void>("save_config", { config }),
   exportConfig: () => invoke<string>("export_config"),
@@ -90,7 +91,6 @@ export const api = {
   writeHyprlandBinds: () => invoke<HyprlandBinds>("write_hyprland_binds"),
   setAutostart: (enabled: boolean) => invoke<boolean>("set_autostart", { enabled }),
   getAutostart: () => invoke<boolean>("get_autostart"),
-  toggleHotkeysPaused: () => invoke<boolean>("toggle_hotkeys_paused"),
 
   historyList: (filter: Partial<HistoryFilter>) =>
     invoke<Entry[]>("history_list", {

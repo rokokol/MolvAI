@@ -19,14 +19,12 @@ use crate::domain::text::Style;
 pub const FALLBACK_STYLE: &str = "cleanup";
 
 /// Common tail of the system prompt, the only protection against a talkative model
-const COMMON_RULES: &str = " Сохрани язык входного текста. Не добавляй фактов, которых нет в \
-    исходном тексте, и ничего не выдумывай. Выведи только результат без пояснений, кавычек и \
-    вступлений.";
+const COMMON_RULES: &str =
+    " Сохрани язык. Не добавляй фактов. Выведи только результат без пояснений.";
 
 /// The same tail for the English prompt, which also serves every language without its own
-const COMMON_RULES_EN: &str = " Keep the language of the input text. Do not add facts that \
-    are not in the source text, and do not invent anything. Output only the result, without \
-    explanations, quotes or introductions.";
+const COMMON_RULES_EN: &str =
+    " Keep the language. Add no facts. Return only the result without explanations.";
 
 /// A style that calls the model, with an English prompt and a Russian one
 fn model_style(id: &str, name: &str, en: &str, ru: &str) -> Style {
@@ -51,54 +49,19 @@ fn builtin() -> Vec<Style> {
         model_style(
             "cleanup",
             "Cleanup",
-            "You edit a transcript of speech. Fix the punctuation, the letter case and obvious \
-             recognition errors, and remove slips and filler words (\"um\", \"uh\", \"like\", \
-             \"you know\"). Remove nothing else: every other word, including forms of address, \
-             names and terms of endearment, must stay in place. Keep the meaning, the order of \
-             thoughts and the terminology unchanged.",
-            "Ты редактируешь расшифровку устной речи. Исправь пунктуацию, регистр и \
-             очевидные ошибки распознавания, убери оговорки и слова-паразиты («ну», «это \
-             самое», «как бы», «типа»). Больше не удаляй ничего: каждое остальное слово, \
-             включая обращения, имена и ласковые слова, должно остаться на месте. Смысл, \
-             порядок мыслей и терминологию сохрани без изменений.",
-        ),
-        model_style(
-            "messenger",
-            "Messenger",
-            "You turn a transcript of speech into a short messenger message: one to three \
-             sentences, a lively conversational tone, no greeting and no signature. Remove \
-             repetitions and slips, keep the point.",
-            "Ты превращаешь расшифровку речи в короткое сообщение для мессенджера: одна-три \
-             фразы, живой разговорный тон, без приветствий и подписи. Убери повторы и \
-             оговорки, оставь суть.",
-        ),
-        model_style(
-            "mail",
-            "Email",
-            "You turn a transcript of speech into a coherent paragraph of a business email: full \
-             sentences, a polite neutral tone. Add a greeting and a signature only if they were \
-             spoken.",
-            "Ты превращаешь расшифровку речи в связный абзац делового письма: полные \
-             предложения, вежливый нейтральный тон. Приветствие и подпись добавляй только \
-             если они прозвучали.",
-        ),
-        model_style(
-            "code",
-            "Code",
-            "You write a technical note from a transcript of speech. Keep identifiers, file \
-             names, flags, commands and code fragments exactly in the form and letter case in \
-             which they were spoken, and do not translate them.",
-            "Ты оформляешь техническую заметку по расшифровке речи. Идентификаторы, имена \
-             файлов, флаги, команды и фрагменты кода оставляй ровно в том виде и регистре, \
-             в каком они произнесены, и не переводи их.",
+            "Edit a speech transcript. Fix punctuation, case and recognition errors. Remove \
+             slips and fillers. Keep all other words, meaning and terms.",
+            "Отредактируй расшифровку речи. Исправь пунктуацию, регистр и ошибки \
+             распознавания. Убери оговорки и слова-паразиты. Сохрани остальные слова, \
+             смысл и термины.",
         ),
         model_style(
             "formal",
             "Formal",
-            "You bring a transcript of speech to a formal business style: full sentences, \
-             without colloquial phrases, contractions and emotional coloring.",
-            "Ты приводишь расшифровку речи к официально-деловому стилю: полные предложения, \
-             без разговорных оборотов, сокращений и эмоциональной окраски.",
+            "Rewrite a speech transcript in formal business style. Use full sentences. Drop \
+             colloquial words, contractions and emotional colouring.",
+            "Перепиши расшифровку речи в официально-деловом стиле. Полные предложения. \
+             Убери разговорные обороты, сокращения и эмоции.",
         ),
     ]
 }
@@ -212,9 +175,10 @@ mod tests {
     #[test]
     fn all_builtin_styles_are_present_and_verbatim_skips_the_model() {
         let styles = Styles::default();
-        for id in ["verbatim", "cleanup", "messenger", "mail", "code", "formal"] {
+        for id in ["verbatim", "cleanup", "formal"] {
             assert!(styles.get(id).is_some(), "no style {id}");
         }
+        assert_eq!(styles.all().len(), 3);
         assert!(!styles.get("verbatim").unwrap().uses_llm);
         assert!(styles.get("cleanup").unwrap().uses_llm);
     }
@@ -226,12 +190,12 @@ mod tests {
                 continue;
             }
             let ru = style.prompt_for("ru");
-            assert!(ru.contains("язык входного текста"), "{}", style.id);
+            assert!(ru.contains("Сохрани язык"), "{}", style.id);
             assert!(ru.contains("Не добавляй фактов"), "{}", style.id);
             assert!(ru.contains("только результат"), "{}", style.id);
             let en = style.prompt_for("en");
-            assert!(en.contains("language of the input text"), "{}", style.id);
-            assert!(en.contains("Do not add facts"), "{}", style.id);
+            assert!(en.contains("Keep the language"), "{}", style.id);
+            assert!(en.contains("Add no facts"), "{}", style.id);
             assert!(en.contains("only the result"), "{}", style.id);
         }
     }
@@ -260,12 +224,17 @@ mod tests {
     }
 
     #[test]
-    fn the_code_style_protects_identifiers() {
-        let style = Styles::default().get("code").unwrap().clone();
-        assert!(style.prompt_for("ru").contains("Идентификаторы"));
-        assert!(style.prompt_for("ru").contains("регистре"));
-        assert!(style.prompt_for("en").contains("Keep identifiers"));
-        assert!(style.prompt_for("en").contains("letter case"));
+    fn the_cleanup_style_keeps_words_it_did_not_remove() {
+        let style = Styles::default().get("cleanup").unwrap().clone();
+        assert!(style.prompt_for("ru").contains("Сохрани остальные слова"));
+        assert!(style.prompt_for("en").contains("Keep all other words"));
+    }
+
+    #[test]
+    fn the_formal_style_demands_full_sentences() {
+        let style = Styles::default().get("formal").unwrap().clone();
+        assert!(style.prompt_for("ru").contains("Полные предложения"));
+        assert!(style.prompt_for("en").contains("full sentences"));
     }
 
     #[test]
@@ -319,13 +288,14 @@ mod tests {
             styles.get("cleanup").unwrap().prompt_for("ru"),
             "My prompt."
         );
-        assert_eq!(styles.all().len(), 7);
+        assert_eq!(styles.all().len(), 4);
     }
 
     #[test]
     fn next_walks_the_styles_in_a_circle() {
         let styles = Styles::default();
         assert_eq!(styles.next("verbatim"), "cleanup");
+        assert_eq!(styles.next("cleanup"), "formal");
         assert_eq!(styles.next("formal"), "verbatim");
         // An unknown style returns to the start of the list
         assert_eq!(styles.next("no such style"), "verbatim");
@@ -334,21 +304,18 @@ mod tests {
     #[test]
     fn the_window_class_picks_the_style() {
         let mut by_app = std::collections::BTreeMap::new();
-        by_app.insert("kitty".to_string(), "code".to_string());
-        by_app.insert("telegram".to_string(), "messenger".to_string());
+        by_app.insert("kitty".to_string(), "verbatim".to_string());
+        by_app.insert("telegram".to_string(), "formal".to_string());
         let cfg = StyleConfig {
             default: "cleanup".into(),
             by_app,
             custom: Vec::new(),
         };
         let styles = Styles::default();
-        assert_eq!(styles.for_app(Some("kitty"), &cfg), "code");
-        assert_eq!(styles.for_app(Some("Kitty"), &cfg), "code");
-        // The window class is longer than the rule: `org.telegram.desktop` is a messenger too
-        assert_eq!(
-            styles.for_app(Some("org.telegram.desktop"), &cfg),
-            "messenger"
-        );
+        assert_eq!(styles.for_app(Some("kitty"), &cfg), "verbatim");
+        assert_eq!(styles.for_app(Some("Kitty"), &cfg), "verbatim");
+        // The window class is longer than the rule
+        assert_eq!(styles.for_app(Some("org.telegram.desktop"), &cfg), "formal");
         assert_eq!(styles.for_app(Some("gimp"), &cfg), "cleanup");
         assert_eq!(styles.for_app(None, &cfg), "cleanup");
     }
@@ -356,15 +323,18 @@ mod tests {
     #[test]
     fn an_explicit_choice_beats_the_window_rule() {
         let mut by_app = std::collections::BTreeMap::new();
-        by_app.insert("kitty".to_string(), "code".to_string());
+        by_app.insert("kitty".to_string(), "verbatim".to_string());
         let cfg = StyleConfig {
             default: "cleanup".into(),
             by_app,
             custom: Vec::new(),
         };
         let styles = Styles::default();
-        assert_eq!(styles.resolve(Some("mail"), Some("kitty"), &cfg).id, "mail");
-        assert_eq!(styles.resolve(None, Some("kitty"), &cfg).id, "code");
+        assert_eq!(
+            styles.resolve(Some("formal"), Some("kitty"), &cfg).id,
+            "formal"
+        );
+        assert_eq!(styles.resolve(None, Some("kitty"), &cfg).id, "verbatim");
     }
 
     #[test]

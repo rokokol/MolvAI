@@ -33,8 +33,8 @@ pub mod stats;
 pub mod tray;
 
 use std::path::PathBuf;
-use std::sync::{Mutex, MutexGuard, PoisonError};
-use std::time::Duration;
+use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
+use std::time::{Duration, Instant};
 
 use molva_core::ipc::{Command, Event};
 use serde::Serialize;
@@ -76,14 +76,49 @@ fn window_hidden(app: &AppHandle) -> bool {
     !visible || minimized
 }
 
-/// A system toast for work that happens while the window is hidden
+/// The last toast text, so two reports of one failure do not open two banners
+static LAST_TOAST: Mutex<Option<(String, Instant)>> = Mutex::new(None);
+
 /// The app icon as a file for the notification server: the plugin takes a path, not bytes
 fn notification_icon() -> Option<PathBuf> {
-    // A fresh path and a fresh write: a notification server caches an icon by its path, and a
-    // stale temp file from an older build would keep the old blue mark
-    let path = std::env::temp_dir().join("molvai-notification-icon-pink.png");
-    std::fs::write(&path, include_bytes!("../icons/notification.png")).ok()?;
-    Some(path)
+    static ICON: OnceLock<Option<PathBuf>> = OnceLock::new();
+    ICON.get_or_init(|| {
+        let bytes = include_bytes!("../icons/notification.png");
+        // A server caches the image by its path. A name made from the bytes keeps an older
+        // build from showing its old mark under the path of a new one
+        let digest = bytes.iter().fold(0xcbf2_9ce4_8422_2325u64, |hash, byte| {
+            (hash ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3)
+        });
+        let directory = molva_core::Config::data_dir().ok()?;
+        if let Err(err) = std::fs::create_dir_all(&directory) {
+            tracing::warn!(%err, "the notification icon directory was not created");
+            return None;
+        }
+        let name = format!("notification-icon-{digest:016x}.png");
+        // Only the current icon stays on disk. Older builds used other paths, and a server
+        // that caches by path would otherwise keep their marks around
+        if let Ok(entries) = std::fs::read_dir(&directory) {
+            for entry in entries.flatten() {
+                if entry.file_name().to_string_lossy() != name.as_str()
+                    && entry
+                        .file_name()
+                        .to_string_lossy()
+                        .starts_with("notification-icon-")
+                {
+                    let _ = std::fs::remove_file(entry.path());
+                }
+            }
+        }
+        let path = directory.join(name);
+        match std::fs::write(&path, bytes) {
+            Ok(()) => Some(path),
+            Err(err) => {
+                tracing::warn!(%err, "the notification icon was not written");
+                None
+            }
+        }
+    })
+    .clone()
 }
 
 fn system_notification(app: &AppHandle, message: &str, hint: Option<&str>) {
@@ -92,6 +127,15 @@ fn system_notification(app: &AppHandle, message: &str, hint: Option<&str>) {
         Some(hint) => format!("{message}\n{}: {hint}", i18n::t("common.nextStep")),
         None => message.to_string(),
     };
+    {
+        let mut last = lock(&LAST_TOAST);
+        if last.as_ref().is_some_and(|(previous, at)| {
+            *previous == body && at.elapsed() < Duration::from_secs(2)
+        }) {
+            return;
+        }
+        *last = Some((body.clone(), Instant::now()));
+    }
     let mut builder = app.notification().builder().title("MolvAI").body(&body);
     if let Some(icon) = notification_icon() {
         builder = builder.icon(icon.to_string_lossy());
@@ -144,12 +188,9 @@ fn handle_event(app: &AppHandle, event: Event) {
         Event::Hypothesis { text } => {
             let _ = app.emit("molva://hypothesis", text);
         }
+        // The daemon reports a failed phrase through an error event as well. The entry only
+        // feeds the journal view, where its own error card names the reason
         Event::Entry { entry } => {
-            // A phrase that reached the field with a failed model or paste is not silent: the
-            // entry carries the reason, and the window must show it
-            if let Some(error) = entry.error.as_deref() {
-                notify_error(app, error, None);
-            }
             let _ = app.emit("molva://entry", entry);
         }
         Event::Error {
@@ -159,28 +200,12 @@ fn handle_event(app: &AppHandle, event: Event) {
         } => {
             tracing::warn!(?code, %message, "daemon error");
             let title = i18n::daemon_error_title(code);
-            // The window gets the detailed daemon text. A hidden window gets one short toast
-            // in the interface language, without the English daemon detail
             let detailed = format!("{title}: {message}");
-            if window_hidden(app) {
-                system_notification(app, &title, None);
-            }
-            let _ = app.emit(
-                "molva://error",
-                serde_json::json!({ "message": detailed, "hint": hint }),
-            );
+            notify_error(app, &detailed, hint.as_deref());
         }
         Event::StyleChanged { style } => {
             let state = app.state::<AppState>();
-            if state.managed() {
-                state.remember_style(&style);
-            } else {
-                let mut config = state.config();
-                config.style.default.clone_from(&style);
-                if let Err(err) = state.replace_config(config) {
-                    tracing::warn!(%err, "the style was not written to the settings file");
-                }
-            }
+            state.set_style(&style);
             let name = commands::builtin_style_options(&state.config())
                 .into_iter()
                 .find(|(id, _)| id == &style)
@@ -336,6 +361,7 @@ pub fn run() {
             commands::get_config,
             commands::config_managed,
             commands::get_config_path,
+            commands::get_runtime_config_path,
             commands::is_first_run,
             commands::save_config,
             commands::export_config,
@@ -345,7 +371,6 @@ pub fn run() {
             commands::write_hyprland_binds,
             commands::set_autostart,
             commands::get_autostart,
-            commands::toggle_hotkeys_paused,
             commands::history_list,
             commands::history_apps,
             commands::search_files,

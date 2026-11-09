@@ -446,15 +446,19 @@ mod tests {
 
         fn script(dir: &Path, lua_reply: &str, legacy_reply: &str) -> PathBuf {
             let path = dir.join("hyprctl");
+            let staged = dir.join("hyprctl.tmp");
             let text = format!(
                 "#!/bin/sh\ncase \"$2\" in\n  hl.dsp.*) echo '{lua_reply}' ;;\n  *) echo '{legacy_reply}' ;;\nesac\n"
             );
-            std::fs::write(&path, text).expect("the fake hyprctl is written");
-            let mut mode = std::fs::metadata(&path)
+            // A file written in place can still be open for writing when the kernel starts
+            // the interpreter, and exec then answers ETXTBSY. A rename leaves no writer
+            std::fs::write(&staged, text).expect("the fake hyprctl is written");
+            let mut mode = std::fs::metadata(&staged)
                 .expect("the fake exists")
                 .permissions();
             mode.set_mode(0o755);
-            std::fs::set_permissions(&path, mode).expect("the fake is executable");
+            std::fs::set_permissions(&staged, mode).expect("the fake is executable");
+            std::fs::rename(&staged, &path).expect("the fake hyprctl is named");
             path
         }
 

@@ -23,6 +23,9 @@ use crate::lock;
 /// How many bytes one response carries at most when a client asks for everything
 const CHUNK: usize = 64 * 1024;
 
+/// How many file identifiers the server keeps for this run
+const MEDIA_URL_LIMIT: usize = 32;
+
 /// The MIME type of a file, from its extension; a player needs a truthful one to pick a pipeline
 pub fn content_type(path: &Path) -> &'static str {
     let extension = path
@@ -144,7 +147,14 @@ impl MediaServer {
     /// The URL that plays this file, and the identifier it keeps afterwards
     pub fn allow(&self, path: &Path) -> String {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        lock(&self.files).insert(id, path.to_path_buf());
+        let mut files = lock(&self.files);
+        files.insert(id, path.to_path_buf());
+        // A preview asks for a new URL each time it opens, so old identifiers can go
+        if files.len() > MEDIA_URL_LIMIT {
+            if let Some(oldest) = files.keys().min().copied() {
+                files.remove(&oldest);
+            }
+        }
         format!(
             "http://127.0.0.1:{}{}",
             self.port,

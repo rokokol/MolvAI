@@ -101,8 +101,8 @@ fn handle(ctx: &Context, request: &Value) -> Option<Value> {
     })
 }
 
-/// The tool catalogue. A settings writer is absent on purpose: on NixOS the config is a
-/// read-only store file, and on other systems the user edits it where they can see it
+/// The tool catalogue. A settings writer is absent on purpose: the GUI and `molva config` own
+/// the settings, and an MCP client does not change them
 fn tools() -> Value {
     json!([
         {

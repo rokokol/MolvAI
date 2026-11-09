@@ -37,25 +37,23 @@ const DEFAULTS = {
   rangeDb: 70,
 };
 
-/** Mix the decoded channels down: the spectrogram shows the signal, not the stereo image */
-export function monoMix(buffer: {
-  numberOfChannels: number;
-  length: number;
-  getChannelData: (channel: number) => Float32Array;
-}): Float32Array {
-  const channels = Math.max(1, buffer.numberOfChannels);
-  const first = buffer.getChannelData(0);
-  if (channels === 1) {
-    return first;
+/** Decoded audio, or samples of one channel. A long stereo file needs no mixed copy */
+export type SpectrogramInput =
+  | Float32Array
+  | {
+      numberOfChannels: number;
+      length: number;
+      getChannelData: (channel: number) => Float32Array;
+    };
+
+/** Channel arrays of the input; the downmix happens inside each FFT window */
+function channelsOf(input: SpectrogramInput): Float32Array[] {
+  if (input instanceof Float32Array) {
+    return [input];
   }
-  const mixed = new Float32Array(buffer.length);
-  for (let channel = 0; channel < channels; channel += 1) {
-    const data = buffer.getChannelData(channel);
-    for (let index = 0; index < mixed.length; index += 1) {
-      mixed[index] += data[index] / channels;
-    }
-  }
-  return mixed;
+  return Array.from({ length: Math.max(1, input.numberOfChannels) }, (_, channel) =>
+    input.getChannelData(channel),
+  );
 }
 
 /** In-place iterative radix-2 FFT; the length must be a power of two */
@@ -139,10 +137,12 @@ function rowBands(
  * normalized per file: the loudest band of the file is 255, `rangeDb` below it is 0.
  */
 export function computeSpectrogram(
-  samples: Float32Array,
+  input: SpectrogramInput,
   sampleRate: number,
   options: SpectrogramOptions = {},
 ): Spectrogram {
+  const channels = channelsOf(input);
+  const length = channels[0]?.length ?? 0;
   const cols = Math.max(1, Math.floor(options.cols ?? DEFAULTS.cols));
   const rows = Math.max(1, Math.floor(options.rows ?? DEFAULTS.rows));
   const fftSize = nextPowerOfTwo(
@@ -157,7 +157,7 @@ export function computeSpectrogram(
     minHz,
     maxHz,
   };
-  if (samples.length === 0 || !Number.isFinite(sampleRate) || sampleRate <= 0) {
+  if (length === 0 || !Number.isFinite(sampleRate) || sampleRate <= 0) {
     return empty;
   }
   const window = new Float64Array(fftSize);
@@ -168,13 +168,20 @@ export function computeSpectrogram(
   const real = new Float64Array(fftSize);
   const imag = new Float64Array(fftSize);
   const magnitudes = new Float32Array(cols * rows);
-  const span = samples.length - fftSize;
+  const span = length - fftSize;
   const hop = cols > 1 ? Math.max(1, Math.floor(span / (cols - 1))) : 1;
+  const gain = 1 / channels.length;
   for (let col = 0; col < cols; col += 1) {
     const start =
       span <= 0 ? 0 : Math.min(span, Math.max(0, Math.round(col * hop)));
     for (let i = 0; i < fftSize; i += 1) {
-      const sample = start + i < samples.length ? samples[start + i] : 0;
+      const index = start + i;
+      let sample = 0;
+      if (index < length) {
+        for (let channel = 0; channel < channels.length; channel += 1) {
+          sample += channels[channel][index] * gain;
+        }
+      }
       real[i] = sample * window[i];
       imag[i] = 0;
     }
@@ -204,7 +211,7 @@ export function computeSpectrogram(
       cols,
       rows,
       values,
-      durationMs: (samples.length / sampleRate) * 1000,
+      durationMs: (length / sampleRate) * 1000,
       minHz,
       maxHz,
     };
@@ -220,7 +227,7 @@ export function computeSpectrogram(
     cols,
     rows,
     values,
-    durationMs: (samples.length / sampleRate) * 1000,
+    durationMs: (length / sampleRate) * 1000,
     minHz,
     maxHz,
   };

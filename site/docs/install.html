@@ -114,10 +114,8 @@ cargo build --release --bin molva
 <p data-ru="С Home Manager модуль ставит &lt;code&gt;molva&lt;/code&gt; и запускает &lt;code&gt;molva daemon&lt;/code&gt; как пользовательский сервис графической сессии. Под Hyprland с конфигом на Lua он ещё пишет и подключает привязки клавиш">With Home Manager the module installs <code>molva</code> and runs <code>molva daemon</code> as a user service of the graphical session. Under Hyprland with a Lua config it also writes and includes the hotkey binds</p>
 <pre data-lang="nix"><code># flake inputs: molvai.url = "github:rokokol/MolvAI";
 imports = [ inputs.molvai.homeModules.default ];
-programs.molvai.enable = true;
-# баннер о том, что настройками управляет Nix; false по умолчанию
-programs.molvai.showNotice = true;</code></pre>
-<p data-ru="В этом режиме файл настроек и веса рендерятся в хранилище. Что именно это меняет, объясняет &lt;a href=&quot;./settings.html&quot;&gt;страница настроек&lt;/a&gt;">In this mode the settings file and the weights are rendered into the store. The <a href="./settings.html">settings page</a> explains what that changes</p>
+programs.molvai.enable = true;</code></pre>
+<p data-ru="В этом режиме файл настроек и веса рендерятся в хранилище. Настройки остаются редактируемыми во время работы: изменение попадает в &lt;code&gt;runtime.toml&lt;/code&gt; рядом с управляемым файлом и держится, пока переключение не изменит декларативную конфигурацию. Подробности объясняет &lt;a href=&quot;./settings.html&quot;&gt;страница настроек&lt;/a&gt;">In this mode the settings file and the weights are rendered into the store. The settings stay editable at runtime: a change goes to <code>runtime.toml</code> beside the managed file and stays until a rebuild changes the declarative config. The <a href="./settings.html">settings page</a> explains the details</p>
 
 <h2 data-ru="Установка без Nix">Install without Nix</h2>
 <p data-ru="Скрипт сам ничего не устанавливает. Он находит недостающие зависимости, печатает команды для твоего дистрибутива, а решение оставляет тебе">The script installs nothing by itself. It finds the missing dependencies, prints the commands for your distribution, and leaves the decision to you</p>

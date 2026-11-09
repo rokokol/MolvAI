@@ -102,11 +102,7 @@ mod platform {
     /// Press and release: a key hold is start/stop, a short press is toggle/cancel
     pub(crate) fn on_shortcut<R: Runtime>(app: &AppHandle<R>, pressed: bool, binding: &str) {
         let state = app.state::<AppState>();
-        if state.hotkeys_paused() {
-            return;
-        }
-        let config = state.config();
-        let hotkeys = &config.hotkeys;
+        let hotkeys = state.hotkeys();
         let command = if binding == hotkeys.push_to_talk {
             if pressed {
                 Command::RecordStart {
@@ -135,6 +131,15 @@ mod platform {
         } else {
             return;
         };
+        // A pause stops new phrases, not the one already recording: the release, cancel and
+        // any other key that ends a phrase must still reach the daemon
+        let starts_work = matches!(
+            &command,
+            Command::RecordStart { .. } | Command::RecordToggle { .. } | Command::StyleNext
+        );
+        if starts_work && state.hotkeys_paused() {
+            return;
+        }
         if let Err(err) = crate::ipc::request(command) {
             tracing::warn!(%err, "hotkey did not reach the daemon");
         }

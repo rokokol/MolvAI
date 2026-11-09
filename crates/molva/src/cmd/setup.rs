@@ -90,11 +90,11 @@ fn sway(hotkeys: &HotkeysConfig) -> anyhow::Result<String> {
     Ok(format!(
         "# MolvAI — ~/.config/sway/config\n\
          # --no-repeat stops the auto-repeat from starting the recording again\n\
-         bindsym --no-repeat {ptt} exec molva record start\n\
+         bindsym --no-repeat {ptt} exec molva record start --hotkey\n\
          bindsym --release {ptt} exec molva record stop\n\
          \n\
-         bindsym --no-repeat {toggle} exec molva record toggle\n\
-         bindsym --no-repeat {command} exec molva record toggle --mode command\n\
+         bindsym --no-repeat {toggle} exec molva record toggle --hotkey\n\
+         bindsym --no-repeat {command} exec molva record toggle --mode command --hotkey\n\
          bindsym --no-repeat {cancel} exec molva record cancel\n\
          \n\
          exec molva daemon\n"
@@ -108,7 +108,7 @@ fn kde(toggle: &HotkeySpec) -> String {
          # the working mode is the toggle\n\
          #\n\
          # System Settings → Shortcuts → Add Command:\n\
-         #   command:     molva record toggle\n\
+         #   command:     molva record toggle --hotkey\n\
          #   shortcut:    {toggle}\n\
          #\n\
          # Autostart of the daemon: System Settings → Autostart → molva daemon\n",
@@ -126,7 +126,7 @@ fn gnome(toggle: &HotkeySpec) -> String {
          gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:{path} \\\n\
          \x20   name 'MolvAI toggle'\n\
          gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:{path} \\\n\
-         \x20   command 'molva record toggle'\n\
+         \x20   command 'molva record toggle --hotkey'\n\
          gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:{path} \\\n\
          \x20   binding '{binding}'\n",
         binding = gnome_combo(toggle),
@@ -216,7 +216,7 @@ mod tests {
         };
         let text = snippet(Target::Sway, &hotkeys, Some("F9")).unwrap();
         assert!(
-            text.contains("bindsym --no-repeat F9 exec molva record start"),
+            text.contains("bindsym --no-repeat F9 exec molva record start --hotkey"),
             "{text}"
         );
         assert!(
@@ -228,7 +228,7 @@ mod tests {
             "{text}"
         );
         assert!(
-            text.contains("molva record toggle --mode command"),
+            text.contains("molva record toggle --mode command --hotkey"),
             "{text}"
         );
     }

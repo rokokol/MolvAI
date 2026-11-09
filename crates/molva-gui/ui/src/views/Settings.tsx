@@ -56,8 +56,6 @@ import { styleIssues } from "../settings/styles";
 interface Props extends ViewProps {
   theme: Theme;
   onThemeChange: (theme: Theme) => void;
-  /** The config comes from the Nix store: the page is visible only for inspection */
-  managed?: boolean;
 }
 
 const OUTPUT_MODES = ["auto", "paste", "type", "clipboard"];
@@ -142,7 +140,6 @@ export default function Settings({
   onError,
   theme,
   onThemeChange,
-  managed = false,
 }: Props) {
   const { t, lang } = useI18n();
   const [draft, setDraft] = useState<Config | null>(config);
@@ -162,6 +159,7 @@ export default function Settings({
   const [sttProbe, setSttProbe] = useState<ProbeState<SttProbeReport>>(idleProbe());
   const [autostart, setAutostart] = useState(false);
   const [configPath, setConfigPath] = useState("");
+  const [runtimePath, setRuntimePath] = useState<string | null>(null);
   const [hyprland, setHyprland] = useState<HyprlandBinds | null>(null);
   const [includeCopied, setIncludeCopied] = useState(false);
   const [importPath, setImportPath] = useState("");
@@ -182,6 +180,10 @@ export default function Settings({
   useEffect(() => {
     api.getAutostart().then(setAutostart).catch(() => setAutostart(false));
     api.getConfigPath().then(setConfigPath).catch(() => setConfigPath(""));
+    api
+      .getRuntimeConfigPath()
+      .then(setRuntimePath)
+      .catch(() => setRuntimePath(null));
     api
       .sttModels()
       .then((list) => {
@@ -340,12 +342,6 @@ export default function Settings({
       <h1>{t("settings.title")}</h1>
 
       <section className="card settings-section settings-actions">
-        {managed && config?.gui.show_managed_notice === true && (
-          <div className="notice" role="status">
-            <strong>{t("app.managed")}</strong>
-            <p>{t("app.managedHint")}</p>
-          </div>
-        )}
         {styleProblems.length > 0 && (
           <div className="notice warning" role="alert">
             {t("settings.styles.blocked")}
@@ -356,7 +352,7 @@ export default function Settings({
             type="button"
             className="primary"
             onClick={() => void save()}
-            disabled={managed || styleProblems.length > 0}
+            disabled={styleProblems.length > 0}
           >
             {t("common.save")}
           </button>
@@ -364,7 +360,6 @@ export default function Settings({
             type="button"
             className="danger"
             onClick={() => void reset()}
-            disabled={managed}
           >
             {t("common.reset")}
           </button>
@@ -395,7 +390,7 @@ export default function Settings({
           </div>
           <button
             type="button"
-            disabled={managed || importPath.trim() === ""}
+            disabled={importPath.trim() === ""}
             onClick={() =>
               api
                 .importConfig(importPath.trim())
@@ -416,7 +411,7 @@ export default function Settings({
         </div>
       </section>
 
-      <fieldset className="settings-form" disabled={managed}>
+      <fieldset className="settings-form">
 
       {invalid && (
         <div className="notice error" role="alert">
@@ -481,6 +476,11 @@ export default function Settings({
         {configPath && (
           <p className="small muted">
             {t("settings.configPath")}: <span className="mono">{configPath}</span>
+          </p>
+        )}
+        {runtimePath && (
+          <p className="small muted">
+            {t("settings.runtimePath")}: <span className="mono">{runtimePath}</span>
           </p>
         )}
 
@@ -694,6 +694,13 @@ export default function Settings({
           )}
         </div>
 
+        <div className="field">
+          <button type="button" disabled={sttProbe.pending} onClick={() => void testStt()}>
+            {sttProbe.pending ? t("settings.sttTest.testing") : t("settings.sttTest.button")}
+          </button>
+          <p className="small muted">{t("settings.sttTest.hint")}</p>
+          <SttProbeResult state={sttProbe} />
+        </div>
 
         {engine === REMOTE_ENGINE ? (
           <>
@@ -1081,6 +1088,13 @@ export default function Settings({
           </>
         )}
 
+        <div className="field">
+          <button type="button" disabled={llmProbe.pending} onClick={() => void testLlm()}>
+            {llmProbe.pending ? t("settings.llm.testing") : t("settings.llm.test")}
+          </button>
+          <p className="small muted">{t("settings.llm.testHint")}</p>
+          <LlmProbeResult state={llmProbe} />
+        </div>
 
         {llmCloud && (
           <>
@@ -1465,23 +1479,6 @@ export default function Settings({
       </Section>
 
       </fieldset>
-
-      <Section title={t("settings.tests")}>
-        <div className="field">
-          <button type="button" disabled={sttProbe.pending} onClick={() => void testStt()}>
-            {sttProbe.pending ? t("settings.sttTest.testing") : t("settings.sttTest.button")}
-          </button>
-          <p className="small muted">{t("settings.sttTest.hint")}</p>
-          <SttProbeResult state={sttProbe} />
-        </div>
-        <div className="field">
-          <button type="button" disabled={llmProbe.pending} onClick={() => void testLlm()}>
-            {llmProbe.pending ? t("settings.llm.testing") : t("settings.llm.test")}
-          </button>
-          <p className="small muted">{t("settings.llm.testHint")}</p>
-          <LlmProbeResult state={llmProbe} />
-        </div>
-      </Section>
     </>
   );
 }

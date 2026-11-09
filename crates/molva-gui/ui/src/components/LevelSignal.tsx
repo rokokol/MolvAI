@@ -8,6 +8,7 @@
 import { useEffect, useState } from "react";
 
 import { useI18n } from "../i18n";
+import { useLevel } from "./level-store";
 import {
   signalPeak,
   signalPercent,
@@ -17,7 +18,8 @@ import {
 /** How many columns the window shows */
 const COLUMNS = 48;
 
-export default function LevelSignal({ level, active }: { level: number; active: boolean }) {
+export default function LevelSignal({ active }: { active: boolean }) {
+  const level = useLevel();
   const { t } = useI18n();
   const [history, setHistory] = useState<number[]>([]);
 

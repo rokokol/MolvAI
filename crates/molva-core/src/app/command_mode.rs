@@ -7,19 +7,15 @@
 //! in the settings replaces the built-in one for every language
 
 /// The built-in system prompt for a Russian instruction
-const SYSTEM_RU: &str = "Ты правишь фрагмент текста по короткой инструкции пользователя. Тебе \
-    дают ИНСТРУКЦИЮ и ТЕКСТ. Примени инструкцию к тексту и верни только получившийся текст: без \
-    заголовков, без markdown, без кавычек, без пояснений и без слов вроде «вот результат». Не \
-    добавляй ничего, чего нет в тексте, сохраняй язык текста, если инструкция не велит его \
-    сменить. Если инструкцию выполнить нельзя, верни текст без изменений.";
+const SYSTEM_RU: &str = "Примени ИНСТРУКЦИЮ к ТЕКСТУ. Верни только получившийся текст: без \
+    заголовков, markdown, кавычек и пояснений. Не добавляй фактов. Сохрани язык текста, если \
+    инструкция не велит его сменить. Если инструкцию выполнить нельзя, верни текст без \
+    изменений.";
 
 /// The built-in system prompt for an instruction in any other language
-const SYSTEM_EN: &str = "You edit a fragment of text by a short instruction from the user. You \
-    get an INSTRUCTION and a TEXT. Apply the instruction to the text and return only the \
-    resulting text: no headings, no markdown, no quotes, no explanations and no words such as \
-    \"here is the result\". Add nothing that is not in the text, and keep the language of the \
-    text unless the instruction tells you to change it. If you cannot carry out the instruction, return the \
-    text unchanged.";
+const SYSTEM_EN: &str = "Apply the INSTRUCTION to the TEXT. Return only the resulting text: no \
+    headings, markdown, quotes or explanations. Add no facts. Keep the language of the text \
+    unless the instruction changes it. If you cannot apply it, return the text unchanged.";
 
 /// The system prompt: the one from the settings when it is set, else the built-in one in `lang`
 pub fn system_prompt(configured: &str, lang: &str) -> String {
@@ -36,19 +32,11 @@ pub fn system_prompt(configured: &str, lang: &str) -> String {
 /// The request to the model
 ///
 /// The instruction comes first, then the text, so the model does not take a fragment for the
-/// task. The reply must be text only, without headings, explanations and quotes
+/// task. The system prompt carries the rules, so the request carries only the data
 pub fn request(lang: &str, instruction: &str, selection: &str) -> String {
     match lang {
-        "ru" => format!(
-            "ИНСТРУКЦИЯ: {instruction}\n\nТЕКСТ:\n{selection}\n\n\
-             Верни только текст после применения инструкции, одной репликой, без \
-             заголовков, пояснений, кавычек и markdown."
-        ),
-        _ => format!(
-            "INSTRUCTION: {instruction}\n\nTEXT:\n{selection}\n\n\
-             Return only the text after you apply the instruction, as one reply, without \
-             headings, explanations, quotes or markdown."
-        ),
+        "ru" => format!("ИНСТРУКЦИЯ: {instruction}\n\nТЕКСТ:\n{selection}"),
+        _ => format!("INSTRUCTION: {instruction}\n\nTEXT:\n{selection}"),
     }
 }
 

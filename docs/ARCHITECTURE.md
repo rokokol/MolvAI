@@ -77,7 +77,7 @@ phrase = "Ответь *"
 replacement = "Добрый день! Уже подготовил ответ."
 ```
 
-The Snippets tab of the window edits the same list. The page leaves the settings untouched until Save writes the whole file, and a managed Nix config opens it read-only
+The Snippets tab of the window edits the same list. The page leaves the settings untouched until Save writes them, and a managed Nix config takes the change as an override in `runtime.toml` beside the managed file
 
 A chunk boundary always falls in the middle of a pause, never on a timer, because a cut inside a syllable makes the model print a wrong word. The pause that counts is `stt.chunk_pause_ms`, 700 ms by default. After ten seconds of one chunk the requirement relaxes to 200 ms: a long sentence may hold no pause of 700 ms, and the wait for one then costs more than a less ideal boundary. There is no forced cut, so a stream without an acceptable pause keeps growing, and such a phrase pays for it with memory and a late first hypothesis
 

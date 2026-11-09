@@ -387,7 +387,10 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
         "pause" => {
             let state = app.state::<AppState>();
             let paused = !state.hotkeys_paused();
-            state.set_hotkeys_paused(paused);
+            if let Err(err) = state.set_hotkeys_paused(paused) {
+                crate::notify_error(app, &err.to_string(), None);
+                return;
+            }
             #[cfg(not(target_os = "linux"))]
             if paused {
                 crate::hotkeys::unregister(app);
@@ -414,23 +417,30 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
     }
 }
 
-/// Changes from the tray go to the config: otherwise the choice is lost after a restart
-fn update_config(app: &AppHandle, change: impl FnOnce(&mut molva_core::Config)) {
-    let state = app.state::<AppState>();
-    let mut config = state.config();
-    change(&mut config);
-    if let Err(err) = state.replace_config(config) {
-        crate::notify_error(app, &err.to_string(), None);
-        return;
-    }
-    send_async(app, Command::ConfigReload);
-    refresh(app);
+/// Changes from the tray go through the same write path as the settings page
+///
+/// A device change rebuilds the pipeline, so the write and the daemon restart belong together
+fn update_config(app: &AppHandle, change: impl FnOnce(&mut molva_core::Config) + Send + 'static) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let state = app.state::<AppState>();
+        let mut config = state.config();
+        change(&mut config);
+        if let Err(err) = crate::commands::apply_config(&state, config) {
+            crate::notify_error(&app, &err.message, None);
+            return;
+        }
+        let handle = app.clone();
+        let _ = app.run_on_main_thread(move || refresh(&handle));
+    });
 }
 
+/// The choice survives a daemon that is not running, and the daemon still announces it
 pub(crate) fn set_style(app: &AppHandle, style: &str) {
-    let style = style.to_string();
-    update_config(app, |config| config.style.default.clone_from(&style));
-    send_async(app, Command::StyleSet { style });
+    let chosen = style.to_string();
+    let for_file = chosen.clone();
+    update_config(app, move |config| config.style.default = for_file);
+    send_async(app, Command::StyleSet { style: chosen });
 }
 
 fn set_output(app: &AppHandle, mode: &str) {

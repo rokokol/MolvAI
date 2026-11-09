@@ -60,6 +60,10 @@ struct Cli {
     #[arg(long, global = true)]
     socket: Option<std::path::PathBuf>,
 
+    /// A compositor bind passes this flag; a paused hotkey leaves the daemon alone
+    #[arg(long, global = true, hide = true)]
+    hotkey: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -238,6 +242,11 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         }
         Ok(config)
     };
+
+    // A bind runs `molva --hotkey`, so a paused hotkey leaves the daemon alone
+    if cli.hotkey && Config::hotkeys_paused() {
+        return Ok(());
+    }
 
     match cli.command {
         Commands::History(args) => cmd::history::run(args, &config()?, &socket),
