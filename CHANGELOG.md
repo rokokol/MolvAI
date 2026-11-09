@@ -6,6 +6,12 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ## Unreleased
 
+### Added
+
+- `molva styles next` and the `style_next` hotkey switch the post-processing style in a circle
+
+- A hidden window shows the new style name in a system notification
+
 ## [0.2.8] - 2026-11-09
 
 ### Added
