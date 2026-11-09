@@ -113,8 +113,8 @@ export const api = {
   statsExportCsv: (rangeDays: number) =>
     invoke<string>("stats_export_csv", { rangeDays }),
 
-  transcribeFile: (id: string, path: string) =>
-    invoke<FileResult[]>("transcribe_file", { id, path }),
+  transcribeFile: (id: string, path: string, chunked: boolean) =>
+    invoke<FileResult[]>("transcribe_file", { id, path, chunked }),
 
   /** Widen the asset protocol scope for one file and get the URL that plays it */
   prepareMedia: (path: string) => invoke<MediaInfo>("prepare_media", { path }),

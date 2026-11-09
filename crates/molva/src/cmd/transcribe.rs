@@ -9,31 +9,52 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+#[cfg(test)]
 use std::time::Instant;
 
+#[cfg(test)]
 use chrono::Utc;
 use molva_core::app::dictionary::Dictionary;
 use molva_core::app::engine::{build_stt_with, EngineChoice};
 use molva_core::app::file_result::FileResult;
+use molva_core::app::journal::FileJournal;
+#[cfg(test)]
 use molva_core::app::llm_output::sanitize_llm_output;
+use molva_core::app::pipeline::{Pipeline, PipelineConfig};
+#[cfg(test)]
 use molva_core::app::rules::RuleSet;
 use molva_core::app::secrets;
+#[cfg(test)]
 use molva_core::app::styles::Styles;
-use molva_core::domain::entry::{Entry, LatencyMs, Mode, Source, Tokens, SCHEMA_VERSION};
+use molva_core::domain::clock::SystemClock;
+use molva_core::domain::entry::Source;
+#[cfg(test)]
+use molva_core::domain::entry::{Entry, LatencyMs, Mode, Tokens, SCHEMA_VERSION};
+#[cfg(test)]
 use molva_core::domain::journal::Journal;
-use molva_core::domain::llm::{ChatRequest, LlmClient};
+#[cfg(test)]
+use molva_core::domain::llm::ChatRequest;
+use molva_core::domain::llm::LlmClient;
+#[cfg(test)]
 use molva_core::domain::stt::{LanguageHint, SttEngine, SttOptions};
+#[cfg(test)]
 use molva_core::domain::text::{word_count, Style};
 use molva_core::infra::audio::decode;
-use molva_core::infra::llm::openai_compat::{OpenAiCompatClient, Provider};
+use molva_core::infra::inject::NoopInjector;
+use molva_core::infra::llm::openai_compat::OpenAiCompatClient;
+#[cfg(test)]
+use molva_core::infra::llm::openai_compat::Provider;
+#[cfg(test)]
 use molva_core::infra::stt::transcribe_with_language_policy;
 use molva_core::Config;
+#[cfg(test)]
 use uuid::Uuid;
 
 use super::{progress_enabled, CmdError};
 
 /// The trace of a model call for one file: the journal gets the same as in a dictation
 #[derive(Debug, Clone, PartialEq)]
+#[cfg(test)]
 pub(crate) struct LlmTrace {
     pub provider: String,
     pub model: String,
@@ -44,6 +65,7 @@ pub(crate) struct LlmTrace {
 
 /// The result of the text pipeline for one file
 #[derive(Debug, Clone, PartialEq)]
+#[cfg(test)]
 pub(crate) struct Postprocessed {
     pub text: String,
     pub dict_hits: u32,
@@ -72,6 +94,7 @@ pub(crate) fn identity(text: &str, _language: &str) -> Postprocessed {
 /// model by style. The model is called only when the style asks for it, it is enabled in the
 /// settings, `--no-llm` is not given and there are more words than `rules.llm_min_words`; a
 /// model failure returns the text after the rules and not an error
+#[cfg(test)]
 pub(crate) struct FilePostprocessor {
     dictionary: Dictionary,
     rules: RuleSet,
@@ -85,6 +108,7 @@ pub(crate) struct FilePostprocessor {
     max_tokens: u32,
 }
 
+#[cfg(test)]
 impl FilePostprocessor {
     /// Build by the settings. `style_id` is the style from `--style` or `style.default`
     pub(crate) fn from_config(
@@ -241,6 +265,10 @@ pub(crate) struct Args {
     #[arg(long)]
     pub json: bool,
 
+    /// Cut the file at pauses before recognition, as a live dictation is cut
+    #[arg(long)]
+    pub chunked: bool,
+
     /// Print segments with timecodes
     #[arg(long)]
     pub timecodes: bool,
@@ -377,6 +405,7 @@ pub(crate) fn transcribe_jobs(
 /// The same, with the source recorded in the journal: a file typed by the CLI or a file
 /// that an MCP client asked for
 #[allow(clippy::too_many_arguments)]
+#[cfg(test)]
 pub(crate) fn transcribe_jobs_as(
     jobs: &[Job],
     engine: &mut dyn SttEngine,
@@ -661,32 +690,36 @@ pub(crate) fn transcribe_outcome(
         model: args.model.clone(),
         fake_text: None,
     };
-    let mut engine =
-        build_stt_with(config, &choice).map_err(|e| CmdError::engine(e.to_string()))?;
-
-    let language = args.language.as_deref().unwrap_or(&config.stt.language);
-    let options = SttOptions {
-        language: LanguageHint::parse(language),
-        allowed_languages: config.stt.allowed_languages.clone(),
-        initial_prompt: None,
-        threads: config.stt.threads as usize,
-        // JSON is the machine form: it carries the segments even without --timecodes,
-        // because the GUI draws them
-        timestamps: wants_segments(args),
-    };
+    let engine = build_stt_with(config, &choice).map_err(|e| CmdError::engine(e.to_string()))?;
 
     let style = args
         .style
         .as_deref()
         .unwrap_or(&config.style.default)
         .to_string();
-    // The same text pipeline as in a dictation: dictionary, rules, the model by style
-    let postprocessor = FilePostprocessor::from_config(config, config_path, &style, args.no_llm);
-    let postprocess = |raw: &str, language: &str| postprocessor.apply(raw, language);
-    // The journal is the same file the history and the search read. A file that was
-    // transcribed once stays findable after the window closes
-    let mut journal = molva_core::app::journal::FileJournal::open_for(config)
-        .map_err(|e| CmdError::file(e.to_string()))?;
+    let journal = FileJournal::open_for(config).map_err(|e| CmdError::file(e.to_string()))?;
+    let llm: Option<Arc<dyn LlmClient>> =
+        if args.no_llm || !config.llm.enabled || !config.privacy.send_to_llm {
+            None
+        } else {
+            OpenAiCompatClient::from_config(&config.llm, secrets::api_key(&config.llm))
+                .ok()
+                .map(|client| Arc::new(client) as Arc<dyn LlmClient>)
+        };
+    let dictionary = config
+        .dictionary_path_near(config_path)
+        .ok()
+        .and_then(|path| Dictionary::load(&path, config.dictionary.fuzzy).ok())
+        .unwrap_or_else(Dictionary::empty);
+    let mut pipeline = Pipeline::new(
+        engine,
+        llm,
+        Box::new(NoopInjector),
+        Box::new(journal),
+        Arc::new(SystemClock),
+        PipelineConfig::from_config(config),
+    )
+    .with_dictionary(dictionary);
 
     let bar = (jobs.len() > 1 && progress_enabled(args.json))
         .then(|| indicatif::ProgressBar::new(jobs.len() as u64));
@@ -698,22 +731,36 @@ pub(crate) fn transcribe_outcome(
         }
     }
 
-    let outcome = transcribe_jobs_as(
-        &jobs,
-        engine.as_mut(),
-        &options,
-        args.stdin_format.as_deref(),
-        source,
-        &postprocess,
-        &mut journal,
-        &style,
-        &mut |index, label| {
-            if let Some(bar) = &bar {
-                bar.set_position(index as u64);
-                bar.set_message(label.to_string());
+    let mut outcome = Outcome::default();
+    for (index, job) in jobs.iter().enumerate() {
+        if let Some(bar) = &bar {
+            bar.set_position(index as u64);
+            bar.set_message(job.label.clone());
+        }
+        let decoded = match &job.source {
+            JobSource::File(path) => decode::decode_file(path),
+            JobSource::Stdin => decode::decode_stdin(args.stdin_format.as_deref()),
+        };
+        let audio = match decoded {
+            Ok(audio) => audio,
+            Err(err) => {
+                outcome.errors.push((job.label.clone(), err.to_string()));
+                continue;
             }
-        },
-    );
+        };
+        let request = molva_core::ipc::protocol::FileTranscriptionRequest {
+            path: PathBuf::from(&job.label),
+            style: Some(style.clone()),
+            timecodes: wants_segments(args),
+            no_llm: args.no_llm,
+            source,
+            chunked: args.chunked,
+        };
+        match pipeline.transcribe_audio(job.label.clone(), audio, &request) {
+            Ok(result) => outcome.results.push(result),
+            Err(reason) => outcome.errors.push((job.label.clone(), reason)),
+        }
+    }
     if let Some(bar) = bar {
         bar.finish_and_clear();
     }
@@ -1256,6 +1303,7 @@ mod tests {
             style: None,
             no_llm: false,
             no_inject: false,
+            chunked: false,
             json: false,
             timecodes: false,
             copy: false,
@@ -1314,6 +1362,7 @@ mod tests {
             style: None,
             no_llm: false,
             no_inject: false,
+            chunked: false,
             json: false,
             timecodes: false,
             copy: false,
@@ -1351,6 +1400,7 @@ mod tests {
             style: None,
             no_llm: false,
             no_inject: false,
+            chunked: false,
             json: false,
             timecodes: false,
             copy: false,
@@ -1469,6 +1519,7 @@ mod tests {
             style: None,
             no_llm: false,
             no_inject: false,
+            chunked: false,
             json,
             timecodes,
             copy: false,

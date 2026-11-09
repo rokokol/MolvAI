@@ -113,6 +113,9 @@ pub struct FileTranscriptionRequest {
     /// What the journal records: `mcp` for an MCP client, `file` for the CLI
     #[serde(default = "default_source")]
     pub source: Source,
+    /// Cut the decoded file at pauses before recognition
+    #[serde(default)]
+    pub chunked: bool,
 }
 
 fn default_true() -> bool {
@@ -303,6 +306,7 @@ mod tests {
             timecodes: true,
             no_llm: false,
             source: Source::Mcp,
+            chunked: false,
         }
     }
 
@@ -318,6 +322,7 @@ mod tests {
         assert_eq!(json["args"]["timecodes"], true);
         assert_eq!(json["args"]["no_llm"], false);
         assert_eq!(json["args"]["source"], "mcp");
+        assert_eq!(json["args"]["chunked"], false);
     }
 
     #[test]
@@ -335,6 +340,7 @@ mod tests {
         assert!(args.timecodes);
         assert!(!args.no_llm);
         assert_eq!(args.source, Source::File);
+        assert!(!args.chunked);
     }
 
     #[test]

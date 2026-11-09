@@ -165,6 +165,8 @@
   "files.statusFailed": "Ошибка",
   "files.statusCancelled": "Отменено",
   "files.hint": "Разбор идёт через демон MolvAI: тот же распознаватель обслуживает диктовку, эту вкладку и MCP-сервер, а результат попадает в историю.",
+  "files.chunked": "Резать по паузам",
+  "files.chunkedHint": "Резать файл по паузам перед распознаванием, как живую диктовку",
   "files.timecodes": "Таймкоды",
   "files.timecodesOn": "Таймкоды: вкл",
   "files.timecodesOff": "Таймкоды: выкл",

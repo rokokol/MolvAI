@@ -28,6 +28,8 @@ export interface JobProgress {
 export interface Job {
   id: string;
   path: string;
+  /** Cut the file at pauses before recognition */
+  chunked: boolean;
   /** The last path component: the list shows the name, the title shows the whole path */
   name: string;
   status: JobStatus;
@@ -97,10 +99,11 @@ export function isTerminal(status: JobStatus): boolean {
 }
 
 /** A new job waits in the queue until the scheduler starts it */
-export function newJob(id: string, path: string): Job {
+export function newJob(id: string, path: string, chunked = false): Job {
   return {
     id,
     path,
+    chunked,
     name: baseName(path),
     status: "queued",
     started_at: null,
@@ -363,6 +366,7 @@ export function hydrateQueue(raw: string | null): Job[] {
     const never_started = job.status === "queued";
     return {
       ...job,
+      chunked: job.chunked ?? false,
       name: job.name || baseName(job.path),
       status: lost ? "interrupted" : never_started ? "cancelled" : job.status,
       progress: lost || never_started ? null : job.progress,

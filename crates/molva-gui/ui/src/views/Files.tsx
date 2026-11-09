@@ -34,7 +34,8 @@ function storedTimecodes(): boolean {
 
 export default function Files({ onError }: ViewProps) {
   const { t } = useI18n();
-  const { jobs, dragging, start, clearFinished } = useFilesQueue();
+  const { jobs, dragging, start, clearFinished, chunked, setChunked } =
+    useFilesQueue();
   const [path, setPath] = useState("");
   const [timecodes, setTimecodes] = useState(storedTimecodes);
 
@@ -57,6 +58,7 @@ export default function Files({ onError }: ViewProps) {
       // The choice does not persist, but the toggle works for this session
     }
   }, [timecodes]);
+
 
   const summary = queueSummary(jobs);
   const counts: { status: JobStatus; count: number }[] = [
@@ -100,7 +102,7 @@ export default function Files({ onError }: ViewProps) {
       ],
     });
     if (typeof selected === "string" && selected.trim() !== "") {
-      start(selected);
+      start(selected, chunked);
     }
   };
 
@@ -125,7 +127,7 @@ export default function Files({ onError }: ViewProps) {
               value={path}
               onChange={setPath}
               onStart={() => {
-                start(path);
+                start(path, chunked);
                 setPath("");
               }}
               suggest={(input) => api.pathSuggestions(input, 10)}
@@ -135,7 +137,7 @@ export default function Files({ onError }: ViewProps) {
             type="button"
             className="primary"
             onClick={() => {
-              start(path);
+              start(path, chunked);
               setPath("");
             }}
             disabled={path.trim() === ""}
@@ -151,6 +153,14 @@ export default function Files({ onError }: ViewProps) {
               onChange={(event) => setTimecodes(event.target.checked)}
             />
             {t("files.timecodes")}
+          </label>
+          <label className="check" title={t("files.chunkedHint")}>
+            <input
+              type="checkbox"
+              checked={chunked}
+              onChange={(event) => setChunked(event.target.checked)}
+            />
+            {t("files.chunked")}
           </label>
           <span className="small muted">{t("files.hint")}</span>
         </div>

@@ -165,6 +165,8 @@
   "files.statusFailed": "Failed",
   "files.statusCancelled": "Cancelled",
   "files.hint": "Transcription runs through the MolvAI daemon: the same recognizer serves dictation, this tab and the MCP server, and the result goes to the history.",
+  "files.chunked": "Cut at pauses",
+  "files.chunkedHint": "Cut the file at pauses before recognition, as a live dictation is cut",
   "files.timecodes": "Timecodes",
   "files.timecodesOn": "Timecodes: on",
   "files.timecodesOff": "Timecodes: off",

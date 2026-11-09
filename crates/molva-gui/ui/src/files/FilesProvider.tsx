@@ -38,6 +38,7 @@ import {
 
 /** How long the queue waits after a change before it writes to localStorage */
 const STORAGE_DEBOUNCE_MS = 300;
+const CHUNKED_KEY = "molva.files.chunked";
 
 type Action =
   | { type: "add"; jobs: Job[] }
@@ -143,8 +144,10 @@ function initialJobs(): Job[] {
 export interface FilesQueue {
   jobs: Job[];
   dragging: boolean;
-  start: (path: string) => void;
-  startMany: (paths: string[]) => void;
+  start: (path: string, chunked?: boolean) => void;
+  startMany: (paths: string[], chunked?: boolean) => void;
+  chunked: boolean;
+  setChunked: (value: boolean) => void;
   cancel: (id: string) => void;
   retry: (id: string) => void;
   clearFinished: () => void;
@@ -185,6 +188,21 @@ export function FilesProvider({
 }) {
   const [jobs, dispatch] = useReducer(reducer, undefined, initialJobs);
   const [dragging, setDragging] = useState(false);
+  const [chunked, setChunkedState] = useState(() => {
+    try {
+      return localStorage.getItem(CHUNKED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setChunked = useCallback((value: boolean) => {
+    setChunkedState(value);
+    try {
+      localStorage.setItem(CHUNKED_KEY, value ? "1" : "0");
+    } catch {
+      // The choice does not persist, but the toggle works for this session
+    }
+  }, []);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [seeks, setSeeks] = useState<Record<string, SeekRequest>>({});
   const seekSeq = useRef(0);
@@ -198,7 +216,7 @@ export function FilesProvider({
   const run = useCallback(
     async (job: Job) => {
       try {
-        const results = await api.transcribeFile(job.id, job.path);
+        const results = await api.transcribeFile(job.id, job.path, job.chunked);
         if (cancelled.current.has(job.id)) {
           return;
         }
@@ -259,7 +277,7 @@ export function FilesProvider({
       if (paths.length > 0) {
         dispatch({
           type: "add",
-          jobs: paths.map((path) => newJob(makeId(), path)),
+          jobs: paths.map((path) => newJob(makeId(), path, chunked)),
         });
       }
     });
@@ -270,7 +288,7 @@ export function FilesProvider({
         fns.forEach((fn) => fn()),
       );
     };
-  }, []);
+  }, [chunked]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -283,19 +301,19 @@ export function FilesProvider({
     return () => window.clearTimeout(timer);
   }, [jobs]);
 
-  const startMany = useCallback((paths: string[]) => {
+  const startMany = useCallback((paths: string[], chunked = false) => {
     const cleaned = paths.map((path) => path.trim()).filter((path) => path !== "");
     if (cleaned.length === 0) {
       return;
     }
     dispatch({
       type: "add",
-      jobs: cleaned.map((path) => newJob(makeId(), path)),
+      jobs: cleaned.map((path) => newJob(makeId(), path, chunked)),
     });
   }, []);
 
   const start = useCallback(
-    (path: string) => startMany([path]),
+    (path: string, chunked = false) => startMany([path], chunked),
     [startMany],
   );
 
@@ -396,6 +414,8 @@ export function FilesProvider({
       dragging,
       start,
       startMany,
+      chunked,
+      setChunked,
       cancel,
       retry,
       clearFinished,

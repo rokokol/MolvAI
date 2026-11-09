@@ -18,6 +18,28 @@ use crate::domain::inject::OutputMode;
 pub use chain::{ChainInjector, ClipboardOnlyInjector};
 pub use clipboard::ClipboardGuard;
 
+/// An injector for work that never pastes, such as file transcription through the pipeline
+#[derive(Debug, Default)]
+pub struct NoopInjector;
+
+impl crate::domain::inject::TextInjector for NoopInjector {
+    fn id(&self) -> &'static str {
+        "none"
+    }
+
+    fn available(&self) -> bool {
+        false
+    }
+
+    fn inject(
+        &mut self,
+        _text: &str,
+        _mode: OutputMode,
+    ) -> Result<crate::domain::inject::InjectReport, crate::domain::inject::InjectError> {
+        Err(crate::domain::inject::InjectError::Unsupported)
+    }
+}
+
 /// Parse `output.mode` from the config; an unknown value is `auto`
 pub fn parse_output_mode(value: &str) -> OutputMode {
     match value.trim().to_ascii_lowercase().as_str() {

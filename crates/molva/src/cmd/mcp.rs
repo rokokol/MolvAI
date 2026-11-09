@@ -115,7 +115,8 @@ fn tools() -> Value {
                     "model": { "type": "string", "description": "Model name from models.toml; the daemon transcribes with the configured model, so a different name is an error" },
                     "timecodes": { "type": "boolean", "default": true, "description": "Include segments with timecodes" },
                     "style": { "type": "string", "description": "Post-processing style identifier; the default style is used when absent" },
-                    "no_llm": { "type": "boolean", "default": false, "description": "Do not call the language model for this run" }
+                    "no_llm": { "type": "boolean", "default": false, "description": "Do not call the language model for this run" },
+                    "chunked": { "type": "boolean", "default": false, "description": "Cut the file at pauses before recognition, as a live dictation is cut" }
                 },
                 "required": ["path"]
             }
@@ -252,6 +253,10 @@ fn transcribe_tool(ctx: &Context, arguments: &Value) -> Result<Value, String> {
         .get("no_llm")
         .and_then(Value::as_bool)
         .unwrap_or(false);
+    let chunked = arguments
+        .get("chunked")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     let style = arguments
         .get("style")
         .and_then(Value::as_str)
@@ -287,6 +292,7 @@ fn transcribe_tool(ctx: &Context, arguments: &Value) -> Result<Value, String> {
             style: style.clone(),
             timecodes,
             no_llm,
+            chunked,
             // The journal separates an MCP transcription from a dictation and from the CLI
             source: Source::Mcp,
         };
@@ -753,6 +759,7 @@ mod tests {
                 timecodes: true,
                 no_llm: true,
                 source: Source::Mcp,
+                chunked: false,
             },
             Duration::from_secs(5),
         )
@@ -774,6 +781,7 @@ mod tests {
                 timecodes: true,
                 no_llm: false,
                 source: Source::Mcp,
+                chunked: false,
             },
             Duration::from_millis(400),
         )

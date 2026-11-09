@@ -1649,6 +1649,7 @@ pub async fn transcribe_file<R: Runtime>(
     app: AppHandle<R>,
     id: String,
     path: String,
+    chunked: bool,
 ) -> Result<Vec<molva_core::app::file_result::FileResult>, CommandError> {
     // Transcription is slow, so it runs off the command thread and the interface does not hang
     tauri::async_runtime::spawn_blocking(move || {
@@ -1681,6 +1682,7 @@ pub async fn transcribe_file<R: Runtime>(
             style: None,
             timecodes: true,
             no_llm: false,
+            chunked,
             // The journal separates a file from a dictation and from an MCP request
             source: Source::File,
         };

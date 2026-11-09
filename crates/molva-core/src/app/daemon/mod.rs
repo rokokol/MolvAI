@@ -2233,6 +2233,7 @@ mod tests {
             timecodes: true,
             no_llm: false,
             source: crate::domain::entry::Source::Mcp,
+            chunked: false,
         }
     }
 

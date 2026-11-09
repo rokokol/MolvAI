@@ -25,8 +25,8 @@ use uuid::Uuid;
 use crate::app::command_mode;
 use crate::app::snippets::SnippetSet;
 use crate::config::{
-    CommandModeConfig, Config, DictionaryConfig, LlmConfig, OutputConfig, PrivacyConfig,
-    RulesConfig, SnippetsConfig, SttConfig, StyleConfig,
+    AudioConfig, CommandModeConfig, Config, DictionaryConfig, LlmConfig, OutputConfig,
+    PrivacyConfig, RulesConfig, SnippetsConfig, SttConfig, StyleConfig,
 };
 use crate::domain::audio::PcmAudio;
 use crate::domain::clock::Clock;
@@ -67,6 +67,7 @@ pub enum PipelineError {
 /// Settings that the pipeline needs. They are built from [`Config`] in one call
 #[derive(Debug, Clone, PartialEq)]
 pub struct PipelineConfig {
+    pub audio: AudioConfig,
     pub stt: SttConfig,
     pub dictionary: DictionaryConfig,
     pub rules: RulesConfig,
@@ -87,6 +88,7 @@ impl Default for PipelineConfig {
 impl PipelineConfig {
     pub fn from_config(cfg: &Config) -> Self {
         Self {
+            audio: cfg.audio.clone(),
             stt: cfg.stt.clone(),
             dictionary: cfg.dictionary.clone(),
             rules: cfg.rules.clone(),
@@ -339,7 +341,6 @@ impl Pipeline {
             }
         };
         let label = path.display().to_string();
-
         let audio = match decode::decode_file(&path) {
             Ok(audio) => audio,
             Err(err) => {
@@ -350,22 +351,31 @@ impl Pipeline {
                 return report;
             }
         };
+        match self.transcribe_audio(label, audio, request) {
+            Ok(result) => report.results.push(result),
+            Err(reason) => report.errors.push(FileFailure {
+                file: request.path.display().to_string(),
+                reason,
+            }),
+        }
+        report
+    }
+
+    /// Run already decoded audio through the file path: decoding is the only difference
+    /// between a file on disk and a stream on standard input
+    pub fn transcribe_audio(
+        &mut self,
+        label: String,
+        audio: PcmAudio,
+        request: &FileTranscriptionRequest,
+    ) -> Result<FileResult, String> {
         let audio_secs = audio.duration_secs();
         let ready = audio.to_16k();
-
         let started = self.clock.instant();
         let options = self.stt_options(request.timecodes);
-        let transcript = match transcribe_with_language_policy(self.stt.as_mut(), &ready, &options)
-        {
-            Ok(transcript) => transcript,
-            Err(err) => {
-                report.errors.push(FileFailure {
-                    file: label,
-                    reason: err.to_string(),
-                });
-                return report;
-            }
-        };
+        let transcript = self
+            .transcribe_ready(&ready, &options, request.chunked)
+            .map_err(|err| err.to_string())?;
         let stt_ms = millis_since(started, self.clock.instant());
 
         // The same guard as for a phrase: whisper prints a confident phrase on silence, and such
@@ -446,15 +456,66 @@ impl Pipeline {
             }
         }
 
-        report.results.push(FileResult {
+        Ok(FileResult {
             file: label,
             text,
             segments: transcript.segments,
             audio_secs,
             latency_ms: entry.latency_ms.total,
             language,
-        });
-        report
+        })
+    }
+
+    /// Recognize a whole file, optionally cut at the same pauses as a live phrase
+    fn transcribe_ready(
+        &mut self,
+        ready: &PcmAudio,
+        options: &SttOptions,
+        chunked: bool,
+    ) -> Result<Transcript, SttError> {
+        if !chunked {
+            return transcribe_with_language_policy(self.stt.as_mut(), ready, options);
+        }
+        let mut segmenter = crate::app::audio::segmenter::Segmenter::new(
+            crate::app::audio::segmenter::SegmenterConfig::new(
+                ready.sample_rate,
+                self.config.stt.chunk_pause_ms,
+                self.config.audio.silence_threshold_db,
+            ),
+        );
+        let mut chunks = segmenter.push(&ready.samples);
+        chunks.extend(segmenter.finish());
+        if chunks.is_empty() {
+            return Ok(Transcript::default());
+        }
+
+        let mut text = Vec::new();
+        let mut segments = Vec::new();
+        let mut detected_language = None;
+        for chunk in chunks {
+            let transcript =
+                transcribe_with_language_policy(self.stt.as_mut(), &chunk.audio, options)?;
+            if detected_language.is_none() {
+                detected_language.clone_from(&transcript.detected_language);
+            }
+            if is_silence_hallucination(&transcript, self.config.stt.no_speech_threshold) {
+                continue;
+            }
+            if !transcript.text.trim().is_empty() {
+                text.push(transcript.text.trim().to_string());
+            }
+            segments.extend(transcript.segments.into_iter().map(|mut segment| {
+                segment.start_ms = segment.start_ms.saturating_add(chunk.start_ms);
+                segment.end_ms = segment.end_ms.saturating_add(chunk.start_ms);
+                segment
+            }));
+        }
+        Ok(Transcript {
+            text: text.join(" "),
+            segments,
+            detected_language,
+            no_speech_prob: None,
+        })
     }
 
     #[allow(clippy::needless_pass_by_value)]
@@ -1901,5 +1962,36 @@ mod tests {
         assert_eq!(output_mode(" TYPE "), OutputMode::Type);
         assert_eq!(output_mode("clipboard"), OutputMode::Clipboard);
         assert_eq!(output_mode("something else"), OutputMode::Auto);
+    }
+    #[test]
+    fn a_chunked_file_is_recognized_at_its_pauses() {
+        let mut config = PipelineConfig::default();
+        config.stt.chunk_pause_ms = 300;
+        config.audio.silence_threshold_db = -45.0;
+        let mut harness = build("фраза", None, config);
+        let mut samples = vec![0.1; 3_200 * 16];
+        samples.extend(vec![0.0; 800 * 16]);
+        samples.extend(vec![0.1; 800 * 16]);
+        let request = FileTranscriptionRequest {
+            path: std::path::PathBuf::from("/tmp/lecture.wav"),
+            style: None,
+            timecodes: true,
+            no_llm: true,
+            source: Source::File,
+            chunked: true,
+        };
+        let result = harness
+            .pipeline
+            .transcribe_audio(
+                "lecture.wav".to_string(),
+                PcmAudio::new(samples, 16_000),
+                &request,
+            )
+            .expect("the file is transcribed");
+        assert_eq!(result.text, "Фраза");
+        assert!(
+            harness.stt.lock().unwrap().calls.len() >= 2,
+            "the file was not cut at its pause"
+        );
     }
 }

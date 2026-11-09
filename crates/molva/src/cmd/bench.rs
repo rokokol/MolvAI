@@ -164,6 +164,7 @@ fn latency(args: &Args, config: &Config, stdout: &mut dyn Write) -> Result<(), C
             timecodes: false,
             no_llm: false,
             source: Source::File,
+            chunked: false,
         };
         for _ in 0..args.repeat {
             let started = std::time::Instant::now();

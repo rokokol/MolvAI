@@ -6,11 +6,19 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ## Unreleased
 
+## [0.2.9] - 2026-11-09
+
 ### Added
 
 - `molva styles next` and the `style_next` hotkey switch the post-processing style in a circle
 
 - A hidden window shows the new style name in a system notification
+
+- A `chunked` option cuts a file at pauses before recognition, in the CLI, the Files tab and the MCP `transcribe` tool
+
+### Changed
+
+- `molva transcribe` now runs the core `Pipeline` for file work; the CLI keeps only input discovery, progress and stdout
 
 ## [0.2.8] - 2026-11-09
 
@@ -276,7 +284,8 @@ Nightly snapshot of the hackathon: all tracks merged and CI green on three opera
 - A term dictionary with exact and fuzzy match
 - A file journal of phrases in JSONL
 
-[Unreleased]: https://github.com/rokokol/MolvAI/compare/v0.2.8...HEAD
+[Unreleased]: https://github.com/rokokol/MolvAI/compare/v0.2.9...HEAD
+[0.2.9]: https://github.com/rokokol/MolvAI/compare/v0.2.8...v0.2.9
 [0.2.8]: https://github.com/rokokol/MolvAI/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/rokokol/MolvAI/compare/v0.2.6...v0.2.7
 [0.2.6]: https://github.com/rokokol/MolvAI/compare/v0.2.5...v0.2.6
