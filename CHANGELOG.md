@@ -6,6 +6,36 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ## Unreleased
 
+## [0.3.1] - 2026-11-10
+
+### Added
+
+- The Files tab plays the file it transcribed: a video plays in a preview beside its transcript, and an audio file gets a waveform of its loudness with the played part filled in
+
+- The transcript of a file scrolls to the segment that plays, and a press on a segment moves the player there
+
+### Changed
+
+- One result is laid out as a small player and a scrolling transcript beside it, instead of a player the height of the window
+
+- A file cut at its pauses gets one segment per chunk, with the pauses as its bounds, instead of the inner segments of the model that came out shorter than a second
+
+- The rule that puts a capital letter at the start of a sentence is called "Capital letters" in the settings, which is what it does
+
+- The MCP switch reads "Enable MCP server", and the window keeps working with the server switched off
+
+- The release notes are the changelog section of the version, with its links pinned to the tag, instead of a generated summary
+
+### Fixed
+
+- A file transcribed without "Cut at pauses" came out as fragments under a second: GigaAM reports one token every forty milliseconds, and the grouping cut them at a pause of four hundred, which happens inside a phrase. The cut now needs seven hundred milliseconds of silence and a segment of at least 1.2 seconds, and shorter pieces join their neighbour
+
+- The "Cut at pauses" switch of the Files tab changed nothing: the queue value was memoized without it, so the tab kept the state of the first render
+
+- Playing a file jumped back to the moment of the last press on every frame, because the seek effect depended on a callback that changed with each render
+
+- Drawing the loudness of a long file froze the window for minutes: the decode held every sample in memory and ran on the thread that answers the window
+
 ## [0.3.0] - 2026-11-10
 
 ### Added
@@ -340,7 +370,9 @@ Nightly snapshot of the hackathon: all tracks merged and CI green on three opera
 - A term dictionary with exact and fuzzy match
 - A file journal of phrases in JSONL
 
-[Unreleased]: https://github.com/rokokol/MolvAI/compare/v0.2.11...HEAD
+[Unreleased]: https://github.com/rokokol/MolvAI/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/rokokol/MolvAI/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/rokokol/MolvAI/compare/v0.2.11...v0.3.0
 [0.2.11]: https://github.com/rokokol/MolvAI/compare/v0.2.10...v0.2.11
 [0.2.10]: https://github.com/rokokol/MolvAI/compare/v0.2.9...v0.2.10
 [0.2.9]: https://github.com/rokokol/MolvAI/compare/v0.2.8...v0.2.9
