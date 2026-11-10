@@ -11,6 +11,7 @@ import {
   formatCount,
   formatDayTick,
   formatElapsed,
+  formatCost,
   formatLatency,
   formatMegabytes,
   formatMinutes,
@@ -70,6 +71,27 @@ describe("formatMinutes", () => {
   it("does not silently round a fraction of a minute to zero", () => {
     expect(formatMinutes(0.4)).toBe("<1");
     expect(formatMinutes(0)).toBe("0");
+  });
+});
+
+describe("formatCost", () => {
+  it("keeps four decimals below a cent, because one phrase costs a fraction of one", () => {
+    expect(formatCost(0.0042)).toBe("$0.0042");
+  });
+
+  it("never rounds a real charge down to zero", () => {
+    expect(formatCost(0.000004)).toBe("$0.000004");
+    expect(formatCost(0.000013752)).toBe("$0.000014");
+  });
+
+  it("shows cents above a cent", () => {
+    expect(formatCost(0.42)).toBe("$0.42");
+    expect(formatCost(12.5)).toBe("$12.50");
+  });
+
+  it("shows a plain zero for nothing spent", () => {
+    expect(formatCost(0)).toBe("$0");
+    expect(formatCost(Number.NaN)).toBe("$0");
   });
 });
 

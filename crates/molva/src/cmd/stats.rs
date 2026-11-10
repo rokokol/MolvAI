@@ -127,6 +127,44 @@ fn optional_wpm(value: Option<f32>) -> String {
     }
 }
 
+/// A sum of money with enough decimals to keep a real charge from reading as zero
+///
+/// One phrase costs a fraction of a cent, so a fixed four decimals would print a day of
+/// dictation as `$0.0000` and say nothing was spent
+fn money(usd: f64) -> String {
+    if usd >= 0.01 {
+        format!("${usd:.2}")
+    } else if usd >= 0.0001 {
+        format!("${usd:.4}")
+    } else {
+        format!("${usd:.6}")
+    }
+}
+
+/// The charge of the model calls, with the calls that reported no charge named beside it
+///
+/// A sum of known charges is not the whole bill, so the count of silent calls travels with it.
+/// A period with no cloud call at all says so instead of printing a zero that reads as a bill,
+/// and so does a period where no call reported a charge: a zero there would be a guess
+fn cost_line(tokens: &stats::TokenSummary) -> String {
+    let total = tokens.cost_known + tokens.cost_unknown;
+    if total == 0 {
+        return "no cloud model calls".to_string();
+    }
+    if tokens.cost_known == 0 {
+        let noun = if total == 1 { "call" } else { "calls" };
+        return format!("unknown, the provider reported no charge for {total} {noun}");
+    }
+    let mut line = money(tokens.cost_usd);
+    if tokens.cost_unknown > 0 {
+        line.push_str(&format!(
+            " ({} of {total} calls reported a charge)",
+            tokens.cost_known
+        ));
+    }
+    line
+}
+
 /// A report for a person: the summary, a sparkline and the chosen breakdown
 pub(crate) fn report(summary: &StatsSummary, entries: &[Entry], args: &StatsArgs) -> String {
     let mut out = String::new();
@@ -170,6 +208,23 @@ pub(crate) fn report(summary: &StatsSummary, entries: &[Entry], args: &StatsArgs
         "  Tokens            prompt {}, completion {}\n",
         summary.tokens.prompt, summary.tokens.completion
     ));
+    out.push_str(&format!(
+        "  Model cost        {}\n",
+        cost_line(&summary.tokens)
+    ));
+    // The cost above is one sum over every source. This line says that a transcription through
+    // MCP is inside it, so nobody has to take the sum on trust
+    if summary.mcp_entries > 0 {
+        let noun = if summary.mcp_entries == 1 {
+            "file"
+        } else {
+            "files"
+        };
+        out.push_str(&format!(
+            "  Of which MCP      {} {noun}, {} words\n",
+            summary.mcp_entries, summary.mcp_words
+        ));
+    }
 
     let speeds: Vec<f32> = summary
         .series
@@ -284,6 +339,7 @@ mod tests {
                 ..Default::default()
             },
             tokens: None,
+            llm_cost_usd: None,
             error: None,
             text_raw: None,
             text_final: Some("текст".into()),
@@ -380,5 +436,86 @@ mod tests {
         let report = report(&summary, &[], &args(Series::Day));
         assert!(report.contains("Words total       0"), "{report}");
         assert!(report.contains("Personal record   —"), "{report}");
+    }
+
+    #[test]
+    fn the_report_names_the_charge_of_the_model() {
+        let mut first = entry("2026-09-05T10:00:00Z", 10, "kitty");
+        first.llm_used = true;
+        first.local_llm = false;
+        first.llm_cost_usd = Some(0.000_004);
+        let entries = vec![first];
+        let summary = stats::summary(&entries, now(), &StatsConfig::default(), 7);
+        let report = report(&summary, &entries, &args(Series::Day));
+        assert!(report.contains("Model cost        $0.000004"), "{report}");
+    }
+
+    #[test]
+    fn a_silent_provider_is_named_beside_the_sum() {
+        let mut known = entry("2026-09-05T10:00:00Z", 10, "kitty");
+        known.llm_used = true;
+        known.local_llm = false;
+        known.llm_cost_usd = Some(0.000_004);
+        let mut silent = entry("2026-09-05T10:01:00Z", 10, "kitty");
+        silent.llm_used = true;
+        silent.local_llm = false;
+        let entries = vec![known, silent];
+        let summary = stats::summary(&entries, now(), &StatsConfig::default(), 7);
+        let report = report(&summary, &entries, &args(Series::Day));
+        assert!(
+            report.contains("1 of 2 calls reported a charge"),
+            "{report}"
+        );
+    }
+
+    #[test]
+    fn the_report_names_the_mcp_share_of_the_same_sum() {
+        let mut through_mcp = entry("2026-09-05T10:00:00Z", 10, "kitty");
+        through_mcp.source = Source::Mcp;
+        through_mcp.llm_used = true;
+        through_mcp.local_llm = false;
+        through_mcp.llm_cost_usd = Some(0.000_004);
+        let entries = vec![through_mcp];
+        let summary = stats::summary(&entries, now(), &StatsConfig::default(), 7);
+        let report = report(&summary, &entries, &args(Series::Day));
+        assert!(report.contains("Model cost        $0.000004"), "{report}");
+        assert!(
+            report.contains("Of which MCP      1 file, 10 words"),
+            "{report}"
+        );
+    }
+
+    #[test]
+    fn a_period_without_mcp_says_nothing_about_it() {
+        let entries = vec![entry("2026-09-05T10:00:00Z", 10, "kitty")];
+        let summary = stats::summary(&entries, now(), &StatsConfig::default(), 7);
+        let report = report(&summary, &entries, &args(Series::Day));
+        assert!(!report.contains("Of which MCP"), "{report}");
+    }
+
+    #[test]
+    fn a_period_without_cloud_calls_says_so_instead_of_a_zero() {
+        let entries = vec![entry("2026-09-05T10:00:00Z", 10, "kitty")];
+        let summary = stats::summary(&entries, now(), &StatsConfig::default(), 7);
+        let report = report(&summary, &entries, &args(Series::Day));
+        assert!(
+            report.contains("Model cost        no cloud model calls"),
+            "{report}"
+        );
+    }
+
+    #[test]
+    fn a_period_where_no_call_reported_a_charge_prints_no_sum() {
+        let mut silent = entry("2026-09-05T10:00:00Z", 10, "kitty");
+        silent.llm_used = true;
+        silent.local_llm = false;
+        let entries = vec![silent];
+        let summary = stats::summary(&entries, now(), &StatsConfig::default(), 7);
+        let report = report(&summary, &entries, &args(Series::Day));
+        assert!(
+            report.contains("unknown, the provider reported no charge for 1 call"),
+            "{report}"
+        );
+        assert!(!report.contains("$0.0000"), "{report}");
     }
 }

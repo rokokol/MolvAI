@@ -313,6 +313,7 @@ mod tests {
                 ..Default::default()
             },
             tokens: None,
+            llm_cost_usd: None,
             error: None,
             text_raw: None,
             text_final: None,

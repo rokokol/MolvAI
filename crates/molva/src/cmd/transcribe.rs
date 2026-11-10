@@ -60,6 +60,7 @@ pub(crate) struct LlmTrace {
     pub model: String,
     pub local: bool,
     pub tokens: Option<Tokens>,
+    pub cost_usd: Option<f64>,
     pub elapsed_ms: u32,
 }
 
@@ -211,6 +212,7 @@ impl FilePostprocessor {
                         model: self.llm_model.clone(),
                         local: self.llm_local,
                         tokens,
+                        cost_usd: response.cost_usd,
                         elapsed_ms: started.elapsed().as_millis() as u32,
                     }),
                 }
@@ -504,6 +506,7 @@ pub(crate) fn transcribe_jobs_as(
                 .llm
                 .as_ref()
                 .and_then(|trace| trace.tokens.clone()),
+            llm_cost_usd: processed.llm.as_ref().and_then(|trace| trace.cost_usd),
             error: None,
             text_raw: Some(raw),
             text_final: Some(text.clone()),
@@ -1150,6 +1153,7 @@ mod tests {
                         prompt: 7,
                         completion: 3,
                     }),
+                    cost_usd: None,
                     elapsed_ms: 42,
                 }),
             },

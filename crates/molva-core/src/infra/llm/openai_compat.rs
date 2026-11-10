@@ -357,6 +357,10 @@ struct Usage {
     prompt_tokens: Option<u32>,
     #[serde(default)]
     completion_tokens: Option<u32>,
+    /// The charge for this request in US dollars. OpenRouter returns it on every answer without
+    /// a request parameter; an OpenAI-compatible server that does not account leaves it out
+    #[serde(default)]
+    cost: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -476,14 +480,15 @@ impl LlmClient for OpenAiCompatClient {
                 LlmError::BadResponse(format!("the answer has no text: {}", snippet(&text)))
             })?;
 
-        let (prompt_tokens, completion_tokens) = match parsed.usage {
-            Some(usage) => (usage.prompt_tokens, usage.completion_tokens),
-            None => (None, None),
+        let (prompt_tokens, completion_tokens, cost_usd) = match parsed.usage {
+            Some(usage) => (usage.prompt_tokens, usage.completion_tokens, usage.cost),
+            None => (None, None, None),
         };
         Ok(ChatResponse {
             text: content,
             prompt_tokens,
             completion_tokens,
+            cost_usd,
         })
     }
 }
@@ -924,6 +929,25 @@ mod tests {
         assert_eq!(response.text, "Привет, мир.");
         assert_eq!(response.prompt_tokens, Some(42));
         assert_eq!(response.completion_tokens, Some(7));
+    }
+
+    #[test]
+    fn the_charge_of_the_provider_reaches_the_answer() {
+        let body = http(
+            "200 OK",
+            r#"{"choices":[{"message":{"content":"ok"}}],
+                "usage":{"prompt_tokens":13,"completion_tokens":5,"cost":3.154e-06}}"#,
+        );
+        let server = MockServer::spawn(vec![Some(body)]);
+        let response = client(&server, None).complete(&request()).unwrap();
+        assert_eq!(response.cost_usd, Some(3.154e-06));
+    }
+
+    #[test]
+    fn a_provider_that_does_not_account_leaves_the_charge_unknown() {
+        let server = MockServer::spawn(vec![Some(ok_body())]);
+        let response = client(&server, None).complete(&request()).unwrap();
+        assert_eq!(response.cost_usd, None);
     }
 
     #[test]

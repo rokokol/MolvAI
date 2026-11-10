@@ -517,6 +517,7 @@ pub(crate) fn test_entry(ts: &str, words: u32, audio_secs: f32, app: &str) -> En
             ..Default::default()
         },
         tokens: None,
+        llm_cost_usd: None,
         error: None,
         text_raw: Some(format!("сырой текст {words}")),
         text_final: Some(format!("Итоговый текст {words}.")),

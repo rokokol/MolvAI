@@ -56,6 +56,25 @@ export function formatMinutes(value: number): string {
   return `${hours}:${String(minutes).padStart(2, "0")}`;
 }
 
+/**
+ * Money spent on the model, with enough decimals to keep a real charge from reading as zero
+ *
+ * A dictation phrase costs a fraction of a cent, so a fixed two-decimal format would show every
+ * day of use as $0.00 and hide the number the tile exists for
+ */
+export function formatCost(usd: number): string {
+  if (!Number.isFinite(usd) || usd <= 0) {
+    return "$0";
+  }
+  if (usd >= 0.01) {
+    return `$${usd.toFixed(2)}`;
+  }
+  if (usd >= 0.0001) {
+    return `$${usd.toFixed(4)}`;
+  }
+  return `$${usd.toFixed(6)}`;
+}
+
 /** Latency: milliseconds below one second, seconds above */
 export function formatLatency(ms: number | null | undefined, dash = "—"): string {
   if (ms === null || ms === undefined || !Number.isFinite(ms)) {

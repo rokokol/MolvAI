@@ -31,6 +31,7 @@ The reference for the type is `crates/molva-core/src/domain/entry.rs` (`Entry`)
 | `inject_method` | string | no | the actual paste method (`hyprctl-paste`, `wtype-type`, `enigo-type`, `clipboard-only`) |
 | `latency_ms` | object | yes | latencies of the stages, see below |
 | `tokens` | object | no | `{ "prompt": int, "completion": int }`: tokens of the post-processing model |
+| `llm_cost_usd` | number | no | what the provider charged for the model call, in US dollars. Absent when no model ran, when the model is local, or when the provider does not account for a request |
 | `error` | string | no | error text, if the phrase was not delivered |
 | `text_raw` | string | no | raw text of the recognizer; absent in privacy mode |
 | `text_final` | string | no | text after the dictionary, the rules and the model; absent in privacy mode |

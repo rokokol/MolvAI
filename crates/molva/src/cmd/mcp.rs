@@ -135,7 +135,7 @@ fn tools() -> Value {
         },
         {
             "name": "stats_summary",
-            "description": "Words, speed, latency and cost-related counters for a period; MCP transcriptions are counted separately",
+            "description": "Words, speed, latency and the charge the provider reported for the model calls, with the count of calls that reported none; MCP transcriptions are counted separately",
             "inputSchema": {
                 "type": "object",
                 "properties": {

@@ -13,11 +13,18 @@ pub struct ChatRequest {
     pub max_tokens: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct ChatResponse {
     pub text: String,
     pub prompt_tokens: Option<u32>,
     pub completion_tokens: Option<u32>,
+    /// What the provider charged for this request, in US dollars
+    ///
+    /// The provider reports the sum it actually billed, so no price table is kept here: a table
+    /// would be a second source of truth and would go stale on the first price change. A local
+    /// model reports nothing and costs nothing; a cloud provider that does not account for a
+    /// request reports nothing either, and the statistics say so instead of counting a zero
+    pub cost_usd: Option<f64>,
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq, Serialize, Deserialize)]

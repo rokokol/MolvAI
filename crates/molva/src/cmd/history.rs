@@ -384,6 +384,7 @@ mod tests {
             inject_method: None,
             latency_ms: LatencyMs::default(),
             tokens: None,
+            llm_cost_usd: None,
             error: None,
             text_raw: None,
             text_final: Some(text.into()),

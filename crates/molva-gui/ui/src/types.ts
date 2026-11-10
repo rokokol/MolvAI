@@ -28,6 +28,12 @@ export interface LatencyMs {
 export interface Tokens {
   prompt: number;
   completion: number;
+  /** Sum of the charges the providers reported, in US dollars */
+  cost_usd: number;
+  /** Cloud calls that reported a charge */
+  cost_known: number;
+  /** Cloud calls that reported none, so the sum above is not the whole bill */
+  cost_unknown: number;
 }
 
 /** A journal line: one phrase */
@@ -238,6 +244,9 @@ export interface StatsSummary {
   tokens: Tokens;
   series: DayPoint[];
   by_app: AppRow[];
+  /** Files transcribed through the MCP server, inside the same totals */
+  mcp_entries: number;
+  mcp_words: number;
 }
 
 // --- Settings: a mirror of molva_core::Config ---

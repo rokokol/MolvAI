@@ -2,7 +2,7 @@
 //! Scheduling of model calls: a local model is serial, a cloud provider is not
 //!
 //! One policy for every caller, and the caller is any stage that needs text from a model: the
-//! post-processing of a phrase and the command mode. The policy is one object, so no stage can
+//! post-processing of a phrase and voice editing. The policy is one object, so no stage can
 //! decide on its own whether it may wait for the network beside another call.
 //!
 //! - A local provider (Ollama, LM Studio, any endpoint on the loopback interface) loads one
@@ -193,6 +193,7 @@ mod tests {
                 text: request.user.clone(),
                 prompt_tokens: None,
                 completion_tokens: None,
+                cost_usd: None,
             })
         }
     }

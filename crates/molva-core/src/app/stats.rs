@@ -65,11 +65,19 @@ pub struct LatencySummary {
     pub total: u32,
 }
 
-/// Total tokens of the post-processing model over the period
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+/// Total tokens of the post-processing model over the period, and what they cost
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct TokenSummary {
     pub prompt: u64,
     pub completion: u64,
+    /// Sum of the charges the providers reported, in US dollars
+    pub cost_usd: f64,
+    /// Cloud calls that reported a charge
+    pub cost_known: u32,
+    /// Cloud calls that reported none: the provider does not account for a request
+    ///
+    /// A local model is not counted here: it costs nothing, and that is a known zero
+    pub cost_unknown: u32,
 }
 
 /// One day of the series: the basis of the speed chart and the sparkline
@@ -331,6 +339,16 @@ pub fn token_summary(entries: &[&Entry]) -> TokenSummary {
         if let Some(tokens) = &entry.tokens {
             sum.prompt += u64::from(tokens.prompt);
             sum.completion += u64::from(tokens.completion);
+        }
+        if !entry.llm_used || entry.local_llm {
+            continue;
+        }
+        match entry.llm_cost_usd {
+            Some(cost) => {
+                sum.cost_usd += cost;
+                sum.cost_known += 1;
+            }
+            None => sum.cost_unknown += 1,
         }
     }
     sum
@@ -711,6 +729,84 @@ mod tests {
         assert_eq!(summary.latency_ms.inject, Some(150));
         assert_eq!(summary.tokens.prompt, 120);
         assert_eq!(summary.tokens.completion, 60);
+    }
+
+    #[test]
+    fn the_charges_of_the_provider_are_summed() {
+        let mut first = test_entry("2026-09-05T10:00:00Z", 10, 4.0, "kitty");
+        first.llm_used = true;
+        first.local_llm = false;
+        first.llm_cost_usd = Some(0.000_004);
+        let mut second = test_entry("2026-09-05T10:01:00Z", 10, 4.0, "kitty");
+        second.llm_used = true;
+        second.local_llm = false;
+        second.llm_cost_usd = Some(0.000_006);
+
+        let summary = summary(&[first, second], now_at("2026-09-05T12:00:00Z"), &cfg(), 7);
+        assert!((summary.tokens.cost_usd - 0.000_01).abs() < 1e-12);
+        assert_eq!(summary.tokens.cost_known, 2);
+        assert_eq!(summary.tokens.cost_unknown, 0);
+    }
+
+    #[test]
+    fn a_cloud_call_without_a_reported_charge_is_counted_as_unknown() {
+        let mut known = test_entry("2026-09-05T10:00:00Z", 10, 4.0, "kitty");
+        known.llm_used = true;
+        known.local_llm = false;
+        known.llm_cost_usd = Some(0.000_004);
+        let mut silent = test_entry("2026-09-05T10:01:00Z", 10, 4.0, "kitty");
+        silent.llm_used = true;
+        silent.local_llm = false;
+
+        let summary = summary(&[known, silent], now_at("2026-09-05T12:00:00Z"), &cfg(), 7);
+        assert_eq!(summary.tokens.cost_known, 1);
+        assert_eq!(summary.tokens.cost_unknown, 1);
+    }
+
+    #[test]
+    fn a_transcription_through_mcp_enters_the_same_cost() {
+        let mut dictated = test_entry("2026-09-05T10:00:00Z", 10, 4.0, "kitty");
+        dictated.llm_used = true;
+        dictated.local_llm = false;
+        dictated.llm_cost_usd = Some(0.000_004);
+        let mut through_mcp = test_entry("2026-09-05T10:01:00Z", 10, 4.0, "kitty");
+        through_mcp.source = Source::Mcp;
+        through_mcp.llm_used = true;
+        through_mcp.local_llm = false;
+        through_mcp.llm_cost_usd = Some(0.000_006);
+
+        let summary = summary(
+            &[dictated, through_mcp],
+            now_at("2026-09-05T12:00:00Z"),
+            &cfg(),
+            7,
+        );
+        // The source splits the counters of transcriptions, not the bill: one model, one sum
+        assert_eq!(summary.mcp_entries, 1);
+        assert!((summary.tokens.cost_usd - 0.000_01).abs() < 1e-12);
+        assert_eq!(summary.tokens.cost_known, 2);
+    }
+
+    #[test]
+    fn a_local_model_costs_a_known_zero() {
+        let mut local = test_entry("2026-09-05T10:00:00Z", 10, 4.0, "kitty");
+        local.llm_used = true;
+        local.local_llm = true;
+
+        let summary = summary(&[local], now_at("2026-09-05T12:00:00Z"), &cfg(), 7);
+        assert_eq!(summary.tokens.cost_usd, 0.0);
+        assert_eq!(summary.tokens.cost_known, 0);
+        assert_eq!(summary.tokens.cost_unknown, 0);
+    }
+
+    #[test]
+    fn a_phrase_without_a_model_call_does_not_enter_the_cost() {
+        let mut plain = test_entry("2026-09-05T10:00:00Z", 10, 4.0, "kitty");
+        plain.llm_used = false;
+
+        let summary = summary(&[plain], now_at("2026-09-05T12:00:00Z"), &cfg(), 7);
+        assert_eq!(summary.tokens.cost_known, 0);
+        assert_eq!(summary.tokens.cost_unknown, 0);
     }
 
     #[test]

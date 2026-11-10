@@ -91,6 +91,13 @@ pub struct Entry {
     pub latency_ms: LatencyMs,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tokens: Option<Tokens>,
+    /// What the provider charged for the model call, in US dollars
+    ///
+    /// Absent when no model ran, when the model is local, or when the provider does not account
+    /// for a request. The statistics count the last case separately, so a sum of known charges
+    /// never passes for the whole bill
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub llm_cost_usd: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     /// Absent in privacy mode
@@ -166,6 +173,7 @@ mod tests {
                 ..Default::default()
             },
             tokens: None,
+            llm_cost_usd: None,
             error: None,
             text_raw: Some("привет мир".into()),
             text_final: Some("Привет, мир.".into()),

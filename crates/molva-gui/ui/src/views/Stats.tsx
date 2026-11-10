@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { api, asCommandError } from "../api";
 import {
+  formatCost,
   formatCount,
   formatLatency,
   formatMinutes,
@@ -13,10 +14,26 @@ import {
 } from "../format";
 import { useI18n } from "../i18n";
 import type { ViewProps } from "../App";
-import type { StatsSummary } from "../types";
+import type { StatsSummary, Tokens } from "../types";
 import WordsChart from "../components/WordsChart";
 
 const RANGES = [7, 30, 90];
+
+/**
+ * The charge of the model calls, or the reason there is no number
+ *
+ * A zero stands for a known zero only when a call reported it. Otherwise the tile would show
+ * "$0" for a bill the provider never told us about
+ */
+function costValue(tokens: Tokens, t: (key: string) => string): string {
+  if (tokens.cost_known === 0 && tokens.cost_unknown === 0) {
+    return t("stats.costNone");
+  }
+  if (tokens.cost_known === 0) {
+    return t("stats.costUnknown");
+  }
+  return formatCost(tokens.cost_usd);
+}
 
 export default function Stats({ onError }: ViewProps) {
   const { t, lang } = useI18n();
@@ -187,6 +204,31 @@ export default function Stats({ onError }: ViewProps) {
               {t("stats.tokens")}: {t("stats.tokensCompletion")}
             </dt>
             <dd>{formatCount(summary.tokens.completion)}</dd>
+          </div>
+          {summary.mcp_entries > 0 && (
+            <div className="tile">
+              <dt>{t("stats.mcpShare")}</dt>
+              <dd>
+                {formatCount(summary.mcp_entries)}
+                <span className="unit">{t("stats.mcpShareHint")}</span>
+              </dd>
+            </div>
+          )}
+          <div className="tile">
+            <dt>{t("stats.cost")}</dt>
+            <dd>
+              {costValue(summary.tokens, t)}
+              {summary.tokens.cost_known > 0 && summary.tokens.cost_unknown > 0 && (
+                <span className="unit">
+                  {t("stats.costPartial")
+                    .replace("{known}", String(summary.tokens.cost_known))
+                    .replace(
+                      "{total}",
+                      String(summary.tokens.cost_known + summary.tokens.cost_unknown),
+                    )}
+                </span>
+              )}
+            </dd>
           </div>
         </dl>
       </section>

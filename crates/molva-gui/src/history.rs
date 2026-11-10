@@ -141,6 +141,7 @@ mod tests {
             inject_method: None,
             latency_ms: LatencyMs::default(),
             tokens: None,
+            llm_cost_usd: None,
             error: None,
             text_raw: Some(text.to_string()),
             text_final: Some(text.to_string()),

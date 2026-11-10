@@ -56,14 +56,26 @@ pub enum PipelineError {
     Journal(#[from] JournalError),
     #[error("cannot get the selected text: {0}")]
     Selection(String),
-    #[error("command mode is turned off in the settings")]
+    #[error("voice editing is turned off in the settings")]
     CommandModeDisabled,
-    #[error("command mode needs a post-processing model: {0}")]
+    #[error("voice editing needs a post-processing model: {0}")]
     CommandModeNeedsLlm(LlmError),
     #[error("paste failed: {0}")]
     Inject(#[from] crate::domain::inject::InjectError),
     #[error("the transcription was cancelled")]
     Cancelled,
+}
+
+/// What one successful call to the model produced
+///
+/// The four facts travel together because the journal records them together, and a tuple of four
+/// would let a caller swap the tokens for the charge without the compiler noticing
+#[derive(Debug, Clone, PartialEq)]
+struct LlmOutcome {
+    text: String,
+    tokens: Option<Tokens>,
+    cost_usd: Option<f64>,
+    elapsed_ms: u32,
 }
 
 /// Settings that the pipeline needs. They are built from [`Config`] in one call
@@ -453,6 +465,7 @@ impl Pipeline {
                 ..Default::default()
             },
             tokens: None,
+            llm_cost_usd: None,
             error: None,
             text_raw: Some(text_raw),
             text_final: None,
@@ -628,7 +641,7 @@ impl Pipeline {
         let dict_hits;
         let mut streamed_tail = String::new();
         let after_rules = match mode {
-            // The command mode instruction goes to the model as it is: the rules would distort
+            // The voice editing instruction goes to the model as it is: the rules would distort
             // the command
             Mode::Command => {
                 let (after_dictionary, hits) = self.dictionary.apply(&text_raw);
@@ -682,6 +695,7 @@ impl Pipeline {
                 ..Default::default()
             },
             tokens: None,
+            llm_cost_usd: None,
             error: None,
             text_raw: Some(text_raw),
             text_final: None,
@@ -1011,9 +1025,9 @@ impl Pipeline {
             max_tokens: self.config.llm.max_tokens,
         };
         match self.complete_with_retries(&request) {
-            Ok((text, tokens, elapsed_ms)) => {
-                self.record_llm(entry, tokens, elapsed_ms);
-                text
+            Ok(outcome) => {
+                self.record_llm(entry, &outcome);
+                outcome.text
             }
             Err(err) => {
                 // The phrase is not lost: the text after the rules is returned. The failure
@@ -1048,9 +1062,9 @@ impl Pipeline {
             max_tokens: self.config.llm.max_tokens,
         };
         match self.complete_with_retries(&request) {
-            Ok((text, tokens, elapsed_ms)) => {
-                self.record_llm(entry, tokens, elapsed_ms);
-                Ok(text)
+            Ok(outcome) => {
+                self.record_llm(entry, &outcome);
+                Ok(outcome.text)
             }
             Err(err) => Err(PipelineError::CommandModeNeedsLlm(err)),
         }
@@ -1059,10 +1073,7 @@ impl Pipeline {
     /// Request to the model with a limited number of retries
     ///
     /// An authorization error is not retried: a retry does not fix the key
-    fn complete_with_retries(
-        &self,
-        request: &ChatRequest,
-    ) -> Result<(String, Option<Tokens>, u32), LlmError> {
+    fn complete_with_retries(&self, request: &ChatRequest) -> Result<LlmOutcome, LlmError> {
         let Some(llm) = self.llm.as_ref() else {
             return Err(LlmError::Disabled);
         };
@@ -1086,7 +1097,12 @@ impl Pipeline {
                         last = LlmError::BadResponse("the model returned empty text".into());
                         continue;
                     }
-                    return Ok((text, tokens, millis_since(started, self.clock.instant())));
+                    return Ok(LlmOutcome {
+                        text,
+                        tokens,
+                        cost_usd: response.cost_usd,
+                        elapsed_ms: millis_since(started, self.clock.instant()),
+                    });
                 }
                 Err(LlmError::Auth) => return Err(LlmError::Auth),
                 Err(err) => {
@@ -1099,13 +1115,14 @@ impl Pipeline {
     }
 
     /// Mark in the entry that the model ran
-    fn record_llm(&self, entry: &mut Entry, tokens: Option<Tokens>, elapsed_ms: u32) {
+    fn record_llm(&self, entry: &mut Entry, outcome: &LlmOutcome) {
         entry.llm_used = true;
         entry.llm_provider = self.llm.as_ref().map(|llm| llm.id().to_string());
         entry.llm_model = Some(self.config.llm.model.clone());
         entry.local_llm = self.llm.as_ref().is_some_and(|llm| llm.is_local());
-        entry.tokens = tokens;
-        entry.latency_ms.llm = Some(elapsed_ms);
+        entry.tokens.clone_from(&outcome.tokens);
+        entry.llm_cost_usd = outcome.cost_usd;
+        entry.latency_ms.llm = Some(outcome.elapsed_ms);
     }
 }
 
@@ -1119,6 +1136,7 @@ mod tests {
     use crate::domain::fakes::{FakeClock, FakeLlm, FakeStt, MemJournal, RecordingInjector};
     use crate::domain::inject::{InjectError, InjectReport};
     use crate::domain::journal::Journal as JournalTrait;
+    use crate::domain::llm::ChatResponse;
     use crate::domain::stt::Transcript;
 
     /// A fake that the test can still reach after it is passed to the pipeline
@@ -1362,6 +1380,40 @@ mod tests {
         );
         assert!(entry.latency_ms.llm.is_some());
         assert_eq!(injected(&harness), vec!["Переписанный моделью текст."]);
+    }
+
+    #[test]
+    fn the_charge_of_the_provider_reaches_the_journal_entry() {
+        let llm = Arc::new(FakeLlm::new(|_| {
+            Ok(ChatResponse {
+                text: "Переписанный моделью текст.".into(),
+                prompt_tokens: Some(10),
+                completion_tokens: Some(5),
+                cost_usd: Some(0.000_004),
+            })
+        }));
+        let text = "это достаточно длинная реплика из более чем десяти слов чтобы модель \
+                    точно вызвалась";
+        let mut harness = build(text, Some(Arc::clone(&llm)), with_llm());
+        let entry = harness
+            .pipeline
+            .run(audio(8.0), Mode::Dictation, None, None)
+            .unwrap();
+
+        assert_eq!(entry.llm_cost_usd, Some(0.000_004));
+    }
+
+    #[test]
+    fn a_phrase_that_never_reaches_the_model_records_no_charge() {
+        let llm = Arc::new(FakeLlm::echoing("переписано"));
+        let mut harness = build("привет", Some(Arc::clone(&llm)), with_llm());
+        let entry = harness
+            .pipeline
+            .run(audio(1.0), Mode::Dictation, None, None)
+            .unwrap();
+
+        assert_eq!(llm.calls(), 0);
+        assert_eq!(entry.llm_cost_usd, None);
     }
 
     #[test]
@@ -1733,7 +1785,7 @@ mod tests {
 
     #[test]
     fn command_mode_is_short_even_though_the_model_is_still_called() {
-        // The llm_min_words threshold does not apply to command mode: without the model it is
+        // The llm_min_words threshold does not apply to voice editing: without the model it is
         // meaningless
         let llm = Arc::new(FakeLlm::echoing("Готово."));
         let mut harness = build("покороче", Some(Arc::clone(&llm)), with_llm());
