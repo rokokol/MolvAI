@@ -478,26 +478,18 @@ mod tests {
             )
         }
 
+        // One test, not four: each case writes and executes a script, and parallel cases
+        // collide on the same executable with ETXTBSY
         #[test]
-        fn a_lua_compositor_takes_the_lua_form() {
+        fn the_reply_of_hyprctl_decides_the_dialect() {
             assert_eq!(run_fake("ok", "unknown request").unwrap(), Dialect::Lua);
-        }
-
-        #[test]
-        fn an_old_compositor_gets_the_old_form() {
             assert_eq!(run_fake("unknown request", "ok").unwrap(), Dialect::Legacy);
-        }
 
-        #[test]
-        fn an_unknown_request_with_exit_zero_is_not_a_success() {
-            // The trap of an old Hyprland: it answers "unknown request" and still exits 0
+            // An old Hyprland answers "unknown request" and still exits 0
             let error = run_fake("unknown request", "unknown request").unwrap_err();
             assert!(matches!(error, InjectError::Failed(_)), "{error}");
             assert!(error.to_string().contains("unknown request"), "{error}");
-        }
 
-        #[test]
-        fn a_warning_with_exit_zero_is_not_a_success() {
             // The Lua dispatcher of 0.56 prints a warning and exits 0 when it refuses
             let error =
                 run_fake("warning: window not found", "warning: window not found").unwrap_err();
