@@ -145,6 +145,8 @@ mod tests {
             latency_ms: LatencyMs::default(),
             tokens: None,
             llm_cost_usd: None,
+            llm_calls: 0,
+            llm_unpriced_calls: 0,
             error: None,
             text_raw: Some(text.into()),
             text_final: Some(text.into()),

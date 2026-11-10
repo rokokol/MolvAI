@@ -464,32 +464,44 @@ impl LlmClient for OpenAiCompatClient {
 
         let parsed: Completion = serde_json::from_str(&text)
             .map_err(|err| LlmError::BadResponse(format!("{err}: {}", snippet(&text))))?;
-        // OpenRouter can answer HTTP 200 with an error object and an empty choices list. The
-        // detailed provider reason is in that object; dropping it leaves "the answer has no
-        // text" and hides the hoster's real failure
-        if let Some(error) = parsed.error {
-            let detail = error.message.unwrap_or_else(|| snippet(&text));
-            return Err(LlmError::BadResponse(format!("provider error: {detail}")));
-        }
-        let content = parsed
-            .choices
-            .into_iter()
-            .find_map(|choice| choice.message.and_then(|message| message.content))
-            .filter(|text| !text.trim().is_empty())
-            .ok_or_else(|| {
-                LlmError::BadResponse(format!("the answer has no text: {}", snippet(&text)))
-            })?;
-
         let (prompt_tokens, completion_tokens, cost_usd) = match parsed.usage {
             Some(usage) => (usage.prompt_tokens, usage.completion_tokens, usage.cost),
             None => (None, None, None),
         };
-        Ok(ChatResponse {
-            text: content,
-            prompt_tokens,
-            completion_tokens,
-            cost_usd,
-        })
+        // OpenRouter answers HTTP 200 with an error object and an empty choices list when the
+        // upstream provider fails after the request was accepted, and that answer is billed. The
+        // answer therefore comes back as a response with no text and a note: an error here would
+        // drop both the provider's reason and the charge
+        if let Some(error) = parsed.error {
+            let detail = error.message.unwrap_or_else(|| snippet(&text));
+            return Ok(ChatResponse {
+                text: String::new(),
+                prompt_tokens,
+                completion_tokens,
+                cost_usd,
+                note: Some(format!("provider error: {detail}")),
+            });
+        }
+        let content = parsed
+            .choices
+            .into_iter()
+            .find_map(|choice| choice.message.and_then(|message| message.content));
+        match content.filter(|text| !text.trim().is_empty()) {
+            Some(content) => Ok(ChatResponse {
+                text: content,
+                prompt_tokens,
+                completion_tokens,
+                cost_usd,
+                note: None,
+            }),
+            None => Ok(ChatResponse {
+                text: String::new(),
+                prompt_tokens,
+                completion_tokens,
+                cost_usd,
+                note: Some(format!("the answer has no text: {}", snippet(&text))),
+            }),
+        }
     }
 }
 
@@ -1055,14 +1067,31 @@ mod tests {
     }
 
     #[test]
-    fn a_body_without_text_becomes_a_bad_response() {
+    fn a_body_without_text_becomes_a_response_with_a_note_and_no_text() {
         let server = MockServer::spawn(vec![Some(http("200 OK", r#"{"choices":[]}"#))]);
-        let err = client(&server, None).complete(&request()).unwrap_err();
-        assert!(matches!(err, LlmError::BadResponse(_)), "{err:?}");
+        let response = client(&server, None).complete(&request()).unwrap();
+        assert!(response.text.is_empty());
+        assert!(response.note.is_some(), "{response:?}");
 
         let server = MockServer::spawn(vec![Some(http("200 OK", "this is not json"))]);
         let err = client(&server, None).complete(&request()).unwrap_err();
         assert!(matches!(err, LlmError::BadResponse(_)), "{err:?}");
+    }
+
+    #[test]
+    fn an_error_inside_a_successful_answer_keeps_its_charge() {
+        let body = http(
+            "200 OK",
+            r#"{"error":{"message":"upstream provider failed"},
+                "usage":{"prompt_tokens":20,"completion_tokens":0,"cost":0.00002}}"#,
+        );
+        let server = MockServer::spawn(vec![Some(body)]);
+        let response = client(&server, None).complete(&request()).unwrap();
+
+        assert!(response.text.is_empty());
+        assert_eq!(response.cost_usd, Some(0.000_02));
+        let note = response.note.unwrap_or_default();
+        assert!(note.contains("upstream provider failed"), "{note}");
     }
 
     #[test]

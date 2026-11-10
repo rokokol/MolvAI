@@ -372,6 +372,8 @@ impl<I: TextInjector, J: Journal> Processor for SimpleProcessor<I, J> {
             },
             tokens: None,
             llm_cost_usd: None,
+            llm_calls: 0,
+            llm_unpriced_calls: 0,
             error,
             text_raw: Some(transcript.text.clone()),
             text_final: Some(text),

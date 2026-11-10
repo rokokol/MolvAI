@@ -25,6 +25,13 @@ pub struct ChatResponse {
     /// model reports nothing and costs nothing; a cloud provider that does not account for a
     /// request reports nothing either, and the statistics say so instead of counting a zero
     pub cost_usd: Option<f64>,
+    /// What the provider said instead of an answer
+    ///
+    /// OpenRouter answers HTTP 200 with an `error` object when the upstream provider fails after
+    /// the request was accepted, and that answer is billed like any other. So the failure travels
+    /// as a response with no text and this note, rather than as an error that cannot carry the
+    /// charge. The caller retries and keeps the money
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq, Serialize, Deserialize)]

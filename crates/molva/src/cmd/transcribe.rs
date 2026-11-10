@@ -507,6 +507,11 @@ pub(crate) fn transcribe_jobs_as(
                 .as_ref()
                 .and_then(|trace| trace.tokens.clone()),
             llm_cost_usd: processed.llm.as_ref().and_then(|trace| trace.cost_usd),
+            llm_calls: u32::from(processed.llm.is_some()),
+            llm_unpriced_calls: processed
+                .llm
+                .as_ref()
+                .map_or(0, |trace| u32::from(trace.cost_usd.is_none())),
             error: None,
             text_raw: Some(raw),
             text_final: Some(text.clone()),

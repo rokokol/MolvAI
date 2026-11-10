@@ -66,6 +66,33 @@ pub enum PipelineError {
     Cancelled,
 }
 
+/// What one call to the model spent, whatever came back
+///
+/// A retry is a request the provider bills for just like the first one, so the money spent on an
+/// answer that was thrown away stays in this record. The counters travel with the money, because
+/// a sum is only honest beside the number of calls it covers and the number of those that named
+/// no price
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+struct LlmSpend {
+    /// Sum of the charges the provider reported, in US dollars
+    cost_usd: Option<f64>,
+    /// Requests that left for the provider, including the ones whose answer was thrown away
+    calls: u32,
+    /// Calls that came back without a charge: the provider does not account, or the request
+    /// never reached it
+    unpriced: u32,
+}
+
+impl LlmSpend {
+    fn add(&mut self, cost_usd: Option<f64>) {
+        self.calls += 1;
+        match cost_usd {
+            Some(cost) => self.cost_usd = Some(self.cost_usd.unwrap_or(0.0) + cost),
+            None => self.unpriced += 1,
+        }
+    }
+}
+
 /// What one successful call to the model produced
 ///
 /// The four facts travel together because the journal records them together, and a tuple of four
@@ -74,8 +101,17 @@ pub enum PipelineError {
 struct LlmOutcome {
     text: String,
     tokens: Option<Tokens>,
-    cost_usd: Option<f64>,
     elapsed_ms: u32,
+}
+
+/// Where a chain of attempts ended, with the money spent on the way
+///
+/// The spend is present either way, because a phrase that ends in a failure still cost what the
+/// provider charged for the attempts it did answer
+#[derive(Debug)]
+struct LlmAttempt {
+    outcome: Result<LlmOutcome, LlmError>,
+    spend: LlmSpend,
 }
 
 /// Settings that the pipeline needs. They are built from [`Config`] in one call
@@ -466,6 +502,8 @@ impl Pipeline {
             },
             tokens: None,
             llm_cost_usd: None,
+            llm_calls: 0,
+            llm_unpriced_calls: 0,
             error: None,
             text_raw: Some(text_raw),
             text_final: None,
@@ -696,6 +734,8 @@ impl Pipeline {
             },
             tokens: None,
             llm_cost_usd: None,
+            llm_calls: 0,
+            llm_unpriced_calls: 0,
             error: None,
             text_raw: Some(text_raw),
             text_final: None,
@@ -1024,7 +1064,9 @@ impl Pipeline {
             temperature: self.config.llm.temperature,
             max_tokens: self.config.llm.max_tokens,
         };
-        match self.complete_with_retries(&request) {
+        let attempt = self.complete_with_retries(&request);
+        self.record_spend(entry, &attempt.spend);
+        match attempt.outcome {
             Ok(outcome) => {
                 self.record_llm(entry, &outcome);
                 outcome.text
@@ -1061,7 +1103,9 @@ impl Pipeline {
             temperature: self.config.llm.temperature,
             max_tokens: self.config.llm.max_tokens,
         };
-        match self.complete_with_retries(&request) {
+        let attempt = self.complete_with_retries(&request);
+        self.record_spend(entry, &attempt.spend);
+        match attempt.outcome {
             Ok(outcome) => {
                 self.record_llm(entry, &outcome);
                 Ok(outcome.text)
@@ -1073,16 +1117,21 @@ impl Pipeline {
     /// Request to the model with a limited number of retries
     ///
     /// An authorization error is not retried: a retry does not fix the key
-    fn complete_with_retries(&self, request: &ChatRequest) -> Result<LlmOutcome, LlmError> {
+    fn complete_with_retries(&self, request: &ChatRequest) -> LlmAttempt {
         let Some(llm) = self.llm.as_ref() else {
-            return Err(LlmError::Disabled);
+            return LlmAttempt {
+                outcome: Err(LlmError::Disabled),
+                spend: LlmSpend::default(),
+            };
         };
         let attempts = self.config.llm.max_retries.saturating_add(1);
         let started = self.clock.instant();
+        let mut spend = LlmSpend::default();
         let mut last = LlmError::Disabled;
         for attempt in 1..=attempts {
             match llm.complete(request) {
                 Ok(response) => {
+                    spend.add(response.cost_usd);
                     let tokens = match (response.prompt_tokens, response.completion_tokens) {
                         (None, None) => None,
                         (prompt, completion) => Some(Tokens {
@@ -1094,24 +1143,46 @@ impl Pipeline {
                     // reach the user's field (AM-19)
                     let text = sanitize_llm_output(&response.text, &self.dictionary.prompt_hint());
                     if text.is_empty() {
-                        last = LlmError::BadResponse("the model returned empty text".into());
+                        // The answer was paid for and thrown away: the next attempt pays again,
+                        // and the journal holds both charges. The provider's own reason travels
+                        // in the note, so the last attempt can carry it into the error
+                        last = LlmError::BadResponse(
+                            response
+                                .note
+                                .unwrap_or_else(|| "the model returned empty text".into()),
+                        );
                         continue;
                     }
-                    return Ok(LlmOutcome {
-                        text,
-                        tokens,
-                        cost_usd: response.cost_usd,
-                        elapsed_ms: millis_since(started, self.clock.instant()),
-                    });
+                    return LlmAttempt {
+                        outcome: Ok(LlmOutcome {
+                            text,
+                            tokens,
+                            elapsed_ms: millis_since(started, self.clock.instant()),
+                        }),
+                        spend,
+                    };
                 }
-                Err(LlmError::Auth) => return Err(LlmError::Auth),
+                // A rejected key is not a charge, and a retry does not fix the key
+                Err(LlmError::Auth) => {
+                    return LlmAttempt {
+                        outcome: Err(LlmError::Auth),
+                        spend,
+                    };
+                }
                 Err(err) => {
                     warn!(attempt, attempts, error = %err, "retry of the request to the model");
+                    // The provider may have read the request and dropped the answer, or never
+                    // seen it: the money is unknown, not zero
+                    spend.calls += 1;
+                    spend.unpriced += 1;
                     last = err;
                 }
             }
         }
-        Err(last)
+        LlmAttempt {
+            outcome: Err(last),
+            spend,
+        }
     }
 
     /// Mark in the entry that the model ran
@@ -1121,8 +1192,18 @@ impl Pipeline {
         entry.llm_model = Some(self.config.llm.model.clone());
         entry.local_llm = self.llm.as_ref().is_some_and(|llm| llm.is_local());
         entry.tokens.clone_from(&outcome.tokens);
-        entry.llm_cost_usd = outcome.cost_usd;
         entry.latency_ms.llm = Some(outcome.elapsed_ms);
+    }
+
+    /// Give the entry the money the model calls spent, including the failed ones
+    fn record_spend(&self, entry: &mut Entry, spend: &LlmSpend) {
+        let local = self.llm.as_ref().is_some_and(|llm| llm.is_local());
+        entry.llm_cost_usd = spend.cost_usd;
+        entry.llm_calls = spend.calls;
+        // A local model costs nothing, and that is a known zero: it has no unpriced call, even
+        // when it reports no price at all
+        entry.llm_unpriced_calls = if local { 0 } else { spend.unpriced };
+        entry.local_llm = local;
     }
 }
 
@@ -1390,6 +1471,7 @@ mod tests {
                 prompt_tokens: Some(10),
                 completion_tokens: Some(5),
                 cost_usd: Some(0.000_004),
+                note: None,
             })
         }));
         let text = "это достаточно длинная реплика из более чем десяти слов чтобы модель \
@@ -1414,6 +1496,67 @@ mod tests {
 
         assert_eq!(llm.calls(), 0);
         assert_eq!(entry.llm_cost_usd, None);
+    }
+
+    #[test]
+    fn a_retry_that_was_billed_enters_the_charge_of_the_phrase() {
+        // The first answer comes back empty: paid for, thrown away, and the second attempt is
+        // paid as well
+        let seen = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = Arc::clone(&seen);
+        let llm = Arc::new(FakeLlm::new(move |_| {
+            let call = counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(ChatResponse {
+                text: if call == 0 {
+                    String::new()
+                } else {
+                    "Переписанный моделью текст.".into()
+                },
+                prompt_tokens: Some(10),
+                completion_tokens: Some(5),
+                cost_usd: Some(0.000_004),
+                note: Some("the answer has no text".into()),
+            })
+        }));
+        let text = "это достаточно длинная реплика из более чем десяти слов чтобы модель \
+                    точно вызвалась";
+        let mut harness = build(text, Some(Arc::clone(&llm)), with_llm());
+        let entry = harness
+            .pipeline
+            .run(audio(8.0), Mode::Dictation, None, None)
+            .unwrap();
+
+        assert_eq!(llm.calls(), 2);
+        assert_eq!(entry.llm_calls, 2);
+        assert_eq!(entry.llm_unpriced_calls, 0);
+        assert_eq!(entry.llm_cost_usd, Some(0.000_008));
+    }
+
+    #[test]
+    fn a_phrase_whose_calls_all_failed_keeps_what_they_cost() {
+        let llm = Arc::new(FakeLlm::new(|_| {
+            Ok(ChatResponse {
+                text: String::new(),
+                prompt_tokens: Some(10),
+                completion_tokens: Some(0),
+                cost_usd: Some(0.000_003),
+                note: Some("provider error: upstream provider failed".into()),
+            })
+        }));
+        let text = "это достаточно длинная реплика из более чем десяти слов чтобы модель \
+                    точно вызвалась";
+        let mut harness = build(text, Some(Arc::clone(&llm)), with_llm());
+        let entry = harness
+            .pipeline
+            .run(audio(8.0), Mode::Dictation, None, None)
+            .unwrap();
+
+        // The text after the rules reaches the field, and the money is not lost with the answer
+        assert!(!entry.llm_used);
+        assert_eq!(entry.llm_calls, 3);
+        assert_eq!(entry.llm_cost_usd, Some(0.000_009));
+        let error = entry.error.unwrap_or_default();
+        assert!(error.contains("upstream provider failed"), "{error}");
     }
 
     #[test]

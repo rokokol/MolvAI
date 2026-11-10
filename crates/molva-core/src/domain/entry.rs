@@ -55,6 +55,15 @@ pub struct Tokens {
     pub completion: u32,
 }
 
+/// Serde helper: a counter that is missing from the line when it holds nothing
+///
+/// Serde passes the field by reference, so the signature follows it rather than the usual
+/// advice to take a number by value
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(value: &u32) -> bool {
+    *value == 0
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Entry {
     pub schema: u32,
@@ -91,13 +100,19 @@ pub struct Entry {
     pub latency_ms: LatencyMs,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tokens: Option<Tokens>,
-    /// What the provider charged for the model call, in US dollars
+    /// What the provider charged for the model calls of this phrase, in US dollars
     ///
-    /// Absent when no model ran, when the model is local, or when the provider does not account
-    /// for a request. The statistics count the last case separately, so a sum of known charges
-    /// never passes for the whole bill
+    /// A retry is a call the provider bills for, so an answer that was thrown away keeps its
+    /// charge here. Absent when no call reported one, which is different from zero: a local
+    /// model and an unreachable provider both leave it empty for their own reasons
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub llm_cost_usd: Option<f64>,
+    /// Requests that left for the provider, including the ones whose answer was thrown away
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub llm_calls: u32,
+    /// Calls that came back without a charge, so `llm_cost_usd` is not the whole bill
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub llm_unpriced_calls: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     /// Absent in privacy mode
@@ -174,6 +189,8 @@ mod tests {
             },
             tokens: None,
             llm_cost_usd: None,
+            llm_calls: 0,
+            llm_unpriced_calls: 0,
             error: None,
             text_raw: Some("привет мир".into()),
             text_final: Some("Привет, мир.".into()),

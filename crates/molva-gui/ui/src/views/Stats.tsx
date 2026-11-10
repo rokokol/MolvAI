@@ -26,10 +26,10 @@ const RANGES = [7, 30, 90];
  * "$0" for a bill the provider never told us about
  */
 function costValue(tokens: Tokens, t: (key: string) => string): string {
-  if (tokens.cost_known === 0 && tokens.cost_unknown === 0) {
+  if (tokens.calls === 0) {
     return t("stats.costNone");
   }
-  if (tokens.cost_known === 0) {
+  if (tokens.unpriced_calls === tokens.calls) {
     return t("stats.costUnknown");
   }
   return formatCost(tokens.cost_usd);
@@ -218,16 +218,14 @@ export default function Stats({ onError }: ViewProps) {
             <dt>{t("stats.cost")}</dt>
             <dd>
               {costValue(summary.tokens, t)}
-              {summary.tokens.cost_known > 0 && summary.tokens.cost_unknown > 0 && (
-                <span className="unit">
-                  {t("stats.costPartial")
-                    .replace("{known}", String(summary.tokens.cost_known))
-                    .replace(
-                      "{total}",
-                      String(summary.tokens.cost_known + summary.tokens.cost_unknown),
-                    )}
-                </span>
-              )}
+              {summary.tokens.unpriced_calls > 0 &&
+                summary.tokens.unpriced_calls < summary.tokens.calls && (
+                  <span className="unit">
+                    {t("stats.costPartial")
+                      .replace("{unpriced}", String(summary.tokens.unpriced_calls))
+                      .replace("{total}", String(summary.tokens.calls))}
+                  </span>
+                )}
             </dd>
           </div>
         </dl>

@@ -18,6 +18,8 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 - A transcription through the MCP server enters that same sum, because the journal is the one place a phrase is written and the statistics read it without asking where the phrase came from. The report names the MCP share beside the total, so the sum can be checked instead of trusted
 
+- A retry is billed like the first attempt, so a phrase that was answered on the second call counts both, and a phrase whose calls all failed keeps what they cost next to its error. An answer the provider returned with an error object inside it no longer loses the charge: the client hands the empty text back with the provider's reason, and the pipeline retries while the journal keeps the money
+
 ### Changed
 
 - Voice editing is the name of the feature everywhere: the site, the GUI hotkey label, the documentation and the error the daemon returns. `command` stays the name of the hotkey key and `command_mode` the name of the settings section, because a rename there would break every existing configuration

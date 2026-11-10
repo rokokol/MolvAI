@@ -360,6 +360,7 @@ mod tests {
                 prompt_tokens: None,
                 completion_tokens: None,
                 cost_usd: None,
+                note: None,
             })
         });
         let cfg = local_draft("http://127.0.0.1:9/v1").llm;

@@ -194,6 +194,7 @@ mod tests {
                 prompt_tokens: None,
                 completion_tokens: None,
                 cost_usd: None,
+                note: None,
             })
         }
     }

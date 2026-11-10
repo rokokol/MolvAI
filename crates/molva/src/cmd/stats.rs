@@ -141,25 +141,27 @@ fn money(usd: f64) -> String {
     }
 }
 
-/// The charge of the model calls, with the calls that reported no charge named beside it
+/// The charge of the model calls, with the calls that named no price beside it
 ///
 /// A sum of known charges is not the whole bill, so the count of silent calls travels with it.
 /// A period with no cloud call at all says so instead of printing a zero that reads as a bill,
-/// and so does a period where no call reported a charge: a zero there would be a guess
+/// and so does a period where no call named a price: a zero there would be a guess
 fn cost_line(tokens: &stats::TokenSummary) -> String {
-    let total = tokens.cost_known + tokens.cost_unknown;
-    if total == 0 {
+    if tokens.calls == 0 {
         return "no cloud model calls".to_string();
     }
-    if tokens.cost_known == 0 {
-        let noun = if total == 1 { "call" } else { "calls" };
-        return format!("unknown, the provider reported no charge for {total} {noun}");
+    let noun = if tokens.calls == 1 { "call" } else { "calls" };
+    if tokens.unpriced_calls == tokens.calls {
+        return format!(
+            "unknown, the provider named no price for {} {noun}",
+            tokens.calls
+        );
     }
     let mut line = money(tokens.cost_usd);
-    if tokens.cost_unknown > 0 {
+    if tokens.unpriced_calls > 0 {
         line.push_str(&format!(
-            " ({} of {total} calls reported a charge)",
-            tokens.cost_known
+            " ({} of {} {noun} named no price)",
+            tokens.unpriced_calls, tokens.calls
         ));
     }
     line
@@ -340,6 +342,8 @@ mod tests {
             },
             tokens: None,
             llm_cost_usd: None,
+            llm_calls: 0,
+            llm_unpriced_calls: 0,
             error: None,
             text_raw: None,
             text_final: Some("текст".into()),
@@ -444,6 +448,7 @@ mod tests {
         first.llm_used = true;
         first.local_llm = false;
         first.llm_cost_usd = Some(0.000_004);
+        first.llm_calls = 1;
         let entries = vec![first];
         let summary = stats::summary(&entries, now(), &StatsConfig::default(), 7);
         let report = report(&summary, &entries, &args(Series::Day));
@@ -456,16 +461,31 @@ mod tests {
         known.llm_used = true;
         known.local_llm = false;
         known.llm_cost_usd = Some(0.000_004);
+        known.llm_calls = 1;
         let mut silent = entry("2026-09-05T10:01:00Z", 10, "kitty");
         silent.llm_used = true;
         silent.local_llm = false;
+        silent.llm_calls = 1;
+        silent.llm_unpriced_calls = 1;
         let entries = vec![known, silent];
         let summary = stats::summary(&entries, now(), &StatsConfig::default(), 7);
         let report = report(&summary, &entries, &args(Series::Day));
-        assert!(
-            report.contains("1 of 2 calls reported a charge"),
-            "{report}"
-        );
+        assert!(report.contains("1 of 2 calls named no price"), "{report}");
+    }
+
+    #[test]
+    fn a_retry_shows_up_in_the_number_of_calls() {
+        let mut retried = entry("2026-09-05T10:00:00Z", 10, "kitty");
+        retried.llm_used = true;
+        retried.local_llm = false;
+        retried.llm_cost_usd = Some(0.000_008);
+        retried.llm_calls = 2;
+        let entries = vec![retried];
+        let summary = stats::summary(&entries, now(), &StatsConfig::default(), 7);
+        let report = report(&summary, &entries, &args(Series::Day));
+        // Two calls, both billed: the sum covers both and no call goes unnamed
+        assert!(report.contains("Model cost        $0.000008"), "{report}");
+        assert!(!report.contains("named no price"), "{report}");
     }
 
     #[test]
@@ -475,6 +495,7 @@ mod tests {
         through_mcp.llm_used = true;
         through_mcp.local_llm = false;
         through_mcp.llm_cost_usd = Some(0.000_004);
+        through_mcp.llm_calls = 1;
         let entries = vec![through_mcp];
         let summary = stats::summary(&entries, now(), &StatsConfig::default(), 7);
         let report = report(&summary, &entries, &args(Series::Day));
@@ -505,15 +526,17 @@ mod tests {
     }
 
     #[test]
-    fn a_period_where_no_call_reported_a_charge_prints_no_sum() {
+    fn a_period_where_no_call_named_a_price_prints_no_sum() {
         let mut silent = entry("2026-09-05T10:00:00Z", 10, "kitty");
         silent.llm_used = true;
         silent.local_llm = false;
+        silent.llm_calls = 1;
+        silent.llm_unpriced_calls = 1;
         let entries = vec![silent];
         let summary = stats::summary(&entries, now(), &StatsConfig::default(), 7);
         let report = report(&summary, &entries, &args(Series::Day));
         assert!(
-            report.contains("unknown, the provider reported no charge for 1 call"),
+            report.contains("unknown, the provider named no price for 1 call"),
             "{report}"
         );
         assert!(!report.contains("$0.0000"), "{report}");

@@ -30,10 +30,10 @@ export interface Tokens {
   completion: number;
   /** Sum of the charges the providers reported, in US dollars */
   cost_usd: number;
-  /** Cloud calls that reported a charge */
-  cost_known: number;
-  /** Cloud calls that reported none, so the sum above is not the whole bill */
-  cost_unknown: number;
+  /** Requests that left for a cloud provider, retries included */
+  calls: number;
+  /** Calls that named no price, so the sum above is not the whole bill */
+  unpriced_calls: number;
 }
 
 /** A journal line: one phrase */

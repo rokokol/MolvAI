@@ -217,6 +217,7 @@ impl FakeLlm {
                 prompt_tokens: Some(10),
                 completion_tokens: Some(5),
                 cost_usd: None,
+                note: None,
             })
         })
     }

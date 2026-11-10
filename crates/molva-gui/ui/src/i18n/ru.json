@@ -121,7 +121,7 @@
   "stats.costNone": "облачных вызовов нет",
   "stats.costUnknown": "не сообщена",
 
-  "stats.costPartial": "{known} из {total} вызовов сообщили цену",
+  "stats.costPartial": "{unpriced} из {total} вызовов без цены",
   "stats.chart": "Слова по дням и средний темп",
   "stats.chartEmpty": "Данных для графика пока нет",
   "stats.range7": "7 дней",

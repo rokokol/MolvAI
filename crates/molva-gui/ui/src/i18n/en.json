@@ -121,7 +121,7 @@
   "stats.costNone": "no cloud calls",
   "stats.costUnknown": "not reported",
 
-  "stats.costPartial": "{known} of {total} calls reported a charge",
+  "stats.costPartial": "{unpriced} of {total} calls named no price",
   "stats.chart": "Words per day and average pace",
   "stats.chartEmpty": "No data for the chart yet",
   "stats.range7": "7 days",
