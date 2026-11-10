@@ -186,6 +186,8 @@ export interface SttProbeCheck {
   ok: boolean;
   /** An error text, or the path the check used; empty when a passing check needs no detail */
   detail: string;
+  /** A dictionary key the window translates when the daemon has no text of its own */
+  detail_key?: string;
 }
 
 /** What the recognition test of the settings page found */
@@ -248,6 +250,7 @@ export interface CustomStyle {
   name: string;
   uses_llm: boolean;
   system_prompt: string;
+  llm_min_words: number;
 }
 
 /** One exact phrase and the text that replaces it before the model stage */
@@ -312,7 +315,6 @@ export interface Config {
     remove_repeats: boolean;
     numbers_as_digits: boolean;
     paragraph_pause_ms: number;
-    llm_min_words: number;
   };
   snippets: SnippetsConfig;
   llm: {

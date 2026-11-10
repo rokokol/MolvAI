@@ -178,7 +178,7 @@ The journal is a local JSONL file. Its texts can be encrypted with XChaCha20-Pol
 
 ## Language model
 
-The language model is off by default and works through any OpenAI-compatible API. It is called only for phrases longer than `rules.llm_min_words` words and only by styles that need it; a failure returns the text after the rules instead of losing the phrase
+The language model is off by default and works through any OpenAI-compatible API. It is called only by styles that need it and only when the phrase reaches that style's word minimum; a failure returns the text after the rules instead of losing the phrase
 
 A local model stays serial: one request at a time, because two at once answer slower and worse. A cloud provider answers up to four calls beside each other, and one executor holds that policy, so no stage decides on its own to wait beside another. The post-processing of a phrase runs on the daemon worker, and a style can ask the same model to translate the text
 

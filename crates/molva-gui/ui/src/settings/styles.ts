@@ -6,12 +6,15 @@
 // `MAX_CUSTOM_STYLES` repeats the hard limit of `Config::validate_styles`: a form that offers
 // an eleventh slot would fail at the save instead of at the button
 
-import type { CustomStyle, StyleOption } from "../types";
+import type { Config, CustomStyle, StyleOption } from "../types";
 
 /** The hard limit in `molva_core::config::Config::validate_styles` */
 export const MAX_CUSTOM_STYLES = 10;
 
-export type StyleField = "id" | "name" | "system_prompt";
+export type StyleField = "id" | "name" | "system_prompt" | "llm_min_words";
+
+/** The same word minimum as the built-in styles in molva-core */
+export const DEFAULT_LLM_MIN_WORDS = 3;
 
 export interface StyleIssue {
   index: number;
@@ -41,6 +44,13 @@ export function styleIssues(styles: CustomStyle[]): StyleIssue[] {
         index,
         field: "system_prompt",
         key: "settings.styles.issue.emptyPrompt",
+      });
+    }
+    if (!Number.isInteger(style.llm_min_words) || style.llm_min_words < 0) {
+      issues.push({
+        index,
+        field: "llm_min_words",
+        key: "settings.styles.issue.minWords",
       });
     }
   });
@@ -74,7 +84,37 @@ export function newCustomStyle(styles: CustomStyle[]): CustomStyle {
     name: "",
     uses_llm: true,
     system_prompt: "",
+    llm_min_words: DEFAULT_LLM_MIN_WORDS,
   };
+}
+
+/** Keep the default and the window rules pointing at a style whose id was retyped */
+//
+// The editor replaces the whole custom list. Only a same-length edit can be a rename; adding
+// or removing an entry has no old id to carry over, and the save validation reports those.
+export function renameStyleReferences(
+  current: Config["style"],
+  next: CustomStyle[],
+): Config["style"] {
+  if (current.custom.length !== next.length) {
+    return { ...current, custom: next };
+  }
+  const renamed = new Map<string, string>();
+  current.custom.forEach((before, index) => {
+    const from = before.id.trim();
+    const to = next[index].id.trim();
+    if (from !== "" && to !== "" && from !== to) {
+      renamed.set(from, to);
+    }
+  });
+  if (renamed.size === 0) {
+    return { ...current, custom: next };
+  }
+  const follow = (id: string) => renamed.get(id.trim()) ?? id;
+  const by_app = Object.fromEntries(
+    Object.entries(current.by_app).map(([app, id]) => [app, follow(id)]),
+  );
+  return { ...current, default: follow(current.default), by_app, custom: next };
 }
 
 /** Whether the entry takes the place of a built-in style of the same id */

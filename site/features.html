@@ -125,7 +125,7 @@
       </article>
       <article class="card">
         <h3 data-ru="Языковая модель по желанию">Optional language model</h3>
-        <p class="muted" data-ru="По умолчанию выключена. Если включить — говорит по протоколу, совместимому с OpenAI, а провайдер по умолчанию Ollama. Работает только для фраз длиннее &lt;code&gt;rules.llm_min_words&lt;/code&gt; и только для стилей, которым нужна. Таймаут возвращает текст после правил, но никогда пустое поле">Off by default. When on, it speaks the OpenAI-compatible protocol and Ollama is the default provider. It runs only for phrases longer than <code>rules.llm_min_words</code> and only for styles that need it. A timeout returns the text after the rules, never an empty field</p>
+        <p class="muted" data-ru="По умолчанию выключена. Если включить — говорит по протоколу, совместимому с OpenAI, а провайдер по умолчанию Ollama. Работает только для стилей, которым нужна, когда фраза достигает минимума слов этого стиля. Таймаут возвращает текст после правил, но никогда пустое поле">Off by default. When on, it speaks the OpenAI-compatible protocol and Ollama is the default provider. It runs only for styles that need it, when the phrase reaches that style's word minimum. A timeout returns the text after the rules, never an empty field</p>
       </article>
       <article class="card">
         <h3 data-ru="Режим команды">Command mode</h3>

@@ -19,6 +19,7 @@ use std::time::{Duration, Instant};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
+use crate::app::probe;
 use crate::app::styles::Styles;
 use crate::config::Config;
 use crate::domain::audio::{AudioSource, PcmAudio};
@@ -1023,6 +1024,12 @@ impl RequestHandler for DaemonHandle {
                 self.publish_style(&style);
                 Ok(serde_json::json!({ "style": style }))
             }
+            Command::LlmProbe { config } => {
+                probe::llm_probe_json(&config).map_err(|err| internal(&err.to_string()))
+            }
+            Command::SttProbe { config } => {
+                probe::stt_probe_json(&config).map_err(|err| internal(&err.to_string()))
+            }
             Command::Shutdown => {
                 // The reply must leave before the process disappears
                 std::thread::spawn(|| {
@@ -1397,6 +1404,38 @@ mod tests {
         let err = h.handle.handle(Command::ConfigReload).unwrap_err();
         assert_eq!(err.code, ErrorCode::BadRequest);
         assert!(err.hint.is_some());
+        drop(h.daemon);
+    }
+
+    #[test]
+    fn the_daemon_reports_a_draft_that_the_model_probe_refuses() {
+        let h = harness("тестовая реплика");
+        let mut config = Config::default();
+        config.llm.model = "  ".into();
+        let answer = h
+            .handle
+            .handle(Command::LlmProbe {
+                config: Box::new(config),
+            })
+            .unwrap();
+        assert_eq!(answer["error"]["kind"], "validation");
+        assert_eq!(answer["error"]["field"], "llm.model");
+        drop(h.daemon);
+    }
+
+    #[test]
+    fn the_daemon_answers_the_recognition_probe_without_a_microphone() {
+        let h = harness("тестовая реплика");
+        let mut config = Config::default();
+        config.stt.engine = "remote-openai".into();
+        let answer = h
+            .handle
+            .handle(Command::SttProbe {
+                config: Box::new(config),
+            })
+            .unwrap();
+        assert_eq!(answer["report"]["engine"], "remote-openai");
+        assert_eq!(answer["report"]["ok"], false);
         drop(h.daemon);
     }
 

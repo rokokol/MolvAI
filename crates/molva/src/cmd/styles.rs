@@ -25,7 +25,7 @@ pub(crate) fn run(
     let styles = Styles::from_config(&config.style);
     match action {
         StylesAction::List => {
-            println!("{:<12}  {:<14}  MODEL", "ID", "NAME");
+            println!("{:<12}  {:<14}  MODEL   MIN WORDS", "ID", "NAME");
             for style in styles.all() {
                 let current = if style.id == config.style.default {
                     "default"
@@ -33,10 +33,15 @@ pub(crate) fn run(
                     ""
                 };
                 println!(
-                    "{:<12}  {:<14}  {:<7}  {}",
+                    "{:<12}  {:<14}  {:<7} {:<9} {}",
                     style.id,
                     style.name,
                     if style.uses_llm { "yes" } else { "no" },
+                    if style.uses_llm {
+                        style.llm_min_words.to_string()
+                    } else {
+                        "-".into()
+                    },
                     current
                 );
             }
@@ -55,6 +60,7 @@ pub(crate) fn run(
             println!("id:      {}", style.id);
             println!("name:    {}", style.name);
             println!("model:   {}", if style.uses_llm { "yes" } else { "no" });
+            println!("min words: {}", style.llm_min_words);
             if style.uses_llm {
                 for (lang, prompt) in &style.system_prompts {
                     println!("prompt ({lang}):\n{prompt}");

@@ -443,15 +443,21 @@ mod tests {
         use super::*;
         use std::os::unix::fs::PermissionsExt;
         use std::path::{Path, PathBuf};
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static NEXT: AtomicU64 = AtomicU64::new(0);
 
         fn script(dir: &Path, lua_reply: &str, legacy_reply: &str) -> PathBuf {
-            let path = dir.join("hyprctl");
-            let staged = dir.join("hyprctl.tmp");
+            // Parallel tests must never name the same executable: a test that opens its script
+            // while another one still writes it gets ETXTBSY from execve
+            let unique = NEXT.fetch_add(1, Ordering::Relaxed);
+            let name = format!("hyprctl-{}-{unique}", std::process::id());
+            let path = dir.join(&name);
+            let staged = dir.join(format!("{name}.tmp"));
             let text = format!(
                 "#!/bin/sh\ncase \"$2\" in\n  hl.dsp.*) echo '{lua_reply}' ;;\n  *) echo '{legacy_reply}' ;;\nesac\n"
             );
-            // A file written in place can still be open for writing when the kernel starts
-            // the interpreter, and exec then answers ETXTBSY. A rename leaves no writer
+            // The rename leaves no writer behind when execve starts the interpreter
             std::fs::write(&staged, text).expect("the fake hyprctl is written");
             let mut mode = std::fs::metadata(&staged)
                 .expect("the fake exists")

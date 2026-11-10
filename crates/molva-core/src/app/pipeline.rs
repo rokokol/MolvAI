@@ -8,7 +8,7 @@
 //! effort of the paste implementation itself
 //!
 //! The model is called only when all conditions hold at once: the style needs it, post-processing
-//! is on, privacy allows it, and the phrase has more than `rules.llm_min_words` words. Short
+//! is on, privacy allows it, and the phrase reaches the word minimum of that style. Short
 //! phrases go through the rules only, which is both faster and cheaper in tokens
 //!
 //! A snippet is checked after the dictionary and the rules, before the model. A whole phrase that
@@ -937,12 +937,12 @@ impl Pipeline {
     }
 
     /// Whether this phrase needs the model
-    fn wants_llm(&self, style_uses_llm: bool, text: &str) -> bool {
-        style_uses_llm
+    fn wants_llm(&self, style: &crate::domain::text::Style, text: &str) -> bool {
+        style.uses_llm
             && self.config.llm.enabled
             && self.config.privacy.send_to_llm
             && self.llm.is_some()
-            && word_count(text) > self.config.rules.llm_min_words
+            && word_count(text) >= style.llm_min_words
     }
 
     /// Dictation: the rules plus, if needed, the model
@@ -952,7 +952,7 @@ impl Pipeline {
         style: &crate::domain::text::Style,
         after_rules: String,
     ) -> String {
-        if !self.wants_llm(style.uses_llm, &after_rules) {
+        if !self.wants_llm(style, &after_rules) {
             return after_rules;
         }
         let request = ChatRequest {
@@ -1182,6 +1182,18 @@ mod tests {
         config
     }
 
+    /// A custom style with the same id takes the built-in place, so the word minimum is the one
+    /// the test names
+    fn set_min_words(config: &mut PipelineConfig, words: u32) {
+        config.style.custom = vec![crate::config::CustomStyle {
+            id: "cleanup".into(),
+            name: "Cleanup".into(),
+            uses_llm: true,
+            system_prompt: "Fix the text.".into(),
+            llm_min_words: words,
+        }];
+    }
+
     fn injected(harness: &Harness) -> Vec<String> {
         harness
             .injector
@@ -1252,9 +1264,11 @@ mod tests {
     }
 
     #[test]
-    fn a_short_utterance_never_reaches_the_model() {
+    fn an_utterance_below_the_style_minimum_never_reaches_the_model() {
+        let mut config = with_llm();
+        set_min_words(&mut config, 10);
         let llm = Arc::new(FakeLlm::echoing("переписано моделью"));
-        let mut harness = build("привет мир как дела", Some(Arc::clone(&llm)), with_llm());
+        let mut harness = build("привет мир как дела", Some(Arc::clone(&llm)), config);
         let entry = harness
             .pipeline
             .run(audio(3.0), Mode::Dictation, None, None)
@@ -1262,6 +1276,19 @@ mod tests {
         assert_eq!(llm.calls(), 0);
         assert!(!entry.llm_used);
         assert_eq!(injected(&harness), vec!["Привет мир как дела"]);
+    }
+
+    #[test]
+    fn a_phrase_at_the_style_minimum_reaches_the_model() {
+        let mut config = with_llm();
+        set_min_words(&mut config, 3);
+        let llm = Arc::new(FakeLlm::echoing("переписано моделью"));
+        let mut harness = build("привет мир как", Some(Arc::clone(&llm)), config);
+        harness
+            .pipeline
+            .run(audio(3.0), Mode::Dictation, None, None)
+            .unwrap();
+        assert_eq!(llm.calls(), 1);
     }
 
     #[test]
@@ -1549,7 +1576,7 @@ mod tests {
     #[test]
     fn a_snippet_does_not_match_a_longer_phrase() {
         let mut config = with_llm();
-        config.rules.llm_min_words = 0;
+        set_min_words(&mut config, 0);
         config.snippets.items = vec![Snippet {
             phrase: "ответь клиенту".into(),
             replacement: "Добрый день!".into(),

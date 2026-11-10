@@ -14,11 +14,17 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 - The Pause hotkeys tray switch stops the binds that start a phrase; the GUI and MCP commands, the key release and cancel stay live
 
+- Every style carries its own word minimum for the model. Built-in styles start at three words, custom styles have an editable field, and `molva styles list` and `molva styles show` print it
+
+- The model and recognition test buttons run their checks in the daemon, which already holds the API key and the engine factory; the window only translates the answer
+
 ### Changed
 
 - The built-in styles are "As spoken", Cleanup and Formal; "As spoken" never calls the model
 
 - Built-in style prompts and the command-mode prompt are shorter and send fewer tokens
+
+- `rules.llm_min_words` is gone: the threshold belongs to a style, so a short phrase is decided by the style that will process it
 
 - `programs.molvai.showNotice` and `gui.show_managed_notice` are gone: settings are editable at runtime, so the managed banner has nothing left to say
 
@@ -33,6 +39,10 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 - An entry that finished with a model or paste error shows the reason on the Dashboard
 
 - The LLM and recognition test buttons sit next to their status inside Settings
+
+- Retyping the identifier of a custom style moves `style.default` and the per-window rules to the new name instead of failing the save
+
+- A test of a cloud model no longer fails with a missing key: the check reads the key in the daemon, where the Nix service provides it
 
 - Selecting a style in the GUI applies it on a managed config
 

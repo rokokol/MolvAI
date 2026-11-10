@@ -485,9 +485,9 @@ defect 'secrets/key-is-masked-in-logs' 'crates/molva-core/src/app/secrets.rs' \
   'the key is printed in the logs in full'
 
 defect 'pipeline/rules-instead-of-the-model-on-short-utterances' 'crates/molva-core/src/app/pipeline.rs' \
-  '            && word_count(text) > self.config.rules.llm_min_words' \
-  '            && word_count(text) > 0' \
-  'a phrase of three words goes to the model: extra tokens and an extra second of delay'
+  '            && word_count(text) >= style.llm_min_words' \
+  '            && word_count(text) >= 0' \
+  'a phrase below the style word minimum goes to the model: extra tokens and an extra second of delay'
 
 defect 'pipeline/model-failure-does-not-lose-the-utterance' 'crates/molva-core/src/app/pipeline.rs' \
   '                after_rules' \
@@ -528,6 +528,16 @@ defect 'config/validation-collects-every-issue' 'crates/molva-core/src/config.rs
   '        issues.push(ConfigIssue::allowed(key, value, allowed));' \
   '        let _ = (key, value, allowed);' \
   'a wrong value from the list of allowed ones passes the check silently'
+
+defect 'probe/cloud-consent' 'crates/molva-core/src/app/probe.rs' \
+  '    if cloud_provider(&cfg.provider) && !config.privacy.cloud_consent {' \
+  '    if false {' \
+  'a draft can send text to a cloud model without the consent of the user'
+
+defect 'probe/stt-cli-check' 'crates/molva-core/src/app/probe.rs' \
+  '        if engine == "transcribe-cpp" {' \
+  '        if false {' \
+  'the recognition test never checks that transcribe-cli exists and reports a working draft'
 
 defect 'config/runtime-override-invalidation' 'crates/molva-core/src/config.rs' \
   '        if saved.base != Self::base_identity(path) {' \
@@ -714,9 +724,9 @@ defect 'chunked/cancelled-chunks-are-forgotten' 'crates/molva-core/src/app/daemo
   'the chunks of a cancelled recording attach to the next phrase'
 
 defect 'transcribe/short-text-skips-the-model' 'crates/molva/src/cmd/transcribe.rs' \
-  '        if !self.style.uses_llm || word_count(&after_rules) <= self.llm_min_words {' \
+  '        if !self.style.uses_llm || word_count(&after_rules) < self.style.llm_min_words {' \
   '        if !self.style.uses_llm {' \
-  'short phrases from files go to the model against rules.llm_min_words'
+  'short phrases from files go to the model against the word minimum of the style'
 
 defect 'transcribe/empty-model-answer-keeps-the-rules-text' 'crates/molva/src/cmd/transcribe.rs' \
   '                if text.is_empty() {

@@ -82,6 +82,12 @@ pub enum Command {
     /// already holds: no client loads a model of its own
     #[serde(rename = "file.transcribe")]
     FileTranscribe(FileTranscriptionRequest),
+    /// Check a draft of the settings against the model provider, using the daemon's key source
+    #[serde(rename = "llm.probe")]
+    LlmProbe { config: Box<crate::config::Config> },
+    /// Check a draft of the recognition settings, with no microphone and no model load
+    #[serde(rename = "stt.probe")]
+    SttProbe { config: Box<crate::config::Config> },
     #[serde(rename = "subscribe")]
     Subscribe {
         #[serde(default)]
@@ -297,6 +303,12 @@ mod tests {
         });
         round_trip(&Command::Subscribe { levels: true });
         round_trip(&Command::Shutdown);
+        round_trip(&Command::LlmProbe {
+            config: Box::new(crate::config::Config::default()),
+        });
+        round_trip(&Command::SttProbe {
+            config: Box::new(crate::config::Config::default()),
+        });
     }
 
     fn request_fixture() -> FileTranscriptionRequest {

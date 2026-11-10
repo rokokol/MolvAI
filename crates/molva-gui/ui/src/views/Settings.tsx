@@ -51,7 +51,7 @@ import {
   SttProbeResult,
   type ProbeState,
 } from "../settings/probe";
-import { styleIssues } from "../settings/styles";
+import { renameStyleReferences, styleIssues } from "../settings/styles";
 
 interface Props extends ViewProps {
   theme: Theme;
@@ -1304,7 +1304,7 @@ export default function Settings({
           builtins={builtins}
           onChange={(next: CustomStyle[]) =>
             patch((configNext) => {
-              configNext.style.custom = next;
+              configNext.style = renameStyleReferences(configNext.style, next);
             })
           }
         />

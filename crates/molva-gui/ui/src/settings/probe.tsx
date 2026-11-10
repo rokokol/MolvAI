@@ -85,7 +85,11 @@ export function SttProbeResult({ state }: { state: ProbeState<SttProbeReport> })
         {report.checks.map((check) => (
           <li key={check.id}>
             {check.ok ? "✓" : "✗"} {t(`settings.sttTest.check.${check.id}`)}
-            {check.detail !== "" && <span className="mono small">{` — ${check.detail}`}</span>}
+            {(check.detail !== "" || check.detail_key) && (
+              <span className="mono small">
+                {` — ${check.detail_key ? t(check.detail_key) : check.detail}`}
+              </span>
+            )}
           </li>
         ))}
       </ul>

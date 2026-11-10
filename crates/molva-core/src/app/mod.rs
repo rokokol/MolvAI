@@ -21,6 +21,7 @@ pub mod llm_executor;
 pub mod llm_output;
 pub mod models;
 pub mod pipeline;
+pub mod probe;
 pub mod rules;
 pub mod search;
 pub mod secrets;

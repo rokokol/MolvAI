@@ -13,16 +13,16 @@ use std::sync::{mpsc, Mutex};
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
-use molva_core::app::engine::{self, build_stt_with, EngineChoice, EngineError};
+use molva_core::app::engine::{build_stt_with, EngineChoice, EngineError};
 use molva_core::app::hotkeys::HotkeySpec;
 use molva_core::app::models::{self, DownloadProgress};
+use molva_core::app::probe::{LlmProbeReport, ProbeFailure, ProbeOutcome, SttProbeReport};
 use molva_core::app::secrets::{self, SecretError, SecretStore};
-use molva_core::config::{invalid_provider_slug, ConfigError, HotkeysConfig};
+use molva_core::config::{ConfigError, HotkeysConfig};
 use molva_core::domain::entry::{Mode, Source};
-use molva_core::domain::llm::{ChatRequest, LlmClient, LlmError};
+use molva_core::domain::llm::LlmError;
 use molva_core::domain::{DeviceInfo, Entry, OutputMode};
 use molva_core::infra::audio::list_input_devices;
-use molva_core::infra::llm::OpenAiCompatClient;
 use molva_core::ipc::{Command, DaemonState, FileTranscriptionRequest, WorkerJob};
 use molva_core::Config;
 use serde::Serialize;
@@ -492,273 +492,81 @@ pub fn llm_providers() -> Vec<crate::providers::LlmProviderOption> {
 // path and asks "does this work now" before the settings are written. Neither test saves
 // anything, and neither one opens the microphone
 
-/// Prompt of the model test
-///
-/// A constant, so the request carries nothing the person dictated: the test costs one short
-/// answer and tells a key, a URL and a model apart from a broken setting
-pub const LLM_PROBE_PROMPT: &str = "Reply with the single word: ok";
-
-/// System prompt of the test: it needs no rules, but some providers reject an empty message
-const LLM_PROBE_SYSTEM: &str = "This is a connectivity check. Answer in one word.";
-
-/// How many characters of the answer the report keeps
-const LLM_PROBE_ANSWER: usize = 200;
-
-/// How many tokens the test may spend on its answer
-const LLM_PROBE_MAX_TOKENS: u32 = 16;
-
-/// What the model test found, as the settings page shows it
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct LlmProbeReport {
-    /// The provider that answered, by its identifier: `ollama`, `openrouter`…
-    pub provider: String,
-    /// The model of the draft
-    pub model: String,
-    /// The answer came from this machine
-    pub is_local: bool,
-    /// From the first request to the answer, retries included
-    pub latency_ms: u64,
-    /// How many requests went out: a figure above one means the provider failed and answered
-    pub attempts: u32,
-    /// The model text, cut to a short line
-    pub answer: String,
-}
-
-/// One line of the recognition test
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct SttProbeCheck {
-    /// `engine` | `remote` | `model` | `cli`, so the page can translate the title
-    pub id: String,
-    pub ok: bool,
-    /// What the check found: an error text, or the path it used. Empty when there is nothing
-    /// to add to a successful check
-    pub detail: String,
-}
-
-/// What the recognition test found
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct SttProbeReport {
-    /// The engine that the draft resolves to, named by the factory itself
-    pub engine: String,
-    pub model: String,
-    /// Every check passed
-    pub ok: bool,
-    pub checks: Vec<SttProbeCheck>,
-}
-
-/// The request of the model test: one short answer, no temperature
-fn probe_request(cfg: &molva_core::config::LlmConfig) -> ChatRequest {
-    ChatRequest {
-        model: cfg.model.clone(),
-        system: LLM_PROBE_SYSTEM.into(),
-        user: LLM_PROBE_PROMPT.into(),
-        temperature: 0.0,
-        max_tokens: LLM_PROBE_MAX_TOKENS,
-    }
-}
-
-/// One request under the retry policy of the pipeline: the answer, the attempt it came on and
-/// the time it took
-///
-/// The rules repeat `Pipeline::complete_with_retries`: `max_retries` more requests after the
-/// first, an authorization error is not retried because a retry does not fix the key, and an
-/// empty answer counts as a failure. The loop cannot be shared with the pipeline: there it is a
-/// method of the phrase pipeline, and a test with no phrase cannot reach it
-fn probe_complete(
-    client: &dyn LlmClient,
-    request: &ChatRequest,
-    max_retries: u32,
-) -> Result<(String, u32, u64), LlmError> {
-    let attempts = max_retries.saturating_add(1);
-    let started = Instant::now();
-    let mut last = LlmError::Disabled;
-    for attempt in 1..=attempts {
-        match client.complete(request) {
-            Ok(response) => {
-                if response.text.trim().is_empty() {
-                    last = LlmError::BadResponse("the model returned empty text".into());
-                    continue;
-                }
-                return Ok((response.text, attempt, started.elapsed().as_millis() as u64));
+/// A draft failure as the settings page shows it, with the next step of each kind
+fn probe_failure(error: ProbeFailure) -> CommandError {
+    match error {
+        ProbeFailure::Validation { field, key, value } => {
+            let message = if value.is_empty() {
+                i18n::t(&key)
+            } else {
+                i18n::tv(&key, &[("value", &value)])
+            };
+            let hint = (field == "llm.model").then(|| i18n::t("settings.llm.modelHint"));
+            CommandError {
+                kind: "validation".into(),
+                message,
+                hint,
+                field: Some(field),
             }
-            Err(LlmError::Auth) => return Err(LlmError::Auth),
-            Err(err) => last = err,
+        }
+        ProbeFailure::Consent => CommandError::new("consent", i18n::t("error.cloudConsent"))
+            .with_hint(Some(i18n::t("settings.llm.probeConsentHint"))),
+        ProbeFailure::Llm(error) => {
+            let hint = match &error {
+                LlmError::Auth => Some(i18n::t("settings.llm.probeAuthHint")),
+                LlmError::Timeout(seconds) => Some(i18n::tv(
+                    "settings.llm.probeTimeoutHint",
+                    &[("seconds", &seconds.to_string())],
+                )),
+                LlmError::Unavailable(_) => Some(i18n::t("settings.llm.probeUnavailableHint")),
+                LlmError::BadResponse(_) | LlmError::Disabled => None,
+            };
+            CommandError::new("llm", error.to_string()).with_hint(hint)
         }
     }
-    Err(last)
 }
 
-/// The key as the daemon would read it, with a bound on the OS key store
-///
-/// A locked keyring may wait for an unlock prompt that nothing shows, and the button must answer
-/// instead of spinning forever. A store that stays silent leaves the environment variable, which
-/// `api_key_with` reads on its own
-fn probe_api_key(cfg: &molva_core::config::LlmConfig) -> Option<String> {
-    let (tx, rx) = mpsc::channel();
-    let probe = cfg.clone();
-    std::thread::spawn(move || {
-        let _ = tx.send(secrets::api_key(&probe));
-    });
-    rx.recv_timeout(KEYRING_TIMEOUT)
-        .unwrap_or_else(|_| secrets::api_key_with(cfg, |name| std::env::var(name).ok()))
-}
-
-/// A model failure as the settings page shows it, with the next step of each kind
-fn llm_command_error(error: LlmError) -> CommandError {
-    let hint = match &error {
-        LlmError::Auth => Some(i18n::t("settings.llm.probeAuthHint")),
-        LlmError::Timeout(seconds) => Some(i18n::tv(
-            "settings.llm.probeTimeoutHint",
-            &[("seconds", &seconds.to_string())],
+fn probe_report<T: serde::de::DeserializeOwned>(
+    value: serde_json::Value,
+) -> Result<T, CommandError> {
+    let outcome: ProbeOutcome<T> = serde_json::from_value(value)
+        .map_err(|err| CommandError::new("internal", err.to_string()))?;
+    match (outcome.report, outcome.error) {
+        (Some(report), _) => Ok(report),
+        (_, Some(error)) => Err(probe_failure(error)),
+        _ => Err(CommandError::new(
+            "internal",
+            "the daemon returned no probe answer",
         )),
-        LlmError::Unavailable(_) => Some(i18n::t("settings.llm.probeUnavailableHint")),
-        LlmError::BadResponse(_) | LlmError::Disabled => None,
-    };
-    CommandError::new("llm", error.to_string()).with_hint(hint)
-}
-
-/// Run the draft model configuration against a harmless prompt
-///
-/// The draft goes in as it stands in the form: no save, no reload, and the key comes from the
-/// source the draft names. A cloud provider needs the same confirmation as a phrase, because the
-/// request leaves the machine
-pub fn llm_probe(config: &Config) -> Result<LlmProbeReport, CommandError> {
-    let cfg = &config.llm;
-    if let Some(token) = invalid_provider_slug(&cfg.provider_order) {
-        return Err(ValidationError {
-            field: "llm.provider_order".into(),
-            message: i18n::tv("validation.providerSlug", &[("value", &token)]),
-            allowed: Vec::new(),
-        }
-        .into());
-    }
-    if cfg.model.trim().is_empty() {
-        return Err(CommandError {
-            kind: "validation".into(),
-            message: i18n::t("validation.noLlmModel"),
-            hint: Some(i18n::t("settings.llm.modelHint")),
-            field: Some("llm.model".into()),
-        });
-    }
-    if is_cloud_provider(&cfg.provider) && !config.privacy.cloud_consent {
-        return Err(CommandError::new("consent", i18n::t("error.cloudConsent"))
-            .with_hint(Some(i18n::t("settings.llm.probeConsentHint"))));
-    }
-    let client =
-        OpenAiCompatClient::from_config(cfg, probe_api_key(cfg)).map_err(llm_command_error)?;
-    let (answer, attempts, latency_ms) =
-        probe_complete(&client, &probe_request(cfg), cfg.max_retries).map_err(llm_command_error)?;
-    Ok(LlmProbeReport {
-        provider: client.id().to_string(),
-        model: cfg.model.trim().to_string(),
-        is_local: client.is_local(),
-        latency_ms,
-        attempts,
-        answer: answer.trim().chars().take(LLM_PROBE_ANSWER).collect(),
-    })
-}
-
-/// Where `Command` would find a program of `PATH`, or `None`
-///
-/// `PATH` alone: a program is what a recognition engine would execute, not a file beside it
-fn program_in_path(program: &str) -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .map(|directory| directory.join(program))
-        .find(|candidate| candidate.is_file())
-}
-
-/// The program that the recognition engine will execute, and whether it is there
-fn transcribe_cli_check(configured: &str) -> SttProbeCheck {
-    let configured = configured.trim();
-    let found = if configured.is_empty() {
-        program_in_path("transcribe-cli")
-    } else {
-        let path = paths::expand_tilde(configured);
-        path.is_file().then_some(path)
-    };
-    match found {
-        Some(path) => SttProbeCheck {
-            id: "cli".into(),
-            ok: true,
-            detail: path.display().to_string(),
-        },
-        None => SttProbeCheck {
-            id: "cli".into(),
-            ok: false,
-            detail: i18n::t("settings.sttTest.cliMissing"),
-        },
     }
 }
 
-/// Check the draft recognition settings without recording anything
-///
-/// The engine is built and dropped: building checks the engine name and the weights of a local
-/// engine, loads no model and opens no device, so the microphone stays untouched. The weights and
-/// the `transcribe-cli` binary are named separately, because each one has its own fix
-pub fn stt_probe(config: &Config) -> SttProbeReport {
-    let model = config.stt.model.trim().to_string();
-    let engine = engine::resolve_engine(config, &EngineChoice::default());
-    let mut checks: Vec<SttProbeCheck> = Vec::new();
-    match build_stt_with(config, &EngineChoice::default()) {
-        Ok(built) => checks.push(SttProbeCheck {
-            id: "engine".into(),
-            ok: true,
-            detail: built.id().to_string(),
-        }),
-        // The factory answers `NotAvailable` for an engine that this build does not carry: the
-        // page says that instead of pretending the draft is wrong
-        Err(EngineError::NotAvailable(_)) => checks.push(SttProbeCheck {
-            id: "remote".into(),
-            ok: false,
-            detail: i18n::t("settings.sttTest.remoteUnavailable"),
-        }),
-        Err(error) => checks.push(SttProbeCheck {
-            id: "engine".into(),
-            ok: false,
-            detail: error.to_string(),
-        }),
-    }
-    if engine != "remote-openai" {
-        match models::installed_path(config, &model) {
-            Ok(path) => checks.push(SttProbeCheck {
-                id: "model".into(),
-                ok: true,
-                detail: path.display().to_string(),
-            }),
-            Err(error) => checks.push(SttProbeCheck {
-                id: "model".into(),
-                ok: false,
-                detail: error.to_string(),
-            }),
-        }
-        if engine == "transcribe-cpp" {
-            checks.push(transcribe_cli_check(&config.stt.transcribe_cli));
-        }
-    }
-    SttProbeReport {
-        engine,
-        model,
-        ok: checks.iter().all(|check| check.ok),
-        checks,
-    }
-}
-
-/// Test the draft model configuration: a short prompt, the real client, the real retry policy
+/// Test the draft model configuration through the daemon, which holds the key
 #[tauri::command]
 pub async fn test_llm(config: Config) -> Result<LlmProbeReport, CommandError> {
-    // The request waits for the network, and the window must not wait with it
-    tauri::async_runtime::spawn_blocking(move || llm_probe(&config))
-        .await
-        .map_err(|error| CommandError::new("internal", error.to_string()))?
+    let value = tauri::async_runtime::spawn_blocking(move || {
+        ipc::request(Command::LlmProbe {
+            config: Box::new(config),
+        })
+    })
+    .await
+    .map_err(|err| CommandError::new("internal", err.to_string()))?
+    .map_err(|err| CommandError::new("daemon", err.user_message()))?;
+    probe_report(value)
 }
 
-/// Test the draft recognition settings; nothing is recorded and no device is opened
+/// Test the draft recognition settings through the daemon; no device is opened
 #[tauri::command]
 pub async fn test_stt(config: Config) -> Result<SttProbeReport, CommandError> {
-    tauri::async_runtime::spawn_blocking(move || stt_probe(&config))
-        .await
-        .map_err(|error| CommandError::new("internal", error.to_string()))
+    let value = tauri::async_runtime::spawn_blocking(move || {
+        ipc::request(Command::SttProbe {
+            config: Box::new(config),
+        })
+    })
+    .await
+    .map_err(|err| CommandError::new("internal", err.to_string()))?
+    .map_err(|err| CommandError::new("daemon", err.user_message()))?;
+    probe_report(value)
 }
 
 /// A hotkey as the settings page shows it after a capture
@@ -2064,12 +1872,14 @@ mod tests {
                 name: "Polite".into(),
                 uses_llm: true,
                 system_prompt: "Be polite".into(),
+                llm_min_words: 3,
             },
             molva_core::config::CustomStyle {
                 id: "polite".into(),
                 name: "Again".into(),
                 uses_llm: false,
                 system_prompt: String::new(),
+                llm_min_words: 3,
             },
         ];
         assert_eq!(
@@ -2086,6 +1896,7 @@ mod tests {
             name: "Polite".into(),
             uses_llm: true,
             system_prompt: "  ".into(),
+            llm_min_words: 3,
         }];
         assert_eq!(
             validate_config(&config).unwrap_err().field,
@@ -2100,222 +1911,10 @@ mod tests {
             name: format!("Style {index}"),
             uses_llm: false,
             system_prompt: String::new(),
+            llm_min_words: 3,
         };
         let mut config = Config::default();
         config.style.custom = (0..11).map(style).collect();
         assert_eq!(validate_config(&config).unwrap_err().field, "style.custom");
-    }
-
-    // --- The test buttons of the settings page ---
-
-    /// A draft with the key from nowhere: the tests never read the OS key store
-    fn local_draft(base_url: &str) -> Config {
-        let mut config = Config::default();
-        config.llm.enabled = true;
-        config.llm.provider = "ollama".into();
-        config.llm.base_url = base_url.into();
-        config.llm.model = "qwen3.5:4b".into();
-        config.llm.api_key_source = "none".into();
-        config.llm.max_retries = 2;
-        config
-    }
-
-    #[test]
-    fn the_probe_request_carries_no_dictated_text() {
-        let cfg = local_draft("http://127.0.0.1:9/v1").llm;
-        let request = probe_request(&cfg);
-        assert_eq!(request.user, LLM_PROBE_PROMPT);
-        assert_eq!(request.model, "qwen3.5:4b");
-        assert_eq!(request.max_tokens, LLM_PROBE_MAX_TOKENS);
-        assert_eq!(request.temperature, 0.0);
-        assert!(!request.user.contains("текст"));
-    }
-
-    #[test]
-    fn a_probe_reports_the_answer_the_attempt_and_the_time() {
-        let client = molva_core::domain::fakes::FakeLlm::echoing("ok");
-        let cfg = local_draft("http://127.0.0.1:9/v1").llm;
-        let (answer, attempts, _) =
-            probe_complete(&client, &probe_request(&cfg), cfg.max_retries).unwrap();
-        assert_eq!(answer, "ok");
-        assert_eq!(attempts, 1);
-        assert_eq!(client.calls(), 1);
-    }
-
-    #[test]
-    fn a_probe_spends_the_retry_budget_and_never_more() {
-        let client = molva_core::domain::fakes::FakeLlm::failing(LlmError::Unavailable(
-            "model is loading".into(),
-        ));
-        let cfg = local_draft("http://127.0.0.1:9/v1").llm;
-        let error = probe_complete(&client, &probe_request(&cfg), cfg.max_retries).unwrap_err();
-        assert!(matches!(error, LlmError::Unavailable(_)), "{error:?}");
-        // max_retries = 2 means one request and two retries
-        assert_eq!(client.calls(), 3);
-    }
-
-    #[test]
-    fn a_rejected_key_is_not_retried() {
-        let client = molva_core::domain::fakes::FakeLlm::failing(LlmError::Auth);
-        let cfg = local_draft("http://127.0.0.1:9/v1").llm;
-        let error = probe_complete(&client, &probe_request(&cfg), cfg.max_retries).unwrap_err();
-        assert_eq!(error, LlmError::Auth);
-        assert_eq!(client.calls(), 1, "a retry does not fix the key");
-    }
-
-    #[test]
-    fn an_empty_answer_is_a_failure_and_a_retry() {
-        let client = molva_core::domain::fakes::FakeLlm::new(|_| {
-            Ok(molva_core::domain::llm::ChatResponse {
-                text: "   ".into(),
-                prompt_tokens: None,
-                completion_tokens: None,
-            })
-        });
-        let cfg = local_draft("http://127.0.0.1:9/v1").llm;
-        let error = probe_complete(&client, &probe_request(&cfg), 1).unwrap_err();
-        assert!(matches!(error, LlmError::BadResponse(_)), "{error:?}");
-        assert_eq!(client.calls(), 2);
-    }
-
-    #[test]
-    fn the_model_test_of_a_cloud_draft_needs_the_cloud_consent() {
-        let mut config = local_draft("https://openrouter.ai/api/v1");
-        config.llm.provider = "openrouter".into();
-        config.privacy.cloud_consent = false;
-        let error = llm_probe(&config).unwrap_err();
-        assert_eq!(error.kind, "consent");
-        assert!(error.hint.is_some(), "the page must name the next step");
-    }
-
-    #[test]
-    fn the_model_test_refuses_a_draft_without_a_model() {
-        let mut config = local_draft("http://127.0.0.1:9/v1");
-        config.llm.model = "  ".into();
-        let error = llm_probe(&config).unwrap_err();
-        assert_eq!(error.field.as_deref(), Some("llm.model"));
-    }
-
-    #[test]
-    fn the_model_test_refuses_a_hoster_order_that_is_not_a_list_of_slugs() {
-        let mut config = local_draft("https://openrouter.ai/api/v1");
-        config.llm.provider = "openrouter".into();
-        config.privacy.cloud_consent = true;
-        config.llm.provider_order = "groq; together".into();
-        let error = llm_probe(&config).unwrap_err();
-        assert_eq!(error.kind, "validation");
-        assert_eq!(error.field.as_deref(), Some("llm.provider_order"));
-    }
-
-    #[test]
-    fn a_dead_local_model_becomes_an_error_with_a_next_step() {
-        // A closed port on this machine: no outside network is touched
-        let config = local_draft("http://127.0.0.1:9/v1");
-        let error = llm_probe(&config).unwrap_err();
-        assert_eq!(error.kind, "llm", "{error:?}");
-        assert!(error.hint.is_some(), "{error:?}");
-        assert!(
-            error.message.contains("127.0.0.1:9"),
-            "the address names the place: {}",
-            error.message
-        );
-    }
-
-    /// A directory with the weights of the default model, written as dummy bytes
-    fn models_with_default_weights(directory: &std::path::Path) -> Config {
-        let info = models::find("gigaam-v3-e2e-rnnt-q4_k_m").unwrap();
-        std::fs::write(directory.join(&info.file_name), "weights").unwrap();
-        let mut config = Config::default();
-        config.stt.model_path = directory.display().to_string();
-        config.stt.engine = "auto".into();
-        config.stt.model = "gigaam-v3-e2e-rnnt-q4_k_m".into();
-        config
-    }
-
-    #[test]
-    fn the_recognition_test_names_the_engine_and_the_missing_weights() {
-        let directory = tempfile::tempdir().unwrap();
-        let mut config = Config::default();
-        config.stt.model_path = directory.path().display().to_string();
-        let report = stt_probe(&config);
-        assert_eq!(report.engine, "transcribe-cpp");
-        assert!(!report.ok);
-        let ids: Vec<&str> = report.checks.iter().map(|c| c.id.as_str()).collect();
-        assert_eq!(ids, vec!["engine", "model", "cli"]);
-        let model = report.checks.iter().find(|c| c.id == "model").unwrap();
-        assert!(!model.ok);
-        assert!(
-            model.detail.contains("molva models pull"),
-            "{}",
-            model.detail
-        );
-    }
-
-    #[test]
-    fn the_recognition_test_passes_when_the_weights_and_the_cli_are_there() {
-        let directory = tempfile::tempdir().unwrap();
-        let cli = directory.path().join("transcribe-cli");
-        std::fs::write(&cli, "#!/bin/sh\n").unwrap();
-        let mut config = models_with_default_weights(directory.path());
-        config.stt.transcribe_cli = cli.display().to_string();
-        let report = stt_probe(&config);
-        assert!(report.ok, "{report:?}");
-        assert_eq!(report.engine, "transcribe-cpp");
-        let model = report.checks.iter().find(|c| c.id == "model").unwrap();
-        assert!(model.ok);
-        let info = models::find("gigaam-v3-e2e-rnnt-q4_k_m").unwrap();
-        assert!(model.detail.ends_with(&info.file_name), "{}", model.detail);
-        let cli = report.checks.iter().find(|c| c.id == "cli").unwrap();
-        assert!(cli.ok);
-    }
-
-    #[test]
-    fn the_recognition_test_reports_a_transcribe_cli_that_is_not_there() {
-        let directory = tempfile::tempdir().unwrap();
-        let mut config = models_with_default_weights(directory.path());
-        config.stt.transcribe_cli = directory.path().join("no-such-cli").display().to_string();
-        let report = stt_probe(&config);
-        assert!(!report.ok);
-        let cli = report.checks.iter().find(|c| c.id == "cli").unwrap();
-        assert!(!cli.ok);
-        assert!(!cli.detail.is_empty(), "the page needs a reason");
-        // The engine and the weights are still fine: only one piece is missing
-        assert!(
-            report.checks.iter().filter(|c| c.ok).count() >= 2,
-            "{report:?}"
-        );
-    }
-
-    #[test]
-    fn remote_recognition_is_reported_as_not_implemented() {
-        let mut config = Config::default();
-        config.stt.engine = "remote-openai".into();
-        let report = stt_probe(&config);
-        assert!(!report.ok);
-        assert_eq!(report.engine, "remote-openai");
-        assert_eq!(report.checks.len(), 1, "{report:?}");
-        let check = &report.checks[0];
-        assert_eq!(check.id, "remote");
-        assert!(!check.ok);
-        assert!(
-            check.detail.contains("does not implement"),
-            "{}",
-            check.detail
-        );
-    }
-
-    #[test]
-    fn a_whisper_draft_needs_no_transcribe_cli() {
-        let directory = tempfile::tempdir().unwrap();
-        let info = models::find("tiny").unwrap();
-        std::fs::write(directory.path().join(&info.file_name), "weights").unwrap();
-        let mut config = Config::default();
-        config.stt.model_path = directory.path().display().to_string();
-        config.stt.engine = "auto".into();
-        config.stt.model = "tiny".into();
-        let report = stt_probe(&config);
-        assert_eq!(report.engine, "whisper-cpp");
-        assert!(report.ok, "{report:?}");
-        assert!(report.checks.iter().all(|c| c.id != "cli"), "{report:?}");
     }
 }

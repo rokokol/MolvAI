@@ -5,8 +5,16 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+/// Words a phrase needs before a style asks the model. Built-in styles start at three
+pub const DEFAULT_LLM_MIN_WORDS: u32 = 3;
+
+/// Default for a style that came from an older settings file
+pub fn default_llm_min_words() -> u32 {
+    DEFAULT_LLM_MIN_WORDS
+}
+
 /// Post-processing profile. A style with no model (`uses_llm = false`) applies only the rules
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Style {
     pub id: String,
     pub name: String,
@@ -16,6 +24,22 @@ pub struct Style {
     /// Prompts for particular phrase languages, by ISO 639-1 code
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub system_prompts: BTreeMap<String, String>,
+    /// Phrases with fewer words than this skip the model for this style
+    #[serde(default = "default_llm_min_words")]
+    pub llm_min_words: u32,
+}
+
+impl Default for Style {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            name: String::new(),
+            uses_llm: false,
+            system_prompt: String::new(),
+            system_prompts: BTreeMap::new(),
+            llm_min_words: DEFAULT_LLM_MIN_WORDS,
+        }
+    }
 }
 
 impl Style {

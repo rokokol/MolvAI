@@ -13,7 +13,7 @@
 //! `Конечно! Вот исправленный текст:`, and that preamble lands in the active field of the user
 
 use crate::config::StyleConfig;
-use crate::domain::text::Style;
+use crate::domain::text::{Style, DEFAULT_LLM_MIN_WORDS};
 
 /// Default style, used when the settings name a style that does not exist
 pub const FALLBACK_STYLE: &str = "cleanup";
@@ -34,6 +34,7 @@ fn model_style(id: &str, name: &str, en: &str, ru: &str) -> Style {
         uses_llm: true,
         system_prompt: format!("{en}{COMMON_RULES_EN}"),
         system_prompts: [("ru".to_string(), format!("{ru}{COMMON_RULES}"))].into(),
+        llm_min_words: DEFAULT_LLM_MIN_WORDS,
     }
 }
 
@@ -88,6 +89,7 @@ impl Styles {
                 name: custom.name.clone(),
                 uses_llm: custom.uses_llm,
                 system_prompt: custom.system_prompt.clone(),
+                llm_min_words: custom.llm_min_words,
                 ..Style::default()
             };
             match styles.iter().position(|s| s.id == style.id) {
@@ -252,6 +254,7 @@ mod tests {
                 name: "Poem".into(),
                 uses_llm: true,
                 system_prompt: "Write in verse.".into(),
+                llm_min_words: 3,
             }],
             ..StyleConfig::default()
         };
@@ -270,12 +273,14 @@ mod tests {
                     name: "Poem".into(),
                     uses_llm: true,
                     system_prompt: "Write in verse.".into(),
+                    llm_min_words: 3,
                 },
                 CustomStyle {
                     id: "cleanup".into(),
                     name: "My cleanup".into(),
                     uses_llm: true,
                     system_prompt: "My prompt.".into(),
+                    llm_min_words: 5,
                 },
             ],
             ..StyleConfig::default()

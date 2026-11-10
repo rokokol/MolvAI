@@ -277,8 +277,6 @@ pub struct RulesConfig {
     pub remove_repeats: bool,
     pub numbers_as_digits: bool,
     pub paragraph_pause_ms: u32,
-    /// Phrases no longer than this are processed by the rules only, with no model
-    pub llm_min_words: u32,
 }
 
 impl Default for RulesConfig {
@@ -292,7 +290,6 @@ impl Default for RulesConfig {
             remove_repeats: true,
             numbers_as_digits: true,
             paragraph_pause_ms: 2000,
-            llm_min_words: 10,
         }
     }
 }
@@ -455,6 +452,9 @@ pub struct CustomStyle {
     #[serde(default = "default_true")]
     pub uses_llm: bool,
     pub system_prompt: String,
+    /// Phrases with fewer words than this skip the model for this style
+    #[serde(default = "crate::domain::text::default_llm_min_words")]
+    pub llm_min_words: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1256,6 +1256,13 @@ impl Config {
                     "a style that uses the model needs a system prompt",
                 ));
             }
+            in_range(
+                issues,
+                &format!("style.custom.{index}.llm_min_words"),
+                f64::from(custom.llm_min_words),
+                0.0,
+                1000.0,
+            );
         }
         let styles = crate::app::styles::Styles::from_config(&self.style);
         if styles.get(&self.style.default).is_none() {
@@ -1336,13 +1343,6 @@ impl Config {
 
     /// The remaining numeric thresholds, the log level and the hotkeys
     fn validate_limits(&self, issues: &mut Vec<ConfigIssue>) {
-        in_range(
-            issues,
-            "rules.llm_min_words",
-            f64::from(self.rules.llm_min_words),
-            0.0,
-            1000.0,
-        );
         in_range(
             issues,
             "stats.typing_baseline_wpm",
@@ -1893,6 +1893,7 @@ mod tests {
             name: "Poem".into(),
             uses_llm: true,
             system_prompt: "Пиши стихами.".into(),
+            llm_min_words: 3,
         });
         config.style.default = "poem".into();
         assert_eq!(config.validate(), Ok(()));

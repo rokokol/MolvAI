@@ -64,7 +64,6 @@ function config(change: (draft: Config) => void = () => undefined): Config {
       remove_repeats: true,
       numbers_as_digits: true,
       paragraph_pause_ms: 2000,
-      llm_min_words: 10,
     },
     snippets: { enabled: true, items: [] },
     llm: {
@@ -363,13 +362,20 @@ describe("Settings: custom styles", () => {
     const html = render(
       config((draft) => {
         draft.style.custom = [
-          { id: "polite", name: "Polite", uses_llm: true, system_prompt: "Be polite" },
+          {
+            id: "polite",
+            name: "Polite",
+            uses_llm: true,
+            system_prompt: "Be polite",
+            llm_min_words: 3,
+          },
         ];
       }),
     );
     expect(html).toContain('id="style-id"');
     expect(html).toContain('id="style-name"');
     expect(html).toContain('id="style-prompt"');
+    expect(html).toContain('id="style-min-words"');
     expect(html).not.toContain(translate("en", "settings.styles.usesLlm"));
   });
 
@@ -377,7 +383,13 @@ describe("Settings: custom styles", () => {
     const html = render(
       config((draft) => {
         draft.style.custom = [
-          { id: "polite", name: "Polite", uses_llm: true, system_prompt: "  " },
+          {
+            id: "polite",
+            name: "Polite",
+            uses_llm: true,
+            system_prompt: "  ",
+            llm_min_words: 3,
+          },
         ];
       }),
     );

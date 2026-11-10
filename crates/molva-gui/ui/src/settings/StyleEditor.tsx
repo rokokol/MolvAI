@@ -108,6 +108,25 @@ export function StyleEditor({ styles, builtins, onChange }: Props) {
               </p>
             )}
           </div>
+          <div className="field">
+            <label htmlFor="style-min-words">{t("settings.styles.minWords")}</label>
+            <input
+              id="style-min-words"
+              type="number"
+              min={0}
+              step={1}
+              value={style.llm_min_words}
+              onChange={(event) =>
+                change({ llm_min_words: event.target.valueAsNumber })
+              }
+            />
+            <p className="small muted">{t("settings.styles.minWordsHint")}</p>
+            {issueFor(issues, index, "llm_min_words") && (
+              <p className="small error-text" role="alert">
+                {t(issueFor(issues, index, "llm_min_words")?.key ?? "")}
+              </p>
+            )}
+          </div>
           <div className="field wide">
             <label htmlFor="style-prompt">{t("settings.styles.prompt")}</label>
             <textarea

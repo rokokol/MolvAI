@@ -20,7 +20,7 @@ pub struct ChatResponse {
     pub completion_tokens: Option<u32>,
 }
 
-#[derive(Debug, Error, Clone, PartialEq, Eq)]
+#[derive(Debug, Error, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LlmError {
     #[error("post-processing is disabled")]
     Disabled,

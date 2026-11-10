@@ -92,7 +92,7 @@ pub(crate) fn identity(text: &str, _language: &str) -> Postprocessed {
 
 /// The text pipeline for files: the same order as in a dictation — dictionary, rules, the
 /// model by style. The model is called only when the style asks for it, it is enabled in the
-/// settings, `--no-llm` is not given and there are more words than `rules.llm_min_words`; a
+/// settings, `--no-llm` is not given and the phrase reaches the word minimum of that style; a
 /// model failure returns the text after the rules and not an error
 #[cfg(test)]
 pub(crate) struct FilePostprocessor {
@@ -103,7 +103,6 @@ pub(crate) struct FilePostprocessor {
     llm_provider: String,
     llm_model: String,
     llm_local: bool,
-    llm_min_words: u32,
     temperature: f32,
     max_tokens: u32,
 }
@@ -154,7 +153,6 @@ impl FilePostprocessor {
             llm_provider: cfg.llm.provider.clone(),
             llm_model: cfg.llm.model.clone(),
             llm_local: Provider::parse(&cfg.llm.provider).is_local(),
-            llm_min_words: cfg.rules.llm_min_words,
             temperature: cfg.llm.temperature,
             max_tokens: cfg.llm.max_tokens,
         }
@@ -171,7 +169,7 @@ impl FilePostprocessor {
                 llm: None,
             };
         };
-        if !self.style.uses_llm || word_count(&after_rules) <= self.llm_min_words {
+        if !self.style.uses_llm || word_count(&after_rules) < self.style.llm_min_words {
             return Postprocessed {
                 text: after_rules,
                 dict_hits,
@@ -1006,21 +1004,21 @@ mod tests {
             name: "Cleanup".into(),
             uses_llm: true,
             system_prompt: "Remove the junk".into(),
+            llm_min_words: 0,
             ..Style::default()
         }
     }
 
     #[test]
     fn short_text_stays_with_the_rules_and_never_reaches_the_model() {
-        let mut cfg = Config::default();
-        cfg.rules.llm_min_words = 10;
+        let cfg = Config::default();
+        let style = Style {
+            llm_min_words: 10,
+            ..llm_style()
+        };
         let llm = molva_core::domain::fakes::FakeLlm::echoing("MODEL ANSWER");
-        let postprocessor = FilePostprocessor::assemble(
-            &cfg,
-            Dictionary::empty(),
-            llm_style(),
-            Some(Box::new(llm)),
-        );
+        let postprocessor =
+            FilePostprocessor::assemble(&cfg, Dictionary::empty(), style, Some(Box::new(llm)));
 
         let processed = postprocessor.apply("привет как дела", "ru");
 
@@ -1031,7 +1029,6 @@ mod tests {
     #[test]
     fn long_text_goes_through_the_model_and_the_trace_is_kept() {
         let mut cfg = Config::default();
-        cfg.rules.llm_min_words = 0;
         cfg.llm.provider = "ollama".into();
         cfg.llm.model = "qwen3.5:4b".into();
         let llm = molva_core::domain::fakes::FakeLlm::echoing("чистый текст");
@@ -1060,8 +1057,7 @@ mod tests {
 
     #[test]
     fn a_failing_model_leaves_the_text_after_the_rules() {
-        let mut cfg = Config::default();
-        cfg.rules.llm_min_words = 0;
+        let cfg = Config::default();
         let llm = molva_core::domain::fakes::FakeLlm::failing(
             molva_core::domain::llm::LlmError::Disabled,
         );
@@ -1081,8 +1077,7 @@ mod tests {
 
     #[test]
     fn an_empty_model_answer_keeps_the_text_after_the_rules() {
-        let mut cfg = Config::default();
-        cfg.rules.llm_min_words = 0;
+        let cfg = Config::default();
         // An answer made only of thinking: after the cleanup nothing is left of it
         let llm = molva_core::domain::fakes::FakeLlm::echoing("<think>thinking for long</think>");
         let postprocessor = FilePostprocessor::assemble(
@@ -1103,8 +1098,7 @@ mod tests {
 
     #[test]
     fn a_style_without_a_model_never_calls_it() {
-        let mut cfg = Config::default();
-        cfg.rules.llm_min_words = 0;
+        let cfg = Config::default();
         let llm = molva_core::domain::fakes::FakeLlm::echoing("MODEL ANSWER");
         let style = Style {
             uses_llm: false,
@@ -1123,7 +1117,6 @@ mod tests {
     fn no_llm_flag_builds_a_postprocessor_without_a_model() {
         let mut cfg = Config::default();
         cfg.llm.enabled = true;
-        cfg.rules.llm_min_words = 0;
         let dir = tempfile::tempdir().unwrap();
         let postprocessor =
             FilePostprocessor::from_config(&cfg, &dir.path().join("config.toml"), "cleanup", true);
