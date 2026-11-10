@@ -28,6 +28,8 @@ pub struct TranscribeCppEngine {
     /// Empty means the automatic choice of the CLI
     backend: String,
     threads: usize,
+    /// The job a client may give up on: the token holds the process of the CLI while it runs
+    cancel: Option<std::sync::Arc<crate::domain::cancel::CancelToken>>,
 }
 
 impl TranscribeCppEngine {
@@ -44,7 +46,13 @@ impl TranscribeCppEngine {
             cli,
             backend,
             threads,
+            cancel: None,
         }
+    }
+
+    /// The job a client may give up on, so a cancel reaches the running process
+    pub fn set_cancel(&mut self, cancel: std::sync::Arc<crate::domain::cancel::CancelToken>) {
+        self.cancel = Some(cancel);
     }
 
     fn program(&self) -> &str {
@@ -114,9 +122,16 @@ fn parse_token(line: &str) -> Option<(u32, u32, String)> {
 }
 
 /// A pause that starts a new segment when the model reports tokens rather than sentences
-const TOKEN_PAUSE_MS: u32 = 400;
+///
+/// GigaAM puts a token every forty milliseconds and leaves tens of milliseconds between them, so
+/// a pause of four hundred milliseconds happens in the middle of a phrase: the segments came out
+/// shorter than a second and the text was cut at places where nobody paused. Seven hundred is the
+/// pause the streaming segmenter already treats as the end of a phrase
+const TOKEN_PAUSE_MS: u32 = 700;
 /// A long stretch without a pause still becomes several segments, so a timecode stays useful
 const TOKEN_SEGMENT_MS: u32 = 15_000;
+/// A segment shorter than this joins its neighbour: a timecode under a second is no use to a reader
+const TOKEN_MIN_SEGMENT_MS: u32 = 1_200;
 
 /// Group tokens into segments at pauses and at a maximum length
 ///
@@ -133,7 +148,11 @@ fn group_tokens(tokens: &[(u32, u32, String)]) -> Vec<Segment> {
         let new_word = raw.starts_with('▁');
         let pause = token_start.saturating_sub(end);
         let too_long = token_end.saturating_sub(start) > TOKEN_SEGMENT_MS;
-        if !text.is_empty() && (pause > TOKEN_PAUSE_MS || too_long) {
+        // A pause alone is not enough: GigaAM leaves more than half a second between words of a
+        // slow phrase, so a cut there would leave the list full of fragments. The phrase is cut
+        // once it holds something a reader can use, and its sound is long enough to seek to
+        let long_enough = end.saturating_sub(start) >= TOKEN_MIN_SEGMENT_MS;
+        if !text.is_empty() && (too_long || (pause > TOKEN_PAUSE_MS && long_enough)) {
             segments.push(Segment {
                 start_ms: start,
                 end_ms: end,
@@ -156,7 +175,29 @@ fn group_tokens(tokens: &[(u32, u32, String)]) -> Vec<Segment> {
             text: text.trim().to_string(),
         });
     }
-    segments
+    merge_short_segments(segments)
+}
+
+/// Join a segment that is too short to carry a timecode into the one before it
+///
+/// The last segment absorbs its own shortness: there is nothing after it, and a fragment of one
+/// word in the list is no better than a longer line that starts a little earlier
+fn merge_short_segments(segments: Vec<Segment>) -> Vec<Segment> {
+    let mut merged: Vec<Segment> = Vec::with_capacity(segments.len());
+    for segment in segments {
+        match merged.last_mut() {
+            Some(previous)
+                if previous.end_ms.saturating_sub(previous.start_ms) < TOKEN_MIN_SEGMENT_MS
+                    || segment.end_ms.saturating_sub(segment.start_ms) < TOKEN_MIN_SEGMENT_MS =>
+            {
+                previous.end_ms = segment.end_ms;
+                previous.text.push(' ');
+                previous.text.push_str(segment.text.trim());
+            }
+            _ => merged.push(segment),
+        }
+    }
+    merged
 }
 
 /// Read the parts of the CLI output that MolvAI needs
@@ -276,12 +317,28 @@ impl SttEngine for TranscribeCppEngine {
             .stderr(Stdio::piped());
 
         let started = Instant::now();
-        let output = command.output().map_err(|e| {
+        // Spawn first, then wait: the process identifier is what a cancel needs, and
+        // `output()` would hold it inside the call until the model finishes
+        let child = command.spawn().map_err(|e| {
             SttError::Inference(format!(
                 "cannot start {}: {e}. Install transcribe.cpp or set stt.transcribe_cli",
                 self.program()
             ))
         })?;
+        if let Some(cancel) = &self.cancel {
+            cancel.attach(child.id());
+        }
+        let output = child
+            .wait_with_output()
+            .map_err(|e| SttError::Inference(format!("cannot wait for {}: {e}", self.program())))?;
+        if let Some(cancel) = &self.cancel {
+            cancel.detach();
+            // The process died because the client gave up, and its status says so; the reason
+            // of the failure is the cancel, not a broken install
+            if cancel.is_cancelled() {
+                return Err(SttError::Cancelled);
+            }
+        }
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let reason = stderr
@@ -356,16 +413,37 @@ text: Привет! Как дела
 tokens: 5
   [   1.08 ->    1.12] p=0.000 ▁При
   [   1.24 ->    1.28] p=0.000 вет
-  [   1.44 ->    1.48] p=0.000 !
-  [   2.00 ->    2.04] p=0.000 ▁Как
-  [   2.20 ->    2.24] p=0.000 ▁дела
+  [   2.60 ->    2.64] p=0.000 !
+  [   3.60 ->    3.64] p=0.000 ▁Как
+  [   4.90 ->    4.94] p=0.000 ▁дела
 ";
         let transcript = parse_output(out).expect("the report is readable");
         assert_eq!(transcript.segments.len(), 2, "{:?}", transcript.segments);
         assert_eq!(transcript.segments[0].text, "Привет!");
         assert_eq!(transcript.segments[0].start_ms, 1080);
         assert_eq!(transcript.segments[1].text, "Как дела");
-        assert_eq!(transcript.segments[1].start_ms, 2000);
+        assert_eq!(transcript.segments[1].start_ms, 3600);
+    }
+
+    #[test]
+    fn a_segment_shorter_than_a_second_joins_its_neighbour() {
+        // A pause of forty milliseconds inside the phrase does not cut it, and a tail of two
+        // tokens is too short to carry a timecode of its own
+        let out = "\
+text: раз два три
+tokens: 6
+  [   0.40 ->    0.44] p=0.000 ▁раз
+  [   0.52 ->    0.56] p=0.000 ▁два
+  [   0.64 ->    0.68] p=0.000 ▁три.
+  [   1.80 ->    1.84] p=0.000 ▁Ну
+  [   1.92 ->    1.96] p=0.000 ▁и
+  [   2.04 ->    2.08] p=0.000 ▁всё
+";
+        let transcript = parse_output(out).expect("the report is readable");
+        assert_eq!(transcript.segments.len(), 1, "{:?}", transcript.segments);
+        assert_eq!(transcript.segments[0].text, "раз два три. Ну и всё");
+        assert_eq!(transcript.segments[0].start_ms, 400);
+        assert_eq!(transcript.segments[0].end_ms, 2080);
     }
 
     #[test]

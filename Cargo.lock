@@ -3081,6 +3081,7 @@ dependencies = [
  "hound",
  "interprocess",
  "keyring",
+ "libc",
  "notify-rust",
  "reqwest",
  "serde",

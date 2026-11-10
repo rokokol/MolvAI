@@ -5,7 +5,7 @@
 // transcript filters the rows, counts the matches and marks them, and the copy actions keep the
 // whole text reachable with or without timecodes.
 
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { copyToClipboard } from "../api";
 import { formatElapsed, formatTimecode, renderFileResult, renderSegment } from "../format";
@@ -22,9 +22,9 @@ export interface TranscriptProps {
   result: FileResult;
   /** Whether copied text carries the timecodes; the list follows the same choice */
   timecodes: boolean;
-  /** The playback position, for the active row; absent while preview is disabled */
+  /** The playback position, for the active row; absent until the player reports one */
   currentMs?: number | null;
-  /** Move the player to a segment; absent while preview is disabled */
+  /** Move the player to a segment; absent when the caller has no player */
   onSeek?: (ms: number) => void;
   /** Toggle the timecodes in the review; absent when the caller owns no such control */
   onTimecodesChange?: (value: boolean) => void;
@@ -46,6 +46,17 @@ export default function Transcript({
   const segments = result.segments ?? [];
   const { segments: shown, matches } = matchingSegments(segments, query);
   const active = activeSegmentIndex(segments, currentMs ?? null);
+  // The row that plays is scrolled into view: a lecture of fifty segments is longer than the
+  // window of the transcript, and following the sound by hand is not a job for the reader
+  const activeRow = useRef<HTMLLIElement | null>(null);
+  const lastActive = useRef<number | null>(null);
+  useEffect(() => {
+    if (active === null || active === lastActive.current) {
+      return;
+    }
+    lastActive.current = active;
+    activeRow.current?.scrollIntoView({ block: "nearest" });
+  }, [active]);
 
   const copyAll = async () => {
     if (await copyToClipboard(renderFileResult(result, timecodes))) {
@@ -121,6 +132,7 @@ export default function Transcript({
               item={item}
               query={query}
               active={item.index === active}
+              activeRef={item.index === active ? activeRow : undefined}
               showTimecodes={timecodes}
               onSeek={onSeek ? () => onSeek(item.segment.start_ms) : undefined}
               onCopy={() => void copyOne(item.segment, String(item.index))}
@@ -137,6 +149,7 @@ function SegmentRow({
   item,
   query,
   active,
+  activeRef,
   showTimecodes,
   onSeek,
   onCopy,
@@ -145,6 +158,8 @@ function SegmentRow({
   item: MatchingSegment;
   query: string;
   active: boolean;
+  /** Marks the active row, so the transcript can scroll it into view while the file plays */
+  activeRef: React.Ref<HTMLLIElement> | undefined;
   showTimecodes: boolean;
   onSeek?: () => void;
   onCopy: () => void;
@@ -177,7 +192,7 @@ function SegmentRow({
     </>
   );
   return (
-    <li className={active ? "segment active" : "segment"}>
+    <li className={active ? "segment active" : "segment"} ref={active ? activeRef : undefined}>
       {onSeek ? (
         <button
           type="button"

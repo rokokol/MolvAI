@@ -1510,6 +1510,19 @@ pub async fn transcribe_file<R: Runtime>(
     })?
 }
 
+/// Stop the file transcription that runs in the daemon now
+///
+/// The daemon works on one file at a time, so the command needs no identifier: it is sent by the
+/// window that gave up, and the job it stops answers as cancelled
+#[tauri::command]
+pub fn file_cancel() -> Result<bool, CommandError> {
+    let value = ipc::request(Command::FileCancel)?;
+    Ok(value
+        .get("cancelled")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false))
+}
+
 /// Ask the daemon for the file until it stops refusing
 ///
 /// The daemon transcribes one file at a time and never beside a phrase. A `Busy` answer is not
@@ -1547,6 +1560,43 @@ fn file_request(
 pub struct MediaInfo {
     pub url: String,
     pub kind: MediaKind,
+}
+
+/// The loudness of a recording over time, as the window draws it
+#[derive(Debug, Clone, Serialize)]
+pub struct Waveform {
+    /// One byte per bucket, loudest at 255
+    pub peaks: Vec<u8>,
+    pub duration_ms: u64,
+}
+
+/// Buckets in the picture: enough for a wide window, so the bars stay thin on a big screen
+const WAVEFORM_BUCKETS: usize = 1200;
+
+/// The peaks of one file, decoded outside the webview
+///
+/// Decoding through Web Audio is what made the window hang on a long recording: the webview holds
+/// the whole stream as a float buffer of its own. Here the decode happens once, in this process,
+/// on a thread of its own, and only the picture crosses to the interface: a synchronous command
+/// would block the thread that answers the window and freeze it for the length of the decode.
+#[tauri::command]
+pub async fn waveform(path: String) -> Result<Waveform, CommandError> {
+    tauri::async_runtime::spawn_blocking(move || waveform_of(&path))
+        .await
+        .map_err(|err| {
+            CommandError::new("internal", format!("the waveform was interrupted: {err}"))
+        })?
+}
+
+/// The picture of one file, computed on a worker thread
+fn waveform_of(path: &str) -> Result<Waveform, CommandError> {
+    let resolved = paths::expand_tilde(path);
+    let picture = molva_core::infra::audio::peaks_of_file(&resolved, WAVEFORM_BUCKETS)
+        .map_err(|err| CommandError::new("file", err.to_string()))?;
+    Ok(Waveform {
+        peaks: picture.peaks,
+        duration_ms: picture.duration_ms,
+    })
 }
 
 /// Hand one file to the loopback media server and return the URL that plays it
@@ -1902,6 +1952,34 @@ mod tests {
             validate_config(&config).unwrap_err().field,
             "style.custom.0.system_prompt"
         );
+    }
+
+    /// The window asks for completions on every pause in typing, including for a path that is
+    /// not there: an unreadable directory must leave the field empty, not raise an error
+    #[test]
+    fn the_path_suggestions_of_an_unreadable_directory_are_empty() {
+        let suggestions = path_suggestions("/definitely-not-here-3f9a/".to_string(), Some(5));
+        assert!(suggestions.is_empty(), "{suggestions:?}");
+    }
+
+    #[test]
+    fn the_path_suggestions_put_directories_first_and_keep_them_open() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        std::fs::create_dir(directory.path().join("folder")).expect("a directory");
+        std::fs::write(directory.path().join("file.wav"), b"").expect("a file");
+        let input = format!("{}/", directory.path().display());
+        let suggestions = path_suggestions(input, Some(10));
+        let folder = suggestions
+            .iter()
+            .find(|item| item.name == "folder")
+            .expect("the directory is offered");
+        assert!(folder.is_dir);
+        assert!(folder.path.ends_with('/'), "{}", folder.path);
+        let file = suggestions
+            .iter()
+            .find(|item| item.name == "file.wav")
+            .expect("the file is offered");
+        assert!(!file.is_dir);
     }
 
     #[test]

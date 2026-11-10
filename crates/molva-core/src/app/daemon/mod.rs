@@ -157,6 +157,9 @@ struct Shared {
     job: Mutex<Option<WorkerJob>>,
     /// Settings file for `config.reload`; `None` means the default path
     config_path: Mutex<Option<PathBuf>>,
+    /// Set by a client that gives up on the running file transcription, cleared when the next
+    /// one starts: the pipeline reads it between two chunks
+    file_cancel: Mutex<Arc<crate::domain::cancel::CancelToken>>,
 }
 
 impl Shared {
@@ -301,6 +304,7 @@ impl Daemon {
             auto_type_max_chars: config.output.auto_type_max_chars,
             job: Mutex::new(None),
             config_path: Mutex::new(None),
+            file_cancel: Mutex::new(Arc::new(crate::domain::cancel::CancelToken::new())),
         });
 
         let mut machine = Machine::new(config.hotkeys.clone(), clock.clone());
@@ -566,6 +570,13 @@ impl Daemon {
                         // A file is not a phrase: it never reaches the state machine, and the
                         // recognizer is the one that already holds the weights
                         Job::File { request, reply } => {
+                            // Every job gets its own token: the cancel of the previous file cannot
+                            // reach this one, and a flag cleared by hand cannot be forgotten
+                            let token = Arc::new(crate::domain::cancel::CancelToken::new());
+                            if let Ok(mut slot) = shared.file_cancel.lock() {
+                                *slot = Arc::clone(&token);
+                            }
+                            processor.set_file_cancel(token);
                             let answer = processor.transcribe_file(&request).map_err(|err| {
                                 IpcError {
                                     code: error_code_for(&err),
@@ -785,7 +796,8 @@ fn error_code_for(err: &ProcessError) -> ErrorCode {
         ProcessError::Stt(_) => ErrorCode::SttFailed,
         ProcessError::Inject(_) => ErrorCode::InjectFailed,
         ProcessError::Journal(_) | ProcessError::FilesUnsupported => ErrorCode::Internal,
-        ProcessError::Pipeline(_) => ErrorCode::BadRequest,
+        // A client that gave up gets no error of its own: the cancellation is its own act
+        ProcessError::Pipeline(_) | ProcessError::Cancelled => ErrorCode::BadRequest,
     }
 }
 
@@ -1000,6 +1012,14 @@ impl RequestHandler for DaemonHandle {
             Command::FileTranscribe(request) => {
                 let report = self.transcribe_file(request)?;
                 serde_json::to_value(report).map_err(|err| internal(&err.to_string()))
+            }
+            Command::FileCancel => {
+                // The token kills the recognizer process, so a file of hours stops at once; the
+                // answer of the stopped job reaches nobody and nothing of it reaches the journal
+                if let Ok(slot) = self.shared.file_cancel.lock() {
+                    slot.cancel();
+                }
+                Ok(serde_json::json!({ "cancelled": true }))
             }
             Command::ConfigReload => {
                 let config = self.reload_config(None)?;

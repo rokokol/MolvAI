@@ -34,7 +34,7 @@ use crate::domain::entry::{Entry, LatencyMs, Mode, Source, Tokens, SCHEMA_VERSIO
 use crate::domain::inject::{OutputMode, TextInjector};
 use crate::domain::journal::{Journal, JournalError};
 use crate::domain::llm::{ChatRequest, LlmClient, LlmError};
-use crate::domain::stt::{LanguageHint, SttEngine, SttError, SttOptions, Transcript};
+use crate::domain::stt::{LanguageHint, Segment, SttEngine, SttError, SttOptions, Transcript};
 use crate::domain::text::word_count;
 use crate::ipc::protocol::{FileFailure, FileReport, FileTranscriptionRequest};
 
@@ -62,6 +62,8 @@ pub enum PipelineError {
     CommandModeNeedsLlm(LlmError),
     #[error("paste failed: {0}")]
     Inject(#[from] crate::domain::inject::InjectError),
+    #[error("the transcription was cancelled")]
+    Cancelled,
 }
 
 /// Settings that the pipeline needs. They are built from [`Config`] in one call
@@ -205,6 +207,9 @@ pub struct Pipeline {
     streamed_inject_ms: u32,
     /// A chunk paste failed: the typed prefix stays, and the phrase is not retyped from the start
     streamed_failed: bool,
+    /// The job a client may give up on: the flag and the process of the model, so a cancel
+    /// stops the model itself rather than only the next step
+    file_cancel: Option<Arc<crate::domain::cancel::CancelToken>>,
 }
 
 impl Pipeline {
@@ -239,7 +244,23 @@ impl Pipeline {
             streamed_dict_hits: 0,
             streamed_inject_ms: 0,
             streamed_failed: false,
+            file_cancel: None,
         }
+    }
+
+    /// Give the pipeline the flag that a client sets to stop the file transcription
+    /// Give the pipeline the token that a client cancels: the engine takes it too, so the
+    /// process of the recognizer dies with the job
+    pub fn set_file_cancel(&mut self, cancel: Arc<crate::domain::cancel::CancelToken>) {
+        self.file_cancel = Some(Arc::clone(&cancel));
+        self.stt.set_cancel(cancel);
+    }
+
+    /// Whether a client has given up on the file that is being transcribed
+    fn file_cancelled(&self) -> bool {
+        self.file_cancel
+            .as_ref()
+            .is_some_and(|token| token.is_cancelled())
     }
 
     /// Record the daemon measurement: how long the microphone took to free after the key release
@@ -475,15 +496,20 @@ impl Pipeline {
         chunked: bool,
     ) -> Result<Transcript, SttError> {
         if !chunked {
+            if self.file_cancelled() {
+                return Err(SttError::Inference("cancelled".into()));
+            }
             return transcribe_with_language_policy(self.stt.as_mut(), ready, options);
         }
-        let mut segmenter = crate::app::audio::segmenter::Segmenter::new(
-            crate::app::audio::segmenter::SegmenterConfig::new(
-                ready.sample_rate,
-                self.config.stt.chunk_pause_ms,
-                self.config.audio.silence_threshold_db,
-            ),
+        let config = crate::app::audio::segmenter::SegmenterConfig::new(
+            ready.sample_rate,
+            self.config.stt.chunk_pause_ms,
+            self.config.audio.silence_threshold_db,
         );
+        // Neighbouring chunks share this much sound, so the halves of the overlap belong to the
+        // chunk on their own side: the segments then meet instead of covering each other
+        let half_overlap = config.overlap_ms / 2;
+        let mut segmenter = crate::app::audio::segmenter::Segmenter::new(config);
         let mut chunks = segmenter.push(&ready.samples);
         chunks.extend(segmenter.finish());
         if chunks.is_empty() {
@@ -494,6 +520,11 @@ impl Pipeline {
         let mut segments = Vec::new();
         let mut detected_language = None;
         for chunk in chunks {
+            // The client may give up while the model works on the previous chunk: the next one is
+            // not started, and the whole job answers as cancelled
+            if self.file_cancelled() {
+                return Err(SttError::Inference("cancelled".into()));
+            }
             let transcript =
                 transcribe_with_language_policy(self.stt.as_mut(), &chunk.audio, options)?;
             if detected_language.is_none() {
@@ -502,14 +533,29 @@ impl Pipeline {
             if is_silence_hallucination(&transcript, self.config.stt.no_speech_threshold) {
                 continue;
             }
-            if !transcript.text.trim().is_empty() {
-                text.push(transcript.text.trim().to_string());
+            let trimmed = transcript.text.trim();
+            if trimmed.is_empty() {
+                continue;
             }
-            segments.extend(transcript.segments.into_iter().map(|mut segment| {
-                segment.start_ms = segment.start_ms.saturating_add(chunk.start_ms);
-                segment.end_ms = segment.end_ms.saturating_add(chunk.start_ms);
-                segment
-            }));
+            text.push(trimmed.to_string());
+            // One segment per chunk: the chunk boundaries are the pauses this file was cut at,
+            // and the inner split of the model is finer than the audio it saw, so its own
+            // segments come out shorter than a second and drift from the sound
+            let start_ms = chunk.start_ms;
+            let end_ms = start_ms.saturating_add((chunk.duration_secs() * 1000.0).round() as u32);
+            let (start_ms, end_ms) = if start_ms == 0 {
+                (start_ms, end_ms.saturating_sub(half_overlap))
+            } else {
+                (
+                    start_ms.saturating_add(half_overlap),
+                    end_ms.saturating_sub(half_overlap),
+                )
+            };
+            segments.push(Segment {
+                start_ms,
+                end_ms: end_ms.max(start_ms + 1),
+                text: format!(" {trimmed}"),
+            });
         }
         Ok(Transcript {
             text: text.join(" "),
@@ -1992,6 +2038,38 @@ mod tests {
         assert_eq!(output_mode("something else"), OutputMode::Auto);
     }
     #[test]
+    fn a_cancelled_file_stops_before_the_model_reads_it() {
+        let mut config = PipelineConfig::default();
+        config.stt.chunk_pause_ms = 300;
+        let mut harness = build("фраза", None, config);
+        // The client gave up before the job started: the flag is already set
+        let cancel = Arc::new(crate::domain::cancel::CancelToken::new());
+        cancel.cancel();
+        harness.pipeline.set_file_cancel(cancel);
+        let request = FileTranscriptionRequest {
+            path: std::path::PathBuf::from("/tmp/lecture.wav"),
+            style: None,
+            timecodes: true,
+            no_llm: true,
+            source: Source::File,
+            chunked: true,
+        };
+        let error = harness
+            .pipeline
+            .transcribe_audio(
+                String::from("lecture.wav"),
+                PcmAudio::new(vec![0.1; 16_000 * 4], 16_000),
+                &request,
+            )
+            .expect_err("the file was cancelled");
+        assert!(error.contains("cancelled"), "{error}");
+        assert!(
+            harness.stt.lock().unwrap().calls.is_empty(),
+            "the model was asked after the cancel"
+        );
+    }
+
+    #[test]
     fn a_chunked_file_is_recognized_at_its_pauses() {
         let mut config = PipelineConfig::default();
         config.stt.chunk_pause_ms = 300;
@@ -2021,5 +2099,16 @@ mod tests {
             harness.stt.lock().unwrap().calls.len() >= 2,
             "the file was not cut at its pause"
         );
+        // One segment per chunk: its bounds are the pauses the file was cut at, not the inner
+        // split of the model, which is finer than the audio of one chunk
+        assert_eq!(result.segments.len(), 2, "{:?}", result.segments);
+        assert_eq!(result.segments[0].start_ms, 0);
+        assert!(
+            result.segments[0].end_ms >= 3_000 && result.segments[0].end_ms <= 4_000,
+            "the first chunk ends at its pause: {:?}",
+            result.segments[0]
+        );
+        assert!(result.segments[1].start_ms >= result.segments[0].end_ms);
+        assert!(result.segments[1].end_ms > result.segments[1].start_ms);
     }
 }

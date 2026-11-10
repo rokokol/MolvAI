@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Audio and video transcription: drag a file into the window or type a path, then review the
-// result by timecode with its player or spectrogram.
+// result by timecode beside its player and the loudness of the recording.
 //
 // The queue itself lives in FilesProvider, above the tabs: this view renders it and keeps only
 // what belongs to the input of the moment. Transcript search, global and inside one result, is

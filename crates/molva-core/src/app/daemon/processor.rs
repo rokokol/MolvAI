@@ -36,6 +36,8 @@ pub enum ProcessError {
     Pipeline(String),
     #[error("this processor cannot transcribe files, it has no recognition engine")]
     FilesUnsupported,
+    #[error("the transcription was cancelled")]
+    Cancelled,
 }
 
 impl From<crate::app::pipeline::PipelineError> for ProcessError {
@@ -115,6 +117,10 @@ impl Processor for crate::app::pipeline::Pipeline {
         Ok(crate::app::pipeline::Pipeline::transcribe_file(
             self, request,
         ))
+    }
+
+    fn set_file_cancel(&mut self, cancel: Arc<crate::domain::cancel::CancelToken>) {
+        self.set_file_cancel(cancel);
     }
 }
 
@@ -196,6 +202,10 @@ pub trait Processor: std::fmt::Debug + Send {
     ) -> Result<crate::ipc::protocol::FileReport, ProcessError> {
         Err(ProcessError::FilesUnsupported)
     }
+
+    /// The token a client cancels: an engine with a child process dies at once, and one that runs
+    /// in this process answers between two calls
+    fn set_file_cancel(&mut self, _cancel: Arc<crate::domain::cancel::CancelToken>) {}
 }
 
 /// Settings that the processor needs from the config

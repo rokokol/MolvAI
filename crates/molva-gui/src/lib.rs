@@ -381,7 +381,9 @@ pub fn run() {
             commands::stats_summary,
             commands::stats_export_csv,
             commands::transcribe_file,
+            commands::file_cancel,
             commands::prepare_media,
+            commands::waveform,
             commands::path_suggestions,
             commands::ui_language,
         ])

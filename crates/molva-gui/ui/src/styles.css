@@ -1434,7 +1434,12 @@ button.job-expander:active:not(:disabled) {
 }
 
 .job-actions {
-  margin-left: auto;
+  /* The actions sit on a row of their own under the name: a long path makes the row of the head
+     wide, and a right-aligned group of buttons then ends up past the edge of the card where
+     nobody can press it */
+  flex: 1 0 100%;
+  justify-content: flex-end;
+  margin-left: 0;
 }
 
 .job-path {
@@ -1468,6 +1473,78 @@ button.job-expander:active:not(:disabled) {
   margin-top: 0.75rem;
   padding-top: 0.75rem;
   border-top: 1px solid var(--ddlc-grid);
+}
+
+/* One result holds a small player beside its timecoded transcript: a lecture is long, and the
+   queue below must stay reachable while the text scrolls beside the picture */
+.result {
+  display: grid;
+  grid-template-columns: minmax(0, 20rem) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.result-media {
+  position: sticky;
+  top: 0.5rem;
+  min-width: 0;
+  /* The player keeps its own ground: a sticky picture over scrolling text must not let the text
+     show through it */
+  z-index: 1;
+  background: var(--ddlc-panel);
+}
+
+.result-text {
+  min-width: 0;
+}
+
+.result-text .transcript {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+/* A narrow window stacks them: the player above, the text below. This rule comes after the base
+   one on purpose: with equal specificity the later rule wins, and a media query placed above
+   `position: sticky` would leave the player sticky in a stacked layout, where it covers the
+   transcript */
+@media (max-width: 60rem) {
+  .result {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .result-media {
+    position: static;
+  }
+}
+
+/* A video keeps the size of a preview: the transcript is what the page is for */
+.media-player {
+  display: block;
+  width: 100%;
+  max-height: 12rem;
+  background: var(--ddlc-ground);
+}
+
+.audio-stack {
+  display: grid;
+  gap: 0.5rem;
+}
+
+/* The loudness of the recording: the bars are drawn on a canvas, so a wide window costs the same
+   as a narrow one, and the canvas takes the width of the card it sits in */
+.waveform {
+  display: block;
+  width: 100%;
+  height: 3.5rem;
+  padding: 0.25rem;
+  border: 2px solid var(--ddlc-line);
+  background: var(--ddlc-ground);
+  cursor: pointer;
+  --waveform-idle: var(--ddlc-muted);
+  --waveform-played: var(--ddlc-accent);
 }
 
 .queue-progress {
@@ -1569,6 +1646,7 @@ button.job-expander:active:not(:disabled) {
   background: none;
   box-shadow: none;
   cursor: default;
+  min-width: 0;
 }
 
 .segments .segment:hover {
@@ -1613,8 +1691,21 @@ button.segment-main:hover:not(:disabled) {
   white-space: nowrap;
 }
 
+/* The timecodes keep their line; the text takes the rest of the row and wraps there, however long
+   a word the recognizer produced. Without the zero minimum a flex item refuses to shrink below its
+   longest word and pushes the row past the card */
 .segment-text {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* A long transcript must not widen the grid it sits in: the column is the width, not the text */
+.segments,
+.transcript {
+  min-width: 0;
+  max-width: 100%;
 }
 
 button.segment-copy {

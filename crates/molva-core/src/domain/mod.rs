@@ -4,6 +4,7 @@
 //! Changes here are additive only, and only through the coordinator
 
 pub mod audio;
+pub mod cancel;
 pub mod clock;
 pub mod entry;
 pub mod fakes;
@@ -17,6 +18,7 @@ pub mod stt;
 pub mod text;
 
 pub use audio::{AudioError, AudioSource, DeviceInfo, PcmAudio, TARGET_SAMPLE_RATE};
+pub use cancel::CancelToken;
 pub use clock::{Clock, SystemClock};
 pub use entry::{Entry, LatencyMs, Mode, Source, Tokens};
 pub use hotkeys::{HotkeyAction, HotkeyError, HotkeyEvent, HotkeySource, KeyState};

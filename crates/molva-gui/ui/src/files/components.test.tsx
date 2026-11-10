@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import App from "../App";
 import { I18nContext, translate } from "../i18n";
+import { renderFileResult, renderSegment } from "../format";
 import type { FileResult } from "../types";
 import Files from "../views/Files";
 import { FilesProvider } from "./FilesProvider";
@@ -102,6 +103,34 @@ describe("Transcript", () => {
     );
     expect(html).toContain(translate("en", "files.noSegments"));
     expect(html).toContain("привет мир");
+  });
+
+  it("drops the timecode column when the switch is off", () => {
+    const html = renderToStaticMarkup(
+      wrap(
+        <Transcript
+          result={result}
+          timecodes={false}
+          currentMs={null}
+          onSeek={() => undefined}
+          onOpen={() => undefined}
+        />,
+      ),
+    );
+    expect(html).not.toContain("segment-times");
+    // The button keeps the time for a screen reader; the row itself shows none of it
+    expect(html).not.toContain("→");
+    expect(html).toContain("привет");
+  });
+
+  it("carries the timecodes into the copied text only when they are on", () => {
+    const first = result.segments?.[0] ?? { start_ms: 0, end_ms: 0, text: "" };
+    expect(renderFileResult(result, false)).toBe(result.text);
+    expect(renderFileResult(result, true)).toBe(
+      "[00:00.000 → 00:02.500] привет\n[00:02.500 → 00:04.000] мир",
+    );
+    expect(renderSegment(first, false)).toBe("привет");
+    expect(renderSegment(first, true)).toBe("[00:00.000 → 00:02.500] привет");
   });
 });
 

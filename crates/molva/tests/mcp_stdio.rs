@@ -129,6 +129,11 @@ fn toml_path(path: &Path) -> String {
 
 /// The settings of the live test: the fake engine, a journal in the temporary directory
 fn write_config(directory: &Path) -> PathBuf {
+    write_config_with(directory, true)
+}
+
+/// The same settings with the MCP switch set: `false` is what a harness must be refused by
+fn write_config_with(directory: &Path, mcp_enabled: bool) -> PathBuf {
     let journal = toml_path(&directory.join("journal.jsonl"));
     let dictionary = toml_path(&directory.join("dictionary.toml"));
     std::fs::write(&dictionary, "").expect("an empty dictionary");
@@ -148,7 +153,7 @@ enabled = true
 include_text = true
 
 [mcp]
-enabled = true
+enabled = {mcp_enabled}
 
 [privacy]
 send_to_llm = false
@@ -170,6 +175,45 @@ backend = "none"
     let path = directory.join("config.toml");
     std::fs::write(&path, config).expect("the settings are written");
     path
+}
+
+#[test]
+/// A switch that is off stops the server before it reads a line: the harness gets the reason and
+/// a status, not a process that waits for an answer to a request nobody will serve
+fn a_disabled_mcp_server_refuses_to_start() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let config = write_config_with(directory.path(), false);
+    let socket = directory.path().join("molva.sock");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_molva"))
+        .arg("--config")
+        .arg(&config)
+        .arg("--socket")
+        .arg(&socket)
+        .arg("mcp")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("the molva binary runs");
+
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "a refused command keeps its own status"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("mcp.enabled"),
+        "the refusal names the switch: {stderr}"
+    );
+    assert!(
+        output.stdout.is_empty(),
+        "nothing speaks JSON-RPC: {:?}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    // The daemon is started by a server that runs, so a refused one leaves no socket behind
+    assert!(!socket.exists(), "no daemon was started");
 }
 
 #[test]

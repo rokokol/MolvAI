@@ -422,6 +422,13 @@ export interface MediaInfo {
   kind: "audio" | "video";
 }
 
+/** The loudness of one recording over time, as `waveform` returns it */
+export interface Waveform {
+  /** One byte per bar, loudest at 255 */
+  peaks: number[];
+  duration_ms: number;
+}
+
 /** One entry of the path autocomplete */
 export interface PathSuggestion {
   path: string;

@@ -22,6 +22,7 @@ import type {
   SttModelOption,
   SttProbeReport,
   StyleOption,
+  Waveform,
 } from "./types";
 
 /** A command error always arrives as an object; a string means the bridge itself failed */
@@ -116,8 +117,14 @@ export const api = {
   transcribeFile: (id: string, path: string, chunked: boolean) =>
     invoke<FileResult[]>("transcribe_file", { id, path, chunked }),
 
-  /** Widen the asset protocol scope for one file and get the URL that plays it */
+  /** Stop the file transcription that runs in the daemon now */
+  fileCancel: () => invoke<{ cancelled: boolean }>("file_cancel"),
+
+  /** Ask the window for a URL that plays one file, through its loopback server */
   prepareMedia: (path: string) => invoke<MediaInfo>("prepare_media", { path }),
+
+  /** The loudness of one file over time, decoded by the window rather than the webview */
+  waveform: (path: string) => invoke<Waveform>("waveform", { path }),
 
   /** Entries that complete the typed path; never throws on an unreadable directory */
   pathSuggestions: (input: string, limit?: number) =>

@@ -44,6 +44,8 @@ arboard = { workspace = true }
 enigo = { workspace = true }
 # Temporary WAV for the transcribe.cpp CLI
 tempfile = { workspace = true }
+# Killing the recognizer process when a client gives up on a file
+libc = { workspace = true }
 
 # On Linux the clipboard and input synthesis support Wayland, plus evdev and notifications
 [target.'cfg(target_os = "linux")'.dependencies]

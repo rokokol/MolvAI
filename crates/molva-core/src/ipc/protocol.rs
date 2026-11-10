@@ -82,6 +82,13 @@ pub enum Command {
     /// already holds: no client loads a model of its own
     #[serde(rename = "file.transcribe")]
     FileTranscribe(FileTranscriptionRequest),
+    /// Stop the file transcription that runs now
+    ///
+    /// The daemon works on one file at a time, so no identifier is needed: the client that asked
+    /// for the running job is the one that gives up on it. The answer of the stopped job is an
+    /// error with this code, and nothing of it reaches the journal
+    #[serde(rename = "file.cancel")]
+    FileCancel,
     /// Check a draft of the settings against the model provider, using the daemon's key source
     #[serde(rename = "llm.probe")]
     LlmProbe { config: Box<crate::config::Config> },

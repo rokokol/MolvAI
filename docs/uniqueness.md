@@ -30,7 +30,7 @@ Before the design, we read seven projects of the same niche. From each we took t
 
 ## What we wrote ourselves
 
-- **Post-processing without a language model.** A term dictionary and a set of rules: spoken punctuation, automatic punctuation, removal of filler words and repeats, numbers as digits. A phrase below its style's word minimum goes through the rules only: a language model is not needed to put in a comma
+- **Post-processing without a language model.** A term dictionary and a set of rules: spoken punctuation, capital letters at the start of a sentence, removal of filler words and repeats, numbers as digits. A phrase below its style's word minimum goes through the rules only: a language model is not needed to put in a comma
 - **The term dictionary.** Names, abbreviations and jargon go into whisper as a hint and get fixed in the finished text, including by fuzzy matching
 - **The phrase journal in JSONL.** Each phrase is a line with the time, the duration, the language, the chosen paste method and its result. [journal-schema.md](journal-schema.md) fixes the schema. The statistics and the "time saved" are computed from it
 - **The paste chain.** The paste method is chosen by the environment and the text length, falls back to the clipboard and restores its previous content, and the journal shows each step of the chain

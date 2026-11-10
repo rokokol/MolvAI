@@ -40,7 +40,8 @@ import {
 const STORAGE_DEBOUNCE_MS = 300;
 const CHUNKED_KEY = "molva.files.chunked";
 
-type Action =
+/** The events the queue reacts to; the tests drive them without a window */
+export type Action =
   | { type: "add"; jobs: Job[] }
   | { type: "start"; id: string; at: number }
   | { type: "progress"; id: string; progress: JobProgress }
@@ -53,10 +54,17 @@ type Action =
       detail: string | null;
     }
   | { type: "requeue"; id: string }
+  | { type: "remove"; id: string }
   | { type: "clear-finished" }
   | { type: "restore"; jobs: Job[] };
 
-function reducer(state: Job[], action: Action): Job[] {
+/**
+ * The state of the queue after one event
+ *
+ * Exported because the races it settles are the behaviour: a progress event that lands after a
+ * cancel, an answer that lands after a cancel, and a second start of the same job.
+ */
+export function reducer(state: Job[], action: Action): Job[] {
   switch (action.type) {
     case "add":
       return [...action.jobs, ...state];
@@ -120,6 +128,8 @@ function reducer(state: Job[], action: Action): Job[] {
             }
           : job,
       );
+    case "remove":
+      return state.filter((job) => job.id !== action.id);
     case "clear-finished":
       return state.filter(
         (job) => job.status === "queued" || job.status === "running",
@@ -151,6 +161,8 @@ export interface FilesQueue {
   cancel: (id: string) => void;
   retry: (id: string) => void;
   clearFinished: () => void;
+  /** Drop one row of the queue: the journal keeps what it has */
+  remove: (id: string) => void;
   isExpanded: (id: string) => boolean;
   toggleExpanded: (id: string) => void;
   seekFor: (jobId: string, resultIndex: number) => SeekRequest | null;
@@ -190,9 +202,11 @@ export function FilesProvider({
   const [dragging, setDragging] = useState(false);
   const [chunked, setChunkedState] = useState(() => {
     try {
-      return localStorage.getItem(CHUNKED_KEY) === "1";
+      // Cutting at the pauses is the better default: the model sees whole phrases instead of one
+      // long recording, and the timecodes of the result follow those pauses. A stored choice wins
+      return localStorage.getItem(CHUNKED_KEY) !== "0";
     } catch {
-      return false;
+      return true;
     }
   });
   const setChunked = useCallback((value: boolean) => {
@@ -336,9 +350,11 @@ export function FilesProvider({
       if (job.status !== "running") {
         return;
       }
-      // The daemon owns the recognizer and a running file cannot be interrupted: the window
-      // stops waiting, and the answer that arrives later is dropped
+      // The daemon owns the recognizer, so the window asks it to stop: the pipeline reads the
+      // flag between two chunks, and the answer of the stopped job reaches nobody. The window
+      // stops waiting at once, so the row is free even while the model finishes its chunk
       cancelled.current.add(id);
+      void api.fileCancel().catch(() => undefined);
       dispatch({
         type: "fail",
         id,
@@ -358,6 +374,11 @@ export function FilesProvider({
 
   const clearFinished = useCallback(() => {
     dispatch({ type: "clear-finished" });
+  }, []);
+
+  const remove = useCallback((id: string) => {
+    cancelled.current.delete(id);
+    dispatch({ type: "remove", id });
   }, []);
 
   const toggleExpanded = useCallback((id: string) => {
@@ -419,6 +440,7 @@ export function FilesProvider({
       cancel,
       retry,
       clearFinished,
+      remove,
       isExpanded,
       toggleExpanded,
       seekFor,
@@ -431,9 +453,14 @@ export function FilesProvider({
       dragging,
       start,
       startMany,
+      // The switch belongs to the value: without these two the row keeps the state of the first
+      // render, and a press on it changes nothing the view can see
+      chunked,
+      setChunked,
       cancel,
       retry,
       clearFinished,
+      remove,
       isExpanded,
       toggleExpanded,
       seekFor,

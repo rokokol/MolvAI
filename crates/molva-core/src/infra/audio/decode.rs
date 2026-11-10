@@ -144,11 +144,47 @@ pub fn decode_stdin(extension: Option<&str>) -> Result<PcmAudio, AudioError> {
     decode_reader(Box::new(Cursor::new(bytes)), extension, STDIN_LABEL)
 }
 
+/// Walk the packets of a file and hand the mono samples of each to `sink`
+///
+/// The same walk serves the whole-file decode and the picture of the loudness: the only difference
+/// between them is what they keep
+pub(crate) fn walk_file(path: &Path, sink: &mut impl FnMut(&[f32], u32)) -> Result<(), AudioError> {
+    let label = path.display().to_string();
+    let file = File::open(path)
+        .map_err(|e| decode_error(&label, format!("could not open the file: {e}")))?;
+    let mut hint = Hint::new();
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        hint.with_extension(ext);
+    }
+    walk_source(Box::new(file), &hint, &label, sink).map(|_| ())
+}
+
 fn decode_source(
     source: Box<dyn MediaSource>,
     hint: &Hint,
     label: &str,
 ) -> Result<PcmAudio, AudioError> {
+    let mut mono: Vec<f32> = Vec::new();
+    let sample_rate = walk_source(source, hint, label, |samples, _| {
+        mono.extend_from_slice(samples);
+    })?;
+    if mono.is_empty() {
+        return Err(decode_error(label, "the file has no audio"));
+    }
+    Ok(PcmAudio::new(mono, sample_rate))
+}
+
+/// Walk the packets of any source and hand the mono samples of each to `sink`
+///
+/// Both the whole-file decode and the picture of the loudness need the same walk: the only
+/// difference between them is what they keep, and keeping nothing is what lets an hour-long file
+/// give a waveform without a buffer of an hour in memory
+fn walk_source(
+    source: Box<dyn MediaSource>,
+    hint: &Hint,
+    label: &str,
+    mut sink: impl FnMut(&[f32], u32),
+) -> Result<u32, AudioError> {
     let stream = MediaSourceStream::new(source, MediaSourceStreamOptions::default());
     let mut format = symphonia::default::get_probe()
         .probe(
@@ -169,7 +205,6 @@ fn decode_source(
         .make_audio_decoder(&params, &AudioDecoderOptions::default().gapless(true))
         .map_err(|e| decode_error(label, format!("codec is not supported: {e}")))?;
 
-    let mut mono: Vec<f32> = Vec::new();
     let mut sample_rate = params.sample_rate.unwrap_or(0);
     let mut interleaved: Vec<f32> = Vec::new();
 
@@ -199,7 +234,8 @@ fn decode_source(
                 sample_rate = spec.rate();
                 let channels = spec.channels().count() as u16;
                 frames.copy_to_vec_interleaved(&mut interleaved);
-                mono.extend_from_slice(&downmix_to_mono(&interleaved, channels));
+                let mono = downmix_to_mono(&interleaved, channels);
+                sink(&mono, sample_rate);
             }
             // A bad packet in the middle of the file is skipped: the rest of the recording is still
             // useful
@@ -211,13 +247,10 @@ fn decode_source(
         }
     }
 
-    if mono.is_empty() {
-        return Err(decode_error(label, "the file has no audio"));
-    }
     if sample_rate == 0 {
         return Err(decode_error(label, "unknown sample rate"));
     }
-    Ok(PcmAudio::new(mono, sample_rate))
+    Ok(sample_rate)
 }
 
 #[cfg(test)]

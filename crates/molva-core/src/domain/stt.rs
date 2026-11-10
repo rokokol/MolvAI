@@ -94,6 +94,9 @@ pub enum SttError {
     EmptyAudio,
     #[error("the engine does not support: {0}")]
     Unsupported(String),
+    /// The client gave up: the model was stopped and the result of the job is nobody's
+    #[error("the transcription was cancelled")]
+    Cancelled,
 }
 
 /// Recognition engine: whisper.cpp in production, `FakeStt` in tests
@@ -110,6 +113,13 @@ pub trait SttEngine: std::fmt::Debug + Send {
     ) -> Result<Transcript, SttError>;
     /// Free the model memory; the next `transcribe` call loads it again
     fn unload(&mut self);
+
+    /// The job a client may give up on
+    ///
+    /// An engine that runs in this process cannot be stopped in the middle of a call, so it keeps
+    /// the default and answers the cancel only between two calls. An engine that runs a child
+    /// process takes the token, and a cancel then kills that process
+    fn set_cancel(&mut self, _cancel: std::sync::Arc<crate::domain::cancel::CancelToken>) {}
 
     /// Detect the language from the first seconds of the recording, choosing only among
     /// `opts.allowed_languages`

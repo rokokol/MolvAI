@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 // One cell of the queue: the name, the state and a progress bar while collapsed; the player,
-// the spectrogram and the timecoded transcript once expanded.
+// the loudness of the recording and the timecoded transcript once expanded.
 
+import { useState } from "react";
+
+import { api } from "../api";
 import { formatElapsed } from "../format";
 import { useI18n } from "../i18n";
 import { useFilesQueue } from "./FilesProvider";
@@ -12,6 +15,7 @@ import {
   statusTone,
   type Job,
 } from "./jobs";
+import MediaPreview from "./MediaPreview";
 import ProgressBar from "./ProgressBar";
 import Transcript from "./Transcript";
 
@@ -32,13 +36,16 @@ export default function JobCell({
   onOpen,
 }: JobCellProps) {
   const { t } = useI18n();
-  const { isExpanded, toggleExpanded, cancel, retry } = useFilesQueue();
+  const { isExpanded, toggleExpanded, cancel, retry, seek, seekFor, remove } = useFilesQueue();
   const expanded = isExpanded(job.id);
   const status = t(statusKey(job.status));
   const elapsed = elapsedMs(job, now);
   const running = job.status === "running";
   const phase = running && job.progress ? t(phaseKey(job.progress.phase)) : null;
   const resultCount = job.results.length;
+  // The position belongs to a player of one result, and only the player updates it: a seek
+  // request travels the other way, from the transcript into `seek`
+  const [positions, setPositions] = useState<Record<number, number>>({});
 
   return (
     <li className={`entry job ${job.status}`}>
@@ -93,6 +100,16 @@ export default function JobCell({
           <button type="button" className="chip" onClick={() => onOpen(job.path)}>
             {t("files.open")}
           </button>
+          {!running && job.status !== "queued" && (
+            <button
+              type="button"
+              className="chip danger"
+              title={t("files.removeHint")}
+              onClick={() => remove(job.id)}
+            >
+              {t("files.remove")}
+            </button>
+          )}
         </div>
       </div>
 
@@ -136,13 +153,29 @@ export default function JobCell({
           ) : (
             job.results.map((result, index) => (
               <section className="result" key={`${job.id}-${index}`}>
-                <p className="small muted">{t("files.previewDisabled")}</p>
-                <Transcript
-                  result={result}
-                  timecodes={timecodes}
-                  onTimecodesChange={onTimecodesChange}
-                  onOpen={onOpen}
-                />
+                {/* The player keeps its size and the timecoded transcript scrolls beside it, so
+                    a long lecture does not push the rest of the queue off the screen */}
+                <div className="result-media">
+                  <MediaPreview
+                    path={result.file}
+                    seek={seekFor(job.id, index)}
+                    onTime={(ms) =>
+                      setPositions((current) => ({ ...current, [index]: ms }))
+                    }
+                    onOpen={onOpen}
+                    prepare={api.prepareMedia}
+                  />
+                </div>
+                <div className="result-text">
+                  <Transcript
+                    result={result}
+                    timecodes={timecodes}
+                    currentMs={positions[index] ?? null}
+                    onSeek={(ms) => seek(job.id, index, ms)}
+                    onTimecodesChange={onTimecodesChange}
+                    onOpen={onOpen}
+                  />
+                </div>
               </section>
             ))
           )}

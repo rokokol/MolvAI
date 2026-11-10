@@ -6,6 +6,8 @@
 pub mod cpal_source;
 pub mod decode;
 pub mod level;
+pub mod peaks;
 
 pub use cpal_source::{list_input_devices, CpalSource};
 pub use level::ZeroLevelWatch;
+pub use peaks::{peaks_of_file, Peaks};
