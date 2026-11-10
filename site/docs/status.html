@@ -41,6 +41,8 @@
     <p class="tagline" data-ru="Голосовой ввод во все приложения">System-wide voice input, on your machine</p>
     <nav class="tabs" aria-label="Main" data-ru-aria-label="Основное">
       <a href="../index.html" data-ru="Главная">Home</a>
+      <a href="../snippets.html" data-ru="Сниппеты">Snippets</a>
+      <a href="../command-mode.html" data-ru="Правка голосом">Voice editing</a>
       <a href="../features.html" data-ru="Возможности">Features</a>
       <a href="../models.html" data-ru="Модели">Models</a>
       <a href="../cli.html" data-ru="CLI">CLI</a>
@@ -78,6 +80,8 @@
     </ul>
     <p class="doc-nav-title" data-ru="Ещё">Elsewhere</p>
     <ul>
+      <li><a href="../snippets.html" data-ru="Сниппеты">Snippets</a></li>
+      <li><a href="../command-mode.html" data-ru="Правка голосом">Voice editing</a></li>
       <li><a href="../cli.html" data-ru="Справочник CLI">CLI reference</a></li>
       <li><a href="../models.html" data-ru="Каталог моделей">Model catalog</a></li>
       <li><a href="../index.html" data-ru="Главная">Home</a></li>
@@ -96,7 +100,7 @@
   <li data-ru="Удержание, клик, переключение и отмена с моделью GigaAM-v3 по умолчанию и движком &lt;code&gt;auto&lt;/code&gt;">Hold, tap, toggle and cancel, with the default GigaAM-v3 model and the <code>auto</code> engine</li>
   <li data-ru="Куски распознаются во время записи для черновика, а в поле текст приходит одним куском после отпускания">Chunks recognized during the recording for the draft, with the field receiving one piece after the release</li>
   <li data-ru="Качество текста без модели и необязательная модель, совместимая с OpenAI, через Ollama или облачного провайдера">Text quality without a model, and an optional OpenAI-compatible model through Ollama or a cloud provider</li>
-  <li data-ru="Голосовая правка выделенного абзаца — это режим команды">Voice editing of a selected paragraph, which is command mode</li>
+  <li data-ru="Правка голосом: выделенный абзац заменяется тем, что вернула модель на указание">Voice editing: the selected paragraph is replaced with what the model returned for the instruction</li>
   <li data-ru="Расшифровка аудио и видео с таймкодами и поиск по полученным расшифровкам">Audio and video transcription with timecodes, and search over the resulting transcripts</li>
   <li data-ru="Журнал со статистикой, необязательным шифрованием и ключами в хранилище ОС">A journal with statistics, optional encryption and keys in the OS store</li>
   <li data-ru="Флейк Nix и модуль Home Manager, которые рендерят настройки и веса в хранилище">A Nix flake and a Home Manager module that render the settings and the weights into the store</li>
@@ -134,10 +138,10 @@
 
   <li data-ru="Вернуть живое написание по кускам без дублирования и потери порядка">Bring back live chunk typing without duplication or lost order</li>
   <li data-ru="Добавить облачное распознавание речи: OpenAI-совместимый STT-клиент, ключ в хранилище ОС, выбор движка и кнопка проверки">Add cloud speech recognition: an OpenAI-compatible STT client, a key in the OS store, an engine choice and a test button</li>
-  <li data-ru="Добавить учёт денежных затрат на LLM в статистику: цена за токены по модели и провайдеру, итог за день и месяц">Add LLM spending to statistics: per-model and per-provider token prices, with a day and month total</li>
+  <li data-ru="Добавить учёт денежных затрат на LLM в статистику: провайдер сообщает цену запроса, поэтому журнал хранит её на фразу, а статистика показывает сумму и отдельно называет вызовы, по которым цену никто не сообщил">Add LLM spending to statistics: the provider reports the charge of each request, so the journal keeps it per phrase, and the statistics show the sum and name separately the calls that reported no charge</li>
   <li data-ru="Измерить пик RSS окна после релиза и убедиться, что WebKit освобождает страницы после закрытых вкладок: часть копий истории и медиа уже убрана, цифры не пересняты">Measure the window's peak RSS after the release and check that WebKit releases pages after a tab closes: some copies of history and media are gone, the figures are not re-measured</li>
   <li data-ru="Оптимизировать производительность GUI: измерить GPU/VRAM в покое и при переключении вкладок, убрать постоянные анимации и фоновые слои, которые держат видеокарту занятой">Optimize the GUI's performance: measure GPU and VRAM at rest and while switching tabs, and remove constant animations and background layers that keep the video card busy</li>
-  <li data-ru="Сделать сниппеты главной фичей сайта: скриншот вкладки и отдельный блок на главной">Make snippets the site's key feature: a screenshot of the tab and a dedicated block on the home page</li>
+  <li data-ru="Оформить в интерфейсе правку голосом и стили: страница сайта, строки подсказок и значки уже есть, экран настроек — нет">Give voice editing and the styles their own face in the window: the site page, the hints and the icons exist, a dedicated screen does not</li>
 </ul>
 
 <div class="callout">

@@ -41,6 +41,8 @@
     <p class="tagline" data-ru="Голосовой ввод во все приложения">System-wide voice input, on your machine</p>
     <nav class="tabs" aria-label="Main" data-ru-aria-label="Основное">
       <a href="../index.html" data-ru="Главная">Home</a>
+      <a href="../snippets.html" data-ru="Сниппеты">Snippets</a>
+      <a href="../command-mode.html" data-ru="Правка голосом">Voice editing</a>
       <a href="../features.html" data-ru="Возможности">Features</a>
       <a href="../models.html" data-ru="Модели">Models</a>
       <a href="../cli.html" data-ru="CLI">CLI</a>
@@ -78,6 +80,8 @@
     </ul>
     <p class="doc-nav-title" data-ru="Ещё">Elsewhere</p>
     <ul>
+      <li><a href="../snippets.html" data-ru="Сниппеты">Snippets</a></li>
+      <li><a href="../command-mode.html" data-ru="Правка голосом">Voice editing</a></li>
       <li><a href="../cli.html" data-ru="Справочник CLI">CLI reference</a></li>
       <li><a href="../models.html" data-ru="Каталог моделей">Model catalog</a></li>
       <li><a href="../index.html" data-ru="Главная">Home</a></li>
@@ -136,8 +140,8 @@
 </ul>
 <p data-ru="Полный список адресов, куда программа может обратиться, — в &lt;a href=&quot;https://github.com/rokokol/MolvAI/blob/main/docs/outgoing-endpoints.md&quot;&gt;docs/outgoing-endpoints.md&lt;/a&gt;. Тесты сеть не используют">The complete list of addresses the program can call is in <a href="https://github.com/rokokol/MolvAI/blob/main/docs/outgoing-endpoints.md">docs/outgoing-endpoints.md</a>. The tests do not use the network</p>
 
-<h2 data-ru="Режим команды и буфер обмена">Command mode and the clipboard</h2>
-<p data-ru="Режиму команды нужен выделенный текст. Демон копирует выделение сочетанием Ctrl+C через композитор. Перед копированием он очищает буфер, чтобы нельзя было прочитать устаревшее выделение, и до 600 мс ждёт результата. Модель получает выделение и указание">Command mode needs the selected text. The daemon copies the selection with a Ctrl+C combination through the compositor. It clears the clipboard before the copy, so a stale selection cannot be read, and polls for the result for up to 600 ms. The model receives the selection and the instruction</p>
+<h2 data-ru="Правка голосом и буфер обмена">Voice editing and the clipboard</h2>
+<p data-ru="Правке голосом нужен выделенный текст. Демон копирует выделение сочетанием Ctrl+C через композитор. Перед копированием он очищает буфер, чтобы нельзя было прочитать устаревшее выделение, и до 600 мс ждёт результата. Модель получает выделение и указание">Voice editing needs the selected text. The daemon copies the selection with a Ctrl+C combination through the compositor. It clears the clipboard before the copy, so a stale selection cannot be read, and polls for the result for up to 600 ms. The model receives the selection and the instruction</p>
 <p data-ru="Обычная диктовка выделение не трогает. При &lt;code&gt;output.restore_clipboard = true&lt;/code&gt;, а это значение по умолчанию, после вставки возвращается прежнее содержимое буфера">Normal dictation does not touch the selection. With <code>output.restore_clipboard = true</code>, which is the default, a paste returns the previous clipboard content afterwards</p>
 
 <h2 data-ru="Удалить записанное">Delete what you recorded</h2>

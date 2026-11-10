@@ -701,6 +701,88 @@ pre {
   max-width: 100%;
 }
 
+/* ---------- snippets: the say → get pair ---------- */
+
+/* One snippet is a spoken phrase and the text it returns. The pair is the whole idea, so it is
+   drawn as one block with a dashed seam: the phrase above, the answer below, nothing between */
+.snippet-demo {
+  display: grid;
+  gap: 12px;
+  margin: var(--ddlc-gap) 0 0;
+}
+
+.snippet-pair {
+  border: 2px solid var(--ddlc-line);
+  background: var(--ddlc-panel);
+}
+
+.snippet-say,
+.snippet-get,
+.snippet-sel {
+  margin: 0;
+  padding: 12px 16px;
+  font: var(--ddlc-size) / 1.7 var(--ddlc-font-data);
+}
+
+.snippet-say {
+  border-bottom: 2px dashed var(--ddlc-line);
+  color: var(--ddlc-muted);
+}
+
+/* The text that was already there, marked the way a selection marks it */
+.snippet-sel {
+  border-bottom: 2px dashed var(--ddlc-line);
+  background: var(--ddlc-code-ground);
+  color: var(--ddlc-muted);
+}
+
+.snippet-get {
+  color: var(--ddlc-text);
+}
+
+.snippet-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--ddlc-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+/* A timecode is a coordinate, not prose: it reads in the data face and never wraps */
+.snippet-time {
+  margin-right: 8px;
+  color: var(--ddlc-accent);
+  white-space: nowrap;
+}
+
+/* The wildcard is the part that varies, so it is the part that is marked */
+.snippet-wild {
+  padding: 0 2px;
+  background: var(--ddlc-code-ground);
+  color: var(--ddlc-accent);
+}
+
+.snippet-rules {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.snippet-rules li {
+  padding-left: 18px;
+  position: relative;
+  color: var(--ddlc-muted);
+}
+
+.snippet-rules li::before {
+  content: "▸";
+  position: absolute;
+  left: 0;
+  color: var(--ddlc-accent);
+}
+
 /* ---------- callouts, steps ---------- */
 
 .callout {

@@ -41,6 +41,8 @@
     <p class="tagline" data-ru="Голосовой ввод во все приложения">System-wide voice input, on your machine</p>
     <nav class="tabs" aria-label="Main" data-ru-aria-label="Основное">
       <a href="../index.html" data-ru="Главная">Home</a>
+      <a href="../snippets.html" data-ru="Сниппеты">Snippets</a>
+      <a href="../command-mode.html" data-ru="Правка голосом">Voice editing</a>
       <a href="../features.html" data-ru="Возможности">Features</a>
       <a href="../models.html" data-ru="Модели">Models</a>
       <a href="../cli.html" data-ru="CLI">CLI</a>
@@ -78,6 +80,8 @@
     </ul>
     <p class="doc-nav-title" data-ru="Ещё">Elsewhere</p>
     <ul>
+      <li><a href="../snippets.html" data-ru="Сниппеты">Snippets</a></li>
+      <li><a href="../command-mode.html" data-ru="Правка голосом">Voice editing</a></li>
       <li><a href="../cli.html" data-ru="Справочник CLI">CLI reference</a></li>
       <li><a href="../models.html" data-ru="Каталог моделей">Model catalog</a></li>
       <li><a href="../index.html" data-ru="Главная">Home</a></li>
@@ -113,7 +117,7 @@
             <tr><th scope="row" data-ru="Язык определяется как украинский или болгарский">The language lands on Ukrainian or Bulgarian</th><td data-ru="Автоопределение на короткой русской фразе">Automatic detection on a short Russian phrase</td><td data-ru="Держи &lt;code&gt;stt.language = &quot;ru&quot;&lt;/code&gt; или ограничь &lt;code&gt;allowed_languages&lt;/code&gt;">Keep <code>stt.language = "ru"</code>, or restrict <code>allowed_languages</code></td></tr>
             <tr><th scope="row" data-ru="Языковая модель возвращает пустой текст">The language model returns an empty text</th><td data-ru="Рассуждающая модель тратит бюджет токенов на рассуждение">A reasoning model spends the token budget on reasoning</td><td data-ru="Оставь &lt;code&gt;llm.reasoning_effort = &quot;auto&quot;&lt;/code&gt; — он шлёт &lt;code&gt;none&lt;/code&gt; локальным провайдерам">Leave <code>llm.reasoning_effort = "auto"</code>, which sends <code>none</code> to local providers</td></tr>
             <tr><th scope="row" data-ru="Модель отвечает медленно">The model is slow to answer</th><td data-ru="Таймаут прошёл, поэтому взят текст после правил">The timeout passed, so the text after the rules was used</td><td data-ru="Подними &lt;code&gt;llm.timeout_secs&lt;/code&gt; или выключи модель для этого стиля">Raise <code>llm.timeout_secs</code>, or disable the model for that style</td></tr>
-            <tr><th scope="row" data-ru="Режим команды говорит, что выделенного текста нет">Command mode reports no selected text</th><td data-ru="Ничего не выделено или сочетание копирования не дошло до приложения">Nothing is selected, or the copy combination did not reach the application</td><td data-ru="Сначала выдели текст, проверь сочетание композитора и прочитай строку лога о копировании">Select the text first, check the compositor shortcut, and read the log line of the copy</td></tr>
+            <tr><th scope="row" data-ru="Правка голосом говорит, что выделенного текста нет">Voice editing reports no selected text</th><td data-ru="Ничего не выделено или сочетание копирования не дошло до приложения">Nothing is selected, or the copy combination did not reach the application</td><td data-ru="Сначала выдели текст, проверь сочетание композитора и прочитай строку лога о копировании">Select the text first, check the compositor shortcut, and read the log line of the copy</td></tr>
             <tr><th scope="row" data-ru="Настройка исчезла после переключения">A runtime setting disappeared after a rebuild</th><td data-ru="Переключение изменило декларативную конфигурацию и сбросило переопределения из &lt;code&gt;runtime.toml&lt;/code&gt;">The rebuild changed the declarative config and dropped the overrides in <code>runtime.toml</code></td><td data-ru="Для постоянного значения задай его в &lt;code&gt;programs.molvai&lt;/code&gt; и запусти переключение">Put a permanent value in <code>programs.molvai</code> and run the switch</td></tr>
             <tr><th scope="row" data-ru="Интерфейс просит собрать &lt;code&gt;molva&lt;/code&gt;">The GUI asks to build <code>molva</code></th><td data-ru="Релиз, в котором пакет с интерфейсом вышел без CLI">A release whose GUI package shipped without the CLI</td><td data-ru="Возьми архив CLI того же релиза или прочитай заметки к установленному релизу">Take the CLI archive of the same release, or read the notes of the release you installed</td></tr>
     </tbody>

@@ -41,6 +41,8 @@
     <p class="tagline" data-ru="Голосовой ввод во все приложения">System-wide voice input, on your machine</p>
     <nav class="tabs" aria-label="Main" data-ru-aria-label="Основное">
       <a href="../index.html" data-ru="Главная">Home</a>
+      <a href="../snippets.html" data-ru="Сниппеты">Snippets</a>
+      <a href="../command-mode.html" data-ru="Правка голосом">Voice editing</a>
       <a href="../features.html" data-ru="Возможности">Features</a>
       <a href="../models.html" data-ru="Модели">Models</a>
       <a href="../cli.html" data-ru="CLI">CLI</a>
@@ -78,6 +80,8 @@
     </ul>
     <p class="doc-nav-title" data-ru="Ещё">Elsewhere</p>
     <ul>
+      <li><a href="../snippets.html" data-ru="Сниппеты">Snippets</a></li>
+      <li><a href="../command-mode.html" data-ru="Правка голосом">Voice editing</a></li>
       <li><a href="../cli.html" data-ru="Справочник CLI">CLI reference</a></li>
       <li><a href="../models.html" data-ru="Каталог моделей">Model catalog</a></li>
       <li><a href="../index.html" data-ru="Главная">Home</a></li>
@@ -139,7 +143,7 @@ enabled = true
 [[snippets.items]]
 phrase = "Ответь *"
 replacement = "Добрый день! Уже подготовил ответ."</code></pre>
-<p data-ru="Замена окончательная: её не переписывает ни стиль, ни модель. Wildcard меняет только то, что запускает сниппет, а не текст замены. Командный режим, распознавание файлов и фраза, набранная кусками, сниппеты не используют">The replacement is final: neither the style nor the model rewrites it. A wildcard changes only what triggers the snippet, not the replacement text. Command mode, file transcription and a phrase typed in chunks do not use snippets</p>
+<p data-ru="Замена окончательная: её не переписывает ни стиль, ни модель. Wildcard меняет только то, что запускает сниппет, а не текст замены. Правка голосом, распознавание файлов и фраза, набранная кусками, сниппеты не используют">The replacement is final: neither the style nor the model rewrites it. A wildcard changes only what triggers the snippet, not the replacement text. Voice editing, file transcription and a phrase typed in chunks do not use snippets</p>
 <p data-ru="Провайдер модели задаёт и порядок вызовов. Облачному разрешено до четырёх одновременных вызовов, локальная модель получает запросы по одному">The model provider also decides how calls run. A cloud provider may answer up to four calls at once, and a local model takes requests one at a time</p>
 
 <h2 data-ru="Изменить и применить">Edit and apply</h2>

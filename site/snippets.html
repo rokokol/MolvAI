@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js" data-ddlc-heading="plain">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-ru="Сниппеты — MolvAI">Snippets — MolvAI</title>
+<meta name="description" content="A snippet is a spoken phrase that returns text you saved earlier, before the model runs. The matching rules, wildcards, the settings file, the Snippets tab and the honest limits" data-ru-content="Сниппет — это произнесённая фраза, которая возвращает сохранённый заранее текст, до вызова модели. Правила совпадения, wildcard, файл настроек, вкладка «Сниппеты» и честные пределы">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#222222" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="./assets/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./assets/vendor/ddlc/ddlc-tokens.css">
+<link rel="stylesheet" href="./assets/vendor/ddlc/ddlc-ui.css">
+<link rel="stylesheet" href="./assets/vendor/ddlc/ddlc-report.css">
+<link rel="stylesheet" href="./assets/site.css">
+<script>
+  (function () {
+    try {
+      var q = new URLSearchParams(location.search)
+      var pinned = q.get("theme")
+      var theme = pinned === "light" || pinned === "dark" ? pinned : localStorage.getItem("molvai-theme")
+      if (pinned === "light" || pinned === "dark") localStorage.setItem("molvai-theme", pinned)
+      if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme
+      var lang = q.get("lang")
+      var stored = localStorage.getItem("molvai-lang")
+      if (lang === "ru" || (lang !== "en" && stored === "ru")) document.documentElement.lang = "ru"
+    } catch (e) {}
+  })()
+</script>
+<script type="module" src="./assets/kit.js"></script>
+</head>
+<body>
+<canvas class="cloud" id="cloud" aria-hidden="true"></canvas>
+<a class="skip" href="#main" data-ru="К содержанию">Skip to content</a>
+<header class="site-bar">
+  <div class="bar wrap bar-row">
+    <a class="brand" href="./index.html" aria-label="MolvAI home" data-ru-aria-label="MolvAI — главная">
+      <img src="./assets/logo.svg" alt="" width="22" height="22">
+      <span>MolvAI</span>
+    </a>
+    <p class="tagline" data-ru="Голосовой ввод во все приложения">System-wide voice input, on your machine</p>
+    <nav class="tabs" aria-label="Main" data-ru-aria-label="Основное">
+      <a href="./index.html" data-ru="Главная">Home</a>
+      <a href="./snippets.html" aria-current="page" data-ru="Сниппеты">Snippets</a>
+      <a href="./command-mode.html" data-ru="Правка голосом">Voice editing</a>
+      <a href="./features.html" data-ru="Возможности">Features</a>
+      <a href="./models.html" data-ru="Модели">Models</a>
+      <a href="./cli.html" data-ru="CLI">CLI</a>
+      <a href="./docs/index.html" data-ru="Документация">Docs</a>
+      <a href="./faq.html" data-ru="FAQ">FAQ</a>
+      <a href="./docs/status.html" data-ru="Статус">Status</a>
+    </nav>
+    <div class="bar-end">
+      <div class="segmented lang-switch" role="group" aria-label="Language" data-ru-aria-label="Язык">
+        <button type="button" data-lang-set="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang-set="ru" aria-pressed="false">RU</button>
+      </div>
+      <button class="icon-button" id="theme" type="button" aria-label="Theme: system" data-ru-aria-label="Тема">
+        <svg class="pixel" viewBox="0 0 8 8" aria-hidden="true"><path id="theme-icon"/></svg>
+      </button>
+      <a class="icon-button" href="https://github.com/rokokol/MolvAI" aria-label="MolvAI on GitHub" data-ru-aria-label="MolvAI на GitHub">
+        <img src="./assets/icon-github.svg" alt="" width="16" height="16">
+      </a>
+    </div>
+  </div>
+</header>
+<main id="main">
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru="Сниппеты">Snippets</span>
+      <h1 data-ru="Скажи три слова — получи готовый абзац">Say three words, get the whole answer</h1>
+      <p data-ru="Сниппет — это пара: фраза, которую ты произносишь, и текст, который должен оказаться в поле. Пара сохраняется один раз. Дальше короткая фраза возвращает длинный текст, и возвращает его до модели: без задержки на вызов, без токенов и без сети">A snippet is a pair: the phrase you say and the text that must land in the field. You save the pair once. After that a short phrase returns a long text, and it returns before the model: with no wait for a call, no tokens and no network</p>
+    </div>
+    <p class="chips">
+      <span class="sticker" data-ru="Без модели">No model</span>
+      <span class="sticker alt" data-ru="Без токенов">No tokens</span>
+      <span class="sticker quiet" data-ru="Работает офлайн">Works offline</span>
+      <span class="sticker alt" data-ru="Wildcard">Wildcards</span>
+    </p>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="examples">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru="Примеры">Examples</span>
+      <h2 id="examples" data-ru="Что говорят и что получают">What you say and what you get</h2>
+      <p data-ru="Три пары ниже — настоящий формат настройки, а не иллюстрация. Первая совпадает точно, вторая по wildcard, третья возвращает длинный текст на короткую фразу">The three pairs below are the real settings format, not an illustration. The first matches exactly, the second by wildcard, the third returns a long text for a short phrase</p>
+    </div>
+    <div class="grid grid-2">
+      <div class="snippet-demo">
+        <div class="snippet-pair">
+          <p class="snippet-say"><span class="snippet-label" data-ru="Ты говоришь">You say</span><span data-ru="ответь клиенту">reply to the client</span></p>
+          <p class="snippet-get"><span class="snippet-label" data-ru="В поле появляется">The field gets</span><span data-ru="Здравствуйте! Спасибо за обращение. Отвечу в течение рабочего дня.">Hello! Thank you for getting in touch. I will answer within the working day.</span></p>
+        </div>
+        <div class="snippet-pair">
+          <p class="snippet-say"><span class="snippet-label" data-ru="Ты говоришь">You say</span><span data-ru="созвон">call</span> <span class="snippet-wild">*</span></p>
+          <p class="snippet-get"><span class="snippet-label" data-ru="В поле появляется">The field gets</span><span data-ru="https://meet.example/team — постоянная ссылка на созвон">https://meet.example/team — the standing link for the call</span></p>
+        </div>
+        <div class="snippet-pair">
+          <p class="snippet-say"><span class="snippet-label" data-ru="Ты говоришь">You say</span><span data-ru="мой адрес">my address</span></p>
+          <p class="snippet-get"><span class="snippet-label" data-ru="В поле появляется">The field gets</span><span data-ru="Казань, улица Баумана, 1 — подъезд 2, этаж 3">Kazan, Baumana street 1 — entrance 2, floor 3</span></p>
+        </div>
+      </div>
+      <div>
+        <pre data-lang="toml" data-ru="&lt;code&gt;[snippets]
+enabled = true
+
+[[snippets.items]]
+phrase = &quot;ответь клиенту&quot;
+replacement = &quot;Здравствуйте! Спасибо за обращение.&quot;
+
+[[snippets.items]]
+phrase = &quot;созвон *&quot;
+replacement = &quot;https://meet.example/team&quot;
+
+[[snippets.items]]
+phrase = &quot;мой адрес&quot;
+replacement = &quot;Казань, Баумана, 1&quot;&lt;/code&gt;"><code>[snippets]
+enabled = true
+
+[[snippets.items]]
+phrase = "reply to the client"
+replacement = "Hello! Thank you for getting in touch."
+
+[[snippets.items]]
+phrase = "call *"
+replacement = "https://meet.example/team"
+
+[[snippets.items]]
+phrase = "my address"
+replacement = "Kazan, Baumana street 1"</code></pre>
+        <p class="footnote" data-ru="Тот же файл правится в окне на вкладке «Сниппеты» и командой &lt;code&gt;molva config set&lt;/code&gt;. Под управлением Nix декларативный файл остаётся в хранилище, а правки из окна ложатся в &lt;code&gt;runtime.toml&lt;/code&gt; рядом с ним">The same file is edited in the Snippets tab of the window and by <code>molva config set</code>. Under Nix the declarative file stays in the store, and edits from the window go to <code>runtime.toml</code> beside it</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="rules">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru="Правила">The rules</span>
+      <h2 id="rules" data-ru="Когда сниппет срабатывает, а когда нет">When a snippet fires, and when it does not</h2>
+      <p data-ru="Правила короткие, и каждое из них — следствие одной мысли: сниппет заменяет целую фразу, а не кусок внутри неё">The rules are short, and each one follows from a single thought: a snippet replaces a whole phrase, not a piece inside one</p>
+    </div>
+    <div class="grid grid-2">
+      <article class="card">
+        <h3 data-ru="Только целая фраза">The whole phrase only</h3>
+        <p class="muted" data-ru="Фраза «ответь клиенту пожалуйста» не сработает на сниппет «ответь клиенту»: она содержит триггер, но не равна ему. Иначе сниппет съедал бы половину диктовки">The phrase "reply to the client please" does not fire the snippet "reply to the client": it contains the trigger but is not equal to it. Otherwise a snippet would eat half of a dictation</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Регистр и знаки не важны">Case and punctuation do not matter</h3>
+        <p class="muted" data-ru="Распознаватель пишет «Ответь клиенту.» с большой буквы и с точкой, а человек имеет в виду ту же фразу. Поэтому сравнение идёт по словам: нижний регистр, «ё» как «е», без знаков и лишних пробелов">The recognizer writes "Reply to the client." with a capital and a full stop, and the person means the same phrase. So the comparison runs over words: lower case, "ё" as "е", no punctuation and no extra spaces</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Wildcard меняет только триггер">A wildcard changes the trigger only</h3>
+        <p class="muted" data-ru="&lt;code&gt;*&lt;/code&gt; совпадает с любым хвостом, в том числе пустым: «созвон», «созвон в три», «созвон завтра» — все три дают одну и ту же ссылку. В замену wildcard ничего не подставляет: текст статичный, переменных нет"><code>*</code> matches any tail, including none: "call", "call at three", "call tomorrow" all give the same link. The wildcard adds nothing to the replacement: the text is static and there are no variables</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Точная фраза важнее wildcard">An exact phrase wins over a wildcard</h3>
+        <p class="muted" data-ru="Если есть и «созвон *», и «созвон в три», то вторая сработает на «созвон в три». Широкий шаблон не прячет конкретный ответ. Среди wildcard побеждает первый в списке, а дубликаты отклоняются при проверке настроек">With both "call *" and "call at three", the second fires on "call at three". A broad pattern never hides a specific answer. Among wildcards the first in the list wins, and duplicates are refused when the settings are checked</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Замена окончательная">The replacement is final</h3>
+        <p class="muted" data-ru="Ни стиль, ни модель, ни правила не переписывают замену. Готовый ответ — это уже тот текст, который должен оказаться в поле, и любая правка после него была бы ошибкой">No style, no model and no rule rewrites the replacement. A prepared answer is already the text that must land in the field, and any edit after it would be a mistake</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Фраза из одного &lt;code&gt;*&lt;/code&gt; отклоняется">A phrase of nothing but <code>*</code> is refused</h3>
+        <p class="muted" data-ru="Такой шаблон заменил бы каждую диктовку одним текстом. Проверка настроек отказывает ему, как и пустой замене">Such a pattern would replace every dictation with one text. The settings check refuses it, and refuses an empty replacement too</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="where">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru="Где это лежит">Where it lives</span>
+      <h2 id="where" data-ru="Три места, один файл">Three places, one file</h2>
+      <p data-ru="Файл настроек — единственный источник истины. Окно и CLI правят его же, поэтому расхождения между ними быть не может">The settings file is the single source of truth. The window and the CLI edit that same file, so the two cannot disagree</p>
+    </div>
+    <div class="grid grid-3">
+      <article class="card">
+        <h3 data-ru="Файл настроек">The settings file</h3>
+        <p class="muted" data-ru="Секция &lt;code&gt;[snippets]&lt;/code&gt;: &lt;code&gt;enabled&lt;/code&gt; и список &lt;code&gt;items&lt;/code&gt; из пар «фраза — замена». &lt;code&gt;molva config path&lt;/code&gt; печатает оба пути: декларативный и рабочий">The <code>[snippets]</code> section: <code>enabled</code> and a list of <code>items</code> of phrase and replacement pairs. <code>molva config path</code> prints both paths: the declarative one and the runtime one</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Вкладка в окне">The tab in the window</h3>
+        <p class="muted" data-ru="Вкладка «Сниппеты» показывает карточки и даёт их править, фильтровать по фразе или замене и проверять на дубликаты до сохранения">The Snippets tab shows the cards and lets you edit them, filter by phrase or replacement, and check for duplicates before saving</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Команда">The command</h3>
+        <p class="muted" data-ru="&lt;code&gt;molva config set snippets.enabled true&lt;/code&gt; и &lt;code&gt;molva config reload&lt;/code&gt; применяют правку к запущенному демону без перезапуска"><code>molva config set snippets.enabled true</code> and <code>molva config reload</code> apply an edit to the running daemon without a restart</p>
+      </article>
+    </div>
+    <div class="cmd"><code>molva config set snippets.enabled true</code><button class="copy-button" type="button" data-copy="molva config set snippets.enabled true"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
+    <p class="footnote" data-ru="Совпавшая фраза помечается в журнале полем &lt;code&gt;snippet&lt;/code&gt;, поэтому &lt;code&gt;molva history&lt;/code&gt; и статистика показывают, сколько ответов пришло без модели">A matched phrase is marked in the journal by the <code>snippet</code> field, so <code>molva history</code> and the statistics show how many answers came without the model</p>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="limits">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru="Пределы">Limits</span>
+      <h2 id="limits" data-ru="Чего сниппет не делает">What a snippet does not do</h2>
+      <p data-ru="Список возможностей без списка пределов — это маркетинг. Пределы ниже — свойства конструкции, а не недоделки">A feature list without a list of limits is marketing. The limits below are properties of the design, not loose ends</p>
+    </div>
+    <div class="grid grid-2">
+      <article class="card">
+        <h3 data-ru="Нет переменных">No variables</h3>
+        <p class="muted" data-ru="Wildcard решает, что запустит сниппет, но не что попадёт в текст. Подставить имя клиента или дату в замену нельзя: для этого нужна модель, а сниппет существует ровно для того, чтобы её не звать">A wildcard decides what triggers the snippet, not what lands in the text. You cannot put a client's name or a date into the replacement: that needs a model, and a snippet exists precisely to avoid calling one</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Не везде">Not everywhere</h3>
+        <p class="muted" data-ru="Сниппеты работают в диктовке. Правка голосом, расшифровка файлов и фраза, набранная кусками, их не используют: в первых двух нет «целой фразы» в том смысле, в котором её ждёт сниппет, а третья уже отдала текст в поле по частям">Snippets work in dictation. Voice editing, file transcription and a phrase typed in chunks do not use them: the first two have no "whole phrase" in the sense a snippet expects, and the third has already put text into the field piece by piece</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Список, а не база">A list, not a database</h3>
+        <p class="muted" data-ru="Сниппеты лежат в файле настроек и проверяются при загрузке. Их сотни работают, десятки тысяч — нет: это список готовых ответов, а не поисковый индекс">Snippets live in the settings file and are checked on load. Hundreds work, tens of thousands do not: this is a list of prepared answers, not a search index</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Только после словаря и правил">Only after the dictionary and the rules</h3>
+        <p class="muted" data-ru="Сниппет сравнивается с текстом после словаря и правил, а не с сырым выводом распознавателя. Так «ё» и проговорённая пунктуация не мешают совпадению, но и правка словаря может изменить то, что сработает">A snippet is compared with the text after the dictionary and the rules, not with the raw recognizer output. That way "ё" and spoken punctuation do not break a match, but a dictionary edit can change what fires</p>
+      </article>
+    </div>
+    <p class="to-top"><a href="#main" data-ru="К началу">Back to top</a></p>
+  </div>
+</section>
+</main>
+<footer class="site-footer">
+  <div class="wrap footer-inner">
+    <div>
+      <a class="brand" href="./index.html">
+        <img src="./assets/logo.svg" alt="" width="22" height="22">
+        <span>MolvAI</span>
+      </a>
+      <p data-ru="Открытый голосовой ввод во все приложения. Зажми клавишу, говори, отпусти — текст оказывается в активном поле">Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
+      <p class="footer-note" data-ru="MIT · без трекеров · без внешних шрифтов">MIT licensed · no trackers · no external fonts</p>
+      <p class="footer-note"><a href="./ASSETS.md" data-ru="Ассеты и лицензии">Assets and licences</a></p>
+    </div>
+    <nav aria-label="Project links" data-ru-aria-label="Ссылки проекта">
+      <p class="footer-title" data-ru="Проект">Project</p>
+      <ul>
+        <li><a href="https://github.com/rokokol/MolvAI">GitHub</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/releases" data-ru="Релизы">Releases</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE" data-ru="Лицензия (MIT)">License (MIT)</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/issues" data-ru="Задачи">Issues</a></li>
+      </ul>
+    </nav>
+    <nav aria-label="Site links" data-ru-aria-label="Страницы сайта">
+      <p class="footer-title" data-ru="Сайт">Site</p>
+      <ul>
+        <li><a href="./snippets.html" data-ru="Сниппеты">Snippets</a></li>
+        <li><a href="./features.html" data-ru="Возможности">Features</a></li>
+        <li><a href="./models.html" data-ru="Модели">Models</a></li>
+        <li><a href="./cli.html" data-ru="Справочник CLI">CLI reference</a></li>
+        <li><a href="./docs/index.html" data-ru="Документация">Documentation</a></li>
+        <li><a href="./faq.html">FAQ</a></li>
+        <li><a href="./docs/status.html" data-ru="Статус и планы">Status and roadmap</a></li>
+      </ul>
+    </nav>
+    <div>
+      <p class="footer-title" data-ru="Канонические документы">Canonical docs</p>
+      <p class="footer-note" data-ru="Источник истины — репозиторий. Эти страницы его пересказывают и дают ссылки">
+        The repository is the source of truth. These pages summarize it and link back
+      </p>
+      <ul>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/CHANGELOG.md">CHANGELOG.md</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="wrap footer-credit">
+    <p data-ru="MolvAI сделан на хакатоне V0ICE (Казань, 2026) и находится в разработке">MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
+    <p data-ru="Сайт работает без cookies, аналитики и сторонних ассетов">This site runs without cookies, analytics or third-party assets</p>
+  </div>
+</footer>
+<script src="./assets/site.js"></script>
+</body>
+</html>

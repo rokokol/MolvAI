@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js" data-ddlc-heading="plain">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-ru="Правка голосом — MolvAI">Voice editing — MolvAI</title>
+<meta name="description" content="Select a paragraph, say what to do with it, and the selection is replaced in place: translate to German, add emoji, make it shorter. The instruction goes to the model, the result goes back into the field" data-ru-content="Выдели абзац, скажи, что с ним сделать, и выделение заменяется на месте: переведи на немецкий, добавь эмодзи, сделай короче. Указание уходит в модель, результат возвращается в поле">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#222222" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="./assets/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./assets/vendor/ddlc/ddlc-tokens.css">
+<link rel="stylesheet" href="./assets/vendor/ddlc/ddlc-ui.css">
+<link rel="stylesheet" href="./assets/vendor/ddlc/ddlc-report.css">
+<link rel="stylesheet" href="./assets/site.css">
+<script>
+  (function () {
+    try {
+      var q = new URLSearchParams(location.search)
+      var pinned = q.get("theme")
+      var theme = pinned === "light" || pinned === "dark" ? pinned : localStorage.getItem("molvai-theme")
+      if (pinned === "light" || pinned === "dark") localStorage.setItem("molvai-theme", pinned)
+      if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme
+      var lang = q.get("lang")
+      var stored = localStorage.getItem("molvai-lang")
+      if (lang === "ru" || (lang !== "en" && stored === "ru")) document.documentElement.lang = "ru"
+    } catch (e) {}
+  })()
+</script>
+<script type="module" src="./assets/kit.js"></script>
+</head>
+<body>
+<canvas class="cloud" id="cloud" aria-hidden="true"></canvas>
+<a class="skip" href="#main" data-ru="К содержанию">Skip to content</a>
+<header class="site-bar">
+  <div class="bar wrap bar-row">
+    <a class="brand" href="./index.html" aria-label="MolvAI home" data-ru-aria-label="MolvAI — главная">
+      <img src="./assets/logo.svg" alt="" width="22" height="22">
+      <span>MolvAI</span>
+    </a>
+    <p class="tagline" data-ru="Голосовой ввод во все приложения">System-wide voice input, on your machine</p>
+    <nav class="tabs" aria-label="Main" data-ru-aria-label="Основное">
+      <a href="./index.html" data-ru="Главная">Home</a>
+      <a href="./snippets.html" data-ru="Сниппеты">Snippets</a>
+      <a href="./command-mode.html" aria-current="page" data-ru="Правка голосом">Voice editing</a>
+      <a href="./features.html" data-ru="Возможности">Features</a>
+      <a href="./models.html" data-ru="Модели">Models</a>
+      <a href="./cli.html" data-ru="CLI">CLI</a>
+      <a href="./docs/index.html" data-ru="Документация">Docs</a>
+      <a href="./faq.html" data-ru="FAQ">FAQ</a>
+      <a href="./docs/status.html" data-ru="Статус">Status</a>
+    </nav>
+    <div class="bar-end">
+      <div class="segmented lang-switch" role="group" aria-label="Language" data-ru-aria-label="Язык">
+        <button type="button" data-lang-set="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang-set="ru" aria-pressed="false">RU</button>
+      </div>
+      <button class="icon-button" id="theme" type="button" aria-label="Theme: system" data-ru-aria-label="Тема">
+        <svg class="pixel" viewBox="0 0 8 8" aria-hidden="true"><path id="theme-icon"/></svg>
+      </button>
+      <a class="icon-button" href="https://github.com/rokokol/MolvAI" aria-label="MolvAI on GitHub" data-ru-aria-label="MolvAI на GitHub">
+        <img src="./assets/icon-github.svg" alt="" width="16" height="16">
+      </a>
+    </div>
+  </div>
+</header>
+<main id="main">
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru="Правка голосом">Voice editing</span>
+      <h1 data-ru="Выдели абзац, скажи, что с ним сделать">Select a paragraph, say what to do with it</h1>
+      <p data-ru="Выдели текст, зажми &lt;kbd&gt;Ctrl&lt;/kbd&gt;+&lt;kbd&gt;Alt&lt;/kbd&gt;+&lt;kbd&gt;X&lt;/kbd&gt;, скажи указание и отпусти. Выделение заменяется тем, что вернула модель: перевод, эмодзи, короткая версия, другой тон. Это не диктовка в поле, а правка того, что уже написано">Select text, hold <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>X</kbd>, say the instruction and release. The selection is replaced with what the model returned: a translation, emoji, a shorter version, another tone. This is not dictation into a field, it is an edit of what is already written</p>
+    </div>
+    <p class="chips">
+      <span class="sticker" data-ru="Любое приложение">Any application</span>
+      <span class="sticker alt" data-ru="Замена на месте">Replaced in place</span>
+      <span class="sticker quiet" data-ru="Локальная или облачная модель">Local or cloud model</span>
+    </p>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="examples">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru="Примеры">Examples</span>
+      <h2 id="examples" data-ru="Три указания, три результата">Three instructions, three results</h2>
+      <p data-ru="Указание — обычная фраза, а не команда из списка. Модель получает его вместе с выделением, поэтому работает и «переведи на немецкий», и «добавь эмодзи», и «сделай короче»">An instruction is an ordinary phrase, not a command from a list. The model receives it together with the selection, so "translate to German", "add emoji" and "make it shorter" all work</p>
+    </div>
+    <div class="grid grid-2">
+      <div class="snippet-demo">
+        <div class="snippet-pair">
+          <p class="snippet-sel"><span class="snippet-label" data-ru="Выделено">Selected</span><span data-ru="Привет, как дела? Созвон перенесли на завтра.">Hi, how are you? The call moved to tomorrow.</span></p>
+          <p class="snippet-say"><span class="snippet-label" data-ru="Ты говоришь">You say</span><span data-ru="переведи на немецкий">translate to German</span></p>
+          <p class="snippet-get"><span class="snippet-label" data-ru="Выделение становится">The selection becomes</span><span data-ru="Hallo, wie geht es dir? Der Anruf wurde auf morgen verschoben.">Hallo, wie geht es dir? Der Anruf wurde auf morgen verschoben.</span></p>
+        </div>
+        <div class="snippet-pair">
+          <p class="snippet-sel"><span class="snippet-label" data-ru="Выделено">Selected</span><span data-ru="Созвон перенесли на завтра. Не забудь документы.">The call moved to tomorrow. Do not forget the documents.</span></p>
+          <p class="snippet-say"><span class="snippet-label" data-ru="Ты говоришь">You say</span><span data-ru="добавь эмодзи">add emoji</span></p>
+          <p class="snippet-get"><span class="snippet-label" data-ru="Выделение становится">The selection becomes</span><span data-ru="📅 Созвон перенесли на завтра. 📄 Не забудь документы.">📅 The call moved to tomorrow. 📄 Do not forget the documents.</span></p>
+        </div>
+        <div class="snippet-pair">
+          <p class="snippet-sel"><span class="snippet-label" data-ru="Выделено">Selected</span><span data-ru="Я посмотрел задачу и думаю, что мы сможем закончить её к пятнице, если ничего не поменяется.">I looked at the task and I think we can finish it by Friday if nothing changes.</span></p>
+          <p class="snippet-say"><span class="snippet-label" data-ru="Ты говоришь">You say</span><span data-ru="сделай короче">make it shorter</span></p>
+          <p class="snippet-get"><span class="snippet-label" data-ru="Выделение становится">The selection becomes</span><span data-ru="Закончим к пятнице, если ничего не поменяется.">We will finish by Friday if nothing changes.</span></p>
+        </div>
+      </div>
+      <div>
+        <ol class="steps">
+          <li class="step">
+            <div>
+              <h3 data-ru="Выдели текст">Select the text</h3>
+              <p data-ru="Любой текст в любом приложении: абзац в редакторе, сообщение в чате, строка в терминале">Any text in any application: a paragraph in an editor, a message in a chat, a line in a terminal</p>
+            </div>
+          </li>
+          <li class="step">
+            <div>
+              <h3 data-ru="Зажми клавишу и скажи указание">Hold the key and say the instruction</h3>
+              <p data-ru="&lt;kbd&gt;Ctrl&lt;/kbd&gt;+&lt;kbd&gt;Alt&lt;/kbd&gt;+&lt;kbd&gt;X&lt;/kbd&gt; по умолчанию; сочетание — настройка. Демон копирует выделение через композитор и отправляет модели указание вместе с текстом"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>X</kbd> by default, and the combination is a setting. The daemon copies the selection through the compositor and sends the model the instruction together with the text</p>
+            </div>
+          </li>
+          <li class="step">
+            <div>
+              <h3 data-ru="Отпусти — выделение заменяется">Release, and the selection is replaced</h3>
+              <p data-ru="Результат встаёт на место выделения, а фраза уходит в журнал с указанием и моделью. Не понравилось — &lt;kbd&gt;Ctrl&lt;/kbd&gt;+&lt;kbd&gt;Z&lt;/kbd&gt; в приложении возвращает прежний текст">The result takes the place of the selection, and the phrase goes to the journal with the instruction and the model. If you do not like it, <kbd>Ctrl</kbd>+<kbd>Z</kbd> in the application brings the old text back</p>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="rules">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru="Правила">The rules</span>
+      <h2 id="rules" data-ru="Что модель получает и что возвращает">What the model receives and what it returns</h2>
+      <p data-ru="Промпт короткий и запрещает почти всё, что модели нравится добавлять. Это не украшение: без запрета маленькая модель возвращает документ с заголовками вместо одной переведённой строки">The prompt is short and forbids almost everything a model likes to add. That is not decoration: without the ban a small model returns a document with headings instead of one translated line</p>
+    </div>
+    <div class="grid grid-2">
+      <article class="card">
+        <h3 data-ru="Указание первым, текст вторым">The instruction first, the text second</h3>
+        <p class="muted" data-ru="Порядок важен: если текст идёт первым, маленькая модель принимает фрагмент за задание и сочиняет документ. Поэтому запрос выглядит как &lt;code&gt;ИНСТРУКЦИЯ: … ТЕКСТ: …&lt;/code&gt;">The order matters: with the text first, a small model takes the fragment for the task and invents a document. So the request reads <code>INSTRUCTION: … TEXT: …</code></p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Только текст, без обвязки">The text only, with no wrapping</h3>
+        <p class="muted" data-ru="Ни заголовков, ни markdown, ни кавычек, ни пояснений. Модель не добавляет фактов, которых не было в выделении">No headings, no markdown, no quotes, no explanations. The model adds no facts that the selection did not carry</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Язык меняется только по указанию">The language changes only when told</h3>
+        <p class="muted" data-ru="Без «переведи» текст остаётся на своём языке. С «переведи на немецкий» меняется весь выделенный фрагмент, а не первое предложение">Without "translate", the text keeps its language. With "translate to German", the whole selection changes, not the first sentence</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Нельзя выполнить — вернуть как было">Cannot apply it, returns it unchanged</h3>
+        <p class="muted" data-ru="Промпт велит вернуть текст без изменений, если указание невыполнимо. Так «сделай короче» на одной строке не превращается в выдумку">The prompt tells the model to return the text unchanged when the instruction cannot be applied. So "make it shorter" on a single line does not turn into an invention</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Свой промпт">Your own prompt</h3>
+        <p class="muted" data-ru="&lt;code&gt;command_mode.system_prompt&lt;/code&gt; заменяет встроенный промпт для всех языков. Пустое значение оставляет встроенный, который говорит на языке указания"><code>command_mode.system_prompt</code> replaces the built-in prompt for every language. An empty value keeps the built-in one, which speaks the language of the instruction</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Правила диктовки не участвуют">The dictation rules take no part</h3>
+        <p class="muted" data-ru="Указание уходит в модель как есть: правила чистки исказили бы его. Словарь и правила применяются к диктовке, а не к правке выделения">The instruction goes to the model as it is, because the cleanup rules would distort it. The dictionary and the rules apply to dictation, not to an edit of a selection</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="needs">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru="Что нужно">What it needs</span>
+      <h2 id="needs" data-ru="Модель и одно сочетание клавиш">A model and one key combination</h2>
+      <p data-ru="Правка голосом — единственная возможность, которой модель нужна по определению: без неё некому выполнить указание">Voice editing is the one feature that needs a model by definition: without one there is nothing to apply the instruction</p>
+    </div>
+    <div class="grid grid-2">
+      <div>
+        <pre data-lang="toml"><code>[llm]
+enabled = true
+provider = "ollama"
+model = "qwen3.5:4b"
+
+[command_mode]
+enabled = true
+system_prompt = ""
+
+[hotkeys]
+command = "Ctrl+Alt+X"</code></pre>
+        <p class="footnote" data-ru="Провайдер по умолчанию — Ollama, то есть локальная модель. Облачный провайдер работает так же, и его вызовы входят в стоимость модели в статистике">The default provider is Ollama, that is a local model. A cloud provider works the same way, and its calls enter the model cost in the statistics</p>
+      </div>
+      <div>
+        <ul class="snippet-rules">
+          <li data-ru="&lt;code&gt;llm.enabled = true&lt;/code&gt; и настроенный провайдер: локальный или облачный"><code>llm.enabled = true</code> and a configured provider, local or cloud</li>
+          <li data-ru="&lt;code&gt;command_mode.enabled = true&lt;/code&gt; — по умолчанию включено"><code>command_mode.enabled = true</code>, which is the default</li>
+          <li data-ru="Сочетание &lt;code&gt;hotkeys.command&lt;/code&gt;, по умолчанию &lt;kbd&gt;Ctrl&lt;/kbd&gt;+&lt;kbd&gt;Alt&lt;/kbd&gt;+&lt;kbd&gt;X&lt;/kbd&gt;"><code>hotkeys.command</code>, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>X</kbd> by default</li>
+          <li data-ru="Композитор, который отдаёт выделение по Ctrl+C: Hyprland, Sway, KDE и GNOME, с откатом на виртуальную клавиатуру">A compositor that hands over the selection on Ctrl+C: Hyprland, Sway, KDE and GNOME, with a fallback to a virtual keyboard</li>
+        </ul>
+        <div class="cmd"><code>molva config set llm.enabled true</code><button class="copy-button" type="button" data-copy="molva config set llm.enabled true"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="limits">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru="Пределы">Limits</span>
+      <h2 id="limits" data-ru="Чего правка голосом не делает">What voice editing does not do</h2>
+      <p data-ru="Пределы ниже — свойства конструкции, а не недоделки. Каждый назван, чтобы на него можно было опереться">The limits below are properties of the design, not loose ends. Each one is named so you can rely on it</p>
+    </div>
+    <div class="grid grid-2">
+      <article class="card">
+        <h3 data-ru="Нужна модель">It needs a model</h3>
+        <p class="muted" data-ru="Без модели указание выполнить некому, и команда отвечает ошибкой, а не молчанием. Сниппеты, наоборот, работают без модели — это разные инструменты для разных задач">Without a model there is nothing to apply the instruction, and the command answers with an error rather than silence. Snippets, by contrast, work without a model: they are different tools for different jobs</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Выделение идёт через буфер">The selection goes through the clipboard</h3>
+        <p class="muted" data-ru="Демон копирует выделение сочетанием Ctrl+C и читает буфер. Перед копированием он очищает буфер, чтобы не прочитать устаревшее выделение, и ждёт результата до 600 мс. Значит, содержимое буфера на этот момент теряется">The daemon copies the selection with Ctrl+C and reads the clipboard. It clears the clipboard before the copy, so a stale selection cannot be read, and waits up to 600 ms. So whatever the clipboard held at that moment is lost</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Заменяется всё выделение">The whole selection is replaced</h3>
+        <p class="muted" data-ru="Правка не бывает частичной: результат встаёт на место всего выделения. Чтобы поправить одно слово, выдели одно слово">An edit is never partial: the result takes the place of the whole selection. To fix one word, select one word</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Длинное выделение стоит токенов">A long selection costs tokens</h3>
+        <p class="muted" data-ru="Выделение уходит в модель целиком, поэтому абзац стоит дешевле страницы. С облачным провайдером расход виден в статистике как стоимость модели">The selection goes to the model whole, so a paragraph costs less than a page. With a cloud provider the spend shows in the statistics as the model cost</p>
+      </article>
+    </div>
+    <p class="to-top"><a href="#main" data-ru="К началу">Back to top</a></p>
+  </div>
+</section>
+</main>
+<footer class="site-footer">
+  <div class="wrap footer-inner">
+    <div>
+      <a class="brand" href="./index.html">
+        <img src="./assets/logo.svg" alt="" width="22" height="22">
+        <span>MolvAI</span>
+      </a>
+      <p data-ru="Открытый голосовой ввод во все приложения. Зажми клавишу, говори, отпусти — текст оказывается в активном поле">Open-source system-wide voice input. Hold a key, speak, release, and the text lands in the active field</p>
+      <p class="footer-note" data-ru="MIT · без трекеров · без внешних шрифтов">MIT licensed · no trackers · no external fonts</p>
+      <p class="footer-note"><a href="./ASSETS.md" data-ru="Ассеты и лицензии">Assets and licences</a></p>
+    </div>
+    <nav aria-label="Project links" data-ru-aria-label="Ссылки проекта">
+      <p class="footer-title" data-ru="Проект">Project</p>
+      <ul>
+        <li><a href="https://github.com/rokokol/MolvAI">GitHub</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/releases" data-ru="Релизы">Releases</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/LICENSE" data-ru="Лицензия (MIT)">License (MIT)</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/issues" data-ru="Задачи">Issues</a></li>
+      </ul>
+    </nav>
+    <nav aria-label="Site links" data-ru-aria-label="Страницы сайта">
+      <p class="footer-title" data-ru="Сайт">Site</p>
+      <ul>
+        <li><a href="./snippets.html" data-ru="Сниппеты">Snippets</a></li>
+        <li><a href="./command-mode.html" data-ru="Правка голосом">Voice editing</a></li>
+        <li><a href="./features.html" data-ru="Возможности">Features</a></li>
+        <li><a href="./models.html" data-ru="Модели">Models</a></li>
+        <li><a href="./cli.html" data-ru="Справочник CLI">CLI reference</a></li>
+        <li><a href="./docs/index.html" data-ru="Документация">Documentation</a></li>
+        <li><a href="./faq.html">FAQ</a></li>
+        <li><a href="./docs/status.html" data-ru="Статус и планы">Status and roadmap</a></li>
+      </ul>
+    </nav>
+    <div>
+      <p class="footer-title" data-ru="Канонические документы">Canonical docs</p>
+      <p class="footer-note" data-ru="Источник истины — репозиторий. Эти страницы его пересказывают и дают ссылки">
+        The repository is the source of truth. These pages summarize it and link back
+      </p>
+      <ul>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/README.md">README</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/CHANGELOG.md">CHANGELOG.md</a></li>
+        <li><a href="https://github.com/rokokol/MolvAI/blob/main/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="wrap footer-credit">
+    <p data-ru="MolvAI сделан на хакатоне V0ICE (Казань, 2026) и находится в разработке">MolvAI is made at the V0ICE hackathon (Kazan, 2026) and is in development</p>
+    <p data-ru="Сайт работает без cookies, аналитики и сторонних ассетов">This site runs without cookies, analytics or third-party assets</p>
+  </div>
+</footer>
+<script src="./assets/site.js"></script>
+</body>
+</html>

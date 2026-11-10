@@ -6,7 +6,21 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ## Unreleased
 
+### Added
+
+- Snippets lead the site: a page of their own with the matching rules, wildcards, the settings file and the limits, a section on the home page and on the features page, and a place in the navigation of every page
+
+- The site gives voice editing a page of its own: select text, say "translate to German" or "add emoji", and the selection is replaced. Styles got a section beside it
+
+- File transcription has its own section on the home page, with a timecoded transcript and a search hit, and the feature sections now sit under the screenshots rather than above them
+
+- The statistics count what the model calls cost. The provider reports the charge of each request, so the journal keeps it per phrase and no price table goes stale; `molva stats` and the Statistics tab show the sum, and name the calls that reported no charge instead of counting them as zero
+
+- A transcription through the MCP server enters that same sum, because the journal is the one place a phrase is written and the statistics read it without asking where the phrase came from. The report names the MCP share beside the total, so the sum can be checked instead of trusted
+
 ### Changed
+
+- Voice editing is the name of the feature everywhere: the site, the GUI hotkey label, the documentation and the error the daemon returns. `command` stays the name of the hotkey key and `command_mode` the name of the settings section, because a rename there would break every existing configuration
 
 - The gate checks the Nix layout and the travelling Nix checker, so a formatting slip no longer reaches CI: the checker runs on a worktree, because Nix copies a path flake whole and the build directory is a hundred gigabytes
 

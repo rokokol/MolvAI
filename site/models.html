@@ -41,6 +41,8 @@
     <p class="tagline" data-ru="Голосовой ввод во все приложения">System-wide voice input, on your machine</p>
     <nav class="tabs" aria-label="Main" data-ru-aria-label="Основное">
       <a href="./index.html" data-ru="Главная">Home</a>
+      <a href="./snippets.html" data-ru="Сниппеты">Snippets</a>
+      <a href="./command-mode.html" data-ru="Правка голосом">Voice editing</a>
       <a href="./features.html" data-ru="Возможности">Features</a>
       <a href="./models.html" aria-current="page" data-ru="Модели">Models</a>
       <a href="./cli.html" data-ru="CLI">CLI</a>
@@ -98,7 +100,7 @@
   <div class="wrap">
     <div class="section-head">
       <span class="kicker" data-ru=""></span>
-      <h2 data-ru="Каталог">The catalog</h2>
+      <h2 id="catalog" data-ru="Каталог">The catalog</h2>
       <p data-ru="Размеры берутся из &lt;code&gt;models.toml&lt;/code&gt;, в двоичных единицах. SHA-256 каждого файла сверяется до того, как он попадёт на диск">Sizes are the file sizes from <code>models.toml</code>, in binary units. The SHA-256 of each file is checked before it reaches the disk</p>
     </div>
     <div class="table-wrap">
@@ -136,7 +138,7 @@
   <div class="wrap">
     <div class="section-head">
       <span class="kicker" data-ru=""></span>
-      <h2 data-ru="Переключить модель">Switch a model</h2>
+      <h2 id="switch" data-ru="Переключить модель">Switch a model</h2>
       <p data-ru="Одна настройка или один флаг для отдельного файла. Демон загружает распознаватель при старте, поэтому новая модель для диктовки заработает после перезапуска">One setting, or one flag for a single file. The daemon loads the recognizer when it starts, so a new dictation model takes effect after a restart</p>
     </div>
     <div class="grid grid-2">
@@ -191,6 +193,8 @@
     <nav aria-label="Site links" data-ru-aria-label="Страницы сайта">
       <p class="footer-title" data-ru="Сайт">Site</p>
       <ul>
+        <li><a href="./snippets.html" data-ru="Сниппеты">Snippets</a></li>
+        <li><a href="./command-mode.html" data-ru="Правка голосом">Voice editing</a></li>
         <li><a href="./features.html" data-ru="Возможности">Features</a></li>
         <li><a href="./models.html" data-ru="Модели">Models</a></li>
         <li><a href="./cli.html" data-ru="Справочник CLI">CLI reference</a></li>

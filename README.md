@@ -14,10 +14,10 @@ System-wide voice input that runs on your computer: hold a key, speak, release, 
 
 ## What it does
 
+- **Snippets, the main thing**: a phrase such as "reply to a client" returns a prepared reply at once. A `*` in the phrase matches any text, the whole phrase must match after the dictionary and the rules, and the replacement bypasses the model entirely, so it waits for no call, spends no token and works offline
+- **Voice editing**: select a paragraph, say "translate to German" or "add emoji", and the model's answer replaces the selection in place. Command mode is the same path under its settings name
 - **Dictation anywhere**: the text goes to the active window through the keyboard or the clipboard, and the method is chosen by the application
 - **Real-time chunks**: a phrase is cut at pauses during the recording, each chunk is recognized at once for the draft, and the text reaches the field as one piece after the key release
-- **Voice editing**: select text, say "make it more formal", and the answer replaces the selection
-- **Snippets**: a phrase such as "reply to a client" returns a prepared reply at once. A `*` in the phrase matches any text, the whole phrase must match after the dictionary and the rules, and the replacement bypasses the model entirely
 - **Audio and video to text**: the Files tab hands a file to the daemon over IPC, and the daemon recognizes it with the recognizer and the model that dictation already holds; `molva transcribe` stays the standalone entry for an offline batch and prints timecodes
 - **Search over transcripts**: `molva search` and the search inside the Files tab find a phrase across every transcribed file and show the file and the timecode
 - **Local by default**: recognition, the dictionary, the rules and the journal stay on your computer; a language model is optional and works through any OpenAI-compatible API
@@ -221,7 +221,7 @@ A transcription goes to the daemon: the server starts the daemon when nobody ans
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `transcribe`         | the text, segments with timecodes, language and duration of an audio or video file; an optional `model` overrides the configured one for this run |
 | `search_transcripts` | hits with the file, the timecode and the matched text                                                                                             |
-| `stats_summary`      | words, speed, latency and the count of MCP transcriptions                                                                                         |
+| `stats_summary`      | words, speed, latency, the charge of the model calls and the count of MCP transcriptions                                                          |
 | `history_list`       | journal entries filtered by text, application and time                                                                                            |
 | `models_list`        | the catalog and the weights on disk                                                                                                               |
 | `search_docs`        | hits in this README, `docs/` and the site pages: the path, title, language, a snippet and a URL; `lang` keeps one language                        |

@@ -41,6 +41,8 @@
     <p class="tagline" data-ru="Голосовой ввод во все приложения">System-wide voice input, on your machine</p>
     <nav class="tabs" aria-label="Main" data-ru-aria-label="Основное">
       <a href="./index.html" data-ru="Главная">Home</a>
+      <a href="./snippets.html" data-ru="Сниппеты">Snippets</a>
+      <a href="./command-mode.html" data-ru="Правка голосом">Voice editing</a>
       <a href="./features.html" aria-current="page" data-ru="Возможности">Features</a>
       <a href="./models.html" data-ru="Модели">Models</a>
       <a href="./cli.html" data-ru="CLI">CLI</a>
@@ -79,11 +81,49 @@
   </div>
 </section>
 
+<section class="section" aria-labelledby="snippets">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru="Сниппеты — главное">Snippets, the main thing</span>
+      <h2 id="snippets" data-ru="Скажи три слова — получи готовый абзац">Say three words, get the whole answer</h2>
+      <p data-ru="Диктовка экономит набор. Сниппет экономит больше: ты говоришь короткую фразу, а в поле оказывается текст, который ты написал заранее. Он возвращается до модели, поэтому не ждёт вызова, не тратит токены и работает с выдернутым кабелем">Dictation saves typing. A snippet saves more: you say a short phrase and the field receives text you wrote earlier. It returns before the model, so it waits for no call, spends no tokens and works with the cable out</p>
+    </div>
+    <div class="grid grid-2">
+      <div class="snippet-demo">
+        <div class="snippet-pair">
+          <p class="snippet-say"><span class="snippet-label" data-ru="Ты говоришь">You say</span><span data-ru="ответь клиенту">reply to the client</span></p>
+          <p class="snippet-get"><span class="snippet-label" data-ru="В поле появляется">The field gets</span><span data-ru="Здравствуйте! Спасибо за обращение. Отвечу в течение рабочего дня.">Hello! Thank you for getting in touch. I will answer within the working day.</span></p>
+        </div>
+        <div class="snippet-pair">
+          <p class="snippet-say"><span class="snippet-label" data-ru="Ты говоришь">You say</span><span data-ru="созвон">call</span> <span class="snippet-wild">*</span></p>
+          <p class="snippet-get"><span class="snippet-label" data-ru="В поле появляется">The field gets</span><span data-ru="https://meet.example/team — постоянная ссылка на созвон">https://meet.example/team — the standing link for the call</span></p>
+        </div>
+        <div class="snippet-pair">
+          <p class="snippet-say"><span class="snippet-label" data-ru="Ты говоришь">You say</span><span data-ru="мой адрес">my address</span></p>
+          <p class="snippet-get"><span class="snippet-label" data-ru="В поле появляется">The field gets</span><span data-ru="Казань, улица Баумана, 1 — подъезд 2, этаж 3">Kazan, Baumana street 1 — entrance 2, floor 3</span></p>
+        </div>
+      </div>
+      <div>
+        <ul class="snippet-rules">
+          <li data-ru="Совпадает только целая фраза: фраза, которая просто содержит триггер, не срабатывает">Only the whole phrase matches: a phrase that merely contains the trigger does not fire</li>
+          <li data-ru="Регистр, знаки препинания и лишние пробелы не важны">Case, punctuation and extra spaces do not matter</li>
+          <li data-ru="&lt;code&gt;*&lt;/code&gt; совпадает с любым хвостом, в том числе пустым, но в замену ничего не подставляет"><code>*</code> matches any tail, including none, but adds nothing to the replacement</li>
+          <li data-ru="Точная фраза важнее wildcard, поэтому широкий шаблон не прячет конкретный ответ">An exact phrase wins over a wildcard, so a broad pattern never hides a specific answer</li>
+          <li data-ru="Замена окончательная: ни стиль, ни модель, ни правила её не переписывают">The replacement is final: no style, no model and no rule rewrites it</li>
+          <li data-ru="Фраза только из &lt;code&gt;*&lt;/code&gt; отклоняется: она заменила бы каждую диктовку">A phrase of nothing but <code>*</code> is refused, because it would replace every dictation</li>
+        </ul>
+        <p class="muted" data-ru="Сниппеты живут в &lt;code&gt;[snippets]&lt;/code&gt; файла настроек, во вкладке «Сниппеты» окна и в &lt;code&gt;molva config set&lt;/code&gt;. Совпавшая фраза помечается в журнале полем &lt;code&gt;snippet&lt;/code&gt;, поэтому видно, сколько ответов пришло без модели">Snippets live in <code>[snippets]</code> of the settings file, in the Snippets tab of the window and in <code>molva config set</code>. A matched phrase is marked in the journal by the <code>snippet</code> field, so the count of answers that came without the model is visible</p>
+        <p class="actions"><a class="button primary" href="./snippets.html" data-ru="Правила, wildcard и пределы &lt;span aria-hidden=&quot;true&quot;&gt;→&lt;/span&gt;">The rules, wildcards and limits <span aria-hidden="true">→</span></a></p>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section class="section" aria-labelledby="dictation">
   <div class="wrap">
     <div class="section-head">
       <span class="kicker" data-ru="Диктовка">Dictation</span>
-      <h2 data-ru="От зажатой клавиши до готового предложения">From a held key to a finished sentence</h2>
+      <h2 id="dictation" data-ru="От зажатой клавиши до готового предложения">From a held key to a finished sentence</h2>
       <p data-ru="Микрофон — самая сложная часть инструмента диктовки, и почти всё в этом списке про то, чтобы закрыть его вовремя">The microphone is the hard part of a dictation tool, and most of this list is about closing it at the right moment</p>
     </div>
     <div class="grid grid-2">
@@ -111,7 +151,7 @@
   <div class="wrap">
     <div class="section-head">
       <span class="kicker" data-ru="Качество текста">Text quality</span>
-      <h2 data-ru="Чистка без модели, модель — когда захочешь">Cleanup without a model, a model when you want one</h2>
+      <h2 id="text" data-ru="Чистка без модели, модель — когда захочешь">Cleanup without a model, a model when you want one</h2>
       <p data-ru="Конвейер по умолчанию детерминированный: словарь терминов и набор правил. Ни один токен не покидает машину, пока ты не включишь модель">The default pipeline is deterministic: a term dictionary and a rule set. No token leaves the machine unless you turn the model on</p>
     </div>
     <div class="grid grid-2">
@@ -120,26 +160,90 @@
         <p class="muted" data-ru="Твои имена и названия продуктов подставляются с нечётким совпадением. Проговорённые знаки становятся знаками, слова-заполнители исчезают, повторы схлопываются, числительные превращаются в цифры. Правила работают за миллисекунды и покрыты теми же тестами, что и всё остальное">Your names and product terms are substituted fuzzily. Spoken punctuation becomes punctuation, filler words disappear, repeats collapse, numerals become digits. The rules run in milliseconds and are covered by the same tests as the rest</p>
       </article>
       <article class="card">
-        <h3 data-ru="Стили под приложение">Styles per application</h3>
-        <p class="muted" data-ru="Как сказано, Чистка и Формально. Первый не зовёт модель вообще, один из трёх стоит по умолчанию, а &lt;code&gt;style.by_app&lt;/code&gt; даёт каждому классу окна свой стиль">As spoken, Cleanup and Formal. The first one never calls the model, one of the three is the default, and <code>style.by_app</code> gives each window class its own style</p>
-      </article>
-      <article class="card">
         <h3 data-ru="Языковая модель по желанию">Optional language model</h3>
         <p class="muted" data-ru="По умолчанию выключена. Если включить — говорит по протоколу, совместимому с OpenAI, а провайдер по умолчанию Ollama. Работает только для стилей, которым нужна, когда фраза достигает минимума слов этого стиля. Таймаут возвращает текст после правил, но никогда пустое поле">Off by default. When on, it speaks the OpenAI-compatible protocol and Ollama is the default provider. It runs only for styles that need it, when the phrase reaches that style's word minimum. A timeout returns the text after the rules, never an empty field</p>
-      </article>
-      <article class="card">
-        <h3 data-ru="Режим команды">Command mode</h3>
-        <p class="muted" data-ru="Выдели абзац, нажми &lt;kbd&gt;Ctrl&lt;/kbd&gt;+&lt;kbd&gt;Alt&lt;/kbd&gt;+&lt;kbd&gt;X&lt;/kbd&gt;, скажи «сделай короче» или «переведи на английский», нажми ещё раз. Выделение заменяется на месте. Это исходная возможность проекта, и ей нужна модель">Select a paragraph, press <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>X</kbd>, say "make it shorter" or "translate to English", press again. The selection is replaced in place. This is the project's original feature, and it needs a model</p>
       </article>
     </div>
   </div>
 </section>
 
-<section class="section" aria-labelledby="files">
+<section class="section" aria-labelledby="styles">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru="Стили">Styles</span>
+      <h2 id="styles" data-ru="Один и тот же голос, три разных текста">The same voice, three different texts</h2>
+      <p data-ru="Стиль решает, что случится с текстом после правил. Он же решает, звать ли модель: «Как сказано» не зовёт её никогда, поэтому работает офлайн и стоит ноль">A style decides what happens to the text after the rules. It also decides whether the model is called: As spoken never calls it, so it works offline and costs nothing</p>
+    </div>
+    <div class="grid grid-3">
+      <article class="card">
+        <span class="sticker" data-ru="Без модели">No model</span>
+        <h3 data-ru="Как сказано">As spoken</h3>
+        <p class="muted" data-ru="Словарь и правила, и ничего больше. Ни одного токена, ни одной сети, ни одной задержки на вызов. Стиль по умолчанию для тех, кто хочет ровно свои слова">The dictionary and the rules, and nothing else. Not one token, no network, no wait for a call. The style for anyone who wants exactly their own words</p>
+      </article>
+      <article class="card">
+        <span class="sticker alt" data-ru="Модель">Model</span>
+        <h3 data-ru="Чистка">Cleanup</h3>
+        <p class="muted" data-ru="Пунктуация, регистр и ошибки распознавания, оговорки и слова-паразиты убираются. Остальные слова, смысл и термины остаются. Стиль по умолчанию из коробки">Punctuation, case and recognition errors are fixed, slips and fillers removed. Every other word, the meaning and the terms stay. The default style out of the box</p>
+      </article>
+      <article class="card">
+        <span class="sticker alt" data-ru="Модель">Model</span>
+        <h3 data-ru="Формально">Formal</h3>
+        <p class="muted" data-ru="Официально-деловой стиль: полные предложения, без разговорных оборотов, сокращений и эмоций. Для писем и документов, а не для чата">Formal business style: full sentences, no colloquial turns, contractions or emotion. For letters and documents, not for a chat</p>
+      </article>
+    </div>
+    <div class="grid grid-2">
+      <article class="card">
+        <h3 data-ru="Стиль под каждое приложение">A style per application</h3>
+        <p class="muted" data-ru="&lt;code&gt;style.by_app&lt;/code&gt; сопоставляет класс окна со стилем: в мессенджере «Чистка», в почте «Формально», в терминале «Как сказано». Класс окна берётся у композитора, поэтому правило работает и для приложений, которых ты не настраивал отдельно"><code>style.by_app</code> maps a window class to a style: Cleanup in a messenger, Formal in mail, As spoken in a terminal. The window class comes from the compositor, so a rule also covers applications you did not configure one by one</p>
+      </article>
+      <article class="card">
+        <h3 data-ru="Свои стили и минимум слов">Your own styles and a word minimum</h3>
+        <p class="muted" data-ru="Свой стиль — это имя, промпт и минимум слов. Фраза короче минимума идёт мимо модели: короткое «да» не стоит вызова. Встроенный минимум — три слова, и он настраивается у каждого стиля отдельно">A custom style is a name, a prompt and a word minimum. A phrase shorter than the minimum skips the model: a short "yes" is not worth a call. The built-in minimum is three words, and each style sets its own</p>
+      </article>
+    </div>
+    <div class="cmd"><code>molva styles list</code><button class="copy-button" type="button" data-copy="molva styles list"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
+    <p class="footnote" data-ru="&lt;code&gt;molva styles list&lt;/code&gt; печатает идентификатор, имя, нужна ли модель и минимум слов. Переключение на лету — &lt;code&gt;molva styles next&lt;/code&gt; или сочетание &lt;code&gt;hotkeys.style_next&lt;/code&gt;"><code>molva styles list</code> prints the identifier, the name, whether the model is needed and the word minimum. Switching on the fly is <code>molva styles next</code> or the <code>hotkeys.style_next</code> combination</p>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="voice-editing">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru="Правка голосом">Voice editing</span>
+      <h2 id="voice-editing" data-ru="Выдели абзац и скажи, что с ним сделать">Select a paragraph and say what to do with it</h2>
+      <p data-ru="Стиль переписывает то, что ты надиктовал. Правка голосом переписывает то, что уже написано: выдели текст, скажи указание, и выделение заменится результатом. Это исходная возможность проекта, и ей нужна модель">A style rewrites what you dictated. Voice editing rewrites what is already written: select text, say the instruction, and the selection is replaced with the result. This is the project's original feature, and it needs a model</p>
+    </div>
+    <div class="grid grid-2">
+      <div class="snippet-demo">
+        <div class="snippet-pair">
+          <p class="snippet-sel"><span class="snippet-label" data-ru="Выделено">Selected</span><span data-ru="Привет, как дела? Созвон перенесли на завтра.">Hi, how are you? The call moved to tomorrow.</span></p>
+          <p class="snippet-say"><span class="snippet-label" data-ru="Ты говоришь">You say</span><span data-ru="переведи на немецкий">translate to German</span></p>
+          <p class="snippet-get"><span class="snippet-label" data-ru="Выделение становится">The selection becomes</span><span data-ru="Hallo, wie geht es dir? Der Anruf wurde auf morgen verschoben.">Hallo, wie geht es dir? Der Anruf wurde auf morgen verschoben.</span></p>
+        </div>
+        <div class="snippet-pair">
+          <p class="snippet-sel"><span class="snippet-label" data-ru="Выделено">Selected</span><span data-ru="Созвон перенесли на завтра. Не забудь документы.">The call moved to tomorrow. Do not forget the documents.</span></p>
+          <p class="snippet-say"><span class="snippet-label" data-ru="Ты говоришь">You say</span><span data-ru="добавь эмодзи">add emoji</span></p>
+          <p class="snippet-get"><span class="snippet-label" data-ru="Выделение становится">The selection becomes</span><span data-ru="📅 Созвон перенесли на завтра. 📄 Не забудь документы.">📅 The call moved to tomorrow. 📄 Do not forget the documents.</span></p>
+        </div>
+      </div>
+      <div>
+        <ul class="snippet-rules">
+          <li data-ru="&lt;kbd&gt;Ctrl&lt;/kbd&gt;+&lt;kbd&gt;Alt&lt;/kbd&gt;+&lt;kbd&gt;X&lt;/kbd&gt; по умолчанию: зажми, скажи указание, отпусти"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>X</kbd> by default: hold, say the instruction, release</li>
+          <li data-ru="Указание — обычная фраза, а не команда из списка: «переведи на немецкий», «добавь эмодзи», «сделай короче»">An instruction is an ordinary phrase, not a command from a list: "translate to German", "add emoji", "make it shorter"</li>
+          <li data-ru="Модель возвращает только текст: без заголовков, markdown и пояснений, и не добавляет фактов">The model returns the text only: no headings, markdown or explanations, and no facts it was not given</li>
+          <li data-ru="Результат встаёт на место выделения, а &lt;kbd&gt;Ctrl&lt;/kbd&gt;+&lt;kbd&gt;Z&lt;/kbd&gt; возвращает прежний текст">The result takes the place of the selection, and <kbd>Ctrl</kbd>+<kbd>Z</kbd> brings the old text back</li>
+        </ul>
+        <p class="actions"><a class="button primary" href="./command-mode.html" data-ru="Примеры, правила и пределы &lt;span aria-hidden=&quot;true&quot;&gt;→&lt;/span&gt;">Examples, rules and limits <span aria-hidden="true">→</span></a></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="files-title" id="files">
   <div class="wrap">
     <div class="section-head">
       <span class="kicker" data-ru="Файлы и поиск">Files and search</span>
-      <h2 data-ru="Твои записи становятся текстом, который можно искать">Your recordings become text you can search</h2>
+      <h2 id="files-title" data-ru="Твои записи становятся текстом, который можно искать">Your recordings become text you can search</h2>
       <p data-ru="Расшифровка файла попадает в тот же журнал, что и надиктованная фраза, поэтому один поиск смотрит и туда, и туда">A transcription of a file lands in the same journal as a dictated phrase, so one search looks at both</p>
     </div>
     <div class="grid grid-2">
@@ -169,7 +273,7 @@
   <div class="wrap">
     <div class="section-head">
       <span class="kicker" data-ru="Один процесс">One process</span>
-      <h2 data-ru="Демон один, клиентов сколько угодно">One daemon, any number of clients</h2>
+      <h2 id="daemon" data-ru="Демон один, клиентов сколько угодно">One daemon, any number of clients</h2>
       <p data-ru="Диктовка, расшифровка файлов и MCP-сервер делят один распознаватель, поэтому второй копии весов в памяти нет">Dictation, file transcription and the MCP server share one recognizer, so no second copy of the weights sits in memory</p>
     </div>
     <div class="grid grid-2">
@@ -197,7 +301,7 @@
   <div class="wrap">
     <div class="section-head">
       <span class="kicker" data-ru="Приватность и переносимость">Privacy and portability</span>
-      <h2 data-ru="Локальность из конструкции, а не из настройки">Local by construction, not by a setting</h2>
+      <h2 id="privacy-feature" data-ru="Локальность из конструкции, а не из настройки">Local by construction, not by a setting</h2>
       <p data-ru="Там, где понадобился бы сервер, первым выбором стоит локальный вариант">The parts that would need a server are the parts that have a local first choice</p>
     </div>
     <div class="grid grid-3">
@@ -233,7 +337,7 @@
   <div class="wrap">
     <div class="section-head">
       <span class="kicker" data-ru="Пределы">Limits</span>
-      <h2 data-ru="Чего пока нет">What it does not do yet</h2>
+      <h2 id="limits" data-ru="Чего пока нет">What it does not do yet</h2>
       <p data-ru="Проект в разработке. Список возможностей без списка вырезанного — это маркетинг, поэтому вырезанное лежит открыто">The project is in development. A feature list without a cut list is marketing, so the cut list lives in the open</p>
     </div>
     <div class="callout warn">
@@ -277,6 +381,8 @@
     <nav aria-label="Site links" data-ru-aria-label="Страницы сайта">
       <p class="footer-title" data-ru="Сайт">Site</p>
       <ul>
+        <li><a href="./snippets.html" data-ru="Сниппеты">Snippets</a></li>
+        <li><a href="./command-mode.html" data-ru="Правка голосом">Voice editing</a></li>
         <li><a href="./features.html" data-ru="Возможности">Features</a></li>
         <li><a href="./models.html" data-ru="Модели">Models</a></li>
         <li><a href="./cli.html" data-ru="Справочник CLI">CLI reference</a></li>

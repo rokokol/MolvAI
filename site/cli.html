@@ -41,6 +41,8 @@
     <p class="tagline" data-ru="Голосовой ввод во все приложения">System-wide voice input, on your machine</p>
     <nav class="tabs" aria-label="Main" data-ru-aria-label="Основное">
       <a href="./index.html" data-ru="Главная">Home</a>
+      <a href="./snippets.html" data-ru="Сниппеты">Snippets</a>
+      <a href="./command-mode.html" data-ru="Правка голосом">Voice editing</a>
       <a href="./features.html" data-ru="Возможности">Features</a>
       <a href="./models.html" data-ru="Модели">Models</a>
       <a href="./cli.html" aria-current="page" data-ru="CLI">CLI</a>
@@ -116,7 +118,7 @@
   <div class="wrap">
     <div class="section-head">
       <span class="kicker" data-ru=""></span>
-      <h2 data-ru="Диктовка и демон">Dictation and the daemon</h2>
+      <h2 id="dictation" data-ru="Диктовка и демон">Dictation and the daemon</h2>
       <p data-ru="Эти команды говорят с запущенным демоном через локальный сокет. Их вызывает привязка композитора, а скрипт читает код возврата">These commands talk to the running daemon over a local socket. A compositor bind calls them, and a script reads their exit code</p>
     </div>
     <h3 data-ru="&lt;code&gt;molva daemon&lt;/code&gt;"><code>molva daemon</code></h3>
@@ -168,7 +170,7 @@
   <div class="wrap">
     <div class="section-head">
       <span class="kicker" data-ru=""></span>
-      <h2 data-ru="&lt;code&gt;molva transcribe&lt;/code&gt;"><code>molva transcribe</code></h2>
+      <h2 id="transcribe" data-ru="&lt;code&gt;molva transcribe&lt;/code&gt;"><code>molva transcribe</code></h2>
       <p data-ru="Офлайн-расшифровка аудио и видео. Микрофон не трогает и никуда не вставляет, поэтому годится для скриптов и CI. Окно эту команду не вызывает: вкладка Files спрашивает демон и расшифровывает уже горячим распознавателем">Offline transcription of audio and video. It never touches the microphone and never pastes anywhere, so it fits scripts and CI. The window does not call this command: the Files tab asks the daemon and transcribes with an already warm recognizer</p>
     </div>
     <div class="table-wrap">
@@ -198,7 +200,7 @@
   <div class="wrap">
     <div class="section-head">
       <span class="kicker" data-ru=""></span>
-      <h2 data-ru="&lt;code&gt;molva search&lt;/code&gt;"><code>molva search</code></h2>
+      <h2 id="search" data-ru="&lt;code&gt;molva search&lt;/code&gt;"><code>molva search</code></h2>
       <p data-ru="Ищет текст в расшифровках аудио и видео. Читает тот же журнал, что и история, поэтому второго индекса, который расходится, нет">Finds text in the transcriptions of audio and video files. It reads the same journal as the history, so there is no second index to drift</p>
     </div>
     <div class="table-wrap">
@@ -219,7 +221,7 @@
   <div class="wrap">
     <div class="section-head">
       <span class="kicker" data-ru=""></span>
-      <h2 data-ru="&lt;code&gt;molva history&lt;/code&gt;"><code>molva history</code></h2>
+      <h2 id="history" data-ru="&lt;code&gt;molva history&lt;/code&gt;"><code>molva history</code></h2>
       <p data-ru="Журнал фраз, который читают и правят из терминала. Фильтры работают по всему файлу">The phrase journal, read and edited from the terminal. The filters work on the whole file</p>
     </div>
     <div class="table-wrap">
@@ -247,7 +249,7 @@
   <div class="wrap">
     <div class="section-head">
       <span class="kicker" data-ru=""></span>
-      <h2 data-ru="&lt;code&gt;molva models&lt;/code&gt;"><code>molva models</code></h2>
+      <h2 id="models" data-ru="&lt;code&gt;molva models&lt;/code&gt;"><code>molva models</code></h2>
       <p data-ru="Управление весами по тому же каталогу, что читают интерфейс и модуль Nix">Weights management against the same catalog the GUI and the Nix module read</p>
     </div>
     <div class="table-wrap">
@@ -270,7 +272,7 @@
   <div class="wrap">
     <div class="section-head">
       <span class="kicker" data-ru=""></span>
-      <h2 data-ru="&lt;code&gt;molva config&lt;/code&gt;"><code>molva config</code></h2>
+      <h2 id="config" data-ru="&lt;code&gt;molva config&lt;/code&gt;"><code>molva config</code></h2>
       <p data-ru="Файл настроек по точечным ключам. Неверное значение падает с путём к файлу и именем ключа">The settings file, addressed by dotted keys. A wrong value fails with the file path and the key name</p>
     </div>
     <div class="table-wrap">
@@ -297,7 +299,7 @@
   <div class="wrap">
     <div class="section-head">
       <span class="kicker" data-ru=""></span>
-      <h2 data-ru="&lt;code&gt;molva doctor&lt;/code&gt;"><code>molva doctor</code></h2>
+      <h2 id="doctor" data-ru="&lt;code&gt;molva doctor&lt;/code&gt;"><code>molva doctor</code></h2>
       <p data-ru="Диагностика сессии, композитора, инструментов вставки, прав, сокета демона, весов и их суммы, а также провайдера модели">Diagnostics for the session, the compositor, the paste tools, the permissions, the daemon socket, the weights and their checksum, and the model provider</p>
     </div>
     <p class="muted" data-ru="Запусти его до того, как просить о помощи. Он называет сломанную часть и следующий шаг и стоит первым вопросом в любой теме про проблемы">Run it before asking for help. It names the failed part and the next step, and it is the first question in every troubleshooting thread</p>
@@ -308,7 +310,7 @@
   <div class="wrap">
     <div class="section-head">
       <span class="kicker" data-ru=""></span>
-      <h2 data-ru="Остальные команды">The remaining commands</h2>
+      <h2 id="other" data-ru="Остальные команды">The remaining commands</h2>
       <p data-ru="Статистика, словарь, стили и бенчмарк — всё, что не входит в диктовку">Statistics, the dictionary, styles and the benchmark, which do not fit a dictation</p>
     </div>
     <div class="table-wrap">
@@ -316,7 +318,7 @@
         <caption data-ru="Статистика, стили, словарь и бенчмарки">Statistics, styles, the dictionary and benchmarks</caption>
         <thead><tr><th scope="col" data-ru="Команда">Command</th><th scope="col" data-ru="Что делает">What it does</th></tr></thead>
         <tbody>
-                  <tr><th scope="row" data-ru="&lt;code&gt;molva stats&lt;/code&gt;"><code>molva stats</code></th><td data-ru="Слова, темп, время и рекорд за &lt;code&gt;--period today|week|month|all&lt;/code&gt;; &lt;code&gt;--series day|session|app&lt;/code&gt;, &lt;code&gt;--json&lt;/code&gt;; подкоманды &lt;code&gt;export&lt;/code&gt; и &lt;code&gt;reset&lt;/code&gt;">Words, pace, time and the record over <code>--period today|week|month|all</code>; <code>--series day|session|app</code>, <code>--json</code>; subcommands <code>export</code> and <code>reset</code></td></tr>
+                  <tr><th scope="row" data-ru="&lt;code&gt;molva stats&lt;/code&gt;"><code>molva stats</code></th><td data-ru="Слова, темп, время, рекорд и стоимость вызовов модели за &lt;code&gt;--period today|week|month|all&lt;/code&gt;; &lt;code&gt;--series day|session|app&lt;/code&gt;, &lt;code&gt;--json&lt;/code&gt;; подкоманды &lt;code&gt;export&lt;/code&gt; и &lt;code&gt;reset&lt;/code&gt;">Words, pace, time, the record and the charge of the model calls over <code>--period today|week|month|all</code>; <code>--series day|session|app</code>, <code>--json</code>; subcommands <code>export</code> and <code>reset</code></td></tr>
                   <tr><th scope="row" data-ru="&lt;code&gt;molva styles&lt;/code&gt;"><code>molva styles</code></th><td data-ru="&lt;code&gt;list&lt;/code&gt; стилей постобработки, &lt;code&gt;show&lt;/code&gt; системный запрос одного из них"><code>list</code> the post-processing styles, <code>show</code> the system prompt of one</td></tr>
                   <tr><th scope="row" data-ru="&lt;code&gt;molva dictionary&lt;/code&gt;"><code>molva dictionary</code></th><td data-ru="&lt;code&gt;list&lt;/code&gt;, &lt;code&gt;add&lt;/code&gt;, &lt;code&gt;reload&lt;/code&gt; и &lt;code&gt;stats&lt;/code&gt; для словаря терминов"><code>list</code>, <code>add</code>, <code>reload</code> and <code>stats</code> for the term dictionary</td></tr>
                   <tr><th scope="row" data-ru="&lt;code&gt;molva bench&lt;/code&gt;"><code>molva bench</code></th><td data-ru="Доля ошибок в словах и символах плюс задержка на звуковых образцах из репозитория">Word and character error rate plus latency on the audio fixtures in the repository</td></tr>
@@ -352,6 +354,8 @@
     <nav aria-label="Site links" data-ru-aria-label="Страницы сайта">
       <p class="footer-title" data-ru="Сайт">Site</p>
       <ul>
+        <li><a href="./snippets.html" data-ru="Сниппеты">Snippets</a></li>
+        <li><a href="./command-mode.html" data-ru="Правка голосом">Voice editing</a></li>
         <li><a href="./features.html" data-ru="Возможности">Features</a></li>
         <li><a href="./models.html" data-ru="Модели">Models</a></li>
         <li><a href="./cli.html" data-ru="Справочник CLI">CLI reference</a></li>

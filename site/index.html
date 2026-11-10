@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title data-ru="MolvAI — открытый голосовой ввод по всей системе, на твоей машине">MolvAI — open-source system-wide voice input that runs on your machine</title>
-<meta name="description" content="Hold a key, speak, release: MolvAI types into any application. Local recognition with GigaAM-v3 for Russian, a searchable transcript journal, audio and video transcription with timecodes. MIT, Linux, Windows and macOS" data-ru-content="Зажми клавишу, говори, отпусти: MolvAI печатает в любом приложении. Локальное распознавание GigaAM-v3 для русского, журнал расшифровок с поиском, расшифровка аудио и видео с таймкодами. MIT, Linux, Windows и macOS">
+<meta name="description" content="Say three words, get the whole answer: a snippet returns saved text before the model runs. MolvAI also types into any application, with local recognition by GigaAM-v3 for Russian, a searchable journal and timecoded audio and video. MIT, Linux, Windows and macOS" data-ru-content="Скажи три слова — получи готовый абзац: сниппет возвращает сохранённый текст до вызова модели. MolvAI ещё и печатает в любом приложении: локальное распознавание GigaAM-v3 для русского, журнал с поиском, аудио и видео с таймкодами. MIT, Linux, Windows и macOS">
 <meta property="og:type" content="website">
 <meta property="og:title" content="MolvAI — system-wide voice input, on your machine">
-<meta property="og:description" content="Hold a key, speak, release: local speech recognition types into any application, with a searchable transcript journal and timecoded files">
+<meta property="og:description" content="Say three words, get the whole answer: a snippet returns saved text before the model runs, and local speech recognition types into any application">
 <meta property="og:image" content="https://molvai.rokokol.art/docs/img/preview.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -50,6 +50,8 @@
     <p class="tagline" data-ru="Голосовой ввод во все приложения">System-wide voice input, on your machine</p>
     <nav class="tabs" aria-label="Main" data-ru-aria-label="Основное">
       <a href="./index.html" aria-current="page" data-ru="Главная">Home</a>
+      <a href="./snippets.html" data-ru="Сниппеты">Snippets</a>
+      <a href="./command-mode.html" data-ru="Правка голосом">Voice editing</a>
       <a href="./features.html" data-ru="Возможности">Features</a>
       <a href="./models.html" data-ru="Модели">Models</a>
       <a href="./cli.html" data-ru="CLI">CLI</a>
@@ -78,7 +80,7 @@
       <div>
         <span class="kicker" data-ru="Открытый код · MIT · локально по умолчанию">Open source · MIT · Local by default</span>
         <h1 data-ru="ПромолвИИ свой запрос ;)">Hold a key. Talk. <em>Your words appear.</em></h1>
-        <p class="lead" data-ru="MolvAI — открытый голосовой ввод: текст попадает в любое поле, а распознавание и постобработка идут на твоём компьютере">MolvAI is open-source voice input that types into any field, while recognition and post-processing run on your own computer</p>
+        <p class="lead" data-ru="MolvAI — открытый голосовой ввод: текст попадает в любое поле, а распознавание и постобработка идут на твоём компьютере. Сниппет идёт дальше: короткая фраза возвращает готовый абзац, не дожидаясь модели">MolvAI is open-source voice input that types into any field, while recognition and post-processing run on your own computer. A snippet goes further: a short phrase returns a finished paragraph without waiting for the model</p>
         <div class="actions">
           <a class="button primary" href="#install" data-ru="Установить MolvAI &lt;span aria-hidden=&quot;true&quot;&gt;→&lt;/span&gt;">Install MolvAI <span aria-hidden="true">→</span></a>
           <a class="button" href="./docs/index.html" data-ru="Читать документацию">Read the docs</a>
@@ -87,6 +89,7 @@
           <li class="chip" data-ru="Модель по умолчанию &lt;strong&gt;GigaAM-v3&lt;/strong&gt;">Default model <strong>GigaAM-v3</strong></li>
           <li class="chip" data-ru="Движок &lt;strong&gt;auto&lt;/strong&gt;">Engine <strong>auto</strong></li>
           <li class="chip">Linux · Windows · macOS</li>
+          <li class="chip" data-ru="Сниппеты &lt;strong&gt;без модели&lt;/strong&gt;">Snippets <strong>without the model</strong></li>
           <li class="chip" data-ru="Без аккаунта и телеметрии">No account, no telemetry</li>
         </ul>
       </div>
@@ -225,6 +228,138 @@
   </div>
 </section>
 
+<section class="section" id="snippets" aria-labelledby="snippets-title">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru="Сниппеты — главное">Snippets, the main thing</span>
+      <h2 id="snippets-title" data-ru="Скажи три слова — получи готовый абзац">Say three words, get the whole answer</h2>
+      <p data-ru="Сниппет — это фраза, которую ты один раз сохранил вместе с текстом, который она должна вернуть. Скажи фразу, и поле получает сохранённый текст: до модели, поэтому без задержки, без сети и без единого токена">A snippet is a phrase you save once together with the text it should return. Say the phrase and the field receives the saved text: before the model, so with no wait, no network and not one token</p>
+    </div>
+    <div class="grid grid-2">
+      <div class="snippet-demo">
+        <div class="snippet-pair">
+          <p class="snippet-say"><span class="snippet-label" data-ru="Ты говоришь">You say</span><span data-ru="ответь клиенту">reply to the client</span></p>
+          <p class="snippet-get"><span class="snippet-label" data-ru="В поле появляется">The field gets</span><span data-ru="Здравствуйте! Спасибо за обращение. Отвечу в течение рабочего дня.">Hello! Thank you for getting in touch. I will answer within the working day.</span></p>
+        </div>
+        <div class="snippet-pair">
+          <p class="snippet-say"><span class="snippet-label" data-ru="Ты говоришь">You say</span><span data-ru="созвон">call</span> <span class="snippet-wild">*</span></p>
+          <p class="snippet-get"><span class="snippet-label" data-ru="В поле появляется">The field gets</span><span data-ru="https://meet.example/team — постоянная ссылка на созвон">https://meet.example/team — the standing link for the call</span></p>
+        </div>
+      </div>
+      <div>
+        <ul class="snippet-rules">
+          <li data-ru="Совпадает только целая фраза: фраза, которая просто содержит триггер, не срабатывает">Only the whole phrase matches: a phrase that merely contains the trigger does not fire</li>
+          <li data-ru="Регистр, знаки препинания и лишние пробелы не важны — распознаватель ставит запятую там, где её нет">Case, punctuation and extra spaces do not matter, because the recognizer puts a comma where the phrase has none</li>
+          <li data-ru="&lt;code&gt;*&lt;/code&gt; совпадает с любым хвостом, в том числе пустым, но в замену ничего не подставляет"><code>*</code> matches any tail, including none, but adds nothing to the replacement</li>
+          <li data-ru="Точная фраза важнее wildcard, поэтому широкий шаблон не прячет конкретный ответ">An exact phrase wins over a wildcard, so a broad pattern never hides a specific answer</li>
+          <li data-ru="Замена окончательная: ни стиль, ни модель, ни правила её не переписывают">The replacement is final: no style, no model and no rule rewrites it</li>
+        </ul>
+        <div class="cmd"><code>[snippets] enabled = true</code><button class="copy-button" type="button" data-copy="[snippets]
+enabled = true
+
+[[snippets.items]]
+phrase = &quot;ответь клиенту&quot;
+replacement = &quot;Здравствуйте! Спасибо за обращение.&quot;"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
+        <p class="actions"><a class="button primary" href="./snippets.html" data-ru="Как устроены сниппеты &lt;span aria-hidden=&quot;true&quot;&gt;→&lt;/span&gt;">How snippets work <span aria-hidden="true">→</span></a></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="voice-editing" aria-labelledby="voice-editing-title">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru="Правка голосом">Voice editing</span>
+      <h2 id="voice-editing-title" data-ru="Выдели абзац и скажи, что с ним сделать">Select a paragraph and say what to do with it</h2>
+      <p data-ru="Сниппет возвращает то, что ты написал заранее. Правка голосом делает то, чего заранее не напишешь: выдели текст, скажи указание, и выделение заменится результатом. «Переведи на немецкий», «добавь эмодзи», «сделай короче» — это обычные фразы, а не команды из списка">A snippet returns what you wrote earlier. Voice editing does what you cannot write in advance: select text, say the instruction, and the selection is replaced with the result. "Translate to German", "add emoji", "make it shorter" are ordinary phrases, not commands from a list</p>
+    </div>
+    <div class="grid grid-2">
+      <div class="snippet-demo">
+        <div class="snippet-pair">
+          <p class="snippet-sel"><span class="snippet-label" data-ru="Выделено">Selected</span><span data-ru="Привет, как дела? Созвон перенесли на завтра.">Hi, how are you? The call moved to tomorrow.</span></p>
+          <p class="snippet-say"><span class="snippet-label" data-ru="Ты говоришь">You say</span><span data-ru="переведи на немецкий">translate to German</span></p>
+          <p class="snippet-get"><span class="snippet-label" data-ru="Выделение становится">The selection becomes</span><span data-ru="Hallo, wie geht es dir? Der Anruf wurde auf morgen verschoben.">Hallo, wie geht es dir? Der Anruf wurde auf morgen verschoben.</span></p>
+        </div>
+        <div class="snippet-pair">
+          <p class="snippet-sel"><span class="snippet-label" data-ru="Выделено">Selected</span><span data-ru="Созвон перенесли на завтра. Не забудь документы.">The call moved to tomorrow. Do not forget the documents.</span></p>
+          <p class="snippet-say"><span class="snippet-label" data-ru="Ты говоришь">You say</span><span data-ru="добавь эмодзи">add emoji</span></p>
+          <p class="snippet-get"><span class="snippet-label" data-ru="Выделение становится">The selection becomes</span><span data-ru="📅 Созвон перенесли на завтра. 📄 Не забудь документы.">📅 The call moved to tomorrow. 📄 Do not forget the documents.</span></p>
+        </div>
+      </div>
+      <div>
+        <ul class="snippet-rules">
+          <li data-ru="Выдели текст, зажми &lt;kbd&gt;Ctrl&lt;/kbd&gt;+&lt;kbd&gt;Alt&lt;/kbd&gt;+&lt;kbd&gt;X&lt;/kbd&gt;, скажи указание и отпусти">Select text, hold <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>X</kbd>, say the instruction and release</li>
+          <li data-ru="Результат встаёт на место выделения в том же приложении, а &lt;kbd&gt;Ctrl&lt;/kbd&gt;+&lt;kbd&gt;Z&lt;/kbd&gt; возвращает прежний текст">The result takes the place of the selection in the same application, and <kbd>Ctrl</kbd>+<kbd>Z</kbd> brings the old text back</li>
+          <li data-ru="Модель возвращает только текст: без заголовков, markdown и пояснений, и не добавляет фактов">The model returns the text only: no headings, markdown or explanations, and no facts it was not given</li>
+          <li data-ru="Нужна модель, локальная или облачная; её вызовы входят в стоимость модели в статистике">It needs a model, local or cloud; its calls enter the model cost in the statistics</li>
+        </ul>
+        <p class="actions"><a class="button primary" href="./command-mode.html" data-ru="Как это работает &lt;span aria-hidden=&quot;true&quot;&gt;→&lt;/span&gt;">How it works <span aria-hidden="true">→</span></a></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="files" aria-labelledby="files-title">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru="Файлы">Files</span>
+      <h2 id="files-title" data-ru="Запись становится текстом, который можно искать">A recording becomes text you can search</h2>
+      <p data-ru="Аудио и видео расшифровываются тем же распознавателем, что и диктовка, и попадают в тот же журнал. Поэтому один поиск смотрит и на надиктованные фразы, и на трёхчасовую запись, а у каждого совпадения есть таймкод">Audio and video are transcribed by the same recognizer as dictation and land in the same journal. So one search looks at dictated phrases and at a three-hour recording alike, and every hit carries a timecode</p>
+    </div>
+    <div class="grid grid-2">
+      <div class="snippet-demo">
+        <div class="snippet-pair">
+          <p class="snippet-sel"><span class="snippet-label" data-ru="Файл">File</span><span data-ru="2026-11-07 19-42-13.mp4 · 7,2 с">2026-11-07 19-42-13.mp4 · 7.2 s</span></p>
+          <p class="snippet-get"><span class="snippet-label" data-ru="Расшифровка">Transcript</span><span class="snippet-time">00:01.000</span><span data-ru="Тестовое видео.">Test video.</span><br><span class="snippet-time">00:03.080</span><span data-ru="Раз, два, три.">One, two, three.</span></p>
+        </div>
+        <div class="snippet-pair">
+          <p class="snippet-sel"><span class="snippet-label" data-ru="Поиск">Search</span><span data-ru="molva search &quot;два&quot;">molva search "two"</span></p>
+          <p class="snippet-get"><span class="snippet-label" data-ru="Найдено">Found</span><span class="snippet-time">00:03.080</span><span data-ru="2026-11-07 19-42-13.mp4 — Раз, два, три.">2026-11-07 19-42-13.mp4 — One, two, three.</span></p>
+        </div>
+      </div>
+      <div>
+        <ul class="snippet-rules">
+          <li data-ru="Аудио и видео: mp4, mkv, webm, mp3, wav, flac и всё, что декодирует ffmpeg">Audio and video: mp4, mkv, webm, mp3, wav, flac and anything ffmpeg decodes</li>
+          <li data-ru="«Резать по паузам» включено по умолчанию: файл режется там, где говорящий замолчал, и каждый кусок распознаётся отдельно">Cut at pauses is on by default: the file is cut where the speaker stopped, and each chunk is recognized on its own</li>
+          <li data-ru="Отмена убивает процесс распознавателя, поэтому трёхчасовой файл останавливается сразу, а не после текущего куска">Cancel kills the recognizer process, so a three-hour file stops at once rather than after the current chunk</li>
+          <li data-ru="Окно играет файл рядом с расшифровкой: видео в превью, аудио волной громкости, и текст прокручивается за воспроизведением">The window plays the file beside its transcript: video in a preview, audio as a loudness waveform, and the text scrolls with playback</li>
+          <li data-ru="Пакет из каталога, вложенного дерева или stdin, и один плохой файл не отменяет остальные">A batch from a directory, a nested tree or stdin, and one bad file does not cancel the rest</li>
+        </ul>
+        <div class="cmd"><code>molva transcribe talks/ --recursive --timecodes</code><button class="copy-button" type="button" data-copy="molva transcribe talks/ --recursive --timecodes"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
+        <p class="actions"><a class="button primary" href="./features.html#files" data-ru="Файлы и поиск &lt;span aria-hidden=&quot;true&quot;&gt;→&lt;/span&gt;">Files and search <span aria-hidden="true">→</span></a></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="styles" aria-labelledby="styles-title">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker" data-ru="Стили">Styles</span>
+      <h2 id="styles-title" data-ru="Один и тот же голос, три разных текста">The same voice, three different texts</h2>
+      <p data-ru="Стиль решает, что случится с текстом после правил, и звать ли модель. «Как сказано» не зовёт её никогда, поэтому работает офлайн и стоит ноль. «Чистка» и «Формально» идут через модель и переписывают фразу в своём ключе">A style decides what happens to the text after the rules, and whether the model is called. As spoken never calls it, so it works offline and costs nothing. Cleanup and Formal go through the model and rewrite the phrase in their own key</p>
+    </div>
+    <div class="grid grid-3">
+      <article class="card">
+        <span class="sticker" data-ru="Без модели">No model</span>
+        <h3 data-ru="Как сказано">As spoken</h3>
+        <p class="muted" data-ru="Словарь и правила, и ничего больше. Ни одного токена, ни одной сети, ни одной задержки на вызов">The dictionary and the rules, and nothing else. Not one token, no network, no wait for a call</p>
+      </article>
+      <article class="card">
+        <span class="sticker alt" data-ru="Модель">Model</span>
+        <h3 data-ru="Чистка">Cleanup</h3>
+        <p class="muted" data-ru="Пунктуация, регистр и ошибки распознавания, оговорки и слова-паразиты. Остальные слова, смысл и термины остаются. Стиль по умолчанию из коробки">Punctuation, case and recognition errors, slips and fillers. Every other word, the meaning and the terms stay. The default style out of the box</p>
+      </article>
+      <article class="card">
+        <span class="sticker alt" data-ru="Модель">Model</span>
+        <h3 data-ru="Формально">Formal</h3>
+        <p class="muted" data-ru="Официально-деловой стиль: полные предложения, без разговорных оборотов и эмоций. Для писем и документов">Formal business style: full sentences, no colloquial turns or emotion. For letters and documents</p>
+      </article>
+    </div>
+    <p class="footnote" data-ru="&lt;code&gt;style.by_app&lt;/code&gt; даёт каждому классу окна свой стиль, а у своего стиля есть имя, промпт и минимум слов: фраза короче минимума идёт мимо модели. Полный список печатает &lt;code&gt;molva styles list&lt;/code&gt;"><code>style.by_app</code> gives each window class its own style, and a custom style carries a name, a prompt and a word minimum: a phrase shorter than the minimum skips the model. The full list comes from <code>molva styles list</code></p>
+  </div>
+</section>
+
 <section class="section">
   <div class="wrap">
     <div class="section-head">
@@ -289,7 +424,7 @@
           </tr>
           <tr>
             <th scope="row" data-ru="Сниппеты">Snippets</th>
-            <td data-ru="&lt;span class=&quot;verdict verdict-yes&quot;&gt;Да&lt;/span&gt; фраза из &lt;code&gt;[snippets]&lt;/code&gt; заменяется целиком готовым текстом до модели; &lt;code&gt;*&lt;/code&gt; совпадает с любым текстом, в том числе пустым, но в замену ничего не подставляет, а точная фраза важнее wildcard"><span class="verdict verdict-yes">Yes</span> a whole phrase from <code>[snippets]</code> is replaced with saved text before the model; <code>*</code> matches any text, including none, but adds nothing to the replacement, and an exact phrase wins over a wildcard</td>
+            <td data-ru="&lt;span class=&quot;verdict verdict-yes&quot;&gt;Да&lt;/span&gt; фраза из &lt;code&gt;[snippets]&lt;/code&gt; заменяется целиком готовым текстом до модели; &lt;code&gt;*&lt;/code&gt; совпадает с любым текстом, в том числе пустым, но в замену ничего не подставляет, а точная фраза важнее wildcard. &lt;a href=&quot;./snippets.html&quot;&gt;Подробно&lt;/a&gt;"><span class="verdict verdict-yes">Yes</span> a whole phrase from <code>[snippets]</code> is replaced with saved text before the model; <code>*</code> matches any text, including none, but adds nothing to the replacement, and an exact phrase wins over a wildcard. <a href="./snippets.html">In detail</a></td>
             <td data-ru="&lt;span class=&quot;verdict verdict-yes&quot;&gt;Да&lt;/span&gt; произнесённый триггер разворачивается в сохранённый текст отдельно или внутри фразы; текст статичный, страница не описывает ни переменных, ни wildcard, а замена ограничена 4000 символами"><span class="verdict verdict-yes">Yes</span> a spoken trigger expands into saved text, alone or inside a sentence; the text is static, the page documents no variables or wildcards, and an expansion stops at 4,000 characters</td>
             <td data-ru="&lt;span class=&quot;verdict&quot;&gt;Частично&lt;/span&gt; в самих Voice Typing и Dictation сниппетов нет. Windows 11 Voice access даёт Voice shortcuts с действием Paste text and media. macOS Voice Control даёт созданные вручную команды с действием Paste Text. Это соседние функции ОС, а не сама диктовка. Voice shortcuts документированы только для английских локалей; Text Replacement в macOS подставляет набранный текст, а не речь"><span class="verdict">Partly</span> Voice Typing and Dictation themselves have no snippets. Windows 11 Voice access offers Voice shortcuts with a Paste text and media action. macOS Voice Control offers custom commands with a Paste Text action. Both are sibling OS features rather than dictation itself. Voice shortcuts are documented for English locales only; macOS Text Replacement substitutes typed text rather than speech</td>
             <td data-ru="&lt;span class=&quot;verdict&quot;&gt;Нет&lt;/span&gt; эндпоинт расшифровывает аудио и возвращает текст; ни таблицы триггеров, ни готовых ответов документация API не описывает, а необязательное поле &lt;code&gt;prompt&lt;/code&gt; передаёт подсказку на один запрос"><span class="verdict">No</span> the endpoint transcribes audio and returns text; the API documents neither a trigger table nor saved replies, and its optional <code>prompt</code> field carries per-request context</td>
@@ -390,7 +525,7 @@
     <div class="wrap">
     <div class="section-head">
       <span class="kicker" data-ru="Установка">Install</span>
-      <h2 data-ru="Выбери способ под свою машину">Pick the way that fits your machine</h2>
+      <h2 id="install-title" data-ru="Выбери способ под свою машину">Pick the way that fits your machine</h2>
       <p data-ru="С Nix весь тулчейн остаётся в хранилище. Без Nix установщик печатает точные команды для твоего дистрибутива и ничего не меняет без тебя">With Nix the toolchain stays in the store. Without Nix, the installer prints the exact commands for your distribution and changes nothing without you</p>
     </div>
       <div class="tabs" data-tabs>
@@ -432,9 +567,17 @@ programs.molvai.enable = true;</code></pre>
       <p data-ru="Проект в разработке. Страница статуса говорит, что работает, а что вырезано, и ссылается на канонический файл в репозитории">The project is in development. The status page says what works and what is cut, and it links the canonical file in the repository</p>
     </div>
     <div class="grid grid-3">
+      <a class="card" href="./snippets.html">
+        <h3 data-ru="Сниппеты &lt;span aria-hidden=&quot;true&quot;&gt;→&lt;/span&gt;">Snippets <span aria-hidden="true">→</span></h3>
+        <p class="muted" data-ru="Правила совпадения, wildcard, настройка, вкладка в окне и честные пределы">The matching rules, wildcards, the settings, the tab in the window and the honest limits</p>
+      </a>
+      <a class="card" href="./command-mode.html">
+        <h3 data-ru="Правка голосом &lt;span aria-hidden=&quot;true&quot;&gt;→&lt;/span&gt;">Voice editing <span aria-hidden="true">→</span></h3>
+        <p class="muted" data-ru="Выдели текст, скажи указание, получи результат на месте: перевод, эмодзи, короткая версия">Select text, say the instruction, get the result in place: a translation, emoji, a shorter version</p>
+      </a>
       <a class="card" href="./features.html">
         <h3 data-ru="Возможности &lt;span aria-hidden=&quot;true&quot;&gt;→&lt;/span&gt;">Features <span aria-hidden="true">→</span></h3>
-        <p class="muted" data-ru="Push-to-talk, черновик по мере речи, режим команды, расшифровка файлов, поиск и журнал">Push-to-talk, a draft while you speak, command mode, file transcription, search and the journal</p>
+        <p class="muted" data-ru="Push-to-talk, черновик по мере речи, правка голосом, расшифровка файлов, поиск и журнал">Push-to-talk, a draft while you speak, voice editing, file transcription, search and the journal</p>
       </a>
       <a class="card" href="./models.html">
         <h3 data-ru="Модели &lt;span aria-hidden=&quot;true&quot;&gt;→&lt;/span&gt;">Models <span aria-hidden="true">→</span></h3>
@@ -471,6 +614,8 @@ programs.molvai.enable = true;</code></pre>
     <nav aria-label="Site links" data-ru-aria-label="Страницы сайта">
       <p class="footer-title" data-ru="Сайт">Site</p>
       <ul>
+        <li><a href="./snippets.html" data-ru="Сниппеты">Snippets</a></li>
+        <li><a href="./command-mode.html" data-ru="Правка голосом">Voice editing</a></li>
         <li><a href="./features.html" data-ru="Возможности">Features</a></li>
         <li><a href="./models.html" data-ru="Модели">Models</a></li>
         <li><a href="./cli.html" data-ru="Справочник CLI">CLI reference</a></li>

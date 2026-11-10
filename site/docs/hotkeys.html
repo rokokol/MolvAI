@@ -41,6 +41,8 @@
     <p class="tagline" data-ru="Голосовой ввод во все приложения">System-wide voice input, on your machine</p>
     <nav class="tabs" aria-label="Main" data-ru-aria-label="Основное">
       <a href="../index.html" data-ru="Главная">Home</a>
+      <a href="../snippets.html" data-ru="Сниппеты">Snippets</a>
+      <a href="../command-mode.html" data-ru="Правка голосом">Voice editing</a>
       <a href="../features.html" data-ru="Возможности">Features</a>
       <a href="../models.html" data-ru="Модели">Models</a>
       <a href="../cli.html" data-ru="CLI">CLI</a>
@@ -78,6 +80,8 @@
     </ul>
     <p class="doc-nav-title" data-ru="Ещё">Elsewhere</p>
     <ul>
+      <li><a href="../snippets.html" data-ru="Сниппеты">Snippets</a></li>
+      <li><a href="../command-mode.html" data-ru="Правка голосом">Voice editing</a></li>
       <li><a href="../cli.html" data-ru="Справочник CLI">CLI reference</a></li>
       <li><a href="../models.html" data-ru="Каталог моделей">Model catalog</a></li>
       <li><a href="../index.html" data-ru="Главная">Home</a></li>
@@ -99,7 +103,7 @@
     <tbody>
             <tr><th scope="row" data-ru="&lt;code&gt;push_to_talk&lt;/code&gt;"><code>push_to_talk</code></th><td data-ru="&lt;kbd&gt;F9&lt;/kbd&gt;"><kbd>F9</kbd></td><td data-ru="Пишет, пока клавиша нажата">Records while the key is held</td></tr>
             <tr><th scope="row" data-ru="&lt;code&gt;toggle&lt;/code&gt;"><code>toggle</code></th><td data-ru="&lt;kbd&gt;Ctrl&lt;/kbd&gt;+&lt;kbd&gt;Alt&lt;/kbd&gt;+&lt;kbd&gt;Z&lt;/kbd&gt;"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Z</kbd></td><td data-ru="Начинает и заканчивает запись нажатием, без рук">Starts and stops a recording by a press, hands-free</td></tr>
-            <tr><th scope="row" data-ru="&lt;code&gt;command&lt;/code&gt;"><code>command</code></th><td data-ru="&lt;kbd&gt;Ctrl&lt;/kbd&gt;+&lt;kbd&gt;Alt&lt;/kbd&gt;+&lt;kbd&gt;X&lt;/kbd&gt;"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>X</kbd></td><td data-ru="Режим команды над выделенным текстом">Command mode on the selected text</td></tr>
+            <tr><th scope="row" data-ru="&lt;code&gt;command&lt;/code&gt;"><code>command</code></th><td data-ru="&lt;kbd&gt;Ctrl&lt;/kbd&gt;+&lt;kbd&gt;Alt&lt;/kbd&gt;+&lt;kbd&gt;X&lt;/kbd&gt;"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>X</kbd></td><td data-ru="Правка голосом: указание применяется к выделенному тексту">Voice editing: the instruction is applied to the selected text</td></tr>
             <tr><th scope="row" data-ru="&lt;code&gt;cancel&lt;/code&gt;"><code>cancel</code></th><td data-ru="&lt;kbd&gt;Ctrl&lt;/kbd&gt;+&lt;kbd&gt;Alt&lt;/kbd&gt;+&lt;kbd&gt;C&lt;/kbd&gt;"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd></td><td data-ru="Выбрасывает запись, не создавая фразу">Throws the recording away without a phrase</td></tr>
             <tr><th scope="row" data-ru="&lt;code&gt;style_next&lt;/code&gt;"><code>style_next</code></th><td data-ru="&lt;kbd&gt;Ctrl&lt;/kbd&gt;+&lt;kbd&gt;Alt&lt;/kbd&gt;+&lt;kbd&gt;S&lt;/kbd&gt;"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd></td><td data-ru="Следующий стиль постобработки по кругу">The next post-processing style in a circle</td></tr>
             <tr><th scope="row" data-ru="&lt;code&gt;min_hold_ms&lt;/code&gt;"><code>min_hold_ms</code></th><td data-ru="200">200</td><td data-ru="Более короткое удержание не создаёт фразу">A shorter hold does not create a phrase</td></tr>
@@ -119,7 +123,7 @@
 <div class="cmd"><code>molva setup hyprland --write</code><button class="copy-button" type="button" data-copy="molva setup hyprland --write"><span class="sr-only" data-ru="Скопировать">Copy</span></button></div>
 <pre data-lang="lua"><code>-- ~/.config/hypr/hyprland.lua
 dofile(os.getenv("HOME") .. "/.config/hypr/molvai.lua")</code></pre>
-<p data-ru="Сгенерированный файл содержит пару для удержания и привязки для переключения, режима команды и отмены. Привязка отмены не поглощает клавишу, поэтому она доходит до приложения и обычный Escape работает в других местах">The generated file holds a pair for the hold and binds for the toggle, command mode and cancel. The cancel bind is non-consuming, so the key still reaches the application and a bare Escape keeps working elsewhere</p>
+<p data-ru="Сгенерированный файл содержит пару для удержания и привязки для переключения, правки голосом и отмены. Привязка отмены не поглощает клавишу, поэтому она доходит до приложения и обычный Escape работает в других местах">The generated file holds a pair for the hold and binds for the toggle, voice editing and cancel. The cancel bind is non-consuming, so the key still reaches the application and a bare Escape keeps working elsewhere</p>
 <pre data-lang="lua"><code>hl.bind("F9", hl.dsp.exec_cmd("molva record start --hotkey"), { description = "MolvAI: dictate while the key is held" })
 hl.bind("F9", hl.dsp.exec_cmd("molva record stop"), { release = true, description = "MolvAI: paste the text on release" })
 hl.bind("CTRL + ALT + Z", hl.dsp.exec_cmd("molva record toggle --hotkey"), { description = "MolvAI: start or stop a recording" })</code></pre>
