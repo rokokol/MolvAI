@@ -6,6 +6,8 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ## Unreleased
 
+## [0.3.0] - 2026-11-10
+
 ### Added
 
 - Runtime settings overrides: a managed Nix config stays editable in the GUI and through `molva config set`; changes go to `~/.config/molva/runtime.toml` and last until a rebuild changes the declarative config
