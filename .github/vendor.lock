@@ -21,3 +21,4 @@ site/assets/vendor/ddlc/MyaNunito.woff2 rokokol/ddlc-themes dist/MyaNunito.woff2
 site/assets/vendor/ddlc/MyaNunito-Italic.woff2 rokokol/ddlc-themes dist/MyaNunito-Italic.woff2 5dcc8907c67cf60287349d8085992e4edd3a86bc a614d128dc9c5955067df5584b3d5beaa36425c6
 site/assets/vendor/ddlc/MyaNunito-LICENSE.txt rokokol/ddlc-themes dist/MyaNunito-LICENSE.txt 5dcc8907c67cf60287349d8085992e4edd3a86bc 61526872c23ea450f97a6e9701cf9ff479ca095f
 site/assets/vendor/ddlc/DepartureMono-LICENSE.txt rokokol/ddlc-themes dist/DepartureMono-LICENSE.txt 5dcc8907c67cf60287349d8085992e4edd3a86bc de52476183807bbfc04e8ae7bced1dc9cbcbfd2f
+scripts/check-nix.sh rokokol/nix-best-practices-skill check-nix.sh b630f92842b103c6b5f6c2fc1f7ed1ab69f1d088 3e6e3ff44550daaebf1600072ef2d0ea680e7a3a

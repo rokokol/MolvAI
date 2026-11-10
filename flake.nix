@@ -145,10 +145,15 @@
         let
           isLinux = pkgs.stdenv.hostPlatform.isLinux;
 
-          # The Nix formatter: the same binary that the formatter output below wraps.
-          # The gate calls it through `nix fmt`, because without the formatter output
-          # the command does nothing and there would be nothing to check
-          nixTools = with pkgs; [ nixfmt ];
+          # The three tools that decide what they can of the Nix: layout, antipatterns and dead
+          # code. The travelling checker needs jq for its own rules and refuses to run without
+          # every one of them, so the shell is where they live rather than the host
+          nixTools = with pkgs; [
+            nixfmt
+            statix
+            deadnix
+            jq
+          ];
 
           # The Rust toolchain and the tools of the gate
           # The lock moved to a nixpkgs where the cargo-llvm-cov tests fail inside the
@@ -186,6 +191,19 @@
           # The libraries of the core
           coreLibs = with pkgs; [ openssl ] ++ pkgs.lib.optionals isLinux [ alsa-lib ];
 
+          # WebKitGTK decodes media through GStreamer, and the plugins are not a dependency of the
+          # library: without them an H.264 file makes the window wait forever. The same list the
+          # packaged window carries
+          gstPlugins =
+            with pkgs.gst_all_1;
+            pkgs.lib.optionals isLinux [
+              gstreamer
+              gst-plugins-base
+              gst-plugins-good
+              gst-plugins-bad
+              gst-libav
+            ];
+
           # Tauri 2 on Linux: webkit, gtk, tray
           tauriLibs =
             with pkgs;
@@ -217,7 +235,19 @@
           };
 
           base = {
-            packages = rustTools ++ nixTools ++ nativeBuild ++ coreLibs ++ tauriLibs ++ waylandTools;
+            packages =
+              rustTools
+              ++ nixTools
+              ++ nativeBuild
+              ++ coreLibs
+              ++ tauriLibs
+              ++ waylandTools
+              ++ gstPlugins;
+
+            # WebKit reads the media plugins from this path and never from the registry
+            GST_PLUGIN_SYSTEM_PATH_1_0 = pkgs.lib.optionalString isLinux (
+              pkgs.lib.makeSearchPathOutput "lib" "lib/gstreamer-1.0" gstPlugins
+            );
 
             # The whisper-rs bindings are already in the crate, so libclang is not needed
             WHISPER_DONT_GENERATE_BINDINGS = "1";

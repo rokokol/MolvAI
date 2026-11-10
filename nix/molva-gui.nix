@@ -15,6 +15,7 @@
   gtk3,
   webkitgtk_4_1,
   libsoup_3,
+  gst_all_1,
   openssl,
   alsa-lib,
   libxkbcommon,
@@ -56,6 +57,13 @@ rustPlatform.buildRustPackage (finalAttrs: {
     gtk3
     webkitgtk_4_1
     libsoup_3
+    # WebKitGTK draws and decodes media through GStreamer; the plugins are a separate input, and
+    # without the H.264 and AAC ones a video never starts playing
+    gst_all_1.gstreamer
+    gst_all_1.gst-plugins-base
+    gst_all_1.gst-plugins-good
+    gst_all_1.gst-plugins-bad
+    gst_all_1.gst-libav
     openssl
     alsa-lib
     libxkbcommon
@@ -71,9 +79,19 @@ rustPlatform.buildRustPackage (finalAttrs: {
   doCheck = false;
 
   # The tray crate loads libayatana-appindicator3 at runtime, so no NEEDED entry puts it
-  # into RUNPATH; the wrapper has to name it
+  # into RUNPATH; the wrapper has to name it. The media plugins are found by their directory
+  # too: WebKit asks GStreamer, and GStreamer reads this path
   preFixup = ''
-    gappsWrapperArgs+=(--prefix LD_LIBRARY_PATH : "${libayatana-appindicator}/lib")
+    gappsWrapperArgs+=(
+      --prefix LD_LIBRARY_PATH : "${libayatana-appindicator}/lib"
+      --prefix GST_PLUGIN_SYSTEM_PATH_1_0 : "${lib.makeSearchPathOutput "lib" "lib/gstreamer-1.0" [
+        gst_all_1.gstreamer
+        gst_all_1.gst-plugins-base
+        gst_all_1.gst-plugins-good
+        gst_all_1.gst-plugins-bad
+        gst_all_1.gst-libav
+      ]}"
+    )
   '';
 
   meta = {
