@@ -419,6 +419,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      # The notes are the changelog section of this version, so the job needs the file
+      - uses: actions/checkout@v7
+
       - uses: actions/download-artifact@v8
         with:
           path: staging
@@ -431,8 +434,28 @@ jobs:
           sha256sum ./* > sha256sums.txt
           cat sha256sums.txt
 
+      # The release page resolves a relative link under /releases/tag/, where it leads
+      # nowhere, so every link in the section points at the tree of this tag instead
+      - name: Take the notes from the changelog
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          notes="$RUNNER_TEMP/notes.md"
+          awk -v heading="## [$version]" '
+            index($0, heading) == 1 { found = 1; next }
+            found && /^## / { exit }
+            found
+          ' CHANGELOG.md > "$notes"
+          if ! grep -q '[^[:space:]]' "$notes"; then
+            echo "CHANGELOG.md has no section for $version" >&2
+            exit 1
+          fi
+          sed -E "s|\]\((\\./)?([^):]+)(#[^)]*)?\)|](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/\\2\\3)|g" \
+            "$notes" > "$notes.linked"
+          mv "$notes.linked" "$notes"
+          head -5 "$notes"
+
       - uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           fail_on_unmatched_files: true
-          generate_release_notes: true
+          body_path: ${{ runner.temp }}/notes.md

@@ -40,6 +40,23 @@ jobs:
           rm -rf _site/docs/img
           cp -R docs/img _site/docs/img
 
+      # The version lives in Cargo.toml alone: the status page carries a placeholder, and the
+      # published copy is the one place the number is written. A release that bumps the manifest
+      # needs no second edit
+      - name: Write the version into the status page
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          if [ -z "$version" ]; then
+            echo "Cargo.toml has no version" >&2
+            exit 1
+          fi
+          sed -i "s/__MOLVAI_VERSION__/$version/g" _site/docs/status.html
+          if grep -q '__MOLVAI_VERSION__' _site/docs/status.html; then
+            echo "the status page still holds a placeholder" >&2
+            exit 1
+          fi
+          grep -o "v$version" _site/docs/status.html | head -n 1
+
       - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
