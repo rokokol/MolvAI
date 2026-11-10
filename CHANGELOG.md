@@ -6,6 +6,10 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ## Unreleased
 
+### Changed
+
+- The gate checks the Nix layout and the travelling Nix checker, so a formatting slip no longer reaches CI: the checker runs on a worktree, because Nix copies a path flake whole and the build directory is a hundred gigabytes
+
 ## [0.3.1] - 2026-11-10
 
 ### Added

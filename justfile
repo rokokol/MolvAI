@@ -10,7 +10,7 @@ test_cmd := "cargo test --workspace --no-fail-fast"
 default: check
 
 # The full gate: formatting, linter, dependencies, tests, SPDX headers, no stubs
-check: fmt clippy lint-deps test spdx-check no-stubs comments prose sh-check
+check: fmt clippy lint-deps test spdx-check no-stubs comments prose sh-check nix-fmt nix-check
 
 fmt:
     cargo fmt --all --check
@@ -61,6 +61,29 @@ sh-check:
     for script in install.sh scripts/check-appimage.sh scripts/appimage-update-info.sh; do
         scripts/check-sh.sh "$script"
     done
+
+# The Nix layout, as the lint job of CI checks it: the formatter comes from the flake's own output
+nix-fmt:
+    nix fmt -- --ci
+
+# The travelling Nix checker: layout, statix, deadnix and the rules none of them reach
+#
+# It reads the tree as a path flake, and Nix copies a path flake whole: this repository keeps a
+# build directory of a hundred gigabytes, and the copy would run for half an hour. The check
+# therefore runs on a detached worktree of the tracked files, which is the same tree the gate
+# already committed
+nix-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # The worktree holds what was committed, so a change still in the hand of the developer is not
+    # what gets checked: say it instead of passing silently on an older tree
+    if [ -n "$(git status --porcelain -- '*.nix' flake.lock)" ]; then
+        echo "nix-check: uncommitted Nix changes are not part of this run" >&2
+    fi
+    wt=$(mktemp -d "${TMPDIR:-/tmp}/molva-nixcheck.XXXXXX")
+    trap 'git worktree remove --force "$wt" >/dev/null 2>&1 || true' EXIT
+    git worktree add --detach "$wt" HEAD >/dev/null
+    "$wt/scripts/check-nix.sh" -C "$wt"
 
 # Every source file has an SPDX header
 spdx-check:
