@@ -29,7 +29,6 @@ pub mod media_server;
 pub mod paths;
 pub mod providers;
 pub mod sidecar;
-pub mod stats;
 pub mod tray;
 
 use std::path::PathBuf;

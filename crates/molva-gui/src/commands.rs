@@ -18,6 +18,8 @@ use molva_core::app::hotkeys::HotkeySpec;
 use molva_core::app::models::{self, DownloadProgress};
 use molva_core::app::probe::{LlmProbeReport, ProbeFailure, ProbeOutcome, SttProbeReport};
 use molva_core::app::secrets::{self, SecretError, SecretStore};
+// The summary is the core's own: a second copy here drifted from it and lost the model cost
+use molva_core::app::stats::{self, StatsSummary};
 use molva_core::config::{ConfigError, HotkeysConfig};
 use molva_core::domain::entry::{Mode, Source};
 use molva_core::domain::llm::LlmError;
@@ -36,7 +38,6 @@ use crate::lock;
 use crate::media_server::MediaServer;
 use crate::paths::{self, MediaKind, PathSuggestion};
 use crate::sidecar::{self, Daemon, DaemonFailure, SidecarError, READY_STEP};
-use crate::stats::{self, StatsSummary};
 
 /// A command error in the form that the interface shows: reason, hint, field
 #[derive(Debug, Clone, Serialize)]
@@ -1395,11 +1396,15 @@ pub fn stats_export_csv(
     state: State<'_, AppState>,
     range_days: Option<u32>,
 ) -> Result<String, CommandError> {
-    let summary = stats_summary(state, range_days)?;
+    // One export for the window and for `molva stats export`: the table is per phrase, and a
+    // second shape built from the day series would be a second answer to the same question
+    let _ = range_days;
+    let config = state.config();
+    let entries = history::load_for(&config)?;
     let dir = history::data_dir()?;
     std::fs::create_dir_all(&dir).map_err(|e| CommandError::new("history", e.to_string()))?;
     let path = dir.join(format!("molva-stats-{}.csv", Utc::now().format("%Y-%m-%d")));
-    std::fs::write(&path, stats::series_to_csv(&summary.series))
+    std::fs::write(&path, stats::export_csv(&entries))
         .map_err(|e| CommandError::new("history", e.to_string()))?;
     Ok(path.display().to_string())
 }

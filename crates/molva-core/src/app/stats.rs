@@ -893,6 +893,15 @@ mod tests {
         }
         assert_eq!(value["latency_ms"]["stt"], 400);
         assert_eq!(value["tokens"]["prompt"], 0);
+        // The window reads the cost from these three: a field missing here showed "not reported"
+        // for a priced call, because `undefined === undefined` is true in TypeScript
+        for key in ["cost_usd", "calls", "unpriced_calls"] {
+            assert!(
+                value["tokens"].get(key).is_some(),
+                "missing field tokens.{key}: {}",
+                value["tokens"]
+            );
+        }
         assert_eq!(value["series"][0]["day"], "2026-09-05");
     }
 
