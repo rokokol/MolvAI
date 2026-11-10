@@ -47,7 +47,7 @@ pub fn llm_providers() -> Vec<LlmProviderOption> {
                 base_url: provider.default_base_url().to_string(),
                 model: (*model).to_string(),
                 api_key_env: (*api_key_env).to_string(),
-                is_local: provider.is_local(),
+                is_local: provider.is_local_by_default(),
             }
         })
         .collect()
@@ -68,7 +68,7 @@ mod tests {
             );
             assert_eq!(
                 option.is_local,
-                Provider::parse(&option.id).is_local(),
+                Provider::parse(&option.id).is_local_by_default(),
                 "{}",
                 option.id
             );

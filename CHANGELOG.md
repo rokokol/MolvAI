@@ -24,6 +24,8 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 - Voice editing is the name of the feature everywhere: the site, the GUI hotkey label, the documentation and the error the daemon returns. `command` stays the name of the hotkey key and `command_mode` the name of the settings section, because a rename there would break every existing configuration
 
+- Whether a model is local now follows the address rather than the provider name. Ollama Cloud answers at `https://ollama.com/v1` under the same `ollama` id, so a cloud model was counted as a local one and its calls as free; the name now only supplies the default URL, and an empty address still means the local server
+
 - The gate checks the Nix layout and the travelling Nix checker, so a formatting slip no longer reaches CI: the checker runs on a worktree, because Nix copies a path flake whole and the build directory is a hundred gigabytes
 
 ## [0.3.1] - 2026-11-10

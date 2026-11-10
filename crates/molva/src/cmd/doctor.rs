@@ -132,7 +132,13 @@ pub(crate) fn llm_check(config: &Config) -> Check {
         secrets::api_key(&config.llm),
         LLM_PROBE_TIMEOUT,
         provider.id(),
-        provider.is_local(),
+        // The address decides, as in the client itself: Ollama Cloud answers at the same provider
+        // id and is not this machine
+        if config.llm.base_url.trim().is_empty() {
+            provider.is_local_by_default()
+        } else {
+            molva_core::infra::llm::openai_compat::is_loopback_url(&base_url)
+        },
     ) {
         Ok(client) => client,
         Err(error) => return client_not_built(&error),

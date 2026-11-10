@@ -18,6 +18,7 @@ Everything else in the default configuration happens on the machine: recording f
 | Address | The setting that turns it on | What goes out |
 | --- | --- | --- |
 | `http://localhost:11434/v1` | `llm.enabled = true` with `llm.provider = "ollama"` (the default value) | the text of the phrase goes to Ollama on the same machine and does not go outside |
+| `https://ollama.com/v1` | `llm.provider = "ollama"` with `llm.base_url = "https://ollama.com/v1"`, the key in `OLLAMA_API_KEY` | the text of the phrase goes to Ollama Cloud, a third-party provider that bills per token. The address decides, not the provider name: the same `ollama` on a loopback address stays local |
 | `http://localhost:1234/v1` | `llm.provider = "lmstudio"` | the same, a local LM Studio |
 | `https://api.openai.com/v1` | `llm.provider = "openai"` | the text of the phrase goes to a third-party provider |
 | `https://openrouter.ai/api/v1` | `llm.provider = "openrouter"` | the same |

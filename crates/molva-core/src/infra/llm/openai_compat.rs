@@ -71,8 +71,12 @@ impl Provider {
         }
     }
 
-    /// Whether the model is local: it goes to the journal in the `local_llm` field (criterion S-08)
-    pub fn is_local(&self) -> bool {
+    /// Whether a model of this provider runs beside the daemon when the URL is not set
+    ///
+    /// The name alone decides nothing: Ollama serves `https://ollama.com/v1` as its cloud, and a
+    /// provider called `ollama` there bills like any other cloud. So the name only fills in the
+    /// default URL, and the address decides
+    pub fn is_local_by_default(&self) -> bool {
         matches!(self, Provider::Ollama | Provider::LmStudio)
     }
 }
@@ -235,7 +239,14 @@ impl OpenAiCompatClient {
                 "the model URL is not set: fill in llm.base_url".into(),
             ));
         }
-        let is_local = provider.is_local() || is_loopback_url(&base_url);
+        // The address decides, not the name: Ollama Cloud is `https://ollama.com/v1` under the
+        // same provider id, and a model on that address costs money. The name only supplies the
+        // default URL, so an empty address still means the local server
+        let is_local = if cfg.base_url.trim().is_empty() {
+            provider.is_local_by_default()
+        } else {
+            is_loopback_url(&base_url)
+        };
         Self::new(
             base_url,
             cfg.model.clone(),
@@ -1134,14 +1145,46 @@ mod tests {
     }
 
     #[test]
+    fn the_cloud_under_a_local_provider_name_is_not_this_machine() {
+        // Ollama serves its cloud at the same provider id: the address decides, not the name
+        let cloud = LlmConfig {
+            provider: "ollama".into(),
+            base_url: "https://ollama.com/v1".into(),
+            ..LlmConfig::default()
+        };
+        let client = OpenAiCompatClient::from_config(&cloud, None).unwrap();
+        assert!(
+            !client.is_local(),
+            "the Ollama cloud was taken for a local model"
+        );
+
+        let local = LlmConfig {
+            provider: "ollama".into(),
+            base_url: "http://localhost:11434/v1".into(),
+            ..LlmConfig::default()
+        };
+        let client = OpenAiCompatClient::from_config(&local, None).unwrap();
+        assert!(client.is_local());
+
+        // An empty address means the default of the provider, and that default is local
+        let dflt = LlmConfig {
+            provider: "ollama".into(),
+            base_url: String::new(),
+            ..LlmConfig::default()
+        };
+        let client = OpenAiCompatClient::from_config(&dflt, None).unwrap();
+        assert!(client.is_local());
+    }
+
+    #[test]
     fn provider_presets_know_their_address_and_locality() {
         assert_eq!(Provider::parse("ollama"), Provider::Ollama);
         assert_eq!(Provider::parse("LM-Studio"), Provider::LmStudio);
         assert_eq!(Provider::parse("something custom"), Provider::Custom);
-        assert!(Provider::Ollama.is_local());
-        assert!(Provider::LmStudio.is_local());
-        assert!(!Provider::Groq.is_local());
-        assert!(!Provider::OpenAi.is_local());
+        assert!(Provider::Ollama.is_local_by_default());
+        assert!(Provider::LmStudio.is_local_by_default());
+        assert!(!Provider::Groq.is_local_by_default());
+        assert!(!Provider::OpenAi.is_local_by_default());
         assert_eq!(
             Provider::Groq.default_base_url(),
             "https://api.groq.com/openai/v1"

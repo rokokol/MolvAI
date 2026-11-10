@@ -43,8 +43,6 @@ use molva_core::infra::audio::decode;
 use molva_core::infra::inject::NoopInjector;
 use molva_core::infra::llm::openai_compat::OpenAiCompatClient;
 #[cfg(test)]
-use molva_core::infra::llm::openai_compat::Provider;
-#[cfg(test)]
 use molva_core::infra::stt::transcribe_with_language_policy;
 use molva_core::Config;
 #[cfg(test)]
@@ -146,6 +144,9 @@ impl FilePostprocessor {
         style: Style,
         llm: Option<Box<dyn LlmClient>>,
     ) -> Self {
+        // The client knows whether it talks to this machine: a provider id alone cannot tell
+        // Ollama's local server from Ollama Cloud
+        let llm_local = llm.as_ref().is_some_and(|client| client.is_local());
         Self {
             dictionary,
             rules: RuleSet::from_config(&cfg.rules),
@@ -153,7 +154,7 @@ impl FilePostprocessor {
             llm,
             llm_provider: cfg.llm.provider.clone(),
             llm_model: cfg.llm.model.clone(),
-            llm_local: Provider::parse(&cfg.llm.provider).is_local(),
+            llm_local,
             temperature: cfg.llm.temperature,
             max_tokens: cfg.llm.max_tokens,
         }
