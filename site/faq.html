@@ -156,8 +156,14 @@
         </details>
 
         <details>
-          <summary data-ru="Есть телеметрия или аккаунт?">Is there telemetry or an account?</summary>
+          <summary data-ru="Почему стоимость модели пустая или нулевая?">Why is the model cost empty or zero?</summary>
           <div class="answer">
+            <p data-ru="Цена берётся только оттуда, где её сообщает сам провайдер. OpenRouter возвращает точную сумму за каждый запрос, поэтому у него цифра настоящая. Локальная модель (Ollama и LM Studio на своей машине) стоит ноль — это известный ноль, а не пропущенное измерение. Groq, OpenAI и облако Ollama цены в ответе не возвращают, поэтому их вызовы считаются, а сумма помечается как неполная: &lt;code&gt;molva stats&lt;/code&gt; пишет «1 of 2 calls named no price». Расход по этим провайдерам смотри в их собственной панели. Облако Ollama — это тот же &lt;code&gt;ollama&lt;/code&gt; с &lt;code&gt;base_url = &quot;https://ollama.com/v1&quot;&lt;/code&gt;, и локальность решает адрес, а не имя провайдера">The price comes only from where the provider itself names it. OpenRouter returns the exact charge of every request, so its figure is real. A local model (Ollama and LM Studio on your own machine) costs zero, and that is a known zero rather than a missing measurement. Groq, OpenAI and Ollama Cloud return no price in the answer, so their calls are counted and the sum is marked incomplete: <code>molva stats</code> says "1 of 2 calls named no price". Look at those providers' own dashboards for the spend. Ollama Cloud is the same <code>ollama</code> with <code>base_url = "https://ollama.com/v1"</code>, and the address decides whether a model is local, not the provider name</p>
+          </div>
+        </details>
+
+        <details>
+          <summary data-ru="Есть телеметрия или аккаунт?">Is there telemetry or an account?</summary>          <div class="answer">
             <p data-ru="Ни того, ни другого. Нет регистрации, нет аналитики на этом сайте и нет телеметрии в приложении. В конфигурации есть ключ &lt;code&gt;privacy.telemetry&lt;/code&gt;, который существует, чтобы быть &lt;code&gt;false&lt;/code&gt; и говорить это явно">Neither. There is no sign-up, no analytics on this site and no telemetry in the application. The configuration carries a <code>privacy.telemetry</code> key that exists to be <code>false</code> and to state this explicitly</p>
           </div>
         </details>
