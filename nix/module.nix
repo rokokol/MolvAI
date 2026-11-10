@@ -35,7 +35,7 @@ let
   catalog = builtins.fromTOML (builtins.readFile (self + "/models.toml"));
   models = builtins.listToAttrs (
     map (model: {
-      name = model.name;
+      inherit (model) name;
       value = model;
     }) catalog.model
   );
@@ -46,7 +46,7 @@ let
   fetched = map (model: {
     inherit model;
     file = pkgs.fetchurl {
-      url = model.url;
+      inherit (model) url;
       hash = builtins.convertHash {
         hash = "sha256:${model.sha256}";
         toHashFormat = "sri";
@@ -68,7 +68,7 @@ let
 
   model = models.${cfg.model};
   usesTranscribe = model.engine == "transcribe-cpp";
-  engine = model.engine;
+  inherit (model) engine;
   cli =
     if usesTranscribe && cfg.transcribeCli != null then
       "${lib.getBin cfg.transcribeCli}/bin/transcribe-cli"
@@ -80,9 +80,9 @@ let
     ui_language = cfg.uiLanguage;
     stt = {
       inherit engine;
-      model = cfg.model;
+      inherit (cfg) model;
       model_path = "${weights}";
-      language = cfg.language;
+      inherit (cfg) language;
       streaming_inject = false;
       transcribe_cli = cli;
       transcribe_backend = cfg.transcribeBackend;

@@ -236,13 +236,7 @@
 
           base = {
             packages =
-              rustTools
-              ++ nixTools
-              ++ nativeBuild
-              ++ coreLibs
-              ++ tauriLibs
-              ++ waylandTools
-              ++ gstPlugins;
+              rustTools ++ nixTools ++ nativeBuild ++ coreLibs ++ tauriLibs ++ waylandTools ++ gstPlugins;
 
             # WebKit reads the media plugins from this path and never from the registry
             GST_PLUGIN_SYSTEM_PATH_1_0 = pkgs.lib.optionalString isLinux (

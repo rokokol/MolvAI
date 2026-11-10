@@ -1,6 +1,5 @@
 {
   lib,
-  stdenv,
   rustPlatform,
   fetchNpmDeps,
   npmDepsHash,
@@ -27,7 +26,7 @@
   version,
 }:
 
-rustPlatform.buildRustPackage (finalAttrs: {
+rustPlatform.buildRustPackage {
   pname = "molva-gui";
   inherit version;
 
@@ -84,13 +83,15 @@ rustPlatform.buildRustPackage (finalAttrs: {
   preFixup = ''
     gappsWrapperArgs+=(
       --prefix LD_LIBRARY_PATH : "${libayatana-appindicator}/lib"
-      --prefix GST_PLUGIN_SYSTEM_PATH_1_0 : "${lib.makeSearchPathOutput "lib" "lib/gstreamer-1.0" [
-        gst_all_1.gstreamer
-        gst_all_1.gst-plugins-base
-        gst_all_1.gst-plugins-good
-        gst_all_1.gst-plugins-bad
-        gst_all_1.gst-libav
-      ]}"
+      --prefix GST_PLUGIN_SYSTEM_PATH_1_0 : "${
+        lib.makeSearchPathOutput "lib" "lib/gstreamer-1.0" [
+          gst_all_1.gstreamer
+          gst_all_1.gst-plugins-base
+          gst_all_1.gst-plugins-good
+          gst_all_1.gst-plugins-bad
+          gst_all_1.gst-libav
+        ]
+      }"
     )
   '';
 
@@ -101,4 +102,4 @@ rustPlatform.buildRustPackage (finalAttrs: {
     mainProgram = "molva-gui";
     platforms = lib.platforms.linux;
   };
-})
+}
