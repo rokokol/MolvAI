@@ -31,7 +31,7 @@ Open the window at 900×600 and inspect `window.devicePixelRatio`, `window.inner
 
 ## Hyprland changes the keyboard layout after a uinput paste
 
-**Where:** `crates/molva-core/src/infra/inject/uinput.rs`, around `send_combo`. The paste and the copy of command mode share that combination. It covers Hyprland; Sway, KDE and GNOME have best-effort guards in the same module
+**Where:** `crates/molva-core/src/infra/inject/uinput.rs`, around `send_combo`. The paste and the copy of voice editing share that combination. It covers Hyprland; Sway, KDE and GNOME have best-effort guards in the same module
 
 **Symptom it prevents:** a successful paste through `uinput` leaves the client, and often the layout indicator, on the US layout even when the physical keyboard was on Russian. The next typed letter is wrong until the user switches back
 
@@ -39,6 +39,6 @@ Open the window at 900×600 and inspect `window.devicePixelRatio`, `window.inner
 
 **Why this works:** before `Ctrl+V` the virtual device is switched to group 0, where the V key code is V, and after the paste it is switched back to the group of the physical keyboard. The physical keyboard itself is not touched. Sway uses `swaymsg input … xkb_switch_layout`, KDE uses `org.kde.KeyboardLayouts`, and GNOME uses the Shell input-source manager; a session without the command simply skips the guard
 
-**Removal check:** on Hyprland, record a phrase with the physical keyboard on Russian, then run `hyprctl devices -j` and compare `active_keymap` for the physical keyboard and `molvai-virtual-keyboard`. Both must remain Russian after the phrase. Run command mode once with a selection and repeat the comparison, because the copy combination takes the same path. The same check on Sway, KDE and GNOME decides whether their guard can stay
+**Removal check:** on Hyprland, record a phrase with the physical keyboard on Russian, then run `hyprctl devices -j` and compare `active_keymap` for the physical keyboard and `molvai-virtual-keyboard`. Both must remain Russian after the phrase. Run voice editing once with a selection and repeat the comparison, because the copy combination takes the same path. The same check on Sway, KDE and GNOME decides whether their guard can stay
 
 **Upstream:** Hyprland `InputManager` assigns the group of the keyboard that sent the modifier. The exact upstream report is not filed yet; the virtual device is a normal evdev keyboard from Hyprland's point of view, so the compositor has no way to know it is a paste helper

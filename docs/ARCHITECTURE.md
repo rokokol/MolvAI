@@ -44,7 +44,7 @@ hotkey ──▶ RecordStart ──▶ microphone open, level shown in the GUI
                        ──▶ Journal.append: one JSONL line
 ```
 
-The rules are never skipped when the model is on: the model receives the text after the dictionary and the rules, and a short phrase, a style without the model or an unavailable model keeps that text unchanged. Command mode has a separate order:
+The rules are never skipped when the model is on: the model receives the text after the dictionary and the rules, and a short phrase, a style without the model or an unavailable model keeps that text unchanged. Voice editing has a separate order:
 
 ```
 selection ──▶ Ctrl+C through the compositor
@@ -54,7 +54,7 @@ selection ──▶ Ctrl+C through the compositor
           ──▶ replace the selection with the answer
 ```
 
-Command mode is the voice-edit path: select a paragraph, hold the command hotkey, and say what to do with it, for example "сделай короче" or "переведи на английский". The normal dictation path types into the active field; command mode edits the selected text instead
+Voice editing is the path behind the `command` hotkey and the `command_mode` settings section: select a paragraph, hold the key, and say what to do with it, for example "сделай короче" or "переведи на немецкий". The normal dictation path types into the active field; voice editing replaces the selected text instead
 
 The chunks (`stt.chunked`) are recognized while the person speaks. So after the key release only the tail is left, not the whole phrase. `latency_ms.total` counts from the release, and `latency_ms.first_hypothesis` counts from the start of the recording to the first chunk. There can be no chunks at all, for example a short phrase or a source without streaming capture. Then the path is the same as it always was: the whole recording in one run
 
@@ -64,7 +64,7 @@ A snippet is a phrase and the text that replaces it. The matching happens after 
 
 The phrase may contain `*`, which matches any run of characters, including an empty one. So `ответь *` matches `ответь клиенту` and `ответь дорогому клиенту`, and `* клиенту` matches from the other side. The replacement is static: a wildcard changes what triggers the snippet, not what the field receives. An exact phrase wins over a wildcard one, and a wildcard-only phrase is refused because it would replace every dictation
 
-The comparison ignores case, punctuation and repeated spaces, because the rules add punctuation and the recognizer may hear a comma that the phrase does not have. A phrase that merely contains a literal trigger does not match, and an empty phrase or replacement is refused by the validation. Command mode, file transcription and a phrase typed in chunks do not use snippets: those paths either edit a selection or have no single complete utterance to compare
+The comparison ignores case, punctuation and repeated spaces, because the rules add punctuation and the recognizer may hear a comma that the phrase does not have. A phrase that merely contains a literal trigger does not match, and an empty phrase or replacement is refused by the validation. Voice editing, file transcription and a phrase typed in chunks do not use snippets: those paths either edit a selection or have no single complete utterance to compare
 
 The settings hold the list:
 

@@ -13,7 +13,7 @@ A detailed retelling of two days: what we did, in what order, where we stumbled 
 
 ### 5 September, day: plan and skeleton
 
-- 15:00 the first commit with the license, then an hour and a half on the plan: 612 jury criteria sorted into sections, and the decisions fixed (Cargo workspace, Tauri 2, JSONL instead of SQLite, PTT plus toggle plus command mode, output mode `auto`, free licenses only)
+- 15:00 the first commit with the license, then an hour and a half on the plan: 612 jury criteria sorted into sections, and the decisions fixed (Cargo workspace, Tauri 2, JSONL instead of SQLite, PTT plus toggle plus voice editing, output mode `auto`, free licenses only)
 - 16:57 the skeleton: the trait contracts `AudioSource`, `SttEngine`, `LlmClient`, `TextInjector`, `HotkeySource`, `Journal`, `Clock`, `Notifier` with fakes, the IPC protocol, the journal schema, the config with defaults
 - 17:00 six tracks started on Opus: A capture and whisper, B GUI, C Nix, CI, licenses, installation, D rules, dictionary, styles, LLM, journal, statistics, E file decoder, models, WER, bench, F daemon, IPC, paste chain, hotkeys
 - 18:13 whisper, cpal, the journal and the pipeline joined into the daemon. 18:20 all tracks in `main`, 610 tests
@@ -44,8 +44,8 @@ A detailed retelling of two days: what we did, in what order, where we stumbled 
 - In parallel we closed the cheap criteria: `rustfmt.toml`, the names of the CI steps by tool, `UNIQUENESS.md` in the root, the README sections "Works offline" and "With one command", the screenshots of the panel. Four dependabot PRs with major updates of the actions were closed with a comment
 - Journal encryption M-17: XChaCha20-Poly1305, a random nonce, the key in `journal.key` with owner permissions, and the other fields of the line open, so that the statistics work without the key. The user asked what is hard in the keyring, and it turned out that gnome-keyring works on his Hyprland. A separate agent on Fable in its own worktree made `SecretStore` with three implementations: the OS store, a file, and memory for tests, plus `molva secret set/delete/status`. CI ran through a PR, merged on green
 - 12:55 the hotkey defaults moved to F9 and Ctrl+Alt: deliberately not ergonomic, but free on any stand. Because of the haste the push went without `cargo fmt` and with a test on the old key, CI went red, and the fix came five minutes later
-- 13:15 command mode gave a document with headings and invented content instead of a translation of one word. We rewrote the prompt: the instruction goes before the text, with an explicit ban on headings, markdown and explanations. Checked on five instructions through Ollama
-- 13:20 command mode began to get not the selection but the previous content of the buffer, and each edit stacked on the old garbage. The buffer is now cleared before Ctrl+C and polled for up to 600 ms
+- 13:15 voice editing gave a document with headings and invented content instead of a translation of one word. We rewrote the prompt: the instruction goes before the text, with an explicit ban on headings, markdown and explanations. Checked on five instructions through Ollama
+- 13:20 voice editing began to get not the selection but the previous content of the buffer, and each edit stacked on the old garbage. The buffer is now cleared before Ctrl+C and polled for up to 600 ms
 - 13:38 the tag `v0.1.0`, the release in full by 14:00
 
 ### 6 September, day: a check without a human, and the freeze
@@ -79,7 +79,7 @@ A detailed retelling of two days: what we did, in what order, where we stumbled 
 
 - Reasoning models spend the whole `max_tokens` on reasoning and return an empty `content`. `think = false` does not work through `/v1/chat/completions` of Ollama, and `reasoning_effort = "none"` works: 0.6 s instead of 12 s and emptiness
 - An empty answer of the model must not wipe the text: the pipeline returns the text after the rules
-- Command mode: the instruction must go first and the text second, otherwise a small model takes the fragment for the task and invents a document with headings
+- Voice editing: the instruction must go first and the text second, otherwise a small model takes the fragment for the task and invents a document with headings
 
 ### Daemon, hotkeys, microphone
 

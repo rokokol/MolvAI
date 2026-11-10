@@ -585,7 +585,7 @@ mod tests {
 
     #[test]
     fn a_refused_copy_hands_over_to_the_next_backend() {
-        // The reason command mode died: hyprctl was the only method that could copy, and its
+        // The reason voice editing died: hyprctl was the only method that could copy, and its
         // refusal ended the whole chain
         let (mut chain, _clip, _n) = chain(vec![
             FakeInjector::failing("hyprctl", InjectError::Failed("non-zero exit code".into())),
@@ -682,7 +682,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn the_hyprland_chain_keeps_a_copy_path_that_needs_no_compositor() {
-        // Command mode must not depend on the compositor alone: when `sendshortcut` is refused,
+        // Voice editing must not depend on the compositor alone: when `sendshortcut` is refused,
         // the virtual keyboard has to be able to press Ctrl+C itself
         let notifier = Arc::new(RecordingNotifier::default());
         let mut chain = ChainInjector::for_platform(

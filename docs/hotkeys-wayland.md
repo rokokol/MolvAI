@@ -4,7 +4,7 @@ On Wayland an application has no global hotkeys: the compositor owns the keyboar
 
 The fallback is to read `/dev/input/event*` through evdev (`hotkeys.backend = "evdev"`). It sees the keys before the compositor and works even where there are no binds, but it needs permission to read the input devices. On NixOS this means membership in the `input` group. After you change the groups, log in again
 
-## Push-to-talk, hands-free and command mode
+## Push-to-talk, hands-free and voice editing
 
 Push-to-talk needs two events from the compositor: the press and the release. Hyprland (a bind with `release = true`) and Sway (`bindsym` / `bindsym --release`) give both. KDE Plasma and GNOME do not report the key release at all, so only the `molva record toggle` switch is available there
 

@@ -662,7 +662,7 @@ mod tests {
     #[test]
     fn the_copy_key_is_the_physical_c_of_the_us_layout() {
         // The device sends key codes and the compositor applies the layout: 46 is C in any
-        // layout, so command mode copies with the Russian layout active too
+        // layout, so voice editing copies with the Russian layout active too
         assert_eq!(KEY_C, 46);
         assert_eq!(key_for('c'), Some((KEY_C, false)));
         assert_ne!(KEY_C, KEY_V);

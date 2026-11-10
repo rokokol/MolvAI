@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! What command mode tells the model: the system prompt and the request with the instruction
+//! What voice editing tells the model: the system prompt and the request with the instruction
 //! and the selected text
 //!
 //! Both speak the language of the spoken instruction, as the built-in styles speak the language

@@ -77,7 +77,7 @@ A zero level while the user speaks does not mean "quiet". It means a wrong devic
 
 ### Step 7. Set up the hotkeys
 
-Open `~/.config/molva/config.toml` and show the user the `[hotkeys]` section. By default, holding `F9` records, `Ctrl+Alt+Z` toggles, and `Ctrl+Alt+X` starts command mode on the selection. The combinations are simple on purpose, so that they work on any stand without a setup
+Open `~/.config/molva/config.toml` and show the user the `[hotkeys]` section. By default, holding `F9` records, `Ctrl+Alt+Z` toggles, and `Ctrl+Alt+X` starts voice editing on the selection. The combinations are simple on purpose, so that they work on any stand without a setup
 
 The next step depends on the session that you found in step 1:
 

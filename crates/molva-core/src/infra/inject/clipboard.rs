@@ -206,7 +206,7 @@ impl ClipboardBackend for SystemClipboard {
 }
 
 /// Text from the clipboard through `wl-paste`; `None` if the utility is missing or the clipboard
-/// holds no text. Both the clipboard snapshot and command mode need it: command mode takes the
+/// holds no text. Both the clipboard snapshot and voice editing need it: voice editing takes the
 /// selection after Ctrl+C
 pub(crate) fn wl_paste() -> Option<String> {
     let output = Command::new("wl-paste").arg("--no-newline").output().ok()?;
@@ -218,7 +218,7 @@ pub(crate) fn wl_paste() -> Option<String> {
 
 /// Copy the selection: clear the clipboard, press the copy keys, wait for the text
 ///
-/// Command mode has more than one way to press the keys — the compositor and the virtual device
+/// Voice editing has more than one way to press the keys — the compositor and the virtual device
 /// — and the clipboard around them is the same, so it lives here once. The clipboard is not
 /// restored on purpose: a plain Ctrl+C behaves the same way
 ///
@@ -278,7 +278,7 @@ fn wl_copy(text: &str) -> Result<(), InjectError> {
     }
 }
 
-/// Clear the clipboard through `wl-copy --clear`. Command mode clears it before Ctrl+C, to
+/// Clear the clipboard through `wl-copy --clear`. Voice editing clears it before Ctrl+C, to
 /// tell a fresh selection from what was in the clipboard before
 pub(crate) fn wl_clear() -> Result<(), InjectError> {
     let status = Command::new("wl-copy")

@@ -60,7 +60,7 @@ pub trait TextInjector: std::fmt::Debug + Send {
     fn available(&self) -> bool;
     /// The caller has already resolved `mode` from `Auto`
     fn inject(&mut self, text: &str, mode: OutputMode) -> Result<InjectReport, InjectError>;
-    /// Copy the current selection (Command Mode). Not supported by default
+    /// Copy the current selection (voice editing). Not supported by default
     fn copy_selection(&mut self) -> Result<String, InjectError> {
         Err(InjectError::Unsupported)
     }
