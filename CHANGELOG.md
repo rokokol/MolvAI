@@ -6,6 +6,8 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ## Unreleased
 
+## [0.3.2] - 2026-11-11
+
 ### Added
 
 - Snippets lead the site: a page of their own with the matching rules, wildcards, the settings file and the limits, a section on the home page and on the features page, and a place in the navigation of every page
