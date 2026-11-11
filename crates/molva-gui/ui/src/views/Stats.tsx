@@ -210,7 +210,7 @@ export default function Stats({ onError }: ViewProps) {
               <dt>{t("stats.mcpShare")}</dt>
               <dd>
                 {formatCount(summary.mcp_entries)}
-                <span className="unit">{t("stats.mcpShareHint")}</span>
+                <span className="unit unit-note">{t("stats.mcpShareHint")}</span>
               </dd>
             </div>
           )}
@@ -220,7 +220,7 @@ export default function Stats({ onError }: ViewProps) {
               {costValue(summary.tokens, t)}
               {summary.tokens.unpriced_calls > 0 &&
                 summary.tokens.unpriced_calls < summary.tokens.calls && (
-                  <span className="unit">
+                  <span className="unit unit-note">
                     {t("stats.costPartial")
                       .replace("{unpriced}", String(summary.tokens.unpriced_calls))
                       .replace("{total}", String(summary.tokens.calls))}

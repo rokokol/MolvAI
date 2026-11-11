@@ -994,13 +994,25 @@ kbd {
   margin: 0;
   font: 400 var(--step-big) / 1.2 var(--ddlc-font-data);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  /* The number is one unbreakable token and the note beside it must wrap: a tile is as wide as the
+     grid gives it, and a note that cannot wrap leaves its own tile and covers the neighbour */
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .tile .unit {
   margin-left: 0.25rem;
   color: var(--ddlc-muted);
   font-size: var(--step-data);
+}
+
+/* A note longer than a unit word: it takes its own line under the number instead of running
+   beside it */
+.tile .unit-note {
+  display: block;
+  margin: 0.25rem 0 0;
+  line-height: 1.4;
+  white-space: normal;
 }
 
 /* A meter is a track of whole blocks, as the kit draws its level */
