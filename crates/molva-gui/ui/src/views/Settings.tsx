@@ -5,7 +5,7 @@
 // that only a careful setup needs sits under "Advanced", and no table that the core owns is
 // repeated here: the models come from `models.toml` and the provider URLs from the Rust side
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { api, asCommandError, copyToClipboard } from "../api";
 import { AUTO_LANG, LANGUAGES, useI18n } from "../i18n";
@@ -164,33 +164,41 @@ export default function Settings({
     setDraft(config);
   }, [config]);
 
+  // One answer carries the catalog, the providers, the bind file, the style names and the paths:
+  // six commands on one page open meant six trips through the IPC layer for one screen
   useEffect(() => {
-    api.getAutostart().then(setAutostart).catch(() => setAutostart(false));
-    api.getConfigPath().then(setConfigPath).catch(() => setConfigPath(""));
     api
-      .getRuntimeConfigPath()
-      .then(setRuntimePath)
-      .catch(() => setRuntimePath(null));
-    api
-      .sttModels()
-      .then((list) => {
-        setModels(list);
+      .settingsBootstrap()
+      .then((boot) => {
+        setAutostart(boot.autostart);
+        setConfigPath(boot.config_path);
+        setRuntimePath(boot.runtime_config_path);
+        setModels(boot.models);
         setModelsError(null);
+        setProviders(boot.providers);
+        setHyprland(boot.hyprland);
+        setStyles(boot.styles);
+        setBuiltins(boot.builtins);
       })
-      .catch((err) => setModelsError(asCommandError(err).message));
-    api.llmProviders().then(setProviders).catch(() => setProviders([]));
+      .catch((err: unknown) => {
+        // The page still works from the settings alone; what is missing is named
+        setModelsError(asCommandError(err).message);
+        setProviders([]);
+        setHyprland(null);
+      });
   }, []);
 
-  // Built-in style names and the style menu come translated from the Rust side: ask again
-  // when the language changes
+  // The style names come translated from the Rust side: the bootstrap already carried them, so
+  // the page asks again only when the language changes
+  const stylesCarried = useRef(false);
   useEffect(() => {
+    if (!stylesCarried.current) {
+      stylesCarried.current = true;
+      return;
+    }
     api.availableStyles().then(setStyles).catch(() => setStyles([]));
     api.builtinStyles().then(setBuiltins).catch(() => setBuiltins([]));
   }, [lang]);
-
-  useEffect(() => {
-    api.hyprlandBinds().then(setHyprland).catch(() => setHyprland(null));
-  }, [config]);
 
   const patch = useCallback((change: (next: Config) => void) => {
     setSaved(false);

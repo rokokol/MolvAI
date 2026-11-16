@@ -10,16 +10,14 @@ import type {
   DeviceInfo,
   Entry,
   FileResult,
-  HyprlandBinds,
   LlmProbeReport,
-  LlmProviderOption,
   MediaInfo,
   PathSuggestion,
   ProviderKeyStatus,
   SearchHit,
+  SettingsBootstrap,
   StatsSummary,
   Status,
-  SttModelOption,
   SttProbeReport,
   StyleOption,
   Waveform,
@@ -51,13 +49,11 @@ export const api = {
   setStyle: (style: string) => invoke<void>("set_style", { style }),
   availableStyles: () => invoke<StyleOption[]>("available_styles"),
   builtinStyles: () => invoke<StyleOption[]>("builtin_styles"),
-  /** The catalog of `models.toml`, each entry with the engine that can load it */
-  sttModels: () => invoke<SttModelOption[]>("stt_models"),
-  /** Check the draft recognition settings: no recording, no microphone */
+  /** Everything the settings page reads beside the settings, in one trip through the IPC layer */
+  settingsBootstrap: () => invoke<SettingsBootstrap>("settings_bootstrap"),  /** Check the draft recognition settings: no recording, no microphone */
   testStt: (config: Config) => invoke<SttProbeReport>("test_stt", { config }),
   /** Send one short prompt through the draft model settings; nothing is saved */
   testLlm: (config: Config) => invoke<LlmProbeReport>("test_llm", { config }),
-  llmProviders: () => invoke<LlmProviderOption[]>("llm_providers"),
   /** Whether the store holds a key entry; the value never comes back */
   providerKeyStatus: (provider: string, source: string) =>
     invoke<ProviderKeyStatus>("provider_key_status", { provider, source }),
@@ -86,18 +82,12 @@ export const api = {
   configManaged: () => invoke<boolean>("config_managed"),
   /** The resolved interface language; the Rust side resolves it so the tray agrees */
   uiLanguage: () => invoke<string>("ui_language"),
-  getConfigPath: () => invoke<string>("get_config_path"),
-  getRuntimeConfigPath: () => invoke<string | null>("get_runtime_config_path"),
   isFirstRun: () => invoke<boolean>("is_first_run"),
   saveConfig: (config: Config) => invoke<void>("save_config", { config }),
   exportConfig: () => invoke<string>("export_config"),
   importConfig: (path: string) => invoke<Config>("import_config", { path }),
   resetConfig: () => invoke<Config>("reset_config"),
-  hyprlandBinds: () => invoke<HyprlandBinds>("hyprland_binds"),
-  writeHyprlandBinds: () => invoke<HyprlandBinds>("write_hyprland_binds"),
   setAutostart: (enabled: boolean) => invoke<boolean>("set_autostart", { enabled }),
-  getAutostart: () => invoke<boolean>("get_autostart"),
-
   historyList: (filter: Partial<HistoryFilter>) =>
     invoke<Entry[]>("history_list", {
       filter: {

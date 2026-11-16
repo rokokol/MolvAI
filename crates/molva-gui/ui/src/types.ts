@@ -177,6 +177,19 @@ export interface LlmProviderOption {
   stt_model: string | null;
 }
 
+/** What the settings page reads beside the settings: one answer for one screen */
+export interface SettingsBootstrap {
+  config_path: string;
+  runtime_config_path: string | null;
+  autostart: boolean;
+  managed: boolean;
+  models: SttModelOption[];
+  providers: LlmProviderOption[];
+  hyprland: HyprlandBinds | null;
+  styles: StyleOption[];
+  builtins: StyleOption[];
+}
+
 /** An entry of the secret store: whether it exists, never the value */
 export interface ProviderKeyStatus {
   present: boolean;

@@ -1266,6 +1266,69 @@ pub fn get_config_path(state: State<'_, AppState>) -> String {
     state.config_path().display().to_string()
 }
 
+/// Everything the settings page shows beside the settings themselves
+///
+/// One answer instead of six: the page opened six commands at once, each of them on its own trip
+/// through the IPC layer. The catalog and the bind file are read off the UI thread, so a slow
+/// disk does not hold the window
+#[derive(Debug, Serialize)]
+pub struct SettingsBootstrap {
+    pub config_path: String,
+    pub runtime_config_path: Option<String>,
+    pub autostart: bool,
+    /// The settings file belongs to the declarative configuration of the system
+    pub managed: bool,
+    pub models: Vec<SttModelOption>,
+    pub providers: Vec<crate::providers::LlmProviderOption>,
+    pub hyprland: Option<crate::hotkeys::HyprlandBinds>,
+    pub styles: Vec<StyleOption>,
+    pub builtins: Vec<StyleOption>,
+}
+
+#[tauri::command]
+pub async fn settings_bootstrap<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+) -> Result<SettingsBootstrap, CommandError> {
+    let config = state.config();
+    let config_path = state.config_path().clone();
+    let managed = state.managed();
+    let runtime_config_path = Config::runtime_path(&config_path)
+        .ok()
+        .flatten()
+        .map(|path| path.display().to_string());
+    let styles = builtin_style_options(&config)
+        .into_iter()
+        .map(|(id, name)| StyleOption { id, name })
+        .collect();
+    let builtins = builtin_styles();
+    let autostart = get_autostart(app).await;
+    let (models, hyprland) = tauri::async_runtime::spawn_blocking({
+        let config = config.clone();
+        move || {
+            (
+                stt_model_options(&config),
+                hyprland_path()
+                    .ok()
+                    .map(|path| crate::hotkeys::hyprland_binds(&path)),
+            )
+        }
+    })
+    .await
+    .unwrap_or_default();
+    Ok(SettingsBootstrap {
+        config_path: config_path.display().to_string(),
+        runtime_config_path,
+        autostart,
+        managed,
+        models,
+        providers: crate::providers::llm_providers(),
+        hyprland,
+        styles,
+        builtins,
+    })
+}
+
 /// Where a settings edit lands when the declarative file is a store symlink
 #[tauri::command]
 pub fn get_runtime_config_path(state: State<'_, AppState>) -> Option<String> {

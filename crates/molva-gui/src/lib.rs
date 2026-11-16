@@ -374,6 +374,7 @@ pub fn run() {
             commands::test_stt,
             commands::test_llm,
             commands::llm_providers,
+            commands::settings_bootstrap,
             commands::provider_key_status,
             commands::store_provider_key,
             commands::remove_provider_key,
