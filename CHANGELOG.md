@@ -52,6 +52,12 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ### Changed
 
+- The history list paints a window of the journal instead of the whole file: a journal of 10 000 phrases puts ten rows in the DOM, the rest of the height is padding that the measured rows fill in as they scroll. A search keystroke redraws a screenful rather than a year of dictation
+
+- The settings, statistics, files and snippets views arrive in their own chunk: the window opens on the dashboard with 328 KB of script instead of 404 KB, and a view downloads when it is opened
+
+- The settings page reads the catalog, the providers, the bind file, the style names, the paths and the autostart in one command instead of eight, so one screen costs four trips through the IPC layer
+
 - The consent to a cloud provider is checked at the HTTP boundary on the address of the request itself, so the file transcription, the voice command, the probe and every other entry go through one gate. Without consent the client follows no redirect and no proxy, and `localhost` is resolved to a loopback address only
 
 - Encryption of the journal now covers the text of the segments of a file transcription, and a delete, a rotation or a clear keeps the existing ciphertext instead of writing plaintext back
