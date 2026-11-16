@@ -6,6 +6,62 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ## Unreleased
 
+## [0.4.0] - 2026-11-16
+
+### Added
+
+- **Breaking:** the settings that a running process cannot take now say so. `config.reload` answers `restart_required` for `privacy`, `journal`, `llm`, `stt`, `audio`, `dictionary`, `rules`, `output`, `mcp`, `gui`, `log` and for a changed hotkey. Only the style and the thresholds of the hotkeys apply live, and the answer comes after the worker applied them, never before
+
+- **Breaking:** a save that needs a restart leaves the file on disk and the process on its old settings, and the window says which sections are behind. A daemon this window did not start is not stopped any more, and a declared `molva-daemon` service is not replaced by a sidecar
+
+- **Breaking:** the MCP server is off until `mcp.enabled = true`. A harness that relied on the old default sees a refusal that names the switch
+
+- **Breaking:** the journal refuses to open when the key is missing and the journal already holds encrypted text. Before, a new key was created and the old entries became unreadable
+
+- **Breaking:** a daemon whose model needs `transcribe-cli` no longer starts when the program is absent. The error names the three ways out, and `molva doctor` has a line for the program
+
+- **Breaking:** the queue of file transcriptions lives in the window and is not restored after a restart. The results stay reachable through the history, wherever the journal kept them, and the open copy that older versions left in the webview storage is removed on the first start
+
+- **Breaking:** an autostart entry starts the window minimized to the tray only when it carries `--autostart`, so entries written by an older version must be switched off and on once. The behaviour itself is the new `gui.start_in_tray` setting
+
+- The journal keeps its limits: `max_entries` and `max_size_mb` now rotate the file, and one process no longer loses an entry that another appended at the same moment. The lock, the rewrite and the header creation share one protocol
+
+- `gui.start_in_tray` and the `--autostart` argument, so a window that starts with the session waits in the tray instead of opening in front of the person
+
+- `hotkeys.tap_toggles` in the settings window, beside the keys it belongs to
+
+- `output.paste_backend` and `output.type_backend` now move the named method to the front of the chain instead of being ignored, and an unknown name is refused when the settings are loaded
+
+- `hotkeys.backend = "evdev"` now starts a source of its own in the daemon on Linux, so a machine without compositor binds has a working hold key
+
+- `molva doctor` names `transcribe-cli`, and the search for it looks beside the `molva` binary as well as in `PATH`, which is where an AppImage and a package put it
+
+### Changed
+
+- The consent to a cloud provider is checked at the HTTP boundary on the address of the request itself, so the file transcription, the voice command, the probe and every other entry go through one gate. Without consent the client follows no redirect and no proxy, and `localhost` is resolved to a loopback address only
+
+- Encryption of the journal now covers the text of the segments of a file transcription, and a delete, a rotation or a clear keeps the existing ciphertext instead of writing plaintext back
+
+- The MCP server reads the settings again for every request, so a changed journal path, a new key or a disabled server reaches a session that is already open
+
+- `molva transcribe --language` now sets the language of that one request instead of being parsed and forgotten
+
+- An offline `molva transcribe` writes no journal when the journal is disabled, and creates neither the file nor the key
+
+- A settings file that holds an API key is written with permissions for its owner only, and the temporary file it is staged in can no longer be predicted or replaced
+
+- A reload also rereads the dictionary, so a new term works without a restart
+
+### Fixed
+
+- A batch export of two files with the same name writes both results instead of overwriting the first
+
+- A phrase that is added to an encrypted journal is encrypted even when its text starts with the ciphertext marker
+
+- The tray tells the person what to do next when a save needs a restart, on the platform that is running: the service manager where a unit exists, the window everywhere else
+
+- The installation guide and the installer name the real command for a model and explain that the default model needs `transcribe-cli`
+
 ## [0.3.2] - 2026-11-11
 
 ### Added
