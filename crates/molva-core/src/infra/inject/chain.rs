@@ -9,6 +9,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use tracing::warn;
+
 use crate::config::OutputConfig;
 use crate::domain::inject::{InjectError, InjectReport, OutputMode, TextInjector};
 use crate::domain::notify::Notifier;
@@ -38,6 +40,32 @@ enum Backend {
 }
 
 impl Backend {
+    /// Name the two output settings take for this method
+    ///
+    /// A match with no wildcard, so a new variant has to decide the name a setting may use
+    fn name(&self) -> &'static str {
+        match self {
+            Backend::Hyprctl(_) => "hyprctl",
+            Backend::Wtype(_) => "wtype",
+            Backend::Ydotool(_) => "ydotool",
+            Backend::Enigo(_) => "enigo",
+            #[cfg(target_os = "linux")]
+            Backend::Uinput(_) => "uinput",
+            Backend::Other(_) => "other",
+        }
+    }
+
+    /// Whether this method delivers the mode
+    ///
+    /// `HyprctlInjector::inject` refuses every mode but a paste: it sends the shortcut and types
+    /// no text, so it is the one method whose ability separates the two output settings
+    fn can(&self, mode: OutputMode) -> bool {
+        match self {
+            Backend::Hyprctl(_) => mode == OutputMode::Paste,
+            _ => true,
+        }
+    }
+
     fn set_shortcut(&mut self, shortcut: PasteShortcut) {
         match self {
             Backend::Hyprctl(i) => i.set_shortcut(shortcut),
@@ -61,6 +89,63 @@ impl Backend {
             Backend::Other(i) => i.as_mut(),
         }
     }
+}
+
+/// The methods `output.paste_backend` and `output.type_backend` accept
+///
+/// Every name here comes from `Backend::name`, and
+/// `every_name_a_setting_may_take_is_a_method_the_chain_builds` fails when the two disagree.
+/// `Other` is absent: it is a seam for tests and extra tracks, not a method a user can pick
+pub const BACKEND_NAMES: &[&str] = &["hyprctl", "wtype", "ydotool", "enigo", "uinput"];
+
+/// Move the method a setting names in front of the platform order
+///
+/// A preference, not a choice: the rest of the chain stays, because the named method may be
+/// absent on this platform or may refuse the phrase, and a lost preference must not cost the user
+/// the text. Every reason to ignore the value is a warning, because the platform order still
+/// delivers
+fn prefer(
+    backends: &mut Vec<Backend>,
+    setting: &str,
+    key: &str,
+    mode: OutputMode,
+    platform: Platform,
+) {
+    if setting.eq_ignore_ascii_case("auto") {
+        return;
+    }
+    if !BACKEND_NAMES
+        .iter()
+        .any(|name| name.eq_ignore_ascii_case(setting))
+    {
+        warn!(
+            "{key} = {setting:?}: no such paste method, expected `auto` or one of {}; \
+             the automatic order stays",
+            BACKEND_NAMES.join(", ")
+        );
+        return;
+    }
+    let Some(index) = backends
+        .iter()
+        .position(|backend| backend.name().eq_ignore_ascii_case(setting))
+    else {
+        warn!(
+            "{key} = {setting:?}: no such method on {}, the automatic order stays",
+            platform.label()
+        );
+        return;
+    };
+    if !backends[index].can(mode) {
+        let what = if mode == OutputMode::Type {
+            "type text"
+        } else {
+            "paste"
+        };
+        warn!("{key} = {setting:?}: this method cannot {what}, the automatic order stays");
+        return;
+    }
+    let chosen = backends.remove(index);
+    backends.insert(0, chosen);
 }
 
 /// The last method: put the text in the clipboard and tell the user to press Ctrl+V
@@ -139,6 +224,11 @@ impl ChainInjector {
     }
 
     /// Chain for the current platform, in the order from the plan: first what needs no permissions
+    ///
+    /// `output.type_backend` and `output.paste_backend` move the method the user names to the
+    /// front of that order. The paste setting is applied last, so it holds the front when both
+    /// name different methods: a phrase that cannot be typed falls back to a paste through this
+    /// same chain, and that makes the paste preference the wider one
     pub fn for_platform(
         output: &OutputConfig,
         platform: &Platform,
@@ -190,6 +280,21 @@ impl ChainInjector {
             Platform::Windows | Platform::MacOs => backends.push(enigo()),
             Platform::Headless => {}
         }
+
+        prefer(
+            &mut backends,
+            &output.type_backend,
+            "output.type_backend",
+            OutputMode::Type,
+            *platform,
+        );
+        prefer(
+            &mut backends,
+            &output.paste_backend,
+            "output.paste_backend",
+            OutputMode::Paste,
+            *platform,
+        );
 
         Self {
             backends,
@@ -712,5 +817,194 @@ mod tests {
             !ids.contains(&"wtype"),
             "KDE has no virtual-keyboard: {ids:?}"
         );
+    }
+
+    /// The methods of a chain built for `platform`, in the order it will try them
+    fn chain_ids(platform: Platform, paste: &str, typing: &str) -> Vec<&'static str> {
+        let output = OutputConfig {
+            paste_backend: paste.into(),
+            type_backend: typing.into(),
+            ..OutputConfig::default()
+        };
+        let notifier = Arc::new(RecordingNotifier::default());
+        let mut chain = ChainInjector::for_platform(&output, &platform, notifier);
+        chain
+            .backends
+            .iter_mut()
+            .map(|backend| backend.as_injector().id())
+            .collect()
+    }
+
+    /// The chain without one method: what stays once a setting puts that method in front
+    fn without<'a>(ids: &[&'a str], name: &str) -> Vec<&'a str> {
+        ids.iter().copied().filter(|id| *id != name).collect()
+    }
+
+    /// The warnings a call writes out
+    ///
+    /// The subscriber belongs to the calling thread, so a test that runs beside this one neither
+    /// reads these lines nor loses its own
+    fn warnings_of(run: impl FnOnce()) -> String {
+        #[derive(Clone, Default)]
+        struct Sink(Arc<Mutex<Vec<u8>>>);
+
+        impl std::io::Write for Sink {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                if let Ok(mut sink) = self.0.lock() {
+                    sink.extend_from_slice(buf);
+                }
+                Ok(buf.len())
+            }
+
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let sink = Sink::default();
+        let writer = sink.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::WARN)
+            .with_writer(move || writer.clone())
+            .finish();
+        tracing::subscriber::with_default(subscriber, run);
+        let bytes = sink.0.lock().map(|sink| sink.clone()).unwrap_or_default();
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
+
+    #[test]
+    fn the_automatic_order_is_the_one_the_platform_gives() {
+        // `auto` promises that an untouched settings file keeps the order the plan gives
+        let hyprland = Platform::Wayland(Compositor::Hyprland);
+        let ids = chain_ids(hyprland, "auto", "auto");
+        #[cfg(target_os = "linux")]
+        assert_eq!(ids, ["wtype", "hyprctl", "uinput", "ydotool"], "{ids:?}");
+        #[cfg(not(target_os = "linux"))]
+        assert_eq!(ids, ["wtype", "hyprctl", "ydotool"], "{ids:?}");
+        assert_eq!(
+            chain_ids(hyprland, "AUTO", "Auto"),
+            ids,
+            "the value is a name, not a spelling"
+        );
+        let x11 = chain_ids(Platform::X11, "auto", "auto");
+        #[cfg(target_os = "linux")]
+        assert_eq!(x11, ["enigo", "uinput"], "{x11:?}");
+        #[cfg(not(target_os = "linux"))]
+        assert_eq!(x11, ["enigo"], "{x11:?}");
+    }
+
+    #[test]
+    fn a_named_paste_backend_leads_the_chain_and_the_rest_keeps_its_order() {
+        let platform = Platform::Wayland(Compositor::Hyprland);
+        let auto = chain_ids(platform, "auto", "auto");
+        let ids = chain_ids(platform, "ydotool", "auto");
+        assert_eq!(ids.first(), Some(&"ydotool"), "{ids:?}");
+        assert_eq!(
+            ids[1..],
+            without(&auto, "ydotool")[..],
+            "nothing is dropped and nothing else moves: {ids:?}"
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_named_type_backend_leads_the_chain_and_the_rest_keeps_its_order() {
+        // uinput types ASCII on every Wayland session, so this preference is a real one
+        let platform = Platform::Wayland(Compositor::Hyprland);
+        let auto = chain_ids(platform, "auto", "auto");
+        let ids = chain_ids(platform, "auto", "uinput");
+        assert_eq!(ids.first(), Some(&"uinput"), "{ids:?}");
+        assert_eq!(
+            ids[1..],
+            without(&auto, "uinput")[..],
+            "nothing is dropped and nothing else moves: {ids:?}"
+        );
+    }
+
+    #[test]
+    fn an_unknown_backend_keeps_the_automatic_order_and_says_so() {
+        let platform = Platform::X11;
+        let mut order = Vec::new();
+        let text = warnings_of(|| order = chain_ids(platform, "telepathy", "telepathy"));
+        assert_eq!(order, chain_ids(platform, "auto", "auto"), "{order:?}");
+        assert!(text.contains("output.paste_backend"), "{text}");
+        assert!(text.contains("output.type_backend"), "{text}");
+        assert!(text.contains("telepathy"), "{text}");
+    }
+
+    #[test]
+    fn a_backend_the_platform_does_not_offer_is_a_lost_preference_only() {
+        // X11 has no wtype: the setting must add nothing and take nothing away
+        let platform = Platform::X11;
+        let mut order = Vec::new();
+        let text = warnings_of(|| order = chain_ids(platform, "wtype", "wtype"));
+        assert_eq!(order, chain_ids(platform, "auto", "auto"), "{order:?}");
+        assert!(!order.contains(&"wtype"), "{order:?}");
+        assert!(text.contains("wtype"), "{text}");
+        assert!(text.contains("X11"), "{text}");
+    }
+
+    #[test]
+    fn hyprctl_leads_a_paste_but_never_a_typing_order() {
+        // hyprctl synthesizes the paste shortcut and types nothing: it is the one method whose
+        // ability separates the two settings
+        let platform = Platform::Wayland(Compositor::Hyprland);
+        assert_eq!(
+            chain_ids(platform, "hyprctl", "auto").first(),
+            Some(&"hyprctl")
+        );
+        let mut order = Vec::new();
+        let text = warnings_of(|| order = chain_ids(platform, "auto", "hyprctl"));
+        assert_eq!(order, chain_ids(platform, "auto", "auto"), "{order:?}");
+        assert!(text.contains("output.type_backend"), "{text}");
+    }
+
+    #[test]
+    fn with_both_settings_the_paste_preference_holds_the_front() {
+        // A phrase that cannot be typed falls back to a paste through this same chain, so the
+        // paste setting is the wider of the two and it wins the front
+        let platform = Platform::Wayland(Compositor::Hyprland);
+        let ids = chain_ids(platform, "hyprctl", "ydotool");
+        assert_eq!(ids.first(), Some(&"hyprctl"), "{ids:?}");
+        assert_eq!(ids.get(1), Some(&"ydotool"), "{ids:?}");
+    }
+
+    #[test]
+    fn every_name_a_setting_may_take_is_a_method_the_chain_builds() {
+        let mut built: Vec<&'static str> = Vec::new();
+        for platform in [
+            Platform::Wayland(Compositor::Hyprland),
+            Platform::Wayland(Compositor::Sway),
+            Platform::Wayland(Compositor::Kde),
+            Platform::Wayland(Compositor::Gnome),
+            Platform::Wayland(Compositor::Other),
+            Platform::X11,
+            Platform::Windows,
+            Platform::MacOs,
+            Platform::Headless,
+        ] {
+            let notifier = Arc::new(RecordingNotifier::default());
+            let mut chain =
+                ChainInjector::for_platform(&OutputConfig::default(), &platform, notifier);
+            for backend in &mut chain.backends {
+                let name = backend.name();
+                if !built.contains(&name) {
+                    built.push(name);
+                }
+            }
+        }
+        #[cfg(target_os = "linux")]
+        for name in BACKEND_NAMES {
+            assert!(
+                built.contains(name),
+                "{name} is no method of any platform: {built:?}"
+            );
+        }
+        for name in &built {
+            assert!(
+                BACKEND_NAMES.contains(name),
+                "{name} is a method no setting can name: {BACKEND_NAMES:?}"
+            );
+        }
     }
 }
