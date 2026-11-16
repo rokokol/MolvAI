@@ -1162,10 +1162,10 @@ impl Pipeline {
                         spend,
                     };
                 }
-                // A rejected key is not a charge, and a retry does not fix the key
-                Err(LlmError::Auth) => {
+                // Neither refusal incurs a charge, and a retry cannot fix it
+                Err(err @ (LlmError::Auth | LlmError::Consent)) => {
                     return LlmAttempt {
-                        outcome: Err(LlmError::Auth),
+                        outcome: Err(err),
                         spend,
                     };
                 }
@@ -1616,6 +1616,24 @@ mod tests {
             .run(audio(8.0), Mode::Dictation, None, None)
             .unwrap();
         assert_eq!(llm.calls(), 3, "one attempt plus two retries");
+    }
+
+    #[test]
+    fn consent_refusal_is_not_retried_or_counted_as_a_call() {
+        let llm = Arc::new(FakeLlm::failing(LlmError::Consent));
+        let mut config = with_llm();
+        config.llm.max_retries = 3;
+        let text =
+            "это достаточно длинная реплика из более чем десяти слов чтобы модель точно вызвалась";
+        let mut harness = build(text, Some(Arc::clone(&llm)), config);
+        let entry = harness
+            .pipeline
+            .run(audio(8.0), Mode::Dictation, None, None)
+            .unwrap();
+        assert_eq!(llm.calls(), 1);
+        assert_eq!(entry.llm_calls, 0);
+        assert_eq!(entry.llm_unpriced_calls, 0);
+        assert!(entry.error.is_some());
     }
 
     #[test]

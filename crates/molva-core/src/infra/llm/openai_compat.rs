@@ -104,25 +104,43 @@ pub struct OpenAiCompatClient {
     /// OpenRouter's `provider.require_parameters`
     require_parameters: bool,
     http: reqwest::blocking::Client,
+    local_http: reqwest::blocking::Client,
+    cloud_consent: bool,
 }
 
-/// Whether a URL names this machine: the model then runs beside the daemon, not in a cloud
-///
-/// The host is taken from the text and not parsed by a URL library: a settings value without
-/// a scheme, `localhost:11434`, must reach the same answer as the full form
+pub fn configured_base_url(cfg: &LlmConfig) -> &str {
+    if cfg.base_url.trim().is_empty() {
+        Provider::parse(&cfg.provider).default_base_url()
+    } else {
+        &cfg.base_url
+    }
+}
+
+/// Whether a URL names a loopback address
 pub fn is_loopback_url(base_url: &str) -> bool {
-    let rest = base_url.trim();
-    let rest = rest.split_once("://").map_or(rest, |(_, rest)| rest);
-    let host = rest.split(['/', '?', '#']).next().unwrap_or_default();
-    // `[::1]:1234` keeps its brackets, `localhost:11434` loses the port
-    let host = match host.strip_prefix('[') {
-        Some(bracketed) => bracketed.split(']').next().unwrap_or_default(),
-        None => host.split(':').next().unwrap_or_default(),
+    let input = base_url.trim();
+    let input = if input.contains("://") {
+        input.to_string()
+    } else {
+        format!("http://{input}")
     };
-    matches!(
-        host.to_ascii_lowercase().as_str(),
-        "localhost" | "127.0.0.1" | "::1" | "0.0.0.0"
-    ) || host.to_ascii_lowercase().starts_with("127.")
+    let Ok(url) = reqwest::Url::parse(&input) else {
+        return false;
+    };
+    if !matches!(url.scheme(), "http" | "https")
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return false;
+    }
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .trim_matches(['[', ']'])
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
 }
 
 /// What to send in `reasoning_effort` by the setting and the provider type. `auto` turns off
@@ -163,6 +181,19 @@ impl OpenAiCompatClient {
             .timeout(timeout)
             .build()
             .map_err(|e| LlmError::Unavailable(with_causes(&e)))?;
+        let local_http = reqwest::blocking::Client::builder()
+            .timeout(timeout)
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .resolve_to_addrs(
+                "localhost",
+                &[
+                    ([127, 0, 0, 1], 0).into(),
+                    (std::net::Ipv6Addr::LOCALHOST, 0).into(),
+                ],
+            )
+            .build()
+            .map_err(|e| LlmError::Unavailable(with_causes(&e)))?;
         Ok(Self {
             base_url: base_url.into().trim_end_matches('/').to_string(),
             model: model.into(),
@@ -177,7 +208,15 @@ impl OpenAiCompatClient {
             allow_fallbacks: true,
             require_parameters: false,
             http,
+            local_http,
+            cloud_consent: false,
         })
+    }
+
+    #[must_use]
+    pub fn with_cloud_consent(mut self, consent: bool) -> Self {
+        self.cloud_consent = consent;
+        self
     }
 
     /// Set `reasoning_effort` of the request; `None` means the field is not sent
@@ -229,24 +268,13 @@ impl OpenAiCompatClient {
     /// one just because its name is not in the list
     pub fn from_config(cfg: &LlmConfig, api_key: Option<String>) -> Result<Self, LlmError> {
         let provider = Provider::parse(&cfg.provider);
-        let base_url = if cfg.base_url.trim().is_empty() {
-            provider.default_base_url().to_string()
-        } else {
-            cfg.base_url.clone()
-        };
+        let base_url = configured_base_url(cfg).to_string();
         if base_url.is_empty() {
             return Err(LlmError::Unavailable(
                 "the model URL is not set: fill in llm.base_url".into(),
             ));
         }
-        // The address decides, not the name: Ollama Cloud is `https://ollama.com/v1` under the
-        // same provider id, and a model on that address costs money. The name only supplies the
-        // default URL, so an empty address still means the local server
-        let is_local = if cfg.base_url.trim().is_empty() {
-            provider.is_local_by_default()
-        } else {
-            is_loopback_url(&base_url)
-        };
+        let is_local = is_loopback_url(&base_url);
         Self::new(
             base_url,
             cfg.model.clone(),
@@ -294,14 +322,39 @@ impl OpenAiCompatClient {
         if let Some(key) = &self.api_key {
             request = request.bearer_auth(key.expose());
         }
-        request.send().map_err(|err| {
+        let request = request
+            .build()
+            .map_err(|err| LlmError::Unavailable(with_causes(&err)))?;
+        if !self.cloud_consent && !is_loopback_url(request.url().as_str()) {
+            return Err(LlmError::Consent);
+        }
+        let http = if self.cloud_consent {
+            &self.http
+        } else {
+            &self.local_http
+        };
+        let response = http.execute(request).map_err(|err| {
             if err.is_timeout() {
                 // A timeout shorter than a second is rounded up in the message, not down to zero
                 LlmError::Timeout(self.timeout.as_secs().max(1))
             } else {
                 LlmError::Unavailable(format!("{url}: {}", with_causes(&err)))
             }
-        })
+        })?;
+        if !self.cloud_consent && response.status().is_redirection() {
+            let remote = response
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|location| response.url().join(location).ok())
+                .is_some_and(|url| !is_loopback_url(url.as_str()));
+            return Err(if remote {
+                LlmError::Consent
+            } else {
+                LlmError::Unavailable("local redirect refused".into())
+            });
+        }
+        Ok(response)
     }
 
     /// Names of the models that the server returns on `GET /models`. Diagnostics need it: does
@@ -666,6 +719,124 @@ mod tests {
         };
         let client = OpenAiCompatClient::from_config(&cfg, None).unwrap();
         assert!(client.is_local());
+    }
+
+    #[test]
+    fn local_redirect_is_not_reported_as_missing_consent() {
+        let redirect = "HTTP/1.1 307 Temporary Redirect\r\nLocation: /other\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+        let source = MockServer::spawn(vec![Some(redirect.into())]);
+        assert!(matches!(
+            client(&source, None).complete(&request()),
+            Err(LlmError::Unavailable(_))
+        ));
+    }
+
+    #[test]
+    fn redirect_to_remote_address_without_consent_sends_no_text() {
+        let target = MockServer::spawn(vec![Some(ok_body())]);
+        let redirect = format!(
+            "HTTP/1.1 307 Temporary Redirect\r\nLocation: http://0.0.0.0:{}/v1/chat/completions\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            target.addr.port()
+        );
+        let source = MockServer::spawn(vec![Some(redirect)]);
+        assert_eq!(
+            client(&source, None).complete(&request()),
+            Err(LlmError::Consent)
+        );
+        assert!(target.last_request().is_empty());
+    }
+
+    #[test]
+    fn remote_address_without_consent_sends_no_text() {
+        let server = MockServer::spawn(vec![Some(ok_body())]);
+        let endpoint = format!("http://0.0.0.0:{}/v1", server.addr.port());
+        let client = OpenAiCompatClient::new(
+            endpoint,
+            "model",
+            None,
+            Duration::from_secs(2),
+            "custom",
+            true,
+        )
+        .unwrap();
+        assert_eq!(client.complete(&request()), Err(LlmError::Consent));
+        assert!(server.last_request().is_empty());
+    }
+
+    #[test]
+    fn proxy_policy_follows_consent() {
+        const CHILD: &str = "MOLVA_PROXY_TEST_URL";
+        if let Ok(url) = std::env::var(CHILD) {
+            let consent = std::env::var("MOLVA_PROXY_TEST_CONSENT").unwrap() == "true";
+            let client =
+                OpenAiCompatClient::new(url, "model", None, Duration::from_secs(2), "custom", true)
+                    .unwrap()
+                    .with_cloud_consent(consent);
+            assert!(client.complete(&request()).is_ok());
+            return;
+        }
+        for consent in [false, true] {
+            let target = MockServer::spawn(vec![Some(ok_body())]);
+            let proxy = MockServer::spawn(vec![Some(ok_body())]);
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "infra::llm::openai_compat::tests::proxy_policy_follows_consent",
+                    "--nocapture",
+                ])
+                .env(CHILD, target.base_url())
+                .env("MOLVA_PROXY_TEST_CONSENT", consent.to_string())
+                .env("HTTP_PROXY", format!("http://{}", proxy.addr))
+                .env("http_proxy", format!("http://{}", proxy.addr))
+                .env("NO_PROXY", "")
+                .env("no_proxy", "")
+                .env_remove("ALL_PROXY")
+                .env_remove("all_proxy")
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert_eq!(!proxy.last_request().is_empty(), consent);
+            assert_eq!(!target.last_request().is_empty(), !consent);
+        }
+    }
+
+    #[test]
+    fn cloud_consent_allows_a_remote_address() {
+        let server = MockServer::spawn(vec![Some(ok_body())]);
+        let endpoint = format!("http://remote.invalid:{}/v1", server.addr.port());
+        let mut client = OpenAiCompatClient::new(
+            endpoint,
+            "model",
+            None,
+            Duration::from_secs(2),
+            "custom",
+            true,
+        )
+        .unwrap()
+        .with_cloud_consent(true);
+        client.http = reqwest::blocking::Client::builder()
+            .no_proxy()
+            .resolve("remote.invalid", server.addr)
+            .build()
+            .unwrap();
+        assert!(client.complete(&request()).is_ok());
+        assert!(server.last_request().contains(&request().user));
+    }
+
+    #[test]
+    fn loopback_classification_rejects_spoofed_and_unspecified_hosts() {
+        for url in [
+            "http://127.evil.example/v1",
+            "http://0.0.0.0/v1",
+            "http://localhost@remote.example/v1",
+            "http://localhost:invalid/v1",
+        ] {
+            assert!(!is_loopback_url(url), "{url} is not a loopback URL");
+        }
     }
 
     #[test]

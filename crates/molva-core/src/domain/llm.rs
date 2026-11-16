@@ -44,6 +44,8 @@ pub enum LlmError {
     Unavailable(String),
     #[error("provider authorization error")]
     Auth,
+    #[error("cloud consent is required")]
+    Consent,
     #[error("invalid model response: {0}")]
     BadResponse(String),
 }
