@@ -68,7 +68,7 @@ describe("the list of phrases", () => {
   it("shows the numbers, the text and the two actions of a phrase", () => {
     const html = render([entry("a", "привет мир")]);
 
-    expect(html.match(/<li class="entry">/g)).toHaveLength(1);
+    expect(html.match(/<li class="entry"/g)).toHaveLength(1);
     expect(html).toContain("привет мир");
     expect(html).toContain("150");
     expect(html).toContain(translate("en", "common.copy"));
@@ -89,25 +89,28 @@ describe("the list of phrases", () => {
     expect(html.match(/Copied/g)).toHaveLength(1);
   });
 
-  it("paints a journal of 500 phrases in batches instead of at once", () => {
-    const entries = Array.from({ length: 500 }, (_, index) =>
+  it("keeps the DOM bounded however long the journal is", () => {
+    const entries = Array.from({ length: 10_000 }, (_, index) =>
       entry(String(index), `фраза ${index}`),
     );
 
-    // The first commit paints a part of the journal, and the rest follows while the window
-    // stays answerable; the whole list is there once the batches have run
-    const painted = render(entries).match(/<li class="entry">/g) ?? [];
+    // A window, not the journal: the rows off the screen are padding, so the count does not
+    // grow with the file and a keystroke in the search box redraws a screenful
+    const painted = render(entries).match(/<li class="entry"/g) ?? [];
 
     expect(painted.length).toBeGreaterThan(0);
-    expect(painted.length).toBeLessThan(entries.length);
+    expect(painted.length).toBeLessThan(40);
+    expect(render(entries)).toContain('padding-bottom');
   });
 
-  it("paints a short journal in one go", () => {
-    const entries = Array.from({ length: 20 }, (_, index) =>
+  it("paints a journal that fits one screen in one go", () => {
+    const entries = Array.from({ length: 4 }, (_, index) =>
       entry(String(index), `фраза ${index}`),
     );
 
-    expect(render(entries).match(/<li class="entry">/g)).toHaveLength(20);
+    const html = render(entries);
+    expect(html.match(/<li class="entry"/g)).toHaveLength(4);
+    expect(html).toContain('data-index="3"');
   });
 });
 

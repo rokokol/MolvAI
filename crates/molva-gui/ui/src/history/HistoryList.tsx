@@ -1,24 +1,34 @@
 // SPDX-License-Identifier: MIT
-// The rows of the history: one phrase each, with its date, its numbers, its text and the two
-// actions it offers.
+// The list of phrases as a window over the journal
 //
-// The journal of a person who dictates every day holds thousands of phrases, and the list
-// renders again on every letter typed into the search box and on every copy. A row is therefore
-// its own component behind `memo`, and the actions of the list keep their identity, so a change
-// that touches one phrase redraws one row.
-//
-// The rows arrive in batches too: painting a whole journal at once blocks the window for the
-// length of one commit, and the list is worthless until that commit ends
+// A journal of thousands of phrases is not a list of thousands of DOM nodes: only the rows on
+// the screen and a few around them exist, and the rest of the journal is padding of the height
+// the measured rows say it takes. A row that scrolls out is measured on its way, so the padding
+// is exact where the list has been seen and estimated where it has not
 
-import { memo, useCallback, useEffect, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { copyToClipboard } from "../api";
 import { entryTag, formatLatency, formatTimestamp, formatWpm } from "../format";
 import { useI18n, type Lang } from "../i18n";
 import type { Entry } from "../types";
+import { DEFAULT_ESTIMATE, rowsWindow } from "./window";
 
-/** Rows painted by one commit; the rest follows in the pauses between them */
-const BATCH = 200;
+/** The layout effect is the one that measures after every paint; the server has none */
+const useMeasureEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
+/** Rows painted beyond the edges, so a scroll meets content instead of blank space */
+const OVERSCAN = 4;
+
+/** What the list assumes before it has measured the window it sits in */
+const DEFAULT_VIEWPORT = 760;
 
 export interface HistoryListProps {
   entries: Entry[];
@@ -28,6 +38,30 @@ export interface HistoryListProps {
   onDelete: (id: string) => void;
 }
 
+interface Viewport {
+  scrollTop: number;
+  height: number;
+  gap: number;
+  /** Distance of the top of the list from the top of the scrolling content */
+  offset: number;
+  width: number;
+}
+
+/** The element that scrolls the page, or `null` when the list is not in a document */
+function scrollParent(element: HTMLElement | null): HTMLElement | null {
+  let node = element?.parentElement ?? null;
+  while (node !== null) {
+    const overflow = window.getComputedStyle(node).overflowY;
+    if (overflow === "auto" || overflow === "scroll") {
+      return node;
+    }
+    node = node.parentElement;
+  }
+  return document.scrollingElement instanceof HTMLElement
+    ? document.scrollingElement
+    : null;
+}
+
 export default function HistoryList({
   entries,
   copiedId,
@@ -35,27 +69,123 @@ export default function HistoryList({
   onDelete,
 }: HistoryListProps) {
   const { lang } = useI18n();
-  // A list that grows keeps what it has painted; a list from another query starts again
-  const [painted, setPainted] = useState({ list: entries, count: BATCH });
-  if (painted.list !== entries) {
-    setPainted({ list: entries, count: BATCH });
+  const list = useRef<HTMLUListElement | null>(null);
+  // Measured heights by index; `0` means "not measured yet". The array belongs to the list that
+  // is painted now, so another query starts from the estimate again
+  const measured = useRef<{ list: Entry[]; heights: number[] }>({
+    list: entries,
+    heights: new Array(entries.length).fill(0),
+  });
+  if (measured.current.list !== entries) {
+    measured.current = { list: entries, heights: new Array(entries.length).fill(0) };
   }
-  useEffect(() => {
-    if (painted.count >= entries.length) {
+  const [viewport, setViewport] = useState<Viewport>({
+    scrollTop: 0,
+    height: DEFAULT_VIEWPORT,
+    gap: 0,
+    offset: 0,
+    width: 0,
+  });
+  const [painted, setPainted] = useState(0);
+
+  const readViewport = useCallback(() => {
+    const element = list.current;
+    if (element === null) {
       return;
     }
-    const timer = window.setTimeout(
-      () => setPainted((current) => ({ ...current, count: current.count + BATCH })),
-      0,
-    );
-    return () => window.clearTimeout(timer);
-  }, [painted, entries.length]);
-  const shown = entries.length <= painted.count ? entries : entries.slice(0, painted.count);
+    const parent = scrollParent(element);
+    if (parent === null) {
+      return;
+    }
+    const style = window.getComputedStyle(element);
+    const gap = Number.parseFloat(style.rowGap === "normal" ? "0" : style.rowGap) || 0;
+    const parentBox = parent.getBoundingClientRect();
+    const listBox = element.getBoundingClientRect();
+    setViewport((current) => {
+      const next: Viewport = {
+        scrollTop: parent.scrollTop,
+        height: parent.clientHeight,
+        gap,
+        offset: listBox.top - parentBox.top + parent.scrollTop,
+        width: parent.clientWidth,
+      };
+      const same =
+        Math.abs(next.scrollTop - current.scrollTop) < 1 &&
+        Math.abs(next.height - current.height) < 1 &&
+        Math.abs(next.gap - current.gap) < 0.5 &&
+        Math.abs(next.offset - current.offset) < 1 &&
+        Math.abs(next.width - current.width) < 1;
+      return same ? current : next;
+    });
+  }, []);
+
+  // The scroll and the size of the window belong to the page, not to the list
+  useMeasureEffect(() => {
+    const element = list.current;
+    if (element === null) {
+      return;
+    }
+    readViewport();
+    const parent = scrollParent(element);
+    const onScroll = () => readViewport();
+    parent?.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    const observer =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(onScroll);
+    if (observer !== null && parent !== null) {
+      observer.observe(parent);
+    }
+    return () => {
+      parent?.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      observer?.disconnect();
+    };
+  }, [readViewport]);
+
+  // A painted row is measured once, and a height that differs from its estimate redraws the
+  // padding; the comparison keeps the loop from settling into a redraw of itself
+  useMeasureEffect(() => {
+    const element = list.current;
+    if (element === null) {
+      return;
+    }
+    let changed = false;
+    for (const child of element.children) {
+      const index = Number((child as HTMLElement).dataset.index ?? "-1");
+      if (index < 0 || index >= measured.current.heights.length) {
+        continue;
+      }
+      const height = (child as HTMLElement).getBoundingClientRect().height;
+      if (height > 0 && Math.abs(height - measured.current.heights[index]) > 0.5) {
+        measured.current.heights[index] = height;
+        changed = true;
+      }
+    }
+    if (changed) {
+      setPainted((count) => count + 1);
+    }
+  });
+
+  const window_ = rowsWindow(measured.current.heights, {
+    estimate: DEFAULT_ESTIMATE,
+    gap: viewport.gap,
+    scrollTop: Math.max(0, viewport.scrollTop - viewport.offset),
+    viewport: viewport.height,
+    overscan: OVERSCAN,
+  });
+  const shown = entries.slice(window_.start, window_.end);
   return (
-    <ul className="entry-list">
-      {shown.map((entry) => (
+    <ul
+      className="entry-list"
+      ref={list}
+      style={{ paddingTop: window_.top, paddingBottom: window_.bottom }}
+      data-painted={shown.length}
+      data-version={painted}
+    >
+      {shown.map((entry, position) => (
         <HistoryRow
           key={entry.id}
+          index={window_.start + position}
           entry={entry}
           lang={lang}
           copied={copiedId === entry.id}
@@ -69,12 +199,14 @@ export default function HistoryList({
 
 /** A row of the history: exported because a test holds it to its memo boundary */
 export const HistoryRow = memo(function HistoryRow({
+  index,
   entry,
   lang,
   copied,
   onCopied,
   onDelete,
 }: {
+  index: number;
   entry: Entry;
   lang: Lang;
   copied: boolean;
@@ -91,7 +223,7 @@ export const HistoryRow = memo(function HistoryRow({
     }
   }, [text, entry.id, onCopied]);
   return (
-    <li className="entry">
+    <li className="entry" data-index={index}>
       <div className="meta">
         <span>{formatTimestamp(entry.ts, lang)}</span>
         <span>
