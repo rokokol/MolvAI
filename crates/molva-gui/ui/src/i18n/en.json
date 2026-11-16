@@ -350,7 +350,7 @@
   "validation.providerSlug": "Not an OpenRouter hoster name: {value}",
   "files.cliMissingHint": "Build the CLI (`cargo build -p molva`) and put `molva` next to the GUI or on PATH",
   "settings.autostartHint": "Check write access to the user autostart directory",
-  "settings.autostartManagedHint": "programs.molvai.guiAutostart in the Nix configuration writes this entry: switch it there, not in this window",
+  "settings.autostartManagedHint": "programs.molvai.guiAutostart in the Nix configuration writes this entry",
   "settings.provider": "Speech recognition",
   "settings.provider.local": "On this machine",
   "settings.provider.localHint": "Whisper or Sber GigaAM, offline",

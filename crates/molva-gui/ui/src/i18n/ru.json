@@ -350,7 +350,7 @@
   "validation.providerSlug": "Это не имя хостера OpenRouter: {value}",
   "files.cliMissingHint": "Соберите CLI (`cargo build -p molva`) и положите `molva` рядом с GUI или в PATH",
   "settings.autostartHint": "Проверьте права на запись в каталог автозапуска пользователя",
-  "settings.autostartManagedHint": "Этот автозапуск пишет programs.molvai.guiAutostart в конфигурации Nix: там он и выключается, а не в этом окне",
+  "settings.autostartManagedHint": "Этот автозапуск пишет programs.molvai.guiAutostart в конфигурации Nix",
   "settings.provider": "Распознавание речи",
   "settings.provider.local": "На этом компьютере",
   "settings.provider.localHint": "Whisper или Sber GigaAM, без сети",
