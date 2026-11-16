@@ -17,7 +17,6 @@ use chrono::Utc;
 use molva_core::app::dictionary::Dictionary;
 use molva_core::app::engine::{build_stt_with, EngineChoice};
 use molva_core::app::file_result::FileResult;
-use molva_core::app::journal::FileJournal;
 #[cfg(test)]
 use molva_core::app::llm_output::sanitize_llm_output;
 use molva_core::app::pipeline::{Pipeline, PipelineConfig};
@@ -35,8 +34,9 @@ use molva_core::domain::journal::Journal;
 #[cfg(test)]
 use molva_core::domain::llm::ChatRequest;
 use molva_core::domain::llm::LlmClient;
+use molva_core::domain::stt::SttEngine;
 #[cfg(test)]
-use molva_core::domain::stt::{LanguageHint, SttEngine, SttOptions};
+use molva_core::domain::stt::{LanguageHint, SttOptions};
 #[cfg(test)]
 use molva_core::domain::text::{word_count, Style};
 use molva_core::infra::audio::decode;
@@ -130,7 +130,7 @@ impl FilePostprocessor {
                 // The same policy as in the daemon: a local model takes one request at a time
                 .map(|client| {
                     Box::new(molva_core::app::llm_executor::LlmExecutor::new(Arc::new(
-                        client,
+                        client.with_cloud_consent(cfg.privacy.cloud_consent),
                     ))) as Box<dyn LlmClient>
                 })
             };
@@ -278,7 +278,7 @@ pub(crate) struct Args {
     #[arg(long)]
     pub copy: bool,
 
-    /// File or directory for the result; without it the text goes to stdout
+    /// File or directory for the result; existing files are never overwritten
     #[arg(short = 'o', long, value_name = "PATH")]
     pub out: Option<PathBuf>,
 
@@ -593,8 +593,7 @@ pub(crate) fn render_all(results: &[FileResult], timecodes: bool) -> String {
 
 /// The output file names for a directory: `recording.wav` → `recording.txt`
 ///
-/// If the batch has `tone.mp3` and `tone.ogg`, one name `tone.txt` for both would silently lose
-/// half of the work, so when the stems match, the source extension is added to the name
+/// Matching stems use the source extension. Remaining collisions get numeric suffixes in order
 pub(crate) fn out_file_names(results: &[FileResult], json: bool) -> Vec<String> {
     let ext = if json { "json" } else { "txt" };
     let stem_of = |result: &FileResult| {
@@ -607,18 +606,30 @@ pub(crate) fn out_file_names(results: &[FileResult], json: bool) -> Vec<String> 
     for result in results {
         *counts.entry(stem_of(result)).or_default() += 1;
     }
+    let mut used = std::collections::HashSet::new();
     results
         .iter()
         .map(|result| {
             let stem = stem_of(result);
-            if counts.get(&stem).copied().unwrap_or(0) > 1 {
-                let full = Path::new(&result.file)
+            let base = if counts.get(&stem).copied().unwrap_or(0) > 1 {
+                Path::new(&result.file)
                     .file_name()
                     .map(|s| s.to_string_lossy().to_string())
-                    .unwrap_or(stem);
-                format!("{full}.{ext}")
+                    .unwrap_or(stem)
             } else {
-                format!("{stem}.{ext}")
+                stem
+            };
+            let mut n = 1;
+            loop {
+                let name = if n == 1 {
+                    format!("{base}.{ext}")
+                } else {
+                    format!("{base}-{n}.{ext}")
+                };
+                if used.insert(name.clone()) {
+                    break name;
+                }
+                n += 1;
             }
         })
         .collect()
@@ -635,7 +646,13 @@ pub(crate) fn write_output(
             std::fs::create_dir_all(parent)
                 .map_err(|e| CmdError::file(format!("{}: {e}", parent.display())))?;
         }
-        std::fs::write(path, body).map_err(|e| CmdError::file(format!("{}: {e}", path.display())))
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+            .map_err(|e| CmdError::file(format!("{}: {e}", path.display())))?;
+        file.write_all(body.as_bytes())
+            .map_err(|e| CmdError::file(format!("{}: {e}", path.display())))
     };
 
     match &args.out {
@@ -643,14 +660,39 @@ pub(crate) fn write_output(
         Some(path) if path.is_dir() => {
             let names = out_file_names(&outcome.results, args.json);
             for (result, name) in outcome.results.iter().zip(names) {
-                let target = path.join(name);
                 let body = if args.json {
                     serde_json::to_string_pretty(result)
                         .map_err(|e| CmdError::file(e.to_string()))?
                 } else {
                     render_text(result, args.timecodes)
                 };
-                to_file(&target, &format!("{body}\n"))?;
+                let name_path = Path::new(&name);
+                let stem = name_path.file_stem().unwrap_or_default().to_string_lossy();
+                let ext = name_path.extension().unwrap_or_default().to_string_lossy();
+                let mut n = 1;
+                loop {
+                    let candidate = if n == 1 {
+                        name.clone()
+                    } else {
+                        format!("{stem}-{n}.{ext}")
+                    };
+                    let target = path.join(candidate);
+                    match std::fs::OpenOptions::new()
+                        .write(true)
+                        .create_new(true)
+                        .open(&target)
+                    {
+                        Ok(mut file) => {
+                            file.write_all(format!("{body}\n").as_bytes())
+                                .map_err(|e| {
+                                    CmdError::file(format!("{}: {e}", target.display()))
+                                })?;
+                            break;
+                        }
+                        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => n += 1,
+                        Err(e) => return Err(CmdError::file(format!("{}: {e}", target.display()))),
+                    }
+                }
             }
         }
         Some(path) => {
@@ -690,28 +732,44 @@ pub(crate) fn transcribe_outcome(
     config_path: &Path,
     source: Source,
 ) -> Result<Outcome, CmdError> {
-    let jobs = collect_jobs(&args.input, args.recursive)?;
-
     let choice = EngineChoice {
         engine: args.engine.clone(),
         model: args.model.clone(),
         fake_text: None,
     };
     let engine = build_stt_with(config, &choice).map_err(|e| CmdError::engine(e.to_string()))?;
+    transcribe_outcome_with_engine(args, config, config_path, source, engine)
+}
 
+fn transcribe_outcome_with_engine(
+    args: &Args,
+    config: &Config,
+    config_path: &Path,
+    source: Source,
+    engine: Box<dyn SttEngine>,
+) -> Result<Outcome, CmdError> {
+    let jobs = collect_jobs(&args.input, args.recursive)?;
     let style = args
         .style
         .as_deref()
         .unwrap_or(&config.style.default)
         .to_string();
-    let journal = FileJournal::open_for(config).map_err(|e| CmdError::file(e.to_string()))?;
+    let journal =
+        super::daemon::build_journal(config).map_err(|e| CmdError::file(e.to_string()))?;
+    let mut pipeline_config = PipelineConfig::from_config(config);
+    if let Some(language) = &args.language {
+        pipeline_config.stt.language.clone_from(language);
+    }
     let llm: Option<Arc<dyn LlmClient>> =
         if args.no_llm || !config.llm.enabled || !config.privacy.send_to_llm {
             None
         } else {
             OpenAiCompatClient::from_config(&config.llm, secrets::api_key(&config.llm))
                 .ok()
-                .map(|client| Arc::new(client) as Arc<dyn LlmClient>)
+                .map(|client| {
+                    Arc::new(client.with_cloud_consent(config.privacy.cloud_consent))
+                        as Arc<dyn LlmClient>
+                })
         };
     let dictionary = config
         .dictionary_path_near(config_path)
@@ -722,9 +780,9 @@ pub(crate) fn transcribe_outcome(
         engine,
         llm,
         Box::new(NoopInjector),
-        Box::new(journal),
+        journal,
         Arc::new(SystemClock),
-        PipelineConfig::from_config(config),
+        pipeline_config,
     )
     .with_dictionary(dictionary);
 
@@ -846,6 +904,140 @@ mod tests {
             "cleanup",
             &mut |_, _| {},
         )
+    }
+
+    fn offline_args(path: PathBuf) -> Args {
+        Args {
+            input: vec![path],
+            language: None,
+            model: None,
+            engine: Some("fake".into()),
+            style: None,
+            no_llm: true,
+            no_inject: false,
+            json: false,
+            chunked: false,
+            timecodes: false,
+            copy: false,
+            out: None,
+            recursive: false,
+            stdin_format: None,
+        }
+    }
+
+    #[test]
+    fn offline_language_override_reaches_engine_without_mutating_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let audio = dir.path().join("a.wav");
+        write_wav(&audio, 0.2);
+        let mut args = offline_args(audio);
+        args.language = Some("fr".into());
+        let mut cfg = Config::default();
+        cfg.stt.language = "en".into();
+        cfg.journal.enabled = false;
+        cfg.journal.path = dir.path().join("journal").display().to_string();
+        #[derive(Debug)]
+        struct RecordingStt(Arc<std::sync::Mutex<Vec<SttOptions>>>);
+        impl SttEngine for RecordingStt {
+            fn id(&self) -> &str {
+                "recording-fake"
+            }
+            fn model_name(&self) -> &str {
+                "recording-fake"
+            }
+            fn transcribe(
+                &mut self,
+                _: &molva_core::domain::audio::PcmAudio,
+                options: &SttOptions,
+            ) -> Result<Transcript, molva_core::domain::stt::SttError> {
+                self.0.lock().unwrap().push(options.clone());
+                Ok(Transcript::text_only("text"))
+            }
+            fn unload(&mut self) {}
+        }
+        let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let outcome = transcribe_outcome_with_engine(
+            &args,
+            &cfg,
+            &dir.path().join("config.toml"),
+            Source::File,
+            Box::new(RecordingStt(calls.clone())),
+        )
+        .unwrap();
+        assert!(outcome.ok(), "{:?}", outcome.errors);
+        assert_eq!(
+            calls.lock().unwrap()[0].language,
+            LanguageHint::Fixed("fr".into())
+        );
+        assert_eq!(outcome.results[0].language.as_deref(), Some("fr"));
+        assert_eq!(cfg.stt.language, "en");
+    }
+
+    #[test]
+    fn offline_disabled_journal_creates_neither_journal_nor_key() {
+        for no_record in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let audio = dir.path().join("a.wav");
+            write_wav(&audio, 0.2);
+            let args = offline_args(audio);
+            let mut cfg = Config::default();
+            cfg.journal.enabled = no_record;
+            cfg.privacy.no_record_mode = no_record;
+            cfg.journal.encrypt = true;
+            cfg.journal.path = dir.path().join("journal.jsonl").display().to_string();
+            cfg.journal.key_path = dir.path().join("journal.key").display().to_string();
+            let outcome =
+                transcribe_outcome(&args, &cfg, &dir.path().join("config.toml"), Source::File)
+                    .unwrap();
+            assert!(outcome.ok(), "{:?}", outcome.errors);
+            assert!(!Path::new(&cfg.journal.path).exists());
+            assert!(!Path::new(&cfg.journal.key_path).exists());
+        }
+    }
+
+    #[test]
+    fn export_preserves_colliding_results_and_existing_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let make = |file: &str| FileResult {
+            file: file.into(),
+            text: file.into(),
+            segments: vec![],
+            audio_secs: 1.0,
+            latency_ms: 1,
+            language: None,
+        };
+        let results = vec![
+            make("a/tone.wav"),
+            make("b/tone.wav"),
+            make("tone.wav.mp3"),
+            make("tone.ogg"),
+            make("tone.wav"),
+        ];
+        let outcome = Outcome {
+            results,
+            errors: vec![],
+        };
+        let mut args = offline_args(PathBuf::from("unused"));
+        args.out = Some(dir.path().to_path_buf());
+        std::fs::write(dir.path().join("tone.wav.txt"), "existing").unwrap();
+        write_output(&outcome, &args, &mut Vec::new()).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("tone.wav.txt")).unwrap(),
+            "existing"
+        );
+        let bodies: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| std::fs::read_to_string(e.unwrap().path()).unwrap())
+            .collect();
+        assert_eq!(bodies.len(), outcome.results.len() + 1);
+        for result in &outcome.results {
+            assert!(bodies.contains(&format!("{}\n", result.text)));
+        }
+        let target = dir.path().join("existing.txt");
+        std::fs::write(&target, "keep").unwrap();
+        args.out = Some(target.clone());
+        assert!(write_output(&outcome, &args, &mut Vec::new()).is_err());
+        assert_eq!(std::fs::read_to_string(target).unwrap(), "keep");
     }
 
     #[test]
