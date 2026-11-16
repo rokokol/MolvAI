@@ -90,14 +90,11 @@ function Check({
   label,
   hint,
   checked,
-  disabled,
   onChange,
 }: {
   label: string;
   hint?: string;
   checked: boolean;
-  /** A setting that a configuration owns: the box shows its value and takes no click */
-  disabled?: boolean;
   onChange: (value: boolean) => void;
 }) {
   return (
@@ -105,7 +102,6 @@ function Check({
       <input
         type="checkbox"
         checked={checked}
-        disabled={disabled}
         onChange={(event) => onChange(event.target.checked)}
       />
       <span>
