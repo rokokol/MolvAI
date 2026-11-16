@@ -189,6 +189,8 @@ pub enum ErrorCode {
     LlmFailed,
     InjectFailed,
     BadRequest,
+    /// The settings are saved, but this process cannot apply them: only a fresh process can
+    RestartRequired,
     Internal,
 }
 

@@ -119,6 +119,7 @@ pub fn daemon_error_title(code: ErrorCode) -> String {
         ErrorCode::LlmFailed => "daemonError.llmFailed",
         ErrorCode::InjectFailed => "daemonError.injectFailed",
         ErrorCode::BadRequest => "daemonError.badRequest",
+        ErrorCode::RestartRequired => "daemonError.restartRequired",
         ErrorCode::Internal => "daemonError.internal",
     })
 }
@@ -225,6 +226,7 @@ mod tests {
             ErrorCode::LlmFailed,
             ErrorCode::InjectFailed,
             ErrorCode::BadRequest,
+            ErrorCode::RestartRequired,
             ErrorCode::Internal,
         ] {
             let title = daemon_error_title(code);

@@ -427,7 +427,7 @@ fn update_config(app: &AppHandle, change: impl FnOnce(&mut molva_core::Config) +
         let mut config = state.config();
         change(&mut config);
         if let Err(err) = crate::commands::apply_config(&state, config) {
-            crate::notify_error(&app, &err.message, None);
+            crate::notify_error(&app, &err.message, err.hint.as_deref());
             return;
         }
         let handle = app.clone();

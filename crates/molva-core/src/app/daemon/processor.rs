@@ -54,8 +54,12 @@ impl From<crate::app::pipeline::PipelineError> for ProcessError {
 
 /// The full pipeline (dictionary, rules, model) in the place of the daemon processor
 impl Processor for crate::app::pipeline::Pipeline {
-    fn apply_config(&mut self, config: &Config) {
+    fn apply_config(&mut self, config: &Config) -> Result<(), ProcessError> {
         self.set_config(crate::app::pipeline::PipelineConfig::from_config(config));
+        // The dictionary is a file of its own: a reload is the moment to pick up the terms that
+        // were added or removed since the process started, without waiting for a restart
+        self.reload_dictionary();
+        Ok(())
     }
 
     fn process(
@@ -145,9 +149,14 @@ pub trait Processor: std::fmt::Debug + Send {
     /// guarantee
     fn set_stop_after_release(&mut self, _ms: u32) {}
 
-    /// Apply the reloaded settings: the default style, the rules, the thresholds. A processor
-    /// that does not care about the settings does nothing
-    fn apply_config(&mut self, _config: &Config) {}
+    /// Apply the reloaded settings: the default style, the rules, the thresholds
+    ///
+    /// The daemon announces a reload only after this returns `Ok`, so an error means that the
+    /// settings on disk are not the settings in force. A processor that does not care about the
+    /// settings does nothing and says so
+    fn apply_config(&mut self, _config: &Config) -> Result<(), ProcessError> {
+        Ok(())
+    }
 
     /// Recognize a chunk of a recording that is still running
     ///

@@ -25,7 +25,9 @@ use molva_core::domain::entry::{Mode, Source};
 use molva_core::domain::llm::LlmError;
 use molva_core::domain::{DeviceInfo, Entry, OutputMode};
 use molva_core::infra::audio::list_input_devices;
-use molva_core::ipc::{Command, DaemonState, FileTranscriptionRequest, WorkerJob};
+use molva_core::ipc::{
+    Command, DaemonState, ErrorCode, FileTranscriptionRequest, IpcError, WorkerJob,
+};
 use molva_core::Config;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
@@ -229,11 +231,6 @@ pub fn validate_config(config: &Config) -> Result<(), ValidationError> {
         }
     }
     Ok(())
-}
-
-/// Whether the provider is a cloud one: the interface requires an explicit confirmation for it
-pub fn is_cloud_provider(provider: &str) -> bool {
-    !matches!(provider, "ollama" | "lmstudio" | "custom")
 }
 
 /// Built-in post-processing styles; the menu label of each is `style.<id>` in the dictionaries
@@ -520,7 +517,7 @@ fn probe_failure(error: ProbeFailure) -> CommandError {
                     &[("seconds", &seconds.to_string())],
                 )),
                 LlmError::Unavailable(_) => Some(i18n::t("settings.llm.probeUnavailableHint")),
-                LlmError::BadResponse(_) | LlmError::Disabled => None,
+                LlmError::BadResponse(_) | LlmError::Disabled | LlmError::Consent => None,
             };
             CommandError::new("llm", error.to_string()).with_hint(hint)
         }
@@ -702,22 +699,16 @@ impl AppState {
     /// Stop the daemon when this window started it, and only then
     ///
     /// A window that lost the start race has no daemon of its own: the one on the socket
-    /// belongs to another client, and its Quit is not this window's to decide. The pid of the
-    /// answer tells the two apart
+    /// belongs to another client, and its Quit is not this window's to decide
     pub fn stop_owned_daemon(&self) {
-        let mut daemon = lock(&self.daemon);
-        if !daemon.is_ours() {
-            return;
+        {
+            let mut daemon = lock(&self.daemon);
+            if !daemon.is_ours() {
+                return;
+            }
         }
-        let ours = daemon.pid();
-        let answered = ipc::request(Command::Ping)
-            .ok()
-            .and_then(|value| value.get("pid").and_then(serde_json::Value::as_u64));
-        if answered == ours.map(u64::from) {
-            // Ask politely first: the daemon closes the microphone and finishes the journal
-            let _ = ipc::request(Command::Shutdown);
-        }
-        daemon.stop();
+        ask_owned_daemon_to_stop(self);
+        lock(&self.daemon).stop();
     }
 }
 
@@ -833,6 +824,22 @@ async fn tell_daemon(cmd: Command) -> Result<(), CommandError> {
 /// wait is finite because the window must answer, and the error names the likely reason
 const DAEMON_READY_TIMEOUT: Duration = Duration::from_secs(180);
 
+/// How long a replaced daemon has to exit on its own before it is killed
+///
+/// The stop of a daemon that needs a new process waits for the reply to `Shutdown`: an exit that
+/// finishes the journal keeps the phrase that the person just spoke
+const DAEMON_STOP_WAIT: Duration = Duration::from_secs(5);
+
+/// The systemd user service that the Nix module declares for the daemon
+const DAEMON_SERVICE: &str = "molva-daemon";
+
+/// What the user runs when the daemon belongs to the user manager
+const SYSTEMD_START_HINT: &str = "systemctl --user start molva-daemon";
+
+/// The phrase that separates a process that has to be replaced from a failed pipeline
+///
+/// The daemon answers a section that its process cannot take with `RestartRequired`, so the
+/// decision rests on the code and never on the wording of the message
 /// Start the daemon when nobody answers on the socket, and wait until it does
 ///
 /// The microphone and the recognizer belong to the daemon, so a recording cannot start without
@@ -842,18 +849,76 @@ pub(crate) fn ensure_daemon(state: &AppState) -> Result<(), CommandError> {
     if ipc::is_running() {
         return Ok(());
     }
-    let socket = ipc::socket_path().map_err(CommandError::from)?;
-    {
+    // A daemon of this window that has not opened the socket yet is the one the wait below is
+    // for: a service on the machine does not turn that start into someone else's
+    let ours = {
         let mut daemon = lock(&state.daemon);
-        daemon
-            .start(state.config_path(), &socket)
-            .map_err(CommandError::from)?;
+        daemon.is_ours()
+    };
+    if !ours {
+        start_absent_daemon(daemon_service_declared(), &mut || {
+            let socket = ipc::socket_path().map_err(CommandError::from)?;
+            let mut daemon = lock(&state.daemon);
+            daemon
+                .start(state.config_path(), &socket)
+                .map_err(CommandError::from)
+        })?;
     }
     // The wait happens without the handle: a status poll and a Quit must not stand behind it
     sidecar::wait_ready(DAEMON_READY_TIMEOUT, &ipc::is_running, &mut || {
         lock(&state.daemon).failure()
     })
     .map_err(CommandError::from)
+}
+
+/// Bring a daemon up when nobody answers on the socket, or name who owns the one that is missing
+///
+/// A declared unit means the user manager owns the daemon: a process that the window starts
+/// beside it competes with the service, and a stop of that process leaves the service down. The
+/// start arrives as an argument, so a test covers this decision without systemd and without
+/// spawning a process
+fn start_absent_daemon(
+    service_declared: bool,
+    start_sidecar: &mut dyn FnMut() -> Result<(), CommandError>,
+) -> Result<(), CommandError> {
+    if service_declared {
+        return Err(CommandError::new(
+            "daemon_unavailable",
+            format!(
+                "the daemon does not answer and the {DAEMON_SERVICE} service is declared on this \
+                 machine"
+            ),
+        )
+        .with_hint(Some(SYSTEMD_START_HINT.into())));
+    }
+    start_sidecar()
+}
+
+/// Whether the user manager of this machine declares the daemon service
+#[cfg(target_os = "linux")]
+fn daemon_service_declared() -> bool {
+    let answer = std::process::Command::new("systemctl")
+        .args(["--user", "show", "-p", "LoadState", DAEMON_SERVICE])
+        .output();
+    match answer {
+        Ok(answer) => unit_is_loaded(&String::from_utf8_lossy(&answer.stdout)),
+        // A machine without systemctl has no unit behind the daemon: the window is the only owner
+        // left there, and the sidecar is how it gets one
+        Err(_) => false,
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+const fn daemon_service_declared() -> bool {
+    false
+}
+
+/// Whether a `LoadState=` answer of `systemctl show` names a unit that the manager loaded
+///
+/// `loaded` is the only state that gives the daemon an owner: `not-found` is no unit, and
+/// `masked` is a service that its owner turned off on purpose
+fn unit_is_loaded(answer: &str) -> bool {
+    answer.lines().any(|line| line.trim() == "LoadState=loaded")
 }
 
 /// Send a command that needs a live daemon, starting it when nobody answers
@@ -867,9 +932,10 @@ async fn with_running_daemon<R: Runtime>(
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let config = state.config();
+        let url = molva_core::infra::llm::openai_compat::configured_base_url(&config.llm);
         let cloud_text = config.llm.enabled
             && config.privacy.send_to_llm
-            && is_cloud_provider(&config.llm.provider);
+            && !molva_core::infra::llm::openai_compat::is_loopback_url(url);
         let cloud_speech = config.stt.engine == "remote-openai";
         if (cloud_text || cloud_speech) && !config.privacy.cloud_consent {
             return Err(CommandError::new("consent", i18n::t("error.cloudConsent")));
@@ -1068,16 +1134,102 @@ pub fn get_config(state: State<'_, AppState>) -> Config {
     state.config()
 }
 
-/// Tell the daemon about the new settings without waiting for the response
+/// Ask the daemon to apply the settings that are already written, and keep the code of a refusal
 ///
-/// The file is already written, so for the user the save has happened. A daemon that is not
-/// running, or is busy, must neither delay the window nor turn the success into an error
-fn notify_config_reload() {
-    std::thread::spawn(|| {
-        if let Err(err) = ipc::request(Command::ConfigReload) {
-            tracing::info!(%err, "settings saved, but the daemon does not know about them yet");
-        }
-    });
+/// The daemon answers once its worker has taken the settings, so the save acts on the real
+/// outcome instead of a guess about the file. The code is what the save needs and a
+/// [`CommandError`] does not carry it
+fn request_config_reload() -> Result<(), IpcError> {
+    match ipc::request(Command::ConfigReload) {
+        Ok(_) => Ok(()),
+        Err(IpcClientError::Daemon(err)) => Err(IpcError {
+            code: err.code,
+            message: err.message,
+            hint: err.hint,
+        }),
+        // No daemon holds the socket: the written file is what the next start reads, so nothing
+        // refused the settings and no restart is due
+        Err(err) if err.is_unavailable() => Ok(()),
+        // The daemon answered something this client cannot read: the settings are written, and
+        // the user learns that the daemon did not take them
+        Err(err) => Err(IpcError {
+            code: ErrorCode::Internal,
+            message: err.user_message(),
+            hint: err.hint(),
+        }),
+    }
+}
+
+/// Whether the daemon refused because its process cannot take the written settings
+fn restart_required(err: &IpcError) -> bool {
+    err.code == ErrorCode::RestartRequired
+}
+
+/// A refusal about a restart in the form that the interface shows
+///
+/// The message comes from the daemon, which names the sections its process cannot take. The next
+/// step is chosen here, because only this window knows who can replace that process: a declared
+/// service is restarted by the service manager, and everywhere else the window starts the daemon
+/// itself
+fn restart_error(refusal: &IpcError) -> CommandError {
+    CommandError::new("restart", refusal.message.clone()).with_hint(Some(owner_restart_hint()))
+}
+
+/// The next step for a daemon that this window does not own
+fn owner_restart_hint() -> String {
+    if daemon_service_declared() {
+        i18n::t("restart.service")
+    } else {
+        i18n::t("restart.window")
+    }
+}
+
+/// What a save does with the answer of the daemon
+#[derive(Debug)]
+enum ApplyDecision {
+    /// The settings are live: the daemon applied them, or no daemon needs them yet
+    Live,
+    /// The settings need a new process, and this window started the daemon to replace
+    RestartOwned(IpcError),
+    /// The settings need a new process that belongs to systemd or to another client
+    AskOwner(CommandError),
+    /// The daemon refused for a reason that no restart fixes
+    Refused(CommandError),
+}
+
+/// Decide by the answer of the daemon and by the owner of the process, never by the file
+///
+/// A daemon that another client or systemd started is not this window's to stop: the user gets
+/// the daemon's own words and the command that its owner runs
+fn apply_decision(daemon_ours: bool, reload: Result<(), IpcError>) -> ApplyDecision {
+    let Err(refusal) = reload else {
+        return ApplyDecision::Live;
+    };
+    if !restart_required(&refusal) {
+        return ApplyDecision::Refused(
+            CommandError::new("daemon", refusal.message).with_hint(refusal.hint),
+        );
+    }
+    if daemon_ours {
+        return ApplyDecision::RestartOwned(refusal);
+    }
+    ApplyDecision::AskOwner(restart_error(&refusal))
+}
+
+/// Apply the written settings to the daemon and act on its answer
+///
+/// `restart` is the effect that replaces the process of this window: it is an argument so a test
+/// can prove that a daemon of another owner is never stopped and that a refusal is never dropped
+fn apply_to_daemon(
+    daemon_ours: bool,
+    reload: Result<(), IpcError>,
+    restart: &mut dyn FnMut(&IpcError) -> Result<(), CommandError>,
+) -> Result<(), CommandError> {
+    match apply_decision(daemon_ours, reload) {
+        ApplyDecision::Live => Ok(()),
+        ApplyDecision::RestartOwned(refusal) => restart(&refusal),
+        ApplyDecision::AskOwner(refusal) | ApplyDecision::Refused(refusal) => Err(refusal),
+    }
 }
 
 #[tauri::command]
@@ -1106,26 +1258,28 @@ pub fn config_managed(state: State<'_, AppState>) -> bool {
 
 /// Write the settings and bring the daemon and the compositor binds in step with them
 ///
-/// The window, the tray and the pause switch use this one path. A device or engine change
-/// rebuilds the pipeline; a change of the binds rewrites the Hyprland file
+/// The window, the tray and the pause switch use this one path. The daemon is asked first: a
+/// section that its running process cannot take answers with `restart required`, and that answer
+/// decides whether a new process is needed. A change of the binds rewrites the Hyprland file
 pub(crate) fn apply_config(state: &AppState, config: Config) -> Result<(), CommandError> {
     validate_config(&config)?;
-    let previous = state.config();
-    let hotkeys_changed = previous.hotkeys != config.hotkeys;
-    // A recogniser is built from the engine, the model and the audio device. The running
-    // daemon holds the old pipeline, so those changes need a fresh process; the rest are
-    // applied by `config.reload` without dropping the model
-    let restart = previous.stt != config.stt || previous.audio != config.audio;
+    let hotkeys_changed = state.config().hotkeys != config.hotkeys;
     state.replace_config(config)?;
-    if restart {
-        restart_daemon(state);
-    } else {
-        notify_config_reload();
-    }
+    let daemon_ours = {
+        let mut daemon = lock(&state.daemon);
+        daemon.is_ours()
+    };
+    let reload = request_config_reload();
+    let applied = {
+        let mut restart = |refusal: &IpcError| restart_daemon(state, refusal);
+        apply_to_daemon(daemon_ours, reload, &mut restart)
+    };
+    // The binds are rewritten even when the daemon needs a restart: the keys live in that file,
+    // and the daemon reads them from the settings file that is already written
     if hotkeys_changed {
         refresh_hyprland_binds(&state.config().hotkeys);
     }
-    Ok(())
+    applied
 }
 
 /// A command that is not `async` runs on the main thread, and this one writes files and runs
@@ -1171,24 +1325,45 @@ pub fn export_config(state: State<'_, AppState>) -> Result<String, CommandError>
 }
 
 /// Import settings from a TOML file: the file is checked before it replaces the current settings
+///
+/// The file reaches the daemon through the same path as a save, and a daemon that cannot take it
+/// answers only when its worker is free: the main thread must not wait for that
 #[tauri::command]
-pub fn import_config(state: State<'_, AppState>, path: String) -> Result<Config, CommandError> {
-    let path = PathBuf::from(path);
-    let text = std::fs::read_to_string(&path)
-        .map_err(|e| CommandError::new("config", format!("{}: {e}", path.display())))?;
-    let config = Config::from_toml_str(&path, &text)?;
-    validate_config(&config)?;
-    state.replace_config(config.clone())?;
-    notify_config_reload();
-    Ok(config)
+pub async fn import_config(app: AppHandle, path: String) -> Result<Config, CommandError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let path = PathBuf::from(path);
+        let text = std::fs::read_to_string(&path)
+            .map_err(|e| CommandError::new("config", format!("{}: {e}", path.display())))?;
+        let config = Config::from_toml_str(&path, &text)?;
+        apply_config(&state, config.clone())?;
+        Ok(config)
+    })
+    .await
+    .map_err(|err| {
+        CommandError::new(
+            "internal",
+            format!("the settings import was interrupted: {err}"),
+        )
+    })?
 }
 
+/// The same path as a save for the defaults, including the daemon that has to read them
 #[tauri::command]
-pub fn reset_config(state: State<'_, AppState>) -> Result<Config, CommandError> {
-    let config = Config::default();
-    state.replace_config(config.clone())?;
-    notify_config_reload();
-    Ok(config)
+pub async fn reset_config(app: AppHandle) -> Result<Config, CommandError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let config = Config::default();
+        apply_config(&state, config.clone())?;
+        Ok(config)
+    })
+    .await
+    .map_err(|err| {
+        CommandError::new(
+            "internal",
+            format!("the settings reset was interrupted: {err}"),
+        )
+    })?
 }
 
 /// The interface language, resolved on the Rust side only so the window and the tray agree
@@ -1236,26 +1411,49 @@ pub async fn write_hyprland_binds(
     })?
 }
 
-/// Stop the daemon and start it again from the settings that were just written
+/// Stop the daemon that this window started and start it again from the written settings
 ///
-/// A model, an engine or an input device is chosen when the pipeline is built. A reload of the
-/// configuration cannot replace that object, so keeping the old daemon would leave the warning
-/// "the previous model is still in use" true after a save. The wait is bounded: a failed start
-/// is reported by the next status request, not by a stuck settings page
-fn restart_daemon(state: &AppState) {
-    if !ipc::is_running() {
-        return;
+/// A model, an engine or an input device is chosen when the pipeline is built, and a reload of
+/// the configuration cannot replace that object. Only a daemon of this window is stopped here: a
+/// process of systemd or of another client is its owner's to restart, and its own words and hint
+/// name the command that does it
+fn restart_daemon(state: &AppState, refusal: &IpcError) -> Result<(), CommandError> {
+    let daemon_ours = {
+        let mut daemon = lock(&state.daemon);
+        daemon.is_ours()
+    };
+    if !daemon_ours {
+        return Err(restart_error(refusal));
     }
-    // A daemon started by another client is foreign: it still has to stop, otherwise the new
-    // process would find its socket and do nothing
-    let _ = ipc::request(Command::Shutdown);
-    let deadline = Instant::now() + Duration::from_secs(5);
+    ask_owned_daemon_to_stop(state);
+    // The socket answers until the daemon closes it: a start that finds it would leave the old
+    // pipeline in place and report the settings as applied
+    let deadline = Instant::now() + DAEMON_STOP_WAIT;
     while ipc::is_running() && Instant::now() < deadline {
         std::thread::sleep(READY_STEP);
     }
     lock(&state.daemon).stop();
-    if let Err(err) = ensure_daemon(state) {
-        tracing::warn!(error = %err.message, "the daemon was not restarted after a settings change");
+    ensure_daemon(state).map_err(restart_failure)
+}
+
+/// The error of a start that followed a stop: the file is written, and the daemon is not there
+fn restart_failure(err: CommandError) -> CommandError {
+    CommandError::new("sidecar", format!("saved, restart failed: {}", err.message))
+        .with_hint(err.hint)
+}
+
+/// Ask the daemon of this handle to stop over the socket
+///
+/// The reply to `ping` names the pid: a socket that another client's daemon answers is not this
+/// window's to stop, and the pid is what tells the two apart
+fn ask_owned_daemon_to_stop(state: &AppState) {
+    let ours = lock(&state.daemon).pid();
+    let answered = ipc::request(Command::Ping)
+        .ok()
+        .and_then(|value| value.get("pid").and_then(serde_json::Value::as_u64));
+    if answered == ours.map(u64::from) {
+        // Ask politely first: the daemon closes the microphone and finishes the journal
+        let _ = ipc::request(Command::Shutdown);
     }
 }
 
@@ -1351,8 +1549,7 @@ pub fn search_files(
 pub fn history_delete(state: State<'_, AppState>, id: String) -> Result<bool, CommandError> {
     let id = Uuid::parse_str(&id)
         .map_err(|e| CommandError::new("history", format!("invalid id: {e}")))?;
-    let path = history::journal_path(&state.config())?;
-    Ok(history::delete(&path, id)?)
+    Ok(history::delete(&state.config(), id)?)
 }
 
 #[tauri::command]
@@ -1547,7 +1744,7 @@ fn file_request(
                     CommandError::new("daemon", format!("unclear answer from the daemon: {err}"))
                 })
             }
-            Err(IpcClientError::Daemon(err)) if err.code == molva_core::ipc::ErrorCode::Busy => {
+            Err(IpcClientError::Daemon(err)) if err.code == ErrorCode::Busy => {
                 if Instant::now() >= deadline {
                     return Err(CommandError::from(IpcClientError::Daemon(err)));
                 }
@@ -1708,14 +1905,6 @@ mod tests {
             };
             assert!(validate_config(&config).is_ok(), "{ok}");
         }
-    }
-
-    #[test]
-    fn local_providers_need_no_confirmation_cloud_ones_do() {
-        assert!(!is_cloud_provider("ollama"));
-        assert!(!is_cloud_provider("lmstudio"));
-        assert!(is_cloud_provider("openai"));
-        assert!(is_cloud_provider("groq"));
     }
 
     #[test]
@@ -1999,5 +2188,184 @@ mod tests {
         let mut config = Config::default();
         config.style.custom = (0..11).map(style).collect();
         assert_eq!(validate_config(&config).unwrap_err().field, "style.custom");
+    }
+
+    /// The refusal of a daemon whose process cannot take the written sections
+    fn restart_refusal() -> IpcError {
+        IpcError {
+            code: ErrorCode::RestartRequired,
+            message: "settings saved but not applied: restart required: stt, audio".into(),
+            hint: Some("restart the daemon: systemctl --user restart molva-daemon".into()),
+        }
+    }
+
+    #[test]
+    fn only_the_daemon_this_window_started_is_restarted() {
+        assert!(
+            matches!(
+                apply_decision(true, Err(restart_refusal())),
+                ApplyDecision::RestartOwned(_)
+            ),
+            "a daemon of this window was not restarted: {:?}",
+            apply_decision(true, Err(restart_refusal()))
+        );
+        match apply_decision(false, Err(restart_refusal())) {
+            ApplyDecision::AskOwner(err) => {
+                assert_eq!(err.kind, "restart");
+                assert_eq!(err.message, restart_refusal().message);
+                assert_eq!(err.hint, Some(owner_restart_hint()));
+            }
+            other => panic!("a daemon of another owner was not left to it: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_daemon_of_another_owner_is_not_stopped() {
+        // The restart effect is the one that sends `Shutdown` and starts a second process
+        let mut restarts = 0;
+        let err = apply_to_daemon(false, Err(restart_refusal()), &mut |_refusal| {
+            restarts += 1;
+            Ok(())
+        })
+        .unwrap_err();
+        assert_eq!(
+            restarts, 0,
+            "the window stopped a daemon that is not its own"
+        );
+        assert_eq!(err.kind, "restart");
+        assert_eq!(err.message, restart_refusal().message);
+        assert_eq!(err.hint, Some(owner_restart_hint()));
+    }
+
+    #[test]
+    fn an_owned_daemon_gets_a_new_process_when_the_sections_need_one() {
+        let mut restarts = 0;
+        let result = apply_to_daemon(true, Err(restart_refusal()), &mut |_refusal| {
+            restarts += 1;
+            Ok(())
+        });
+        assert!(result.is_ok());
+        assert_eq!(restarts, 1);
+    }
+
+    #[test]
+    fn a_live_reload_leaves_the_daemon_alone() {
+        let mut restarts = 0;
+        let result = apply_to_daemon(false, Ok(()), &mut |_refusal| {
+            restarts += 1;
+            Ok(())
+        });
+        assert!(result.is_ok());
+        assert_eq!(restarts, 0);
+        assert!(matches!(apply_decision(true, Ok(())), ApplyDecision::Live));
+        assert!(matches!(apply_decision(false, Ok(())), ApplyDecision::Live));
+    }
+
+    #[test]
+    fn an_error_of_another_kind_is_not_read_as_a_restart() {
+        for code in [ErrorCode::Internal, ErrorCode::Busy, ErrorCode::SttFailed] {
+            let err = IpcError {
+                code,
+                message: "settings saved but not applied: the pipeline did not take them".into(),
+                hint: None,
+            };
+            let mut restarts = 0;
+            let reported = apply_to_daemon(true, Err(err), &mut |_refusal| {
+                restarts += 1;
+                Ok(())
+            })
+            .unwrap_err();
+            assert_eq!(restarts, 0, "{code:?} was answered with a restart");
+            assert_eq!(reported.kind, "daemon", "{code:?}");
+        }
+    }
+
+    #[test]
+    fn a_refused_settings_file_is_not_read_as_a_restart() {
+        // `BadRequest` covers every refusal of a written file: the phrase is what tells a
+        // process that has to be replaced from a file that the pipeline could not load
+        let load_failure = IpcError {
+            code: ErrorCode::BadRequest,
+            message: "settings not reloaded: unknown field `sttt`".into(),
+            hint: Some("check the file: molva config validate".into()),
+        };
+        let mut restarts = 0;
+        let reported = apply_to_daemon(true, Err(load_failure), &mut |_refusal| {
+            restarts += 1;
+            Ok(())
+        })
+        .unwrap_err();
+        assert_eq!(restarts, 0);
+        assert_eq!(reported.kind, "daemon");
+        assert_eq!(
+            reported.message,
+            "settings not reloaded: unknown field `sttt`"
+        );
+        assert_eq!(
+            reported.hint.as_deref(),
+            Some("check the file: molva config validate")
+        );
+    }
+
+    #[test]
+    fn a_failed_restart_says_that_the_settings_are_saved() {
+        let reported = apply_to_daemon(true, Err(restart_refusal()), &mut |_refusal| {
+            Err(restart_failure(CommandError::new(
+                "sidecar",
+                "molva executable not found: put it next to the GUI or in PATH",
+            )))
+        })
+        .unwrap_err();
+        assert_eq!(reported.kind, "sidecar");
+        assert!(
+            reported.message.starts_with("saved, restart failed: "),
+            "{}",
+            reported.message
+        );
+        assert!(
+            reported.message.contains("molva executable not found"),
+            "{}",
+            reported.message
+        );
+    }
+
+    #[test]
+    fn a_declared_service_keeps_the_window_from_starting_a_second_daemon() {
+        let mut starts = 0;
+        let err = start_absent_daemon(true, &mut || {
+            starts += 1;
+            Ok(())
+        })
+        .unwrap_err();
+        assert_eq!(starts, 0, "a sidecar started beside the service");
+        assert_eq!(err.kind, "daemon_unavailable");
+        assert_eq!(
+            err.hint.as_deref(),
+            Some("systemctl --user start molva-daemon")
+        );
+    }
+
+    #[test]
+    fn without_a_service_the_window_starts_the_sidecar() {
+        let mut starts = 0;
+        let result = start_absent_daemon(false, &mut || {
+            starts += 1;
+            Ok(())
+        });
+        assert!(result.is_ok());
+        assert_eq!(starts, 1);
+    }
+
+    #[test]
+    fn only_a_loaded_unit_counts_as_a_declared_service() {
+        assert!(unit_is_loaded("LoadState=loaded\n"));
+        // A unit the manager does not know, and one its owner turned off on purpose
+        assert!(!unit_is_loaded("LoadState=not-found\n"));
+        assert!(!unit_is_loaded("LoadState=masked\n"));
+        // No systemctl, or an answer this client cannot read: no unit owns the daemon
+        assert!(!unit_is_loaded(""));
+        assert!(!unit_is_loaded(
+            "Failed to connect to bus: No such file or directory"
+        ));
     }
 }

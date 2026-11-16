@@ -52,6 +52,13 @@ const SILENT_MICROPHONE_HINT: &str = "check the device: molva devices";
 /// than an unbounded hold of the MCP session
 const FILE_JOB_TIMEOUT: Duration = Duration::from_secs(600);
 
+/// How long `config.reload` waits for the worker to apply the settings
+///
+/// The worker may be busy with a phrase, and the reload waits behind it. The wait is bounded
+/// all the same: an answer that never comes leaves the caller unable to tell a slow reload from
+/// a hung daemon, and a settings file that was written must not look applied forever
+const RELOAD_TIMEOUT: Duration = Duration::from_secs(30);
+
 pub use chunked::{ChunkAccumulator, ChunkContext, ChunkFeeder, ChunkPrefix, ChunkText};
 pub use processor::{ProcessError, Processor, ProcessorConfig, SimpleProcessor};
 pub use state::{Action, DiscardReason, Input, Machine, Outcome};
@@ -71,8 +78,12 @@ enum Ctl {
     ChunkTick {
         generation: u64,
     },
-    /// Reloaded settings: hotkeys for the state machine, the rest for the worker thread
-    Reload(Box<Config>),
+    /// Reloaded settings: hotkeys for the state machine, the rest for the worker thread, and
+    /// the answer to the client only after the worker applied them
+    Reload {
+        config: Box<Config>,
+        reply: Sender<Result<(), IpcError>>,
+    },
     /// A file that the worker thread must transcribe with the pipeline it already holds
     FileJob {
         request: FileTranscriptionRequest,
@@ -83,7 +94,10 @@ enum Ctl {
 /// Job for the worker thread
 enum Job {
     /// Reloaded settings for the pipeline: the default style, the rules, the thresholds
-    Reload(Box<Config>),
+    Reload {
+        config: Box<Config>,
+        reply: Sender<Result<(), IpcError>>,
+    },
     /// A chunk of a recording that is still running: it is recognized while the person speaks
     Chunk {
         audio: PcmAudio,
@@ -155,6 +169,11 @@ struct Shared {
     /// What the worker thread is busy with, as the clients see it (`status`, state events):
     /// `Some` also means that the slot is taken, so one file at a time needs no second flag
     job: Mutex<Option<WorkerJob>>,
+    /// Settings that the pipeline applied, and that the state machine runs with
+    ///
+    /// A reload compares the file against this value: the difference decides between a live
+    /// apply and a restart
+    applied_config: Mutex<Config>,
     /// Settings file for `config.reload`; `None` means the default path
     config_path: Mutex<Option<PathBuf>>,
     /// Set by a client that gives up on the running file transcription, cleared when the next
@@ -303,6 +322,7 @@ impl Daemon {
             injector: Mutex::new(injector),
             auto_type_max_chars: config.output.auto_type_max_chars,
             job: Mutex::new(None),
+            applied_config: Mutex::new(config.clone()),
             config_path: Mutex::new(None),
             file_cancel: Mutex::new(Arc::new(crate::domain::cancel::CancelToken::new())),
         });
@@ -350,10 +370,39 @@ impl Daemon {
                             }
                             continue;
                         }
-                        Ctl::Reload(config) => {
+                        Ctl::Reload { config, reply } => {
+                            let applied = shared
+                                .applied_config
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                .clone();
+                            let sections = reload_requires_restart(&applied, &config);
+                            if !sections.is_empty() {
+                                // Nothing changes, the hotkeys included: a half-applied reload
+                                // would leave the daemon in a state that no file describes
+                                let _ = reply.send(Err(IpcError {
+                                    code: ErrorCode::RestartRequired,
+                                    message: format!(
+                                        "settings saved but not applied: restart required: {}",
+                                        sections.join(", ")
+                                    ),
+                                    hint: Some(restart_hint().into()),
+                                }));
+                                continue;
+                            }
+                            if let Ok(mut slot) = shared.applied_config.lock() {
+                                *slot = (*config).clone();
+                            }
                             machine.set_hotkeys(config.hotkeys.clone());
-                            let _ = work_tx.send(Job::Reload(config));
-                            shared.publish(&Event::ConfigReloaded);
+                            if work_tx
+                                .send(Job::Reload {
+                                    config,
+                                    reply: reply.clone(),
+                                })
+                                .is_err()
+                            {
+                                let _ = reply.send(Err(internal("daemon stopped")));
+                            }
                             continue;
                         }
                         // A file transcription uses the pipeline of the worker thread. The
@@ -542,9 +591,30 @@ impl Daemon {
                             processor.discard_stream();
                             continue;
                         }
-                        Job::Reload(config) => {
-                            processor.apply_config(&config);
-                            tracing::info!(style = %config.style.default, "pipeline reloaded the settings");
+                        Job::Reload { config, reply } => {
+                            // The client hears about the reload only from here: after the
+                            // pipeline took the settings, and not when the file was read
+                            match processor.apply_config(&config) {
+                                Ok(()) => {
+                                    tracing::info!(
+                                        style = %config.style.default,
+                                        "pipeline applied the reloaded settings"
+                                    );
+                                    shared.publish(&Event::ConfigReloaded);
+                                    let _ = reply.send(Ok(()));
+                                }
+                                Err(err) => {
+                                    tracing::error!(
+                                        %err,
+                                        "the pipeline did not take the reloaded settings"
+                                    );
+                                    let _ = reply.send(Err(IpcError {
+                                        code: ErrorCode::Internal,
+                                        message: format!("settings saved but not applied: {err}"),
+                                        hint: None,
+                                    }));
+                                }
+                            }
                             continue;
                         }
                         Job::Chunk {
@@ -801,6 +871,83 @@ fn error_code_for(err: &ProcessError) -> ErrorCode {
     }
 }
 
+/// How a client replaces the process that cannot take the written sections
+///
+/// The service manager is the owner only where it exists: on Windows and macOS the window
+/// starts the daemon itself, so quitting and reopening the window is the whole instruction
+#[cfg(target_os = "linux")]
+fn restart_hint() -> &'static str {
+    "restart the daemon: systemctl --user restart molva-daemon"
+}
+
+#[cfg(not(target_os = "linux"))]
+fn restart_hint() -> &'static str {
+    "restart the daemon: quit MolvAI and start it again"
+}
+
+/// Sections that a reload cannot apply to a running daemon, by the field that differs
+///
+/// The allowlist is the point: `style` and the thresholds of `hotkeys` are what applies live,
+/// and every other field of `Config` is compared as a whole. A section added later therefore
+/// requires a restart before anyone names it here, and until it has a name the answer says
+/// `settings`
+fn reload_requires_restart(applied: &Config, candidate: &Config) -> Vec<&'static str> {
+    // The state machine reads the thresholds again after a reload, but the keys themselves are
+    // registered outside this process (the tray and the compositor binds): a new key would be
+    // confirmed as applied and never work, so only the thresholds are hot
+    let mut keys = candidate.hotkeys.clone();
+    keys.tap_toggles = applied.hotkeys.tap_toggles;
+    keys.short_press_ms = applied.hotkeys.short_press_ms;
+    keys.min_hold_ms = applied.hotkeys.min_hold_ms;
+    keys.double_tap_ms = applied.hotkeys.double_tap_ms;
+
+    let mut rest = candidate.clone();
+    rest.hotkeys = applied.hotkeys.clone();
+    rest.style = applied.style.clone();
+    if rest == *applied && keys == applied.hotkeys {
+        return Vec::new();
+    }
+    let mut sections = Vec::new();
+    fn note(sections: &mut Vec<&'static str>, differs: bool, name: &'static str) {
+        if differs {
+            sections.push(name);
+        }
+    }
+    note(&mut sections, rest.version != applied.version, "version");
+    note(
+        &mut sections,
+        rest.ui_language != applied.ui_language,
+        "ui_language",
+    );
+    note(&mut sections, rest.audio != applied.audio, "audio");
+    note(&mut sections, rest.stt != applied.stt, "stt");
+    note(
+        &mut sections,
+        rest.dictionary != applied.dictionary,
+        "dictionary",
+    );
+    note(&mut sections, rest.rules != applied.rules, "rules");
+    note(&mut sections, rest.snippets != applied.snippets, "snippets");
+    note(&mut sections, rest.llm != applied.llm, "llm");
+    note(&mut sections, rest.output != applied.output, "output");
+    note(
+        &mut sections,
+        rest.command_mode != applied.command_mode,
+        "command_mode",
+    );
+    note(&mut sections, rest.journal != applied.journal, "journal");
+    note(&mut sections, rest.stats != applied.stats, "stats");
+    note(&mut sections, rest.privacy != applied.privacy, "privacy");
+    note(&mut sections, rest.mcp != applied.mcp, "mcp");
+    note(&mut sections, rest.gui != applied.gui, "gui");
+    note(&mut sections, rest.log != applied.log, "log");
+    note(&mut sections, keys != applied.hotkeys, "hotkeys");
+    if sections.is_empty() {
+        sections.push("settings");
+    }
+    sections
+}
+
 impl DaemonHandle {
     /// Send an input and wait for the decision of the state machine
     pub fn send(&self, input: Input) -> Result<Outcome, IpcError> {
@@ -958,10 +1105,31 @@ impl DaemonHandle {
                 hint: Some("check the file: molva config validate".into()),
             })?;
         }
-        let tx = self.shared.tx.lock().map_err(|_| internal("daemon busy"))?;
-        tx.send(Ctl::Reload(Box::new(config.clone())))
+        let (reply, answer) = channel();
+        {
+            let tx = self.shared.tx.lock().map_err(|_| internal("daemon busy"))?;
+            tx.send(Ctl::Reload {
+                config: Box::new(config.clone()),
+                reply,
+            })
             .map_err(|_| internal("daemon stopped"))?;
-        Ok(config)
+        }
+        // The lock is free while the worker applies the settings, so `status` and `record.*`
+        // keep their answers during a reload that queues behind a phrase
+        match answer.recv_timeout(RELOAD_TIMEOUT) {
+            Ok(Ok(())) => Ok(config),
+            Ok(Err(error)) => Err(error),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(IpcError {
+                code: ErrorCode::Internal,
+                message: format!(
+                    "settings saved but not applied: the result of the reload is unknown, the \
+                     worker did not answer in {} s",
+                    RELOAD_TIMEOUT.as_secs()
+                ),
+                hint: Some("check the state: molva status".into()),
+            }),
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(internal("daemon stopped")),
+        }
     }
 
     /// Summary for `molva status` and the window: the state machine and the job of the worker
@@ -1876,56 +2044,191 @@ mod tests {
         drain_until_entry(&events)
     }
 
-    #[test]
-    fn chunks_are_recognised_during_the_recording_and_joined_in_order() {
-        let responses = ["раз", "два", "три", "четыре", "пять"];
-        let mut config = Config::default();
-        // This test checks the whole-phrase paste of a chunked reply; the streaming paste has
-        // its own test below
-        config.stt.streaming_inject = false;
-        let h = streaming_harness(&responses, config);
+    #[derive(Debug, Default)]
+    struct ControlledAudioState {
+        samples: Vec<f32>,
+        allowed: usize,
+        drained: usize,
+        recording: bool,
+    }
 
-        let (drafts, entry) = record(&h);
+    #[derive(Debug, Clone, Default)]
+    struct ControlledAudio(Arc<Mutex<ControlledAudioState>>);
 
-        assert!(
-            drafts.len() >= 2,
-            "fewer than two drafts came during recording: processing waits for the release again"
-        );
-        for pair in drafts.windows(2) {
-            assert!(
-                pair[1].starts_with(&pair[0]),
-                "the draft lost the order of the chunks: {:?} → {:?}",
-                pair[0],
-                pair[1]
-            );
+    impl AudioSource for ControlledAudio {
+        fn start(
+            &mut self,
+            _: Option<Sender<f32>>,
+        ) -> Result<(), crate::domain::audio::AudioError> {
+            self.0.lock().unwrap().recording = true;
+            Ok(())
         }
-        let raw = entry.text_raw.clone().unwrap_or_default();
-        let words: Vec<&str> = raw.split_whitespace().collect();
-        assert!(
-            words.len() >= 2,
-            "the result is not built from chunks: {raw:?}"
+
+        fn stop(&mut self) -> Result<PcmAudio, crate::domain::audio::AudioError> {
+            let mut state = self.0.lock().unwrap();
+            state.recording = false;
+            Ok(PcmAudio::new(state.samples.clone(), 16_000))
+        }
+
+        fn is_recording(&self) -> bool {
+            self.0.lock().unwrap().recording
+        }
+
+        fn drain_new_samples(&mut self) -> Option<PcmAudio> {
+            let mut state = self.0.lock().unwrap();
+            if state.drained == state.allowed {
+                return None;
+            }
+            let samples = state.samples[state.drained..state.allowed].to_vec();
+            state.drained = state.allowed;
+            Some(PcmAudio::new(samples, 16_000))
+        }
+    }
+
+    #[derive(Debug)]
+    struct ObservedStt {
+        inner: FakeStt,
+        calls: Arc<Mutex<Vec<PcmAudio>>>,
+    }
+
+    impl crate::domain::stt::SttEngine for ObservedStt {
+        fn id(&self) -> &str {
+            "observed"
+        }
+        fn model_name(&self) -> &str {
+            "observed"
+        }
+        fn transcribe(
+            &mut self,
+            audio: &PcmAudio,
+            options: &crate::domain::stt::SttOptions,
+        ) -> Result<crate::domain::stt::Transcript, crate::domain::stt::SttError> {
+            self.calls.lock().unwrap().push(audio.clone());
+            self.inner.transcribe(audio, options)
+        }
+        fn unload(&mut self) {
+            self.inner.unload();
+        }
+    }
+
+    fn controlled_chunks(with_tail: bool) {
+        use crate::app::pipeline::{Pipeline, PipelineConfig};
+        use crate::domain::stt::Transcript;
+
+        let mut config = Config::default();
+        config.stt.streaming_inject = false;
+        let clock = Arc::new(FakeClock::at(
+            DateTime::parse_from_rfc3339("2026-09-05T12:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc),
+        ));
+        let notifier = Arc::new(RecordingNotifier::default());
+        let injector = SharedInjector::default();
+        let injected = injector.injected.clone();
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let stt = ObservedStt {
+            inner: FakeStt::with_responses(
+                ["alpha", "bravo", "charlie"]
+                    .iter()
+                    .map(|text| Ok(Transcript::text_only(*text)))
+                    .collect(),
+            ),
+            calls: calls.clone(),
+        };
+        let pipeline = Pipeline::new(
+            Box::new(stt),
+            None,
+            Box::new(injector),
+            Box::new(MemJournal::default()),
+            clock.clone(),
+            PipelineConfig::from_config(&config),
         );
+        let audio = ControlledAudio::default();
+        let daemon = Daemon::spawn(DaemonParts {
+            audio: Box::new(audio.clone()),
+            processor: Box::new(pipeline),
+            notifier,
+            sound: Arc::new(RecordingSoundCue::default()),
+            injector: None,
+            clock: clock.clone(),
+            config,
+        });
+        let handle = daemon.handle();
+        let events = handle.subscribe();
+        handle
+            .send(Input::RecordStart {
+                mode: Mode::Dictation,
+                style: None,
+            })
+            .unwrap();
+        let pcm = speech(10.0);
+        let mut drafts = Vec::new();
+        for (part, expected) in ["alpha", "alpha bravo"].iter().enumerate() {
+            {
+                let mut state = audio.0.lock().unwrap();
+                state
+                    .samples
+                    .extend_from_slice(&pcm.samples[part * 80_000..(part + 1) * 80_000]);
+                state.allowed = state.samples.len();
+            }
+            let deadline = Instant::now() + Duration::from_secs(10);
+            loop {
+                let event = events
+                    .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                    .expect("draft did not arrive before stop");
+                match event {
+                    Event::Hypothesis { text } => {
+                        assert_eq!(&text, expected);
+                        drafts.push(text);
+                        break;
+                    }
+                    Event::Error { message, .. } => panic!("daemon error: {message}"),
+                    _ => {}
+                }
+            }
+            assert!(audio.is_recording());
+            assert_eq!(calls.lock().unwrap().len(), part + 1);
+        }
+        if with_tail {
+            audio
+                .0
+                .lock()
+                .unwrap()
+                .samples
+                .extend_from_slice(&pcm.samples[..16_000]);
+        }
+        clock.advance(Duration::from_secs(20));
+        handle.send(Input::RecordStop).unwrap();
+        let (later_drafts, entry) = drain_until_entry(&events);
+        drafts.extend(later_drafts);
+        let raw = entry.text_raw.as_deref().unwrap();
+        let words: Vec<_> = raw.split_whitespace().collect();
         assert_eq!(
             words,
-            responses[..words.len()].to_vec(),
-            "the chunks were joined in the wrong order: {raw:?}"
+            if with_tail {
+                vec!["alpha", "bravo", "charlie"]
+            } else {
+                vec!["alpha", "bravo"]
+            }
         );
-        assert_eq!(
-            drafts.last().map(String::as_str),
-            Some(words[..words.len() - 1].join(" ").as_str()),
-            "the last draft is everything except the tail"
-        );
-        assert!(
-            entry.latency_ms.first_hypothesis.is_some(),
-            "the time to the first hypothesis is not measured"
-        );
-        assert!(
-            entry.audio_secs > 15.0,
-            "the phrase duration is computed from the tail, not from the whole recording: {}",
-            entry.audio_secs
-        );
-        assert_eq!(h.injected.lock().unwrap().len(), 1, "exactly one paste");
-        drop(h.daemon);
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), if with_tail { 3 } else { 2 });
+        assert!(calls.iter().all(|audio| !audio.samples.is_empty()));
+        assert_eq!(entry.audio_secs, if with_tail { 11.0 } else { 10.0 });
+        assert_eq!(drafts.last().map(String::as_str), Some("alpha bravo"));
+        assert!(entry.latency_ms.first_hypothesis.is_some());
+        assert_eq!(injected.lock().unwrap().len(), 1);
+        drop(daemon);
+    }
+
+    #[test]
+    fn chunks_without_tail_are_recognised_before_stop() {
+        controlled_chunks(false);
+    }
+
+    #[test]
+    fn chunks_with_tail_are_recognised_before_stop() {
+        controlled_chunks(true);
     }
 
     #[test]
@@ -2445,6 +2748,437 @@ mod tests {
             .recv_timeout(Duration::from_secs(5))
             .unwrap()
             .unwrap();
+        drop(h.daemon);
+    }
+
+    // --- Reload: which settings apply live, and when the answer comes ---
+
+    /// Two one-shot gates between a test and the worker thread: the first says that the worker
+    /// took the settings, the second lets it finish
+    ///
+    /// A condition variable leaves the wait the moment the other side opens the gate, so the
+    /// test sees exactly the moment it asked about and needs no sleep
+    #[derive(Debug, Clone, Default)]
+    struct ReloadGate {
+        arrived: Arc<(Mutex<bool>, std::sync::Condvar)>,
+        open: Arc<(Mutex<bool>, std::sync::Condvar)>,
+    }
+
+    impl ReloadGate {
+        fn arrive(&self) {
+            let (arrived, cv) = &*self.arrived;
+            *arrived.lock().unwrap() = true;
+            cv.notify_all();
+        }
+
+        fn wait_arrived(&self) {
+            let (arrived, cv) = &*self.arrived;
+            let mut arrived = arrived.lock().unwrap();
+            while !*arrived {
+                arrived = cv.wait(arrived).unwrap();
+            }
+        }
+
+        fn open(&self) {
+            let (open, cv) = &*self.open;
+            *open.lock().unwrap() = true;
+            cv.notify_all();
+        }
+
+        fn wait_open(&self) {
+            let (open, cv) = &*self.open;
+            let mut open = open.lock().unwrap();
+            while !*open {
+                open = cv.wait(open).unwrap();
+            }
+        }
+    }
+
+    /// A processor that records every attempt to apply the settings and can hold one open
+    ///
+    /// The log holds one `start` and one `end` per attempt, in the order of the worker thread:
+    /// it shows that two reloads in flight did not overlap and that neither was applied twice
+    #[derive(Debug)]
+    struct ReloadProbe {
+        inner: SimpleProcessor<SharedInjector, MemJournal>,
+        gate: ReloadGate,
+        log: Arc<Mutex<Vec<String>>>,
+        in_flight: Arc<std::sync::atomic::AtomicU32>,
+        /// The worker waits for the gate, so the test knows the moment the settings arrived
+        hold: bool,
+        fail: bool,
+    }
+
+    impl Processor for ReloadProbe {
+        fn process(
+            &mut self,
+            audio: PcmAudio,
+            mode: Mode,
+            style: Option<&str>,
+            app_hint: Option<&str>,
+        ) -> Result<crate::domain::entry::Entry, ProcessError> {
+            self.inner.process(audio, mode, style, app_hint)
+        }
+
+        fn apply_config(&mut self, config: &Config) -> Result<(), ProcessError> {
+            let in_flight = self.in_flight.fetch_add(1, Ordering::SeqCst);
+            self.log
+                .lock()
+                .unwrap()
+                .push(format!("start:{}:{in_flight}", config.style.default));
+            self.gate.arrive();
+            if self.hold {
+                self.gate.wait_open();
+            }
+            self.in_flight.fetch_sub(1, Ordering::SeqCst);
+            self.log
+                .lock()
+                .unwrap()
+                .push(format!("end:{}", config.style.default));
+            if self.fail {
+                return Err(ProcessError::Pipeline(
+                    "the pipeline did not take the settings".into(),
+                ));
+            }
+            Ok(())
+        }
+    }
+
+    struct ReloadHarness {
+        daemon: Daemon,
+        handle: DaemonHandle,
+        clock: Arc<FakeClock>,
+        gate: ReloadGate,
+        log: Arc<Mutex<Vec<String>>>,
+        /// The settings the daemon started with: a candidate differs from them in one place
+        config: Config,
+        path: PathBuf,
+        _directory: tempfile::TempDir,
+    }
+
+    fn reload_harness(hold: bool, fail: bool) -> ReloadHarness {
+        let mut config = Config::default();
+        // A tap must stay a tap: the check of the hotkeys below must not depend on the latch
+        config.hotkeys.tap_toggles = false;
+        let start = DateTime::parse_from_rfc3339("2026-09-05T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let clock = Arc::new(FakeClock::at(start));
+        let notifier = Arc::new(RecordingNotifier::default());
+        let gate = ReloadGate::default();
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let probe = ReloadProbe {
+            inner: SimpleProcessor::new(
+                Box::new(FakeStt::returning("реплика")),
+                SharedInjector::default(),
+                MemJournal::default(),
+                clock.clone(),
+                notifier.clone(),
+                ProcessorConfig::from_config(&config, Uuid::nil()),
+            ),
+            gate: gate.clone(),
+            log: log.clone(),
+            in_flight: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            hold,
+            fail,
+        };
+        let daemon = Daemon::spawn(DaemonParts {
+            audio: Box::new(SharedAudio(Arc::new(Mutex::new(FakeAudioSource::silence(
+                2.0,
+            ))))),
+            processor: Box::new(probe),
+            notifier,
+            sound: Arc::new(RecordingSoundCue::default()),
+            injector: None,
+            clock: clock.clone(),
+            config: config.clone(),
+        });
+        let handle = daemon.handle();
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        config.save(&path).unwrap();
+        handle.set_config_path(path.clone());
+        ReloadHarness {
+            daemon,
+            handle,
+            clock,
+            gate,
+            log,
+            config,
+            path,
+            _directory: directory,
+        }
+    }
+
+    /// Write a settings file that differs from the running settings in the given places
+    fn save_variant(config: &Config, path: &std::path::Path, change: impl FnOnce(&mut Config)) {
+        let mut candidate = config.clone();
+        change(&mut candidate);
+        candidate.save(path).unwrap();
+    }
+
+    fn drain_events(events: &Receiver<Event>) -> Vec<Event> {
+        std::iter::from_fn(|| events.try_recv().ok()).collect()
+    }
+
+    fn wait_for_config_reloaded(events: &Receiver<Event>) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            match events.recv_timeout(Duration::from_millis(100)) {
+                Ok(Event::ConfigReloaded) => return,
+                Ok(Event::Error { message, .. }) => {
+                    panic!("the daemon reported an error: {message}")
+                }
+                Ok(_) | Err(_) => {}
+            }
+        }
+        panic!("the reload event never arrived");
+    }
+
+    /// The answer of a reload on its own thread: `config.reload` waits for the worker, so the
+    /// test cannot wait in the same thread that would open the gate
+    fn reload_in_background(handle: &DaemonHandle) -> Receiver<Result<Config, IpcError>> {
+        let (tx, rx) = channel();
+        let handle = handle.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(handle.reload_config(None));
+        });
+        rx
+    }
+
+    #[test]
+    fn a_hotkey_threshold_applies_live_but_a_new_key_needs_a_restart() {
+        let applied = Config::default();
+
+        // The state machine reads these four again, so the daemon applies them itself
+        for (name, change) in [
+            ("tap_toggles", 0),
+            ("short_press_ms", 1),
+            ("min_hold_ms", 2),
+            ("double_tap_ms", 3),
+        ] {
+            let mut live = applied.clone();
+            match change {
+                0 => live.hotkeys.tap_toggles = !applied.hotkeys.tap_toggles,
+                1 => live.hotkeys.short_press_ms += 1,
+                2 => live.hotkeys.min_hold_ms += 1,
+                _ => live.hotkeys.double_tap_ms += 1,
+            }
+            assert!(
+                reload_requires_restart(&applied, &live).is_empty(),
+                "{name} applies to a running daemon"
+            );
+        }
+
+        // The keys are registered by the window and the compositor, so a new key that was
+        // answered with Ok would never fire
+        let mut rebind = applied.clone();
+        rebind.hotkeys.push_to_talk = "Alt+Space".into();
+        assert_eq!(reload_requires_restart(&applied, &rebind), vec!["hotkeys"]);
+
+        let mut backend = applied.clone();
+        backend.hotkeys.backend = "evdev".into();
+        assert_eq!(reload_requires_restart(&applied, &backend), vec!["hotkeys"]);
+    }
+
+    #[test]
+    fn only_the_hotkeys_and_the_style_apply_without_a_restart() {
+        let applied = Config::default();
+        assert!(reload_requires_restart(&applied, &applied).is_empty());
+
+        let mut live = applied.clone();
+        live.style.default = "formal".into();
+        live.hotkeys.min_hold_ms = 250;
+        assert!(
+            reload_requires_restart(&applied, &live).is_empty(),
+            "the hotkeys and the style apply to a running daemon"
+        );
+
+        let mut restart = live.clone();
+        restart.privacy.cloud_consent = true;
+        restart.journal.encrypt = true;
+        restart.llm.model = "other-model".into();
+        let sections = reload_requires_restart(&applied, &restart);
+        assert_eq!(sections, vec!["llm", "journal", "privacy"]);
+
+        // The fields that the order names nowhere are covered all the same: a change in the log
+        // or the language of the window needs a restart too
+        let mut unnamed = applied.clone();
+        unnamed.log.level = "debug".into();
+        unnamed.ui_language = "ru".into();
+        unnamed.version += 1;
+        assert_eq!(
+            reload_requires_restart(&applied, &unnamed),
+            vec!["version", "ui_language", "log"]
+        );
+    }
+
+    #[test]
+    fn a_reload_that_needs_a_restart_is_refused_and_changes_nothing() {
+        let h = reload_harness(false, false);
+        let events = h.handle.subscribe();
+        save_variant(&h.config, &h.path, |candidate| {
+            candidate.style.default = "formal".into();
+            candidate.privacy.cloud_consent = true;
+            // A hold this short would create a phrase: the running hotkeys are visible
+            candidate.hotkeys.min_hold_ms = 1;
+        });
+
+        let err = h.handle.reload_config(None).unwrap_err();
+
+        assert_eq!(err.code, ErrorCode::RestartRequired);
+        assert_eq!(
+            err.message,
+            "settings saved but not applied: restart required: privacy"
+        );
+        assert_eq!(
+            err.hint.as_deref(),
+            Some("restart the daemon: systemctl --user restart molva-daemon")
+        );
+        assert!(
+            h.log.lock().unwrap().is_empty(),
+            "the refused settings reached the worker: {:?}",
+            h.log.lock().unwrap()
+        );
+        assert!(
+            !drain_events(&events)
+                .iter()
+                .any(|event| matches!(event, Event::ConfigReloaded)),
+            "the event claims a reload that did not happen"
+        );
+
+        // The hotkeys of the running daemon did not change either: a 100 ms hold is still too
+        // short, and the phrase is discarded instead of processed
+        h.handle
+            .send(Input::RecordStart {
+                mode: Mode::Dictation,
+                style: None,
+            })
+            .unwrap();
+        h.clock.advance(Duration::from_millis(100));
+        let outcome = h.handle.send(Input::RecordStop).unwrap();
+        assert!(
+            matches!(
+                outcome.actions.as_slice(),
+                [Action::DiscardCapture {
+                    reason: DiscardReason::TooShort
+                }]
+            ),
+            "the hotkeys of the running daemon changed: {outcome:?}"
+        );
+        drop(h.daemon);
+    }
+
+    #[test]
+    fn a_reload_answers_only_after_the_worker_applied_it() {
+        let h = reload_harness(true, false);
+        let events = h.handle.subscribe();
+        save_variant(&h.config, &h.path, |candidate| {
+            candidate.style.default = "formal".into();
+        });
+
+        let answer = reload_in_background(&h.handle);
+        h.gate.wait_arrived();
+
+        // The worker holds the settings open: neither the event nor the answer may be here yet
+        assert!(
+            matches!(answer.try_recv(), Err(std::sync::mpsc::TryRecvError::Empty)),
+            "the reload answered before the pipeline applied the settings"
+        );
+        assert!(
+            !drain_events(&events)
+                .iter()
+                .any(|event| matches!(event, Event::ConfigReloaded)),
+            "the reload was announced before the pipeline applied the settings"
+        );
+
+        h.gate.open();
+        let config = answer
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the reload never answered")
+            .expect("the reload failed");
+        assert_eq!(config.style.default, "formal");
+        wait_for_config_reloaded(&events);
+        assert_eq!(
+            *h.log.lock().unwrap(),
+            vec!["start:formal:0".to_string(), "end:formal".to_string()]
+        );
+        drop(h.daemon);
+    }
+
+    #[test]
+    fn a_reload_that_the_pipeline_refuses_is_an_error_without_the_event() {
+        let h = reload_harness(false, true);
+        let events = h.handle.subscribe();
+        save_variant(&h.config, &h.path, |candidate| {
+            candidate.style.default = "formal".into();
+        });
+
+        let err = h.handle.reload_config(None).unwrap_err();
+
+        assert_eq!(err.code, ErrorCode::Internal);
+        assert!(
+            err.message
+                .contains("the pipeline did not take the settings"),
+            "the message does not carry the reason: {}",
+            err.message
+        );
+        assert!(
+            !drain_events(&events)
+                .iter()
+                .any(|event| matches!(event, Event::ConfigReloaded)),
+            "the event claims settings that the pipeline refused"
+        );
+        assert_eq!(
+            *h.log.lock().unwrap(),
+            vec!["start:formal:0".to_string(), "end:formal".to_string()]
+        );
+        drop(h.daemon);
+    }
+
+    #[test]
+    fn two_reloads_in_flight_are_applied_one_after_another() {
+        let h = reload_harness(true, false);
+        let events = h.handle.subscribe();
+        save_variant(&h.config, &h.path, |candidate| {
+            candidate.style.default = "formal".into();
+        });
+
+        let first = reload_in_background(&h.handle);
+        h.gate.wait_arrived();
+        let second = reload_in_background(&h.handle);
+
+        // The worker is still on the first one: neither reload may have answered
+        assert!(matches!(
+            first.try_recv(),
+            Err(std::sync::mpsc::TryRecvError::Empty)
+        ));
+        assert!(matches!(
+            second.try_recv(),
+            Err(std::sync::mpsc::TryRecvError::Empty)
+        ));
+
+        h.gate.open();
+        first
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the first reload never answered")
+            .expect("the first reload failed");
+        second
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the second reload never answered")
+            .expect("the second reload failed");
+        wait_for_config_reloaded(&events);
+        wait_for_config_reloaded(&events);
+        assert_eq!(
+            *h.log.lock().unwrap(),
+            vec![
+                "start:formal:0".to_string(),
+                "end:formal".to_string(),
+                "start:formal:0".to_string(),
+                "end:formal".to_string()
+            ],
+            "the two reloads overlapped or one of them was applied twice"
+        );
         drop(h.daemon);
     }
 }
