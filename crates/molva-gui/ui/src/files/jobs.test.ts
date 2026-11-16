@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Tests of the queue model: the counts the summary shows, the elapsed time, the segment that
-// holds the playback position, the search inside a transcript and the storage of the queue
+// holds the playback position, the search inside a transcript and legacy storage removal
 
 import { describe, expect, it } from "vitest";
 
@@ -11,13 +11,10 @@ import {
   countMatches,
   elapsedMs,
   highlightParts,
-  hydrateQueue,
-  MAX_STORED_BYTES,
-  MAX_STORED_JOBS,
+  removeLegacyQueue,
   matchingSegments,
   newJob,
   queueSummary,
-  serializeQueue,
   type Job,
 } from "./jobs";
 
@@ -187,57 +184,19 @@ describe("matchingSegments", () => {
   });
 });
 
-describe("the stored queue", () => {
-  it("restores finished jobs with their results", () => {
-    const jobs = [
-      job("a", "done", { started_at: 1, finished_at: 2, results: [result] }),
-    ];
-    const restored = hydrateQueue(serializeQueue(jobs));
-    expect(restored).toHaveLength(1);
-    expect(restored[0].status).toBe("done");
-    expect(restored[0].results).toHaveLength(1);
-    expect(restored[0].results[0].segments).toHaveLength(2);
+describe("legacy queue removal", () => {
+  it("removes the old key without reading it and leaves other keys intact", () => {
+    const values = new Map([["molva.files.queue", "private transcript"], ["molva.files.chunked", "0"]]);
+    const storage = {
+      removeItem: (key: string) => { values.delete(key); },
+    };
+    expect(removeLegacyQueue(storage)).toBe(true);
+    expect(values.has("molva.files.queue")).toBe(false);
+    expect(values.get("molva.files.chunked")).toBe("0");
+    expect(removeLegacyQueue(storage)).toBe(true);
   });
 
-  it("marks a job that was running when the window closed as interrupted", () => {
-    const jobs = [job("a", "running", { started_at: 1, results: [result] })];
-    const restored = hydrateQueue(serializeQueue(jobs));
-    expect(restored[0].status).toBe("interrupted");
-    expect(restored[0].results).toEqual([]);
-    expect(restored[0].progress).toBeNull();
-    expect(restored[0].detail).toBeNull();
-  });
-
-  it("marks a job that was queued but never started as cancelled", () => {
-    const restored = hydrateQueue(serializeQueue([job("a", "queued")]));
-    expect(restored[0].status).toBe("cancelled");
-  });
-
-  it("ignores a payload it does not understand instead of half-reading it", () => {
-    expect(hydrateQueue(null)).toEqual([]);
-    expect(hydrateQueue("not json")).toEqual([]);
-    expect(hydrateQueue('{"version":99,"jobs":[]}')).toEqual([]);
-    expect(hydrateQueue('{"version":1,"jobs":[{"id":1}]}')).toEqual([]);
-  });
-
-  it("keeps the newest jobs only", () => {
-    const jobs = Array.from({ length: MAX_STORED_JOBS + 5 }, (_, index) =>
-      job(`job-${index}`, "done"),
-    );
-    expect(hydrateQueue(serializeQueue(jobs))).toHaveLength(MAX_STORED_JOBS);
-  });
-
-  it("drops the oldest results when the payload would grow too large", () => {
-    const huge: FileResult = { ...result, text: "x".repeat(1_200_000) };
-    const jobs = [
-      job("newest", "done", { results: [huge] }),
-      job("oldest", "done", { results: [huge] }),
-    ];
-    const text = serializeQueue(jobs);
-    expect(text.length).toBeLessThanOrEqual(MAX_STORED_BYTES);
-    const restored = hydrateQueue(text);
-    expect(restored).toHaveLength(2);
-    expect(restored[0].results).toHaveLength(1);
-    expect(restored[1].results).toEqual([]);
+  it("reports a failure without exposing the storage error", () => {
+    expect(removeLegacyQueue({ removeItem: () => { throw new Error("private path"); } })).toBe(false);
   });
 });

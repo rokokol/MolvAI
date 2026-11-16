@@ -182,6 +182,7 @@ export default function Files({ onError }: ViewProps) {
           </div>
         </div>
 
+        <p className="small muted">{t("files.queueMemoryHint")}</p>
         {jobs.length === 0 ? (
           <p className="empty">{t("files.queueEmpty")}</p>
         ) : (

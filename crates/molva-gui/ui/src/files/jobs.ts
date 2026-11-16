@@ -274,105 +274,11 @@ export function matchingSegments(
   return { segments: found, matches };
 }
 
-// --- Persistence across a restart ---
-
-/** The JSON payload kept in localStorage */
-export const QUEUE_STORAGE_KEY = "molva.files.queue";
-
-/** How many jobs a restart restores; older ones fall off the end */
-export const MAX_STORED_JOBS = 25;
-
-/** The stored payload of a queue larger than this shrinks by dropping the oldest result */
-export const MAX_STORED_BYTES = 2_000_000;
-
-/** The version of the stored shape; a different one is ignored instead of half-read */
-const STORAGE_VERSION = 1;
-
-interface StoredQueue {
-  version: number;
-  jobs: Job[];
-}
-
-/**
- * Serialize the queue for the next launch
- *
- * A running or queued job is stored as it is: on the next launch it becomes `interrupted`,
- * because the process that ran it died with the window. Results of finished jobs are kept
- * until the payload grows past `MAX_STORED_BYTES`, oldest first
- */
-export function serializeQueue(jobs: Job[]): string {
-  let kept = jobs.slice(0, MAX_STORED_JOBS);
-  let payload: StoredQueue = { version: STORAGE_VERSION, jobs: kept };
-  let text = JSON.stringify(payload);
-  // Drop the oldest job that carries results; a job without results is worth keeping
-  while (text.length > MAX_STORED_BYTES && kept.some((job) => job.results.length > 0)) {
-    const lastWithResults = [...kept]
-      .reverse()
-      .find((job) => job.results.length > 0);
-    if (!lastWithResults) {
-      break;
-    }
-    kept = kept.map((job) =>
-      job.id === lastWithResults.id ? { ...job, results: [] } : job,
-    );
-    payload = { version: STORAGE_VERSION, jobs: kept };
-    text = JSON.stringify(payload);
-  }
-  return text;
-}
-
-function isJob(value: unknown): value is Job {
-  if (!value || typeof value !== "object") {
+export function removeLegacyQueue(storage: Pick<Storage, "removeItem">): boolean {
+  try {
+    storage.removeItem("molva.files.queue");
+    return true;
+  } catch {
     return false;
   }
-  const job = value as Partial<Job>;
-  return (
-    typeof job.id === "string" &&
-    typeof job.path === "string" &&
-    typeof job.status === "string" &&
-    Array.isArray(job.results)
-  );
-}
-
-/**
- * Read the stored queue and mark every job that was still running as interrupted
- *
- * The window stopped listening when it closed, and the daemon kept no queue for it: the honest
- * status is "interrupted", never "done". A result that was never shown does not exist for the
- * queue, even if the daemon wrote it to the journal. The reason is not stored as text; the
- * interface supplies the localized sentence.
- */
-export function hydrateQueue(raw: string | null): Job[] {
-  if (!raw) {
-    return [];
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return [];
-  }
-  if (!parsed || typeof parsed !== "object") {
-    return [];
-  }
-  const stored = parsed as Partial<StoredQueue>;
-  if (stored.version !== STORAGE_VERSION || !Array.isArray(stored.jobs)) {
-    return [];
-  }
-  return stored.jobs.filter(isJob).slice(0, MAX_STORED_JOBS).map((job) => {
-    // A running job lost its worker with the window. A queued job never started at all, so
-    // calling it interrupted would invent a reason; it is simply cancelled.
-    const lost = job.status === "running";
-    const never_started = job.status === "queued";
-    return {
-      ...job,
-      chunked: job.chunked ?? false,
-      name: job.name || baseName(job.path),
-      status: lost ? "interrupted" : never_started ? "cancelled" : job.status,
-      progress: lost || never_started ? null : job.progress,
-      finished_at: lost || never_started ? null : job.finished_at,
-      detail: lost || never_started ? null : job.detail,
-      results: lost || never_started ? [] : job.results,
-    };
-  });
 }

@@ -4,7 +4,7 @@
 // which tabs the navigation offers.
 
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import App from "../App";
 import { I18nContext, translate } from "../i18n";
@@ -200,6 +200,25 @@ describe("the Files tab", () => {
     expect(html).toContain(translate("en", "search.query"));
     expect(html).toContain(translate("en", "files.queue"));
     expect(html).toContain(translate("en", "files.timecodes"));
+  });
+
+  it("starts with an empty queue without reading the legacy payload", () => {
+    const getItem = vi.fn((key: string) => key === "molva.files.queue" ? '{"version":1,"jobs":[{"id":"secret","path":"/private.wav","status":"done","results":[]}]}' : null);
+    vi.stubGlobal("localStorage", { getItem });
+    try {
+      const html = renderToStaticMarkup(view);
+      expect(html).toContain(translate("en", "files.queueEmpty"));
+      expect(getItem).not.toHaveBeenCalledWith("molva.files.queue");
+      expect(html).not.toContain("private.wav");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("explains that the queue does not survive a restart and history may retain results", () => {
+    const html = renderToStaticMarkup(view);
+    expect(html).toContain(translate("en", "files.queueMemoryHint"));
+    expect(translate("en", "files.queueMemoryHint")).not.toBe("files.queueMemoryHint");
   });
 
   it("offers the path suggestions and the queue on the same page", () => {

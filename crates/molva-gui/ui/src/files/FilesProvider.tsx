@@ -4,8 +4,7 @@
 // The view can be unmounted at any moment: leaving the Files tab, opening Settings, a reload of
 // the window. The listeners and the jobs belong to the window, not to a view, so this provider
 // owns them. The Files tab is a rendering of this state and holds no copy of it. Finished jobs
-// are written to localStorage, so a restart shows them again; a job that was running at that
-// moment comes back as interrupted, never as done.
+// remain in memory for the lifetime of the window
 //
 // The work itself belongs to the daemon: the recognizer is one instance for dictation, the Files
 // tab and the MCP server, so a cancelled job stops waiting here and cannot stop the daemon. A
@@ -25,19 +24,16 @@ import {
 import { listen } from "@tauri-apps/api/event";
 
 import { api, asCommandError } from "../api";
+import { useI18n } from "../i18n";
 import type { CommandError, FileResult, TranscribeProgress } from "../types";
 import {
-  hydrateQueue,
   newJob,
-  QUEUE_STORAGE_KEY,
-  serializeQueue,
+  removeLegacyQueue,
   type Job,
   type JobProgress,
   type SeekRequest,
 } from "./jobs";
 
-/** How long the queue waits after a change before it writes to localStorage */
-const STORAGE_DEBOUNCE_MS = 300;
 const CHUNKED_KEY = "molva.files.chunked";
 
 /** The events the queue reacts to; the tests drive them without a window */
@@ -55,8 +51,7 @@ export type Action =
     }
   | { type: "requeue"; id: string }
   | { type: "remove"; id: string }
-  | { type: "clear-finished" }
-  | { type: "restore"; jobs: Job[] };
+  | { type: "clear-finished" };
 
 /**
  * The state of the queue after one event
@@ -134,20 +129,8 @@ export function reducer(state: Job[], action: Action): Job[] {
       return state.filter(
         (job) => job.status === "queued" || job.status === "running",
       );
-    case "restore":
-      return action.jobs;
     default:
       return state;
-  }
-}
-
-/** Read the stored queue once, before the first render */
-function initialJobs(): Job[] {
-  try {
-    return hydrateQueue(localStorage.getItem(QUEUE_STORAGE_KEY));
-  } catch {
-    // A window that forbids storage still works; it just forgets the queue on exit
-    return [];
   }
 }
 
@@ -198,7 +181,16 @@ export function FilesProvider({
   onError: (error: CommandError | null) => void;
   children: ReactNode;
 }) {
-  const [jobs, dispatch] = useReducer(reducer, undefined, initialJobs);
+  const { t } = useI18n();
+  const [jobs, dispatch] = useReducer(reducer, []);
+  const [legacyRemovalFailed, setLegacyRemovalFailed] = useState(false);
+  useEffect(() => {
+    try {
+      setLegacyRemovalFailed(!removeLegacyQueue(localStorage));
+    } catch {
+      setLegacyRemovalFailed(true);
+    }
+  }, []);
   const [dragging, setDragging] = useState(false);
   const [chunked, setChunkedState] = useState(() => {
     try {
@@ -303,17 +295,6 @@ export function FilesProvider({
       );
     };
   }, [chunked]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      try {
-        localStorage.setItem(QUEUE_STORAGE_KEY, serializeQueue(jobs));
-      } catch {
-        // A full or forbidden storage costs the queue on the next launch, not this session
-      }
-    }, STORAGE_DEBOUNCE_MS);
-    return () => window.clearTimeout(timer);
-  }, [jobs]);
 
   const startMany = useCallback((paths: string[], chunked = false) => {
     const cleaned = paths.map((path) => path.trim()).filter((path) => path !== "");
@@ -471,6 +452,9 @@ export function FilesProvider({
   );
 
   return (
-    <FilesQueueContext.Provider value={value}>{children}</FilesQueueContext.Provider>
+    <FilesQueueContext.Provider value={value}>
+      {legacyRemovalFailed && <p role="alert">{t("files.queueRemovalFailed")}</p>}
+      {children}
+    </FilesQueueContext.Provider>
   );
 }
