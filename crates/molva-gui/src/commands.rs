@@ -1498,16 +1498,10 @@ pub async fn set_autostart<R: Runtime>(
     .map_err(|error| CommandError::new("internal", error.to_string()))?
 }
 
-/// Whether the autostart entry belongs to the Nix module rather than to this window
-///
-/// The page asks before it draws the switch: an entry it cannot remove must not look like one it
-/// can
-#[tauri::command]
-pub fn autostart_managed() -> bool {
-    managed_autostart_file().is_some_and(|path| path.exists())
-}
-
 /// A window cannot turn off an entry that a configuration wrote
+///
+/// The refusal comes back the moment the switch is used, with the next step, instead of a
+/// permanent caption under a switch that cannot be clicked
 fn refuse_managed_autostart(managed: bool) -> Result<(), CommandError> {
     if !managed {
         return Ok(());

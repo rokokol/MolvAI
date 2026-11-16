@@ -161,7 +161,6 @@ export default function Settings({
   const [llmProbe, setLlmProbe] = useState<ProbeState<LlmProbeReport>>(idleProbe());
   const [sttProbe, setSttProbe] = useState<ProbeState<SttProbeReport>>(idleProbe());
   const [autostart, setAutostart] = useState(false);
-  const [autostartManaged, setAutostartManaged] = useState(false);
   const [configPath, setConfigPath] = useState("");
   const [runtimePath, setRuntimePath] = useState<string | null>(null);
   const [hyprland, setHyprland] = useState<HyprlandBinds | null>(null);
@@ -183,10 +182,6 @@ export default function Settings({
 
   useEffect(() => {
     api.getAutostart().then(setAutostart).catch(() => setAutostart(false));
-    api
-      .autostartManaged()
-      .then(setAutostartManaged)
-      .catch(() => setAutostartManaged(false));
     api.getConfigPath().then(setConfigPath).catch(() => setConfigPath(""));
     api
       .getRuntimeConfigPath()
@@ -472,10 +467,6 @@ export default function Settings({
         </div>
         <Check
           label={t("settings.autostart")}
-          hint={
-            autostartManaged ? t("settings.autostartManagedHint") : undefined
-          }
-          disabled={autostartManaged}
           checked={autostart}
           onChange={(value) => {
             api

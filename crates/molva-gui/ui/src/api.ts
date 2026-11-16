@@ -90,8 +90,6 @@ export const api = {
   writeHyprlandBinds: () => invoke<HyprlandBinds>("write_hyprland_binds"),
   setAutostart: (enabled: boolean) => invoke<boolean>("set_autostart", { enabled }),
   getAutostart: () => invoke<boolean>("get_autostart"),
-  /** Whether a Nix configuration owns the autostart entry, so the switch is read-only */
-  autostartManaged: () => invoke<boolean>("autostart_managed"),
 
   historyList: (filter: Partial<HistoryFilter>) =>
     invoke<Entry[]>("history_list", {

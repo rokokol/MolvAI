@@ -396,7 +396,6 @@ pub fn run() {
             commands::write_hyprland_binds,
             commands::set_autostart,
             commands::get_autostart,
-            commands::autostart_managed,
             commands::history_list,
             commands::history_apps,
             commands::search_files,
