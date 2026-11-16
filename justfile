@@ -10,7 +10,7 @@ test_cmd := "cargo test --workspace --no-fail-fast"
 default: check
 
 # The full gate: formatting, linter, dependencies, tests, SPDX headers, no stubs
-check: fmt clippy lint-deps test spdx-check no-stubs comments prose sh-check nix-fmt nix-check
+check: fmt clippy lint-deps test spdx-check no-stubs comments prose subset-font-check sh-check nix-fmt nix-check
 
 fmt:
     cargo fmt --all --check
@@ -53,6 +53,14 @@ comments:
 # The README follows the create-readme skill
 prose:
     scripts/check-prose.sh README.md
+
+# The window ships the prose face cut out of the vendored kit file: run this after a kit bump
+subset-font:
+    python3 scripts/subset-font.py
+
+# The committed split still covers exactly the vendored face
+subset-font-check:
+    python3 scripts/subset-font.py --check
 
 # The shell scripts follow the bash-best-practices skill
 sh-check:

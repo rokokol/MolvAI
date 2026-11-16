@@ -17,7 +17,37 @@
   font-display: swap;
 }
 
+/* The prose face in two files. The letters of Russian and English are what the window draws, and
+   they sit in the small file; the Greek and mathematical glyphs that the kit's face also carries
+   come from the second file only when such a character reaches the screen, because the browser
+   asks for a face when a glyph needs it and not before. `scripts/subset-font.py` cuts both out of
+   the vendored original, so the kit stays the one source of the face and no glyph is dropped */
+@font-face {
+  font-family: "Mya Nunito Window";
+  src: url("./assets/fonts/MyaNunito-window-core.woff2") format("woff2");
+  font-weight: 200 1000;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Mya Nunito Window";
+  src: url("./assets/fonts/MyaNunito-window-rest.woff2") format("woff2");
+  font-weight: 200 1000;
+  font-display: swap;
+  unicode-range: U+0253, U+0257-0259, U+0292, U+02B0-02FF, U+0370-0377, U+037A-037F,
+    U+0384-03E1, U+03F0-03FF, U+1D2C-1D6A, U+2070-2071, U+2074-209C, U+2100-214F,
+    U+2300-2302, U+2305-230B, U+2310-2313, U+2317-2319, U+231C-2323, U+232C, U+2332,
+    U+2336-237C, U+2394-2395, U+239B-23B9, U+23CE-23D0, U+23DC-23E7, U+27C0-27FF,
+    U+2980-2AFF, U+2C7C-2C7D, U+F8FF, U+FB01-FB02, U+1D400-1D49F, U+1D4A2, U+1D4A5-1D4A6,
+    U+1D4A9-1D50A, U+1D50D-1D546, U+1D54A-1D6A5, U+1D6A8-1D7CB, U+1D7CE-1D7FF;
+}
+
 :root {
+  /* The prose face is the two-file split declared above. The kit's own face is not in the chain:
+     the split covers every glyph it carries, and a character that neither file has would make the
+     browser download the whole 459 KB face to learn that it lacks that character too */
+  --ddlc-font-prose: "Mya Nunito Window", Nunito, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
   /* The kit's grid, doubled for a window read at arm's length on a large screen: 26 px for a
      label or a table cell, 30 px for prose, 34 px for the body of an entry and 52 px for a
      page title or a figure. A size in this sheet is one of these steps, never a length typed

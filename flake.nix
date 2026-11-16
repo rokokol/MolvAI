@@ -189,8 +189,13 @@
             cmake
             pkg-config
             nodejs
-            # The comment checker reads syntax trees; the pinned pack carries every grammar
-            (python3.withPackages (ps: [ ps.tree-sitter-language-pack ]))
+            # The comment checker reads syntax trees; the pinned pack carries every grammar. The
+            # fonttools pair cuts the prose face the window ships out of the vendored original
+            (python3.withPackages (ps: [
+              ps.tree-sitter-language-pack
+              ps.fonttools
+              ps.brotli
+            ]))
           ];
 
           # The libraries of the core
