@@ -8,15 +8,53 @@
 //!
 //! The price is one process per request, which is why the model file and the binary are
 //! fixed at construction and the audio goes through a temporary 16 kHz WAV.
+//!
+//! A cancel kills the process, and the call then ends with [`SttError::Cancelled`]. What the kill
+//! reaches is that one process: a helper that the CLI started itself may keep the pipes open
+//! after it dies. Such a call ends with an error once the wait for the output is over, never with
+//! a truncated transcript, and the readers end when the last writer lets the pipes go
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::Instant;
+use std::sync::mpsc::{Receiver, Sender};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
+use shared_child::SharedChild;
 use tracing::debug;
 
 use crate::domain::audio::{PcmAudio, TARGET_SAMPLE_RATE};
+use crate::domain::cancel::CancelToken;
 use crate::domain::stt::{LanguageHint, Segment, SttEngine, SttError, SttOptions, Transcript};
+
+/// Bytes that one stream of the CLI may print before the answer is refused
+///
+/// A bound is what keeps a runaway CLI from eating the memory of the machine, and it is set far
+/// above the report of any real recording: a model that reports a token every forty milliseconds
+/// prints about three megabytes an hour, so twenty hours of it fit twice over
+const MAX_STREAM_BYTES: usize = 64 * 1024 * 1024;
+
+/// How long the readers get to deliver what they read once the process is gone
+const READER_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The slowest recognition that the wait accepts, in seconds of process time per second of audio
+///
+/// The CLI recognizes an order of magnitude faster than the recording on a CPU, so this is a
+/// hang detector and not a promise about speed: a run that lasts longer than this multiple is
+/// dead, and the caller hears so instead of waiting for ever
+const SLOWEST_RUN_FACTOR: f64 = 60.0;
+
+/// The floor and the ceiling of that wait, in seconds
+///
+/// The floor covers the model load of a word of audio; the ceiling keeps the arithmetic honest
+/// for a recording of many hours
+const MIN_RUN_TIMEOUT_SECS: f64 = 300.0;
+const MAX_RUN_TIMEOUT_SECS: f64 = 86_400.0;
+
+/// What one reader brings back: the bytes, or the reason it stopped
+///
+type StreamResult = Result<Vec<u8>, String>;
 
 /// Recognizer on transcribe.cpp: local, one process per request
 #[derive(Debug)]
@@ -29,7 +67,7 @@ pub struct TranscribeCppEngine {
     backend: String,
     threads: usize,
     /// The job a client may give up on: the token holds the process of the CLI while it runs
-    cancel: Option<std::sync::Arc<crate::domain::cancel::CancelToken>>,
+    cancel: Option<Arc<CancelToken>>,
 }
 
 impl TranscribeCppEngine {
@@ -48,11 +86,6 @@ impl TranscribeCppEngine {
             threads,
             cancel: None,
         }
-    }
-
-    /// The job a client may give up on, so a cancel reaches the running process
-    pub fn set_cancel(&mut self, cancel: std::sync::Arc<crate::domain::cancel::CancelToken>) {
-        self.cancel = Some(cancel);
     }
 
     fn program(&self) -> &str {
@@ -88,6 +121,121 @@ impl TranscribeCppEngine {
             .map_err(|e| SttError::Inference(format!("cannot finish the WAV file: {e}")))?;
         Ok(file)
     }
+
+    /// Whether the client gave up before this call reached the process
+    fn is_cancelled(&self) -> bool {
+        self.cancel
+            .as_ref()
+            .is_some_and(|token| token.is_cancelled())
+    }
+
+    /// Register the process in the token of the job, if the job has one
+    fn register(&self, child: Arc<SharedChild>) -> Option<Attachment> {
+        self.cancel
+            .as_ref()
+            .map(|token| Attachment::new(Arc::clone(token), child))
+    }
+
+    /// How long one run may take before it counts as hung
+    fn run_timeout(audio_secs: f32) -> Duration {
+        Duration::from_secs_f64(
+            (f64::from(audio_secs).max(0.0) * SLOWEST_RUN_FACTOR)
+                .clamp(MIN_RUN_TIMEOUT_SECS, MAX_RUN_TIMEOUT_SECS),
+        )
+    }
+}
+
+/// The registration of one process in the token of the job it works for
+///
+/// It goes however the call ends, so a late cancel of a finished job finds nothing to kill and
+/// cannot take the process of the next job
+#[derive(Debug)]
+struct Attachment {
+    token: Arc<CancelToken>,
+    child: Arc<SharedChild>,
+}
+
+impl Attachment {
+    fn new(token: Arc<CancelToken>, child: Arc<SharedChild>) -> Self {
+        token.attach(Arc::clone(&child));
+        Self { token, child }
+    }
+}
+
+impl Drop for Attachment {
+    fn drop(&mut self) {
+        self.token.finish(&self.child);
+    }
+}
+
+/// End a process that nothing waits for any more, and collect it
+///
+/// A killed process is collected here so that the call leaves no zombie behind; the wait is
+/// short because the signal cannot be ignored
+fn stop(child: &SharedChild) {
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+/// Read one stream of the CLI into memory, refusing an answer above `limit` bytes
+///
+/// The bytes stay in memory and in the caller: the output carries recognized speech, and a file
+/// on disk would keep it after the call
+fn read_stream(mut stream: impl Read, limit: usize) -> StreamResult {
+    let mut data = Vec::new();
+    let mut chunk = [0u8; 8192];
+    loop {
+        match stream.read(&mut chunk) {
+            Ok(0) => return Ok(data),
+            Ok(read) => {
+                if data.len() + read > limit {
+                    return Err(format!(
+                        "transcribe-cli printed more than {limit} bytes on one stream"
+                    ));
+                }
+                data.extend_from_slice(&chunk[..read]);
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(err) => {
+                return Err(format!("cannot read the output of transcribe-cli: {err}"));
+            }
+        }
+    }
+}
+
+/// Read one stream on a thread of its own
+///
+/// A pipe holds a few kilobytes: a writer that fills one while nobody reads it blocks, so one
+/// thread that read the two streams in turn would wait for the first of them for ever
+fn spawn_reader(stream: impl Read + Send + 'static) -> std::io::Result<Receiver<StreamResult>> {
+    let (tx, rx): (Sender<StreamResult>, _) = std::sync::mpsc::channel();
+    std::thread::Builder::new()
+        .name("stt-output".into())
+        .spawn(move || {
+            // The receiver is gone when the call gave up: the reader has nothing to tell it then
+            let _ = tx.send(read_stream(stream, MAX_STREAM_BYTES));
+        })?;
+    Ok(rx)
+}
+
+/// Collect what both readers read, waiting no longer than [`READER_TIMEOUT`] in all
+fn collect_output(
+    stdout: &Receiver<StreamResult>,
+    stderr: &Receiver<StreamResult>,
+) -> Result<(Vec<u8>, Vec<u8>), SttError> {
+    let deadline = Instant::now() + READER_TIMEOUT;
+    let take = |stream: &Receiver<StreamResult>, what: &str| {
+        match stream
+        .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+    {
+        Ok(Ok(data)) => Ok(data),
+        Ok(Err(reason)) => Err(SttError::Inference(reason)),
+        Err(_) => Err(SttError::Inference(format!(
+            "transcribe-cli kept its {what} open after it exited: a process it started still holds it"
+        ))),
+    }
+    };
+    Ok((take(stdout, "output")?, take(stderr, "error output")?))
 }
 
 fn seconds_to_ms(value: &str) -> Option<u32> {
@@ -264,6 +412,8 @@ pub fn parse_output(stdout: &str) -> Result<Transcript, SttError> {
         segments,
         detected_language,
         no_speech_prob: None,
+        cost_usd: None,
+        billed_seconds: None,
     })
 }
 
@@ -289,6 +439,11 @@ impl SttEngine for TranscribeCppEngine {
                 path: self.model_path.display().to_string(),
                 model: self.model_name.clone(),
             });
+        }
+        // The client gave up before this call reached the CLI: there is no process to stop, and
+        // starting one to kill it at once would spend the model load for nothing
+        if self.is_cancelled() {
+            return Err(SttError::Cancelled);
         }
         let ready = audio.to_16k();
         let wav = Self::write_wav(&ready)?;
@@ -317,41 +472,80 @@ impl SttEngine for TranscribeCppEngine {
             .stderr(Stdio::piped());
 
         let started = Instant::now();
-        // Spawn first, then wait: the process identifier is what a cancel needs, and
-        // `output()` would hold it inside the call until the model finishes
-        let child = command.spawn().map_err(|e| {
+        let child = SharedChild::spawn(&mut command).map_err(|e| {
             SttError::Inference(format!(
                 "cannot start {}: {e}. Install transcribe.cpp or set stt.transcribe_cli",
                 self.program()
             ))
         })?;
-        if let Some(cancel) = &self.cancel {
-            cancel.attach(child.id());
-        }
-        let output = child
-            .wait_with_output()
-            .map_err(|e| SttError::Inference(format!("cannot wait for {}: {e}", self.program())))?;
-        if let Some(cancel) = &self.cancel {
-            cancel.detach();
-            // The process died because the client gave up, and its status says so; the reason
-            // of the failure is the cancel, not a broken install
-            if cancel.is_cancelled() {
-                return Err(SttError::Cancelled);
+        let child = Arc::new(child);
+        // The streams are taken before the registration: reading them is what a cancel would
+        // interrupt, and the pipes belong to the call from here on
+        let stdout = child.take_stdout();
+        let stderr = child.take_stderr();
+        let (Some(stdout), Some(stderr)) = (stdout, stderr) else {
+            stop(&child);
+            return Err(SttError::Inference(
+                "transcribe-cli started without the output pipes it was given".into(),
+            ));
+        };
+        // The registration goes before the readers: from here on a cancel kills the process,
+        // and a cancel that arrived earlier has already set the flag that `attach` reads
+        let _registration = self.register(Arc::clone(&child));
+        let readers = match (spawn_reader(stdout), spawn_reader(stderr)) {
+            (Ok(out), Ok(err)) => Ok((out, err)),
+            (out, err) => {
+                drop(out);
+                drop(err);
+                Err(SttError::Inference(
+                    "cannot start a thread that reads the output of transcribe-cli".into(),
+                ))
             }
+        };
+        let (stdout, stderr) = match readers {
+            Ok(readers) => readers,
+            Err(err) => {
+                stop(&child);
+                return Err(err);
+            }
+        };
+        let timeout = Self::run_timeout(ready.duration_secs());
+        let status = match child.wait_deadline(Instant::now() + timeout) {
+            Ok(Some(status)) => status,
+            Ok(None) => {
+                stop(&child);
+                return Err(SttError::Inference(format!(
+                    "transcribe-cli did not finish in {} s and was stopped",
+                    timeout.as_secs()
+                )));
+            }
+            Err(e) => {
+                stop(&child);
+                return Err(SttError::Inference(format!(
+                    "cannot wait for {}: {e}",
+                    self.program()
+                )));
+            }
+        };
+        // The process died because the client gave up, and its status says so; the reason of
+        // the failure is the cancel, not a broken install. The readers end at the end of the
+        // pipe on their own, and nothing of what they read belongs to anybody
+        if self.is_cancelled() {
+            return Err(SttError::Cancelled);
         }
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
+        let (out, err) = collect_output(&stdout, &stderr)?;
+        if !status.success() {
+            let stderr = String::from_utf8_lossy(&err);
             let reason = stderr
                 .lines()
                 .rev()
                 .find(|line| !line.trim().is_empty())
                 .unwrap_or("no message");
             return Err(SttError::Inference(format!(
-                "transcribe-cli exited with {}: {reason}",
-                output.status
+                "transcribe-cli exited with {status}: {reason}"
             )));
         }
-        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stdout = String::from_utf8_lossy(&out);
         let mut transcript = parse_output(&stdout)?;
         if !options.timestamps {
             transcript.segments.clear();
@@ -364,6 +558,12 @@ impl SttEngine for TranscribeCppEngine {
             "transcribe.cpp recognition finished"
         );
         Ok(transcript)
+    }
+
+    /// The job a client may give up on: the token holds the process while it runs, and a cancel
+    /// then kills the CLI instead of waiting for the model to finish
+    fn set_cancel(&mut self, cancel: Option<Arc<CancelToken>>) {
+        self.cancel = cancel;
     }
 
     fn unload(&mut self) {
@@ -469,5 +669,181 @@ tokens: 6
         );
         assert_eq!(engine.program(), "transcribe-cli");
         assert_eq!(engine.id(), "transcribe-cpp");
+    }
+
+    #[test]
+    fn a_stream_above_the_limit_is_an_error_and_not_a_truncated_answer() {
+        // The limit of the engine is far above any real report, so the reader is asked here with
+        // one that a test can reach: the answer is refused, never cut short
+        let data = vec![b'a'; 64 * 1024];
+
+        let error = read_stream(&data[..], 1024).expect_err("the answer is refused");
+
+        assert!(error.contains("bytes"), "{error}");
+        assert_eq!(
+            read_stream(&data[..1024], 1024)
+                .expect("the answer fits")
+                .len(),
+            1024
+        );
+    }
+
+    /// The engine as the pipeline builds it, and the stand-ins for the CLI that its tests run
+    ///
+    /// The stand-in is a shell script that ignores the arguments: the engine talks to a process,
+    /// and what the process does is the whole of what these tests need from it
+    #[cfg(unix)]
+    mod process {
+        use super::*;
+        use std::os::unix::fs::PermissionsExt;
+
+        /// The longest a test waits for an answer that must arrive at once
+        const ANSWER: Duration = Duration::from_secs(20);
+
+        /// Write a stand-in for `transcribe-cli` into `dir`
+        fn cli(dir: &Path, name: &str, body: &str) -> PathBuf {
+            let path = dir.join(name);
+            std::fs::write(&path, format!("#!/bin/sh\n{body}")).expect("the stand-in is written");
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+                .expect("the stand-in is executable");
+            path
+        }
+
+        /// An engine over that stand-in, with a model file that the engine only checks for
+        fn engine(cli: &Path) -> TranscribeCppEngine {
+            let model = cli.with_file_name("model.gguf");
+            std::fs::write(&model, b"not a model").expect("the model file is in place");
+            TranscribeCppEngine::new(
+                model,
+                "test-model".into(),
+                cli.display().to_string(),
+                String::new(),
+                0,
+            )
+        }
+
+        fn speech() -> PcmAudio {
+            PcmAudio::new(vec![0.1; 1600], 16_000)
+        }
+
+        /// Run one recognition on a thread of its own, so a call that never returns fails the
+        /// test instead of hanging the suite
+        fn transcribe_within(
+            mut engine: Box<dyn SttEngine>,
+            wait: Duration,
+        ) -> (Result<Transcript, SttError>, Duration) {
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let started = Instant::now();
+                let result = engine.transcribe(&speech(), &SttOptions::default());
+                let _ = tx.send((result, started.elapsed()));
+            });
+            rx.recv_timeout(wait).expect("the call returned in time")
+        }
+
+        /// Run one recognition and cancel it the moment its process is registered
+        fn transcribe_cancelled(
+            mut engine: Box<dyn SttEngine>,
+            token: &Arc<CancelToken>,
+        ) -> (Result<Transcript, SttError>, Duration) {
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let started = Instant::now();
+                let result = engine.transcribe(&speech(), &SttOptions::default());
+                let _ = tx.send((result, started.elapsed()));
+            });
+            assert!(token.wait_attached(ANSWER), "the CLI process never started");
+            token.cancel();
+            rx.recv_timeout(ANSWER)
+                .expect("the cancel reached the process")
+        }
+
+        #[test]
+        fn a_cancel_through_the_trait_stops_the_process() {
+            let dir = tempfile::tempdir().expect("a temporary directory");
+            let script = cli(dir.path(), "slow.sh", "sleep 300\n");
+            let token = Arc::new(CancelToken::new());
+            // The call goes through the trait object, as the pipeline makes it: an inherent
+            // method of the engine would never be reached from here
+            let mut engine: Box<dyn SttEngine> = Box::new(engine(&script));
+            engine.set_cancel(Some(Arc::clone(&token)));
+
+            let (result, elapsed) = transcribe_cancelled(engine, &token);
+
+            assert!(matches!(result, Err(SttError::Cancelled)), "{result:?}");
+            assert!(elapsed < ANSWER, "the call waited {elapsed:?}");
+        }
+
+        #[test]
+        fn a_cancel_before_the_start_never_runs_the_cli() {
+            let dir = tempfile::tempdir().expect("a temporary directory");
+            // A program that cannot start at all: a call that answers `Cancelled` therefore never
+            // tried to start a process, because the attempt would answer with the reason instead
+            let unrunnable = dir.path().join("not-a-program");
+            std::fs::write(&unrunnable, b"text: not a program\n").expect("the file is written");
+            std::fs::set_permissions(&unrunnable, std::fs::Permissions::from_mode(0o644))
+                .expect("the file is not executable");
+            let token = Arc::new(CancelToken::new());
+            token.cancel();
+            let mut engine: Box<dyn SttEngine> = Box::new(engine(&unrunnable));
+            engine.set_cancel(Some(Arc::clone(&token)));
+
+            let (result, elapsed) = transcribe_within(engine, Duration::from_secs(3));
+
+            assert!(
+                matches!(result, Err(SttError::Cancelled)),
+                "the call started a process after the client gave up: {result:?}"
+            );
+            assert!(
+                elapsed < Duration::from_secs(1),
+                "the call waited {elapsed:?}"
+            );
+        }
+
+        #[test]
+        fn a_finished_job_registers_nothing_and_leaves_the_next_process_alone() {
+            let dir = tempfile::tempdir().expect("a temporary directory");
+            let fast = cli(dir.path(), "fast.sh", "echo 'text: привет'\n");
+            let token = Arc::new(CancelToken::new());
+            let mut first: Box<dyn SttEngine> = Box::new(engine(&fast));
+            first.set_cancel(Some(Arc::clone(&token)));
+
+            let (result, _) = transcribe_within(first, ANSWER);
+
+            assert_eq!(result.expect("the answer is read").text, "привет");
+            assert!(
+                !token.is_attached(),
+                "the finished job left its process registered"
+            );
+            assert!(!token.is_cancelled());
+
+            // The next call of the same job is not touched by the process that already ended:
+            // its own process starts, and the cancel kills that one
+            let slow = cli(dir.path(), "slow.sh", "sleep 300\n");
+            let mut second: Box<dyn SttEngine> = Box::new(engine(&slow));
+            second.set_cancel(Some(Arc::clone(&token)));
+            let (result, _) = transcribe_cancelled(second, &token);
+            assert!(matches!(result, Err(SttError::Cancelled)), "{result:?}");
+        }
+
+        #[test]
+        fn a_large_answer_on_both_streams_is_read_without_a_deadlock() {
+            let dir = tempfile::tempdir().expect("a temporary directory");
+            // More than the pipe buffer of either stream: a reader that took the streams in turn
+            // would wait for the first of them while the CLI waits for someone to read the other
+            let script = cli(
+                dir.path(),
+                "noisy.sh",
+                "(yes aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | head -c 1048576)\n\
+                 (yes bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb | head -c 1048576) >&2\n\
+                 echo\n\
+                 echo 'text: привет'\n",
+            );
+            let engine: Box<dyn SttEngine> = Box::new(engine(&script));
+
+            let (result, _) = transcribe_within(engine, ANSWER);
+
+            assert_eq!(result.expect("the answer is read").text, "привет");
+        }
     }
 }

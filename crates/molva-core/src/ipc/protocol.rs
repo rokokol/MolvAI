@@ -82,13 +82,14 @@ pub enum Command {
     /// already holds: no client loads a model of its own
     #[serde(rename = "file.transcribe")]
     FileTranscribe(FileTranscriptionRequest),
-    /// Stop the file transcription that runs now
+    /// Stop one file transcription by the identifier that its request named
     ///
-    /// The daemon works on one file at a time, so no identifier is needed: the client that asked
-    /// for the running job is the one that gives up on it. The answer of the stopped job is an
-    /// error with this code, and nothing of it reaches the journal
+    /// The identifier keeps a cancel off every other job: the daemon works on one file at a time,
+    /// but a request that still waits for the worker belongs to the client that sent it, and a
+    /// cancel must not stop the job that runs now or the one that follows. A job that already
+    /// ended, or an identifier that never started one, is answered with `cancelled: false`
     #[serde(rename = "file.cancel")]
-    FileCancel,
+    FileCancel { job_id: String },
     /// Check a draft of the settings against the model provider, using the daemon's key source
     #[serde(rename = "llm.probe")]
     LlmProbe { config: Box<crate::config::Config> },
@@ -129,6 +130,12 @@ pub struct FileTranscriptionRequest {
     /// Cut the decoded file at pauses before recognition
     #[serde(default)]
     pub chunked: bool,
+    /// Identifier that `file.cancel` names to stop this job
+    ///
+    /// A client that cannot cancel — the batched CLI, the MCP server — sends none, and the job
+    /// then cannot be stopped from outside
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job_id: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -328,12 +335,16 @@ mod tests {
             no_llm: false,
             source: Source::Mcp,
             chunked: false,
+            job_id: Some("job-7".into()),
         }
     }
 
     #[test]
     fn a_file_transcription_round_trips_with_its_arguments() {
         round_trip(&Command::FileTranscribe(request_fixture()));
+        round_trip(&Command::FileCancel {
+            job_id: "job-7".into(),
+        });
         let json =
             serde_json::to_value(Request::new(3, Command::FileTranscribe(request_fixture())))
                 .unwrap();
@@ -344,6 +355,7 @@ mod tests {
         assert_eq!(json["args"]["no_llm"], false);
         assert_eq!(json["args"]["source"], "mcp");
         assert_eq!(json["args"]["chunked"], false);
+        assert_eq!(json["args"]["job_id"], "job-7");
     }
 
     #[test]
@@ -362,6 +374,10 @@ mod tests {
         assert!(!args.no_llm);
         assert_eq!(args.source, Source::File);
         assert!(!args.chunked);
+        assert_eq!(
+            args.job_id, None,
+            "no identifier means the job cannot be stopped"
+        );
     }
 
     #[test]

@@ -124,6 +124,8 @@ enum Job {
     /// at a time
     File {
         request: FileTranscriptionRequest,
+        /// The token of this very job: a cancel of the job reaches its process through it
+        cancel: Arc<crate::domain::cancel::CancelToken>,
         reply: Sender<Result<FileReport, IpcError>>,
     },
 }
@@ -169,6 +171,8 @@ struct Shared {
     /// What the worker thread is busy with, as the clients see it (`status`, state events):
     /// `Some` also means that the slot is taken, so one file at a time needs no second flag
     job: Mutex<Option<WorkerJob>>,
+    /// The file job that holds the worker, and the token that a client cancels by its identifier
+    file_job: Mutex<Option<FileSlot>>,
     /// Settings that the pipeline applied, and that the state machine runs with
     ///
     /// A reload compares the file against this value: the difference decides between a live
@@ -176,9 +180,15 @@ struct Shared {
     applied_config: Mutex<Config>,
     /// Settings file for `config.reload`; `None` means the default path
     config_path: Mutex<Option<PathBuf>>,
-    /// Set by a client that gives up on the running file transcription, cleared when the next
-    /// one starts: the pipeline reads it between two chunks
-    file_cancel: Mutex<Arc<crate::domain::cancel::CancelToken>>,
+}
+
+/// The file job that the worker holds or still waits for
+#[derive(Debug)]
+struct FileSlot {
+    /// Identifier that the request named; `None` means that the client cannot stop this job
+    id: Option<String>,
+    /// The token the client cancels: it carries the process of the recognizer while it runs
+    cancel: Arc<crate::domain::cancel::CancelToken>,
 }
 
 impl Shared {
@@ -191,7 +201,10 @@ impl Shared {
     }
 
     /// The file slot is free again: the worker finished the file or never took it
-    fn release_file_job(&self) {
+    ///
+    /// The token goes only when it is the token of this very job, so a job that already ended
+    /// cannot clear the registration of the job that runs now
+    fn release_file_job(&self, cancel: &Arc<crate::domain::cancel::CancelToken>) {
         let taken = {
             let mut job = self
                 .job
@@ -199,8 +212,38 @@ impl Shared {
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             job.take().is_some()
         };
+        {
+            let mut slot = self
+                .file_job
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mine = slot
+                .as_ref()
+                .is_some_and(|job| Arc::ptr_eq(&job.cancel, cancel));
+            if mine {
+                *slot = None;
+            }
+        }
         if taken {
             self.publish_state(None);
+        }
+    }
+
+    /// Stop the file job that carries this identifier, and answer whether one was still waiting
+    ///
+    /// The identifier keeps the cancel off every other job: a job that already ended, and an
+    /// identifier that never started one, leave the work of everybody else alone
+    fn cancel_file_job(&self, id: &str) -> bool {
+        let slot = self
+            .file_job
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match slot.as_ref() {
+            Some(job) if job.id.as_deref() == Some(id) => {
+                job.cancel.cancel();
+                true
+            }
+            _ => false,
         }
     }
 
@@ -210,7 +253,11 @@ impl Shared {
     /// first, because a person waits for it, and only one file job may hold the worker. The slot
     /// is taken and reported in one step, so a client never reads `idle` with no job while the
     /// file is already on its way to the worker
-    fn take_file_slot(&self, state: DaemonState) -> Result<(), IpcError> {
+    fn take_file_slot(
+        &self,
+        state: DaemonState,
+        id: Option<String>,
+    ) -> Result<Arc<crate::domain::cancel::CancelToken>, IpcError> {
         if state != DaemonState::Idle {
             return Err(IpcError {
                 code: ErrorCode::Busy,
@@ -218,6 +265,10 @@ impl Shared {
                 hint: Some("try again when the phrase is delivered".into()),
             });
         }
+        // The token exists from the moment the job is accepted, not from the moment the worker
+        // takes it: a cancel of a job that still waits in the queue then reaches that job, and
+        // not the work that happens to hold the recognizer
+        let cancel = Arc::new(crate::domain::cancel::CancelToken::new());
         {
             let mut job = self
                 .job
@@ -231,9 +282,17 @@ impl Shared {
                 });
             }
             *job = Some(WorkerJob::File);
+            let mut slot = self
+                .file_job
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            *slot = Some(FileSlot {
+                id,
+                cancel: Arc::clone(&cancel),
+            });
         }
         self.publish_state(None);
-        Ok(())
+        Ok(cancel)
     }
 
     /// The job of the worker thread, still set while a phrase recorded during it waits
@@ -324,7 +383,7 @@ impl Daemon {
             job: Mutex::new(None),
             applied_config: Mutex::new(config.clone()),
             config_path: Mutex::new(None),
-            file_cancel: Mutex::new(Arc::new(crate::domain::cancel::CancelToken::new())),
+            file_job: Mutex::new(None),
         });
 
         let mut machine = Machine::new(config.hotkeys.clone(), clock.clone());
@@ -410,17 +469,21 @@ impl Daemon {
                         // microphone: so a file job cannot slip in between a key press and the
                         // recording it starts, and the user's phrase never waits for a file
                         Ctl::FileJob { request, reply } => {
-                            if let Err(error) = shared.take_file_slot(machine.state()) {
-                                let _ = reply.send(Err(error));
-                            } else {
-                                let job = Job::File {
-                                    request,
-                                    reply: reply.clone(),
-                                };
-                                if work_tx.send(job).is_err() {
-                                    // No worker, no job: the slot must not stay taken
-                                    shared.release_file_job();
-                                    let _ = reply.send(Err(internal("daemon stopped")));
+                            match shared.take_file_slot(machine.state(), request.job_id.clone()) {
+                                Err(error) => {
+                                    let _ = reply.send(Err(error));
+                                }
+                                Ok(cancel) => {
+                                    let job = Job::File {
+                                        request,
+                                        cancel: Arc::clone(&cancel),
+                                        reply: reply.clone(),
+                                    };
+                                    if work_tx.send(job).is_err() {
+                                        // No worker, no job: the slot must not stay taken
+                                        shared.release_file_job(&cancel);
+                                        let _ = reply.send(Err(internal("daemon stopped")));
+                                    }
                                 }
                             }
                             continue;
@@ -639,24 +702,24 @@ impl Daemon {
                         }
                         // A file is not a phrase: it never reaches the state machine, and the
                         // recognizer is the one that already holds the weights
-                        Job::File { request, reply } => {
-                            // Every job gets its own token: the cancel of the previous file cannot
-                            // reach this one, and a flag cleared by hand cannot be forgotten
-                            let token = Arc::new(crate::domain::cancel::CancelToken::new());
-                            if let Ok(mut slot) = shared.file_cancel.lock() {
-                                *slot = Arc::clone(&token);
-                            }
-                            processor.set_file_cancel(token);
-                            let answer = processor.transcribe_file(&request).map_err(|err| {
-                                IpcError {
+                        Job::File {
+                            request,
+                            cancel,
+                            reply,
+                        } => {
+                            processor.set_file_cancel(Some(Arc::clone(&cancel)));
+                            let answer =
+                                processor.transcribe_file(&request).map_err(|err| IpcError {
                                     code: error_code_for(&err),
                                     message: err.to_string(),
                                     hint: None,
-                                }
-                            });
+                                });
+                            // The token must not outlive its job: the next one gets its own, and a
+                            // cancelled token left in place would stop the dictation that follows
+                            processor.set_file_cancel(None);
                             // The slot is free before the answer leaves, so the next file can
                             // start at once
-                            shared.release_file_job();
+                            shared.release_file_job(&cancel);
                             let _ = reply.send(answer);
                             continue;
                         }
@@ -1181,13 +1244,13 @@ impl RequestHandler for DaemonHandle {
                 let report = self.transcribe_file(request)?;
                 serde_json::to_value(report).map_err(|err| internal(&err.to_string()))
             }
-            Command::FileCancel => {
-                // The token kills the recognizer process, so a file of hours stops at once; the
-                // answer of the stopped job reaches nobody and nothing of it reaches the journal
-                if let Ok(slot) = self.shared.file_cancel.lock() {
-                    slot.cancel();
-                }
-                Ok(serde_json::json!({ "cancelled": true }))
+            Command::FileCancel { job_id } => {
+                // The token kills the recognizer process, so a file of hours stops at once. The
+                // identifier decides which job dies: a job that already ended, or one that never
+                // existed, leaves the running work alone
+                Ok(serde_json::json!({
+                    "cancelled": self.shared.cancel_file_job(&job_id),
+                }))
             }
             Command::ConfigReload => {
                 let config = self.reload_config(None)?;
@@ -2447,16 +2510,22 @@ mod tests {
 
     // --- File jobs on the one worker thread ---
 
-    /// A processor that serves a file and holds it until the test lets it finish
+    /// A processor that serves a file and holds it until the test lets it finish, and a recording
+    /// whose discard holds the worker
     ///
     /// The log is the order of the work of the worker thread: the only way to see that a phrase
-    /// recorded during a file job was queued and not lost
+    /// recorded during a file job was queued and not lost, and that a cancel reached the job that
+    /// waited in the queue
     #[derive(Debug)]
     struct FileJobProbe {
         inner: SimpleProcessor<SharedInjector, MemJournal>,
         log: Arc<Mutex<Vec<String>>>,
         started: Arc<Mutex<bool>>,
         release: Arc<Mutex<bool>>,
+        /// The token that the daemon handed over for the file job
+        cancel: Arc<Mutex<Option<Arc<crate::domain::cancel::CancelToken>>>>,
+        /// The worker stays in the discard of a cancelled recording until this is set
+        discard_held: Arc<Mutex<bool>>,
     }
 
     impl Processor for FileJobProbe {
@@ -2475,16 +2544,39 @@ mod tests {
             Ok(entry)
         }
 
+        fn discard_stream(&mut self) {
+            self.log.lock().unwrap().push("discard:start".into());
+            wait_until(
+                || *self.discard_held.lock().unwrap(),
+                "the discard of the cancelled recording was never released",
+            );
+            self.log.lock().unwrap().push("discard:done".into());
+        }
+
+        fn set_file_cancel(&mut self, cancel: Option<Arc<crate::domain::cancel::CancelToken>>) {
+            *self.cancel.lock().unwrap() = cancel;
+        }
+
         fn transcribe_file(
             &mut self,
             request: &FileTranscriptionRequest,
         ) -> Result<FileReport, ProcessError> {
             self.log.lock().unwrap().push("file:start".into());
             *self.started.lock().unwrap() = true;
+            let token = self.cancel.lock().unwrap().clone();
+            // The job ends when the test lets it, or at once when its own token is cancelled:
+            // the way the pipeline answers a cancel between two chunks
             wait_until(
-                || *self.release.lock().unwrap(),
+                || {
+                    *self.release.lock().unwrap()
+                        || token.as_ref().is_some_and(|token| token.is_cancelled())
+                },
                 "the file job was never released",
             );
+            if token.as_ref().is_some_and(|token| token.is_cancelled()) {
+                self.log.lock().unwrap().push("file:cancelled".into());
+                return Err(ProcessError::Cancelled);
+            }
             self.log.lock().unwrap().push("file:done".into());
             Ok(FileReport {
                 results: vec![crate::app::file_result::FileResult {
@@ -2518,6 +2610,7 @@ mod tests {
         clock: Arc<FakeClock>,
         log: Arc<Mutex<Vec<String>>>,
         release: Arc<Mutex<bool>>,
+        discard_held: Arc<Mutex<bool>>,
     }
 
     fn file_probe_harness(text: &str) -> FileProbeHarness {
@@ -2530,6 +2623,7 @@ mod tests {
         let log = Arc::new(Mutex::new(Vec::new()));
         let started = Arc::new(Mutex::new(false));
         let release = Arc::new(Mutex::new(false));
+        let discard_held = Arc::new(Mutex::new(false));
         let probe = FileJobProbe {
             inner: SimpleProcessor::new(
                 Box::new(FakeStt::returning(text)),
@@ -2546,6 +2640,8 @@ mod tests {
             log: log.clone(),
             started: started.clone(),
             release: release.clone(),
+            cancel: Arc::new(Mutex::new(None)),
+            discard_held: discard_held.clone(),
         };
         let daemon = Daemon::spawn(DaemonParts {
             audio: Box::new(SharedAudio(Arc::new(Mutex::new(FakeAudioSource::silence(
@@ -2565,6 +2661,7 @@ mod tests {
             clock,
             log,
             release,
+            discard_held,
         }
     }
 
@@ -2576,6 +2673,15 @@ mod tests {
             no_llm: false,
             source: crate::domain::entry::Source::Mcp,
             chunked: false,
+            job_id: None,
+        }
+    }
+
+    /// A request that names its job, so that `file.cancel` can stop exactly this one
+    fn named_file_request(path: &str, job_id: &str) -> FileTranscriptionRequest {
+        FileTranscriptionRequest {
+            job_id: Some(job_id.to_string()),
+            ..file_request(path)
         }
     }
 
@@ -2584,10 +2690,17 @@ mod tests {
     }
 
     fn start_file_job(handle: &DaemonHandle) -> Receiver<Result<FileReport, IpcError>> {
+        start_job(handle, file_request("/tmp/lecture.wav"))
+    }
+
+    fn start_job(
+        handle: &DaemonHandle,
+        request: FileTranscriptionRequest,
+    ) -> Receiver<Result<FileReport, IpcError>> {
         let (tx, rx) = channel();
         let handle = handle.clone();
         std::thread::spawn(move || {
-            let _ = tx.send(handle.transcribe_file(file_request("/tmp/lecture.wav")));
+            let _ = tx.send(handle.transcribe_file(request));
         });
         rx
     }
@@ -2633,6 +2746,102 @@ mod tests {
         assert_eq!(report.results[0].text, "текст файла");
         // The slot is free again before the client gets its answer
         assert_eq!(status_job(&h.handle), serde_json::Value::Null);
+        drop(h.daemon);
+    }
+
+    #[test]
+    fn a_cancel_of_a_waiting_file_job_stops_that_job_and_not_the_work_before_it() {
+        // The worker is busy with the tail of a cancelled recording, so the file job that the
+        // daemon accepts waits in the queue and has not reached the recognizer yet
+        let h = file_probe_harness("реплика");
+        h.handle
+            .send(Input::RecordStart {
+                mode: Mode::Dictation,
+                style: None,
+            })
+            .unwrap();
+        h.handle.send(Input::RecordCancel).unwrap();
+        wait_until(
+            || {
+                h.log
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|line| line == "discard:start")
+            },
+            "the worker never reached the discard of the cancelled recording",
+        );
+
+        let answer = start_job(&h.handle, named_file_request("/tmp/lecture.wav", "job-a"));
+        wait_until(
+            || status_job(&h.handle) == serde_json::json!("file"),
+            "the file job was never accepted",
+        );
+
+        let handler: &dyn RequestHandler = &h.handle;
+        let stopped = handler
+            .handle(Command::FileCancel {
+                job_id: "job-a".into(),
+            })
+            .unwrap();
+        assert_eq!(
+            stopped["cancelled"], true,
+            "the waiting job was not stopped"
+        );
+
+        // The work before the file ends on its own, and the file that follows answers as stopped
+        *h.discard_held.lock().unwrap() = true;
+        let error = answer
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap()
+            .expect_err("the stopped job answers with an error");
+        assert_eq!(error.code, ErrorCode::BadRequest);
+        assert!(error.message.contains("cancelled"), "{error:?}");
+        assert_eq!(
+            *h.log.lock().unwrap(),
+            vec![
+                "discard:start".to_string(),
+                "discard:done".to_string(),
+                "file:start".to_string(),
+                "file:cancelled".to_string()
+            ],
+            "the cancel reached the wrong job"
+        );
+        drop(h.daemon);
+    }
+
+    #[test]
+    fn a_cancel_of_an_unknown_identifier_leaves_the_running_job_alone() {
+        let h = file_probe_harness("реплика");
+        let answer = start_job(&h.handle, named_file_request("/tmp/lecture.wav", "job-a"));
+        wait_until(
+            || h.log.lock().unwrap().first().map(String::as_str) == Some("file:start"),
+            "the file job never started",
+        );
+
+        let handler: &dyn RequestHandler = &h.handle;
+        let stopped = handler
+            .handle(Command::FileCancel {
+                job_id: "job-b".into(),
+            })
+            .unwrap();
+        assert_eq!(stopped["cancelled"], false, "a stranger stopped the job");
+
+        *h.release.lock().unwrap() = true;
+        let report = answer
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap()
+            .expect("the job was not stopped");
+        assert_eq!(report.results[0].text, "текст файла");
+
+        // The token of the job is gone with it: a late cancel of its own identifier has nothing
+        // to stop either
+        let late = handler
+            .handle(Command::FileCancel {
+                job_id: "job-a".into(),
+            })
+            .unwrap();
+        assert_eq!(late["cancelled"], false);
         drop(h.daemon);
     }
 

@@ -47,7 +47,7 @@ tempfile = { workspace = true }
 # Journal lock shared by the daemon, the CLI and the GUI
 fs4 = { workspace = true }
 # Killing the recognizer process when a client gives up on a file
-libc = { workspace = true }
+shared_child = { workspace = true }
 
 # On Linux the clipboard and input synthesis support Wayland, plus evdev and notifications
 [target.'cfg(target_os = "linux")'.dependencies]

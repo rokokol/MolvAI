@@ -123,7 +123,7 @@ impl Processor for crate::app::pipeline::Pipeline {
         ))
     }
 
-    fn set_file_cancel(&mut self, cancel: Arc<crate::domain::cancel::CancelToken>) {
+    fn set_file_cancel(&mut self, cancel: Option<Arc<crate::domain::cancel::CancelToken>>) {
         self.set_file_cancel(cancel);
     }
 }
@@ -213,8 +213,9 @@ pub trait Processor: std::fmt::Debug + Send {
     }
 
     /// The token a client cancels: an engine with a child process dies at once, and one that runs
-    /// in this process answers between two calls
-    fn set_file_cancel(&mut self, _cancel: Arc<crate::domain::cancel::CancelToken>) {}
+    /// in this process answers between two calls. `None` means that no file job waits on this
+    /// processor any more
+    fn set_file_cancel(&mut self, _cancel: Option<Arc<crate::domain::cancel::CancelToken>>) {}
 }
 
 /// Settings that the processor needs from the config
@@ -383,6 +384,8 @@ impl<I: TextInjector, J: Journal> Processor for SimpleProcessor<I, J> {
             llm_cost_usd: None,
             llm_calls: 0,
             llm_unpriced_calls: 0,
+            stt_cost_usd: None,
+            stt_unpriced: false,
             error,
             text_raw: Some(transcript.text.clone()),
             text_final: Some(text),

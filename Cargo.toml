@@ -90,8 +90,9 @@ arboard = "3.6"
 enigo = "0.6"
 evdev = "0.13"
 notify-rust = "4.18"
-# A child process is killed by its identifier on unix: a cancel must reach the recognizer itself
-libc = "0.2"
+# A child process that a cancel must reach: `wait` and `kill` from two threads at once, which a
+# bare `std::process::Child` does not allow
+shared_child = "1.1"
 
 # Track E: file decoding, weight download, CLI
 symphonia = { version = "0.6", default-features = false, features = [

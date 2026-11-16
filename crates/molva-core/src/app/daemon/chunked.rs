@@ -306,6 +306,8 @@ pub fn merge(prefix: &ChunkPrefix, tail: Option<Transcript>) -> Transcript {
         // The speech of the phrase was already found in the chunks: a silence estimate on the
         // tail alone would discard it all
         no_speech_prob: None,
+        cost_usd: None,
+        billed_seconds: None,
     }
 }
 
