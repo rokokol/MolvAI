@@ -86,6 +86,8 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ### Fixed
 
+- `molva doctor` names the cloud recognizer instead of the weights: the address, the model, and the way out when the key or the consent is missing. A key that lives in the environment is named rather than reported missing, because the daemon reads its own environment and not the shell's
+
 - A batch export of two files with the same name writes both results instead of overwriting the first
 
 - A phrase that is added to an encrypted journal is encrypted even when its text starts with the ciphertext marker

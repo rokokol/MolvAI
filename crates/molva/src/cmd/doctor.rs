@@ -12,6 +12,7 @@ use molva_core::app::models;
 use molva_core::app::probe;
 use molva_core::app::secrets::{self, OsKeyring, SecretStore};
 use molva_core::domain::llm::LlmError;
+use molva_core::infra::http_policy;
 use molva_core::infra::inject::clipboard::SystemClipboard;
 use molva_core::infra::ipc;
 use molva_core::infra::llm::openai_compat::{OpenAiCompatClient, Provider};
@@ -80,6 +81,64 @@ pub(crate) fn input_devices_check() -> Check {
     {
         Check::new("/dev/input", false, "Linux only")
     }
+}
+
+/// The engine name that means "recognize through a remote API"
+const ENGINE_REMOTE: &str = "remote-openai";
+
+/// The cloud recognizer: where the recording goes, which model reads it, and whether a key and
+/// the consent are in place
+///
+/// Without the consent the request is refused before it leaves the machine, so a missing consent
+/// is a failure here even when the address answers: a loopback address is the one exception
+pub(crate) fn remote_stt_check(config: &Config) -> Check {
+    let remote = &config.stt.remote;
+    let address = remote.base_url.trim();
+    let model = remote.model.trim();
+    let mut missing: Vec<String> = Vec::new();
+    if address.is_empty() {
+        missing.push("stt.remote.base_url is empty".into());
+    }
+    if model.is_empty() {
+        missing.push("stt.remote.model is empty".into());
+    }
+    // A key from the environment belongs to the process that runs the recognizer, and this one is
+    // a shell with an environment of its own: its absence here says nothing about the daemon, and
+    // an answer of "no" would send the person looking for a key that is already in the unit
+    let key = secrets::remote_stt_api_key(remote);
+    let mut note: Option<String> = None;
+    match remote.api_key_source.as_str() {
+        "none" => {}
+        "env" => {
+            if key.is_none() {
+                note = Some(format!(
+                    "the key is expected in {} in the environment of the daemon",
+                    remote.api_key_env
+                ));
+            }
+        }
+        _ => {
+            if key.is_none() {
+                missing.push(format!(
+                    "no key: add {} to the key store with molva secret set stt",
+                    remote.api_key_env
+                ));
+            }
+        }
+    }
+    if !config.privacy.cloud_consent && !http_policy::is_loopback_url(address) {
+        missing
+            .push("no cloud consent: set privacy.cloud_consent, or the request is refused".into());
+    }
+    if !missing.is_empty() {
+        return Check::new("remote STT", false, missing.join("; "));
+    }
+    let mut detail = format!("{model} at {address}");
+    if let Some(note) = note {
+        detail.push_str("; ");
+        detail.push_str(&note);
+    }
+    Check::new("remote STT", true, detail)
 }
 
 /// The weights of the configured model: found on the disk and their SHA-256 matches the catalog
@@ -275,9 +334,15 @@ pub(crate) fn checks_with(socket: &Path, config: &Config, store: &dyn SecretStor
             ),
         ),
     });
-    checks.push(whisper_model_check(config));
-    if engine::resolve_engine(config, &EngineChoice::default()) == "transcribe-cpp" {
-        checks.push(transcribe_cli_check(config));
+    // The weights and the program that loads them say nothing about a recognizer that answers
+    // over the network: that path needs its own line, and a missing one would read as "fine"
+    if engine::resolve_engine(config, &EngineChoice::default()) == ENGINE_REMOTE {
+        checks.push(remote_stt_check(config));
+    } else {
+        checks.push(whisper_model_check(config));
+        if engine::resolve_engine(config, &EngineChoice::default()) == "transcribe-cpp" {
+            checks.push(transcribe_cli_check(config));
+        }
     }
     checks.push(llm_check(config));
     checks.push(keyring_check(store));
@@ -347,6 +412,86 @@ mod tests {
         ] {
             assert!(names.contains(&expected), "{names:?}");
         }
+    }
+
+    #[test]
+    fn a_cloud_recognizer_takes_the_place_of_the_weights_in_the_report() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut config = offline_config(directory.path());
+        config.stt.engine = ENGINE_REMOTE.into();
+        config.stt.remote.base_url = "https://openrouter.ai/api/v1".into();
+        config.stt.remote.model = "microsoft/mai-transcribe-2".into();
+        config.stt.remote.api_key_source = "none".into();
+        config.privacy.cloud_consent = true;
+        let checks = checks_with(
+            &directory.path().join("absent.sock"),
+            &config,
+            &MemoryStore::new(),
+        );
+        let names: Vec<&str> = checks.iter().map(|c| c.name.as_str()).collect();
+        assert!(names.contains(&"remote STT"), "{names:?}");
+        assert!(!names.contains(&"model"), "{names:?}");
+        assert!(!names.contains(&"transcribe-cli"), "{names:?}");
+        let check = checks
+            .iter()
+            .find(|check| check.name == "remote STT")
+            .expect("the line is in the report");
+        assert!(check.ok, "{}", check.detail);
+        assert!(
+            check.detail.contains("microsoft/mai-transcribe-2"),
+            "{}",
+            check.detail
+        );
+    }
+
+    #[test]
+    fn a_cloud_recognizer_without_consent_is_a_failure_that_names_the_switch() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut config = offline_config(directory.path());
+        config.stt.engine = ENGINE_REMOTE.into();
+        config.stt.remote.base_url = "https://openrouter.ai/api/v1".into();
+        config.stt.remote.model = "microsoft/mai-transcribe-2".into();
+        config.stt.remote.api_key_source = "none".into();
+        config.privacy.cloud_consent = false;
+        let check = remote_stt_check(&config);
+        assert!(!check.ok, "{}", check.detail);
+        assert!(
+            check.detail.contains("privacy.cloud_consent"),
+            "{}",
+            check.detail
+        );
+
+        // A server on this machine leaves nothing: it needs no consent
+        config.stt.remote.base_url = "http://127.0.0.1:9000/v1".into();
+        assert!(remote_stt_check(&config).ok);
+    }
+
+    #[test]
+    fn a_cloud_recognizer_without_its_key_names_the_variable() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut config = offline_config(directory.path());
+        config.stt.remote.api_key_source = "env".into();
+        config.stt.remote.api_key_env = "MOLVA_TEST_NO_SUCH_VARIABLE".into();
+        config.privacy.cloud_consent = true;
+        // A key from the environment belongs to the process that runs the recognizer, so a shell
+        // that lacks it cannot report a failure: it names the variable instead
+        let check = remote_stt_check(&config);
+        assert!(check.ok, "{}", check.detail);
+        assert!(
+            check.detail.contains("MOLVA_TEST_NO_SUCH_VARIABLE"),
+            "{}",
+            check.detail
+        );
+
+        // A key of the store is in reach of this process, and its absence is a failure
+        config.stt.remote.api_key_source = "keyring".into();
+        let check = remote_stt_check(&config);
+        assert!(!check.ok, "{}", check.detail);
+        assert!(
+            check.detail.contains("molva secret set stt"),
+            "{}",
+            check.detail
+        );
     }
 
     #[test]
