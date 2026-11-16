@@ -6,6 +6,9 @@
 //! The recognizer is the fake engine, so no weights and no microphone are involved, and the
 //! environment is cut off from the journal of the person who runs the suite
 
+// The whole crate is a test: a panic here reports a failure, not an unhandled error
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 

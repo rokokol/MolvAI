@@ -681,18 +681,12 @@ impl Default for PrivacyConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct McpConfig {
     /// The stdio MCP server may be started by a harness. This switch lets the owner disable it
     /// without removing the command from the harness configuration
     pub enabled: bool,
-}
-
-impl Default for McpConfig {
-    fn default() -> Self {
-        Self { enabled: false }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -932,13 +926,14 @@ impl Config {
 
     /// Replace a file in one step: a reader never sees a half-written TOML
     fn write(path: &Path, text: &str) -> Result<(), ConfigError> {
+        use std::io::Write;
+
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|source| ConfigError::Write {
                 path: path.to_path_buf(),
                 source,
             })?;
         }
-        use std::io::Write;
 
         let parent = path
             .parent()

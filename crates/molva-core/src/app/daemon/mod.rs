@@ -955,6 +955,12 @@ fn restart_hint() -> &'static str {
 /// requires a restart before anyone names it here, and until it has a name the answer says
 /// `settings`
 fn reload_requires_restart(applied: &Config, candidate: &Config) -> Vec<&'static str> {
+    fn note(sections: &mut Vec<&'static str>, differs: bool, name: &'static str) {
+        if differs {
+            sections.push(name);
+        }
+    }
+
     // The state machine reads the thresholds again after a reload, but the keys themselves are
     // registered outside this process (the tray and the compositor binds): a new key would be
     // confirmed as applied and never work, so only the thresholds are hot
@@ -971,11 +977,6 @@ fn reload_requires_restart(applied: &Config, candidate: &Config) -> Vec<&'static
         return Vec::new();
     }
     let mut sections = Vec::new();
-    fn note(sections: &mut Vec<&'static str>, differs: bool, name: &'static str) {
-        if differs {
-            sections.push(name);
-        }
-    }
     note(&mut sections, rest.version != applied.version, "version");
     note(
         &mut sections,
@@ -2155,9 +2156,12 @@ mod tests {
     }
 
     impl crate::domain::stt::SttEngine for ObservedStt {
+        // The trait ties the name to `&self`, so a literal cannot be static here
+        #[allow(clippy::unnecessary_literal_bound)]
         fn id(&self) -> &str {
             "observed"
         }
+        #[allow(clippy::unnecessary_literal_bound)]
         fn model_name(&self) -> &str {
             "observed"
         }

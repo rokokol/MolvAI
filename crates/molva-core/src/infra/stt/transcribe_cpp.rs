@@ -418,7 +418,10 @@ pub fn parse_output(stdout: &str) -> Result<Transcript, SttError> {
 }
 
 impl SttEngine for TranscribeCppEngine {
-    fn id(&self) -> &'static str {
+    // The trait ties the name to `&self` because an engine reads its own field; a literal here
+    // cannot be declared static without changing the trait for that engine (clippy#11230)
+    #[allow(clippy::unnecessary_literal_bound)]
+    fn id(&self) -> &str {
         "transcribe-cpp"
     }
 

@@ -598,7 +598,7 @@ mod tests {
                 "tokens": if id == 2 { json!({"prompt":120,"completion":30}) } else { Value::Null },
                 "llm_cost_usd": if id == 2 { Some(0.125) } else { None },
                 "llm_calls": if id == 2 { 2 } else { 0 },
-                "llm_unpriced_calls": if id == 2 { 1 } else { 0 },
+                "llm_unpriced_calls": i32::from(id == 2),
                 "text_raw": format!("synthetic raw nebula {id}"),
                 "text_final": format!("synthetic final nebula {id}"),
                 "audio_path": format!("synthetic-{id}.wav"),

@@ -393,21 +393,24 @@ fn spawn_hotkeys(config: &Config, _handle: &DaemonHandle) {
 
 /// The audio of one recognition lives in a temporary file and is removed when the call returns;
 /// a process that a crash took with it leaves the file, and this is how long it may stay
-pub(crate) const STALE_WAV_AGE: std::time::Duration = std::time::Duration::from_secs(3600);
+pub(crate) const STALE_WAV_AGE: Duration = Duration::from_secs(3600);
 
 /// Remove the temporary WAV files of recognitions that never finished
 ///
 /// Only files of this program, named by the prefix of its temporary audio, and only those older
 /// than the given age: a recognition that runs now keeps its file
-pub(crate) fn sweep_stale_wavs(directory: &Path, older: std::time::Duration) -> usize {
+pub(crate) fn sweep_stale_wavs(directory: &Path, older: Duration) -> usize {
     let Ok(entries) = std::fs::read_dir(directory) else {
         return 0;
     };
     let now = std::time::SystemTime::now();
     let mut removed = 0;
     for entry in entries.flatten() {
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if !name.starts_with("molva-stt-") || !name.ends_with(".wav") {
+        // The provider writes the name, and a name is compared in one case: a file the sweep skips
+        // stays on the disk for good
+        let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+        let is_wav = name.rsplit_once('.').is_some_and(|(_, ext)| ext == "wav");
+        if !name.starts_with("molva-stt-") || !is_wav {
             continue;
         }
         let Ok(metadata) = entry.metadata() else {
@@ -618,10 +621,7 @@ mod tests {
 
         // Zero age means "everything this program left", which is what a start after a crash
         // does with files older than an hour
-        assert_eq!(
-            sweep_stale_wavs(directory.path(), std::time::Duration::ZERO),
-            1
-        );
+        assert_eq!(sweep_stale_wavs(directory.path(), Duration::ZERO), 1);
         assert!(!stale.exists());
     }
 
@@ -634,7 +634,7 @@ mod tests {
         std::fs::write(&foreign, b"speech").unwrap();
 
         assert_eq!(
-            sweep_stale_wavs(directory.path(), std::time::Duration::from_secs(3600)),
+            sweep_stale_wavs(directory.path(), Duration::from_secs(3600)),
             0
         );
         assert!(fresh.exists(), "a recognition that runs keeps its audio");

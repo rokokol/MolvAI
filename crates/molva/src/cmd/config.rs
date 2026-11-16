@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 //! `molva config` — reading, editing, checking and moving the settings
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use clap::Subcommand;
@@ -75,7 +76,6 @@ pub(crate) fn run(action: ConfigAction, config_path: &Path, socket: &Path) -> an
             // A managed file is a store symlink. The editor gets a plain copy of the effective
             // settings, and the edited copy goes back through the runtime path
             let config = load(config_path)?;
-            use std::io::Write;
             let mut file = tempfile::Builder::new()
                 .prefix("molva-config-")
                 .suffix(".toml")

@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: MIT
+// The whole crate is a test: a panic here reports a failure, not an unhandled error
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #![cfg(unix)]
 
 use std::os::unix::fs::PermissionsExt;

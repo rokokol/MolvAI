@@ -931,21 +931,15 @@ mod tests {
 
     #[test]
     fn offline_language_override_reaches_engine_without_mutating_config() {
-        let dir = tempfile::tempdir().unwrap();
-        let audio = dir.path().join("a.wav");
-        write_wav(&audio, 0.2);
-        let mut args = offline_args(audio);
-        args.language = Some("fr".into());
-        let mut cfg = Config::default();
-        cfg.stt.language = "en".into();
-        cfg.journal.enabled = false;
-        cfg.journal.path = dir.path().join("journal").display().to_string();
         #[derive(Debug)]
         struct RecordingStt(Arc<std::sync::Mutex<Vec<SttOptions>>>);
         impl SttEngine for RecordingStt {
+            // The trait ties the name to `&self`, so a literal cannot be static here
+            #[allow(clippy::unnecessary_literal_bound)]
             fn id(&self) -> &str {
                 "recording-fake"
             }
+            #[allow(clippy::unnecessary_literal_bound)]
             fn model_name(&self) -> &str {
                 "recording-fake"
             }
@@ -959,6 +953,15 @@ mod tests {
             }
             fn unload(&mut self) {}
         }
+        let dir = tempfile::tempdir().unwrap();
+        let audio = dir.path().join("a.wav");
+        write_wav(&audio, 0.2);
+        let mut args = offline_args(audio);
+        args.language = Some("fr".into());
+        let mut cfg = Config::default();
+        cfg.stt.language = "en".into();
+        cfg.journal.enabled = false;
+        cfg.journal.path = dir.path().join("journal").display().to_string();
         let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
         let outcome = transcribe_outcome_with_engine(
             &args,

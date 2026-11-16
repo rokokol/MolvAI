@@ -82,7 +82,9 @@ impl WhisperEngine {
 }
 
 impl SttEngine for WhisperEngine {
-    fn id(&self) -> &'static str {
+    // The trait ties the name to `&self`: see TranscribeCppEngine for the reason of the allow
+    #[allow(clippy::unnecessary_literal_bound)]
+    fn id(&self) -> &str {
         "whisper-cpp"
     }
 
