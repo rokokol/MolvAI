@@ -156,7 +156,7 @@ The catalog is [models.toml](models.toml); `molva models list` shows what is in 
 
 ### Recognition through a cloud provider
 
-A third way to recognize is a service over the OpenAI-compatible `/audio/transcriptions` protocol: OpenAI, Groq, or a compatible server of your own. The recording leaves the machine, so the cloud consent has to be on first
+A third way to recognize is a service over the OpenAI-compatible `/audio/transcriptions` protocol: OpenAI, Groq, OpenRouter, or a compatible server of your own. The recording leaves the machine, so the cloud consent has to be on first
 
 ```sh
 molva config set privacy.cloud_consent true
@@ -167,7 +167,7 @@ molva config set stt.remote.api_key_source keyring
 printf '%s' "$GROQ_API_KEY" | molva secret set stt
 ```
 
-`stt.remote.api_key_source` takes `keyring`, `env` (the variable named by `stt.remote.api_key_env`) or `none`, and `stt.remote.timeout_secs` caps one request. `stt.remote.temperature` is the decoder temperature, 0 by default so that a phrase reads the same way every time. `stt.remote.prompt` leans the model towards names and jargon, and an empty prompt is not sent at all. `stt.remote.max_retries` repeats a request that failed on a timeout, a rate limit or a provider error, never one that failed on the key. Without consent a remote address receives nothing at all; a loopback address, such as a server of your own on the same machine, needs no consent because nothing leaves the computer
+`stt.remote.api_key_source` takes `keyring`, `env` (the variable named by `stt.remote.api_key_env`) or `none`, and `stt.remote.timeout_secs` caps one request. `stt.remote.temperature` is the decoder temperature, 0 by default so that a phrase reads the same way every time. `stt.remote.prompt` leans the model towards names and jargon: OpenAI and Groq take it as one prompt, OpenRouter receives its comma-separated terms one by one, and an empty value sends neither. `stt.remote.max_retries` repeats a request that failed on a timeout, a rate limit or a provider error, never one that failed on the key. Through OpenRouter four more fields route the recording: `stt.remote.provider_order`, `allow_fallbacks`, `zdr` and `data_collection`, and the other services ignore them. Without consent a remote address receives nothing at all; a loopback address, such as a server of your own on the same machine, needs no consent because nothing leaves the computer
 
 The service may charge for the minutes. When it reports a price, `molva stats` and the Statistics tab add it to a line of its own, and `stt_unpriced` counts the phrases whose provider reported no price, so the sum is never mistaken for the whole bill
 

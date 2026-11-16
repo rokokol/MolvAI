@@ -255,6 +255,16 @@ pub struct RemoteSttConfig {
     /// How many more requests follow one that failed on a timeout, a rate limit or a provider
     /// error. An authorization error is never repeated
     pub max_retries: u32,
+    /// OpenRouter routing of the audio: `deny` keeps the request away from providers that store
+    /// the recording or train on it, `allow` lets them answer. Other services ignore it
+    pub data_collection: String,
+    /// Ask OpenRouter for a Zero Data Retention endpoint; other services ignore it
+    pub zdr: bool,
+    /// OpenRouter provider order, comma-separated slugs (`groq, fireworks`). Empty leaves the
+    /// order to the router, and other services ignore it
+    pub provider_order: String,
+    /// Let OpenRouter fall back to another provider when the ordered ones cannot answer
+    pub allow_fallbacks: bool,
 }
 
 impl Default for RemoteSttConfig {
@@ -268,6 +278,10 @@ impl Default for RemoteSttConfig {
             temperature: 0.0,
             prompt: String::new(),
             max_retries: 2,
+            data_collection: "deny".into(),
+            zdr: true,
+            provider_order: String::new(),
+            allow_fallbacks: true,
         }
     }
 }
@@ -1246,6 +1260,12 @@ impl Config {
             f64::from(self.stt.remote.max_retries),
             0.0,
             5.0,
+        );
+        one_of(
+            issues,
+            "stt.remote.data_collection",
+            &self.stt.remote.data_collection,
+            &["allow", "deny"],
         );
         // The provider keeps the prompt within the window of the decoder: a longer text is cut
         // there anyway, and the person must know it before the phrase is sent

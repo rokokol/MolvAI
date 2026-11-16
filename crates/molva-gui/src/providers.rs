@@ -32,8 +32,8 @@ pub struct LlmProviderOption {
 /// makes the same decision, so the URL and the local flag always agree with the client.
 ///
 /// `stt_model` is `Some` only where `/audio/transcriptions` answers: Ollama and LM Studio
-/// serve chat alone, and OpenRouter lists no transcription model, so offering either of them
-/// for sound would be a promise the API does not keep
+/// serve chat alone. OpenRouter accepts the recording on its own transcription endpoint, so it is
+/// offered with the model that endpoint serves
 const PRESETS: [(&str, &str, &str, Option<&str>); 6] = [
     ("ollama", "qwen3.5:4b", "", None),
     ("lmstudio", "local-model", "", None),
@@ -42,7 +42,7 @@ const PRESETS: [(&str, &str, &str, Option<&str>); 6] = [
         "openrouter",
         "z-ai/glm-5.3-flash",
         "OPENROUTER_API_KEY",
-        None,
+        Some("openai/whisper-large-v3"),
     ),
     (
         "groq",
@@ -128,7 +128,7 @@ mod tests {
             .filter(|o| o.stt_model.is_some())
             .map(|o| o.id)
             .collect();
-        assert_eq!(transcribing, vec!["openai", "groq", "custom"]);
+        assert_eq!(transcribing, vec!["openai", "openrouter", "groq", "custom"]);
         for option in llm_providers()
             .into_iter()
             .filter(|o| o.stt_model.is_some())
@@ -139,9 +139,10 @@ mod tests {
             .into_iter()
             .find(|o| o.id == "openrouter")
             .expect("OpenRouter is in the list");
-        assert!(
-            openrouter.stt_model.is_none(),
-            "OpenRouter serves no transcription endpoint"
+        assert_eq!(
+            openrouter.stt_model.as_deref(),
+            Some("openai/whisper-large-v3"),
+            "the transcription endpoint of OpenRouter serves this model"
         );
     }
 }

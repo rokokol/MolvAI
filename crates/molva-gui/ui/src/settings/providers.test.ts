@@ -8,6 +8,7 @@ import type { SttModelOption } from "../types";
 import {
   engineOfModel,
   humanSize,
+  isOpenRouterAddress,
   localEngines,
   modelFitsEngine,
   modelsForEngine,
@@ -160,7 +161,14 @@ describe("the providers of the cloud recognizer", () => {
 
   it("calls an address of the person's own one set by hand", () => {
     expect(remoteSttProvider(providers, "http://localhost:9000/v1")).toBe("custom");
-    // An address of a provider that serves no transcription is not that provider's preset
-    expect(remoteSttProvider(providers, "https://openrouter.ai/api/v1")).toBe("custom");
+  });
+
+  it("names OpenRouter by its address even before the presets arrive", () => {
+    // The list comes from the Rust side after the first paint; the routing fields of OpenRouter
+    // must still be on the page when the address already says so
+    expect(remoteSttProvider([], "https://openrouter.ai/api/v1")).toBe("openrouter");
+    expect(remoteSttProvider([], "https://openrouter.ai.example.com/v1")).toBe("custom");
+    expect(isOpenRouterAddress(" https://eu.openrouter.ai/api/v1 ")).toBe(true);
+    expect(isOpenRouterAddress("not a url")).toBe(false);
   });
 });

@@ -10,7 +10,9 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ### Added
 
-- Recognition through an OpenAI-compatible cloud service: `stt.engine = "remote-openai"` sends the recording to `stt.remote.base_url` (OpenAI, Groq or a server of your own) and reads the transcript back with its timecodes. `stt.remote.timeout_secs` caps one request, `molva secret set stt` writes the key, and `molva secret status` shows the entry beside the model key and the journal key
+- Recognition through an OpenAI-compatible cloud service: `stt.engine = "remote-openai"` sends the recording to `stt.remote.base_url` (OpenAI, Groq, OpenRouter or a server of your own) and reads the transcript back with its timecodes. `stt.remote.timeout_secs` caps one request, `molva secret set stt` writes the key, and `molva secret status` shows the entry beside the model key and the journal key
+
+- OpenRouter transcription through its `/audio/transcriptions` endpoint, with the routing the model section already carries: `stt.remote.zdr`, `data_collection`, `provider_order` and `allow_fallbacks` go in the `provider` part of the request, and the hint reaches the service as separate `keyterms` instead of a prompt. OpenAI and Groq take the hint as one prompt and receive no routing at all, because they read neither
 
 - The remote recognizer carries the knobs of the post-processing model: `stt.remote.temperature` (0 by default, so a phrase reads the same way every time), `stt.remote.prompt` for names and jargon (empty means no prompt is sent), and `stt.remote.max_retries`, which repeats a request that failed on a timeout, a rate limit or a provider error and never one that failed on the key. The Settings page shows them beside the key, in the order of the model section
 

@@ -825,8 +825,87 @@ export default function Settings({
                   })
                 }
               />
-              <p className="small muted">{t("settings.remote.promptHint")}</p>
+              <p className="small muted">
+                {remoteProvider === "openrouter"
+                  ? t("settings.remote.keytermsHint")
+                  : t("settings.remote.promptHint")}
+              </p>
             </div>
+
+            {remoteProvider === "openrouter" && (
+              <>
+                <h4>{t("settings.remote.privacy")}</h4>
+                <div className="formgrid">
+                  <div className="field">
+                    <label htmlFor="stt-data-collection">
+                      {t("settings.remote.dataCollection")}
+                    </label>
+                    <select
+                      id="stt-data-collection"
+                      value={draft.stt.remote.data_collection}
+                      onChange={(event) => {
+                        const choice = event.target.value;
+                        patch((next) => {
+                          next.stt.remote.data_collection = choice;
+                        });
+                      }}
+                    >
+                      <option value="deny">{t("settings.remote.dataCollectionDeny")}</option>
+                      <option value="allow">{t("settings.remote.dataCollectionAllow")}</option>
+                    </select>
+                    <p className="small muted">
+                      {t("settings.remote.dataCollectionHint")}
+                    </p>
+                  </div>
+                  <div className="field">
+                    <Check
+                      label={t("settings.llm.zdr")}
+                      hint={t("settings.llm.zdrHint")}
+                      checked={draft.stt.remote.zdr}
+                      onChange={(value) =>
+                        patch((next) => {
+                          next.stt.remote.zdr = value;
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+
+                <h4>{t("settings.llm.hosters")}</h4>
+                <p className="small muted">{t("settings.llm.hostersHint")}</p>
+                <div className="formgrid">
+                  <div className="field">
+                    <label htmlFor="stt-provider-order">
+                      {t("settings.llm.hostersOrder")}
+                    </label>
+                    <input
+                      id="stt-provider-order"
+                      type="text"
+                      placeholder="groq, fireworks"
+                      value={draft.stt.remote.provider_order}
+                      onChange={(event) =>
+                        patch((next) => {
+                          next.stt.remote.provider_order = event.target.value;
+                        })
+                      }
+                    />
+                    <p className="small muted">{t("settings.llm.hostersOrderHint")}</p>
+                  </div>
+                  <div className="field">
+                    <Check
+                      label={t("settings.llm.allowFallbacks")}
+                      hint={t("settings.llm.allowFallbacksHint")}
+                      checked={draft.stt.remote.allow_fallbacks}
+                      onChange={(value) =>
+                        patch((next) => {
+                          next.stt.remote.allow_fallbacks = value;
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+              </>
+            )}
           </>
         ) : (
           <div className="field wide">

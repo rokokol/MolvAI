@@ -299,6 +299,14 @@ export interface RemoteSttConfig {
   prompt: string;
   /** How many more requests follow a timeout, a rate limit or a provider error */
   max_retries: number;
+  /** OpenRouter data policy for the audio: `deny` or `allow`; other services ignore it */
+  data_collection: string;
+  /** Ask OpenRouter for a Zero Data Retention endpoint */
+  zdr: boolean;
+  /** OpenRouter provider order, comma-separated slugs */
+  provider_order: string;
+  /** Let OpenRouter fall back to another provider */
+  allow_fallbacks: boolean;
 }
 
 export interface Config {

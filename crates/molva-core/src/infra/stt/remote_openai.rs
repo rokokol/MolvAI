@@ -58,6 +58,42 @@ enum Attempt {
     Transient(SttError),
 }
 
+/// How a request is routed through OpenRouter
+///
+/// These are the body fields the service reads: a provider of its own understands none of them,
+/// and a request to one of those carries no `provider` object at all
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RouterPolicy {
+    data_collection: String,
+    zdr: bool,
+    /// Comma-separated provider slugs, empty when the router picks
+    order: String,
+    allow_fallbacks: bool,
+}
+
+impl RouterPolicy {
+    /// The `provider` part of the request, as the service parses it
+    fn to_json(&self) -> String {
+        let order: Vec<&str> = self
+            .order
+            .split(',')
+            .map(str::trim)
+            .filter(|slug| !slug.is_empty())
+            .collect();
+        let mut routing = serde_json::Map::new();
+        routing.insert(
+            "data_collection".into(),
+            self.data_collection.clone().into(),
+        );
+        routing.insert("zdr".into(), self.zdr.into());
+        routing.insert("allow_fallbacks".into(), self.allow_fallbacks.into());
+        if !order.is_empty() {
+            routing.insert("order".into(), serde_json::json!(order));
+        }
+        serde_json::Value::Object(routing).to_string()
+    }
+}
+
 /// Recognizer on a remote OpenAI-compatible API
 pub struct RemoteOpenAiEngine {
     base_url: String,
@@ -70,6 +106,9 @@ pub struct RemoteOpenAiEngine {
     prompt: String,
     /// How many more requests follow a timeout, a rate limit or a provider error
     max_retries: u32,
+    /// Routing of the request through OpenRouter; `None` for a service of its own, which takes
+    /// none of those fields
+    router: Option<RouterPolicy>,
     policy: HttpPolicy,
     http: reqwest::blocking::Client,
     /// The job a client may give up on; checked before the send and after the answer
@@ -106,10 +145,18 @@ impl RemoteOpenAiEngine {
             temperature: 0.0,
             prompt: String::new(),
             max_retries: 0,
+            router: None,
             policy,
             http,
             cancel: None,
         })
+    }
+
+    /// Route the request through OpenRouter with these preferences
+    #[must_use]
+    pub fn with_router(mut self, router: RouterPolicy) -> Self {
+        self.router = Some(router);
+        self
     }
 
     /// Temperature of the decoder: 0 is greedy decoding, which is what a dictated phrase wants
@@ -149,16 +196,39 @@ impl RemoteOpenAiEngine {
             cloud_consent,
         )
         .map(|engine| {
-            engine
+            let engine = engine
                 .with_temperature(remote.temperature)
                 .with_prompt(remote.prompt.clone())
-                .with_retries(remote.max_retries)
+                .with_retries(remote.max_retries);
+            // The routing and the terms are OpenRouter's own: another service takes a prompt and
+            // would reject a part it does not know
+            if Self::is_openrouter_address(&remote.base_url) {
+                engine.with_router(RouterPolicy {
+                    data_collection: remote.data_collection.clone(),
+                    zdr: remote.zdr,
+                    order: remote.provider_order.clone(),
+                    allow_fallbacks: remote.allow_fallbacks,
+                })
+            } else {
+                engine
+            }
         })
     }
 
     /// `{base_url}/audio/transcriptions`
     fn endpoint(&self) -> String {
         format!("{}/{TRANSCRIPTIONS_PATH}", self.base_url)
+    }
+
+    /// Whether the address belongs to OpenRouter
+    ///
+    /// The fields of `provider` and `keyterms` are that service's own: OpenAI and Groq take a
+    /// `prompt` and no routing at all, and a request must not carry what the other side will reject
+    fn is_openrouter_address(base_url: &str) -> bool {
+        reqwest::Url::parse(base_url)
+            .ok()
+            .and_then(|url| url.host_str().map(str::to_ascii_lowercase))
+            .is_some_and(|host| host == "openrouter.ai" || host.ends_with(".openrouter.ai"))
     }
 
     /// Whether the client gave up before this call reached the provider
@@ -175,6 +245,7 @@ impl RemoteOpenAiEngine {
             language_field(options),
             self.temperature,
             &self.prompt,
+            self.router.as_ref(),
             wav,
         );
         let response = self
@@ -284,6 +355,7 @@ fn multipart_body(
     language: Option<&str>,
     temperature: f32,
     prompt: &str,
+    router: Option<&RouterPolicy>,
     wav: &[u8],
 ) -> (String, Vec<u8>) {
     let boundary = boundary_for(wav);
@@ -311,11 +383,30 @@ fn multipart_body(
         &format_temperature(temperature),
     );
     let prompt = prompt.trim();
-    if !prompt.is_empty() {
-        text_part(&mut body, &boundary, "prompt", prompt);
+    match router {
+        // OpenRouter biases the decoder with separate terms, and takes the routing in `provider`
+        Some(router) => {
+            text_part(&mut body, &boundary, "provider", &router.to_json());
+            for term in keyterms(prompt) {
+                text_part(&mut body, &boundary, "keyterms[]", &term);
+            }
+        }
+        // The other services take one prompt and no routing at all
+        None if !prompt.is_empty() => text_part(&mut body, &boundary, "prompt", prompt),
+        None => {}
     }
     body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
     (format!("multipart/form-data; boundary={boundary}"), body)
+}
+
+/// The terms of a hint, one by one: OpenRouter takes a list, so the line is split on its commas
+fn keyterms(prompt: &str) -> Vec<String> {
+    prompt
+        .split(',')
+        .map(str::trim)
+        .filter(|term| !term.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 /// The temperature as the provider parses it: `0` rather than `0.000000` for the default
@@ -1170,6 +1261,103 @@ mod tests {
 
         assert!(error.to_string().contains("500"), "{error}");
         assert_eq!(server.calls(), 3, "the first request and the two repeats");
+    }
+
+    #[test]
+    fn an_openrouter_request_carries_the_routing_and_the_terms() {
+        let server = MockServer::spawn(vec![Some(verbose_json())]);
+        let mut engine = engine_at(&server.base_url(), false, Duration::from_secs(5))
+            .with_prompt("Molva, ГигаАМ, транскрипция")
+            .with_router(RouterPolicy {
+                data_collection: "deny".into(),
+                zdr: true,
+                order: "groq, fireworks".into(),
+                allow_fallbacks: false,
+            });
+        engine.transcribe(&audio(), &russian()).unwrap();
+
+        let body = body_of(&server.last());
+        let text = String::from_utf8_lossy(&body).to_string();
+        let routing = find(&body, b"name=\"provider\"\r\n\r\n").expect("the provider part");
+        let rest = &text[routing..];
+        let json = &rest[rest.find("\r\n\r\n").unwrap() + 4..];
+        let json = &json[..json.find("\r\n--").unwrap()];
+        let parsed: serde_json::Value = serde_json::from_str(json).expect("the part is JSON");
+        assert_eq!(parsed["data_collection"], "deny");
+        assert_eq!(parsed["zdr"], true);
+        assert_eq!(parsed["allow_fallbacks"], false);
+        assert_eq!(parsed["order"][0], "groq");
+        assert_eq!(parsed["order"][1], "fireworks");
+
+        // Every term travels on its own, and no `prompt` part goes to a service that reads terms
+        for term in ["Molva", "ГигаАМ", "транскрипция"] {
+            assert!(
+                text.contains(&format!("name=\"keyterms[]\"\r\n\r\n{term}\r\n")),
+                "{term} is missing from the request"
+            );
+        }
+        assert!(
+            !text.contains("name=\"prompt\""),
+            "OpenRouter takes the terms, not a prompt"
+        );
+    }
+
+    #[test]
+    fn a_service_of_its_own_gets_the_prompt_and_no_routing() {
+        let server = MockServer::spawn(vec![Some(verbose_json())]);
+        let mut engine = engine_at(&server.base_url(), false, Duration::from_secs(5))
+            .with_prompt("Molva, ГигаАМ");
+        engine.transcribe(&audio(), &russian()).unwrap();
+
+        let text = String::from_utf8_lossy(&body_of(&server.last())).to_string();
+        assert!(
+            text.contains("name=\"prompt\"\r\n\r\nMolva, ГигаАМ\r\n"),
+            "{text}"
+        );
+        assert!(!text.contains("name=\"provider\""));
+        assert!(!text.contains("keyterms"));
+    }
+
+    #[test]
+    fn the_routing_is_attached_only_to_an_openrouter_address() {
+        let remote = RemoteSttConfig {
+            base_url: "https://api.groq.com/openai/v1".into(),
+            ..RemoteSttConfig::default()
+        };
+        assert!(
+            RemoteOpenAiEngine::from_remote(&remote, "sk-x", true)
+                .unwrap()
+                .router
+                .is_none(),
+            "Groq reads neither the routing nor the terms"
+        );
+
+        for address in [
+            "https://openrouter.ai/api/v1",
+            "https://openrouter.ai/api/v1/",
+            "https://eu.openrouter.ai/api/v1",
+        ] {
+            let remote = RemoteSttConfig {
+                base_url: address.into(),
+                provider_order: "groq".into(),
+                ..RemoteSttConfig::default()
+            };
+            let router = RemoteOpenAiEngine::from_remote(&remote, "sk-x", true)
+                .unwrap()
+                .router
+                .unwrap_or_else(|| panic!("{address} is OpenRouter and is routed"));
+            assert_eq!(router.order, "groq");
+        }
+
+        // A host that only looks alike is not the service
+        let remote = RemoteSttConfig {
+            base_url: "https://openrouter.ai.example.com/v1".into(),
+            ..RemoteSttConfig::default()
+        };
+        assert!(RemoteOpenAiEngine::from_remote(&remote, "sk-x", true)
+            .unwrap()
+            .router
+            .is_none());
     }
 
     #[test]

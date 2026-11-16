@@ -56,6 +56,10 @@ function config(change: (draft: Config) => void = () => undefined): Config {
         temperature: 0,
         prompt: "",
         max_retries: 2,
+        data_collection: "deny",
+        zdr: true,
+        provider_order: "",
+        allow_fallbacks: true,
       },
     },
     dictionary: { path: "", fuzzy: true, in_prompt: true },
@@ -255,6 +259,38 @@ describe("Settings: recognition", () => {
       "settings.remote.promptHint",
     ]) {
       expect(html).toContain(translate("en", key));
+    }
+  });
+
+  it("shows the privacy and routing of OpenRouter only for OpenRouter", () => {
+    const groq = render(
+      config((draft) => {
+        draft.stt.engine = "remote-openai";
+        draft.stt.remote.base_url = "https://api.groq.com/openai/v1";
+      }),
+    );
+    expect(groq).not.toContain('id="stt-data-collection"');
+    expect(groq).not.toContain('id="stt-provider-order"');
+
+    const router = render(
+      config((draft) => {
+        draft.stt.engine = "remote-openai";
+        draft.stt.remote.base_url = "https://openrouter.ai/api/v1";
+        draft.stt.remote.provider_order = "groq, fireworks";
+        draft.stt.remote.zdr = false;
+      }),
+    );
+    expect(router).toContain('id="stt-data-collection"');
+    expect(router).toContain('id="stt-provider-order"');
+    expect(router).toContain("groq, fireworks");
+    expect(router).toContain(translate("en", "settings.remote.keytermsHint"));
+    for (const key of [
+      "settings.remote.dataCollectionDeny",
+      "settings.remote.dataCollectionAllow",
+      "settings.llm.zdr",
+      "settings.llm.allowFallbacks",
+    ]) {
+      expect(router).toContain(translate("en", key));
     }
   });
 

@@ -26,6 +26,16 @@ export function sttProviders<T extends TranscribingProvider>(providers: T[]): T[
   return providers.filter((item) => item.stt_model !== null);
 }
 
+/** Whether the address belongs to OpenRouter, by the rule the core uses for the same question */
+export function isOpenRouterAddress(baseUrl: string): boolean {
+  try {
+    const host = new URL(baseUrl.trim()).hostname.toLowerCase();
+    return host === "openrouter.ai" || host.endsWith(".openrouter.ai");
+  } catch {
+    return false;
+  }
+}
+
 /** Which preset an address belongs to; an address of the person's own means "set by hand" */
 export function remoteSttProvider(
   providers: TranscribingProvider[],
@@ -35,7 +45,12 @@ export function remoteSttProvider(
   const preset = sttProviders(providers).find(
     (item) => item.base_url.trim().replace(/\/+$/, "") === wanted,
   );
-  return preset?.id ?? "custom";
+  if (preset) {
+    return preset.id;
+  }
+  // The presets arrive from the Rust side after the first paint; the address alone is enough to
+  // show the routing of OpenRouter, and it is what the core decides by anyway
+  return isOpenRouterAddress(baseUrl) ? "openrouter" : "custom";
 }
 
 export type SttProvider = "local" | "remote";
