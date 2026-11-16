@@ -391,6 +391,44 @@ fn spawn_hotkeys(config: &Config, _handle: &DaemonHandle) {
     }
 }
 
+/// The audio of one recognition lives in a temporary file and is removed when the call returns;
+/// a process that a crash took with it leaves the file, and this is how long it may stay
+pub(crate) const STALE_WAV_AGE: std::time::Duration = std::time::Duration::from_secs(3600);
+
+/// Remove the temporary WAV files of recognitions that never finished
+///
+/// Only files of this program, named by the prefix of its temporary audio, and only those older
+/// than the given age: a recognition that runs now keeps its file
+pub(crate) fn sweep_stale_wavs(directory: &Path, older: std::time::Duration) -> usize {
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return 0;
+    };
+    let now = std::time::SystemTime::now();
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !name.starts_with("molva-stt-") || !name.ends_with(".wav") {
+            continue;
+        }
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
+        if !metadata.is_file() {
+            continue;
+        }
+        let Ok(modified) = metadata.modified() else {
+            continue;
+        };
+        if now.duration_since(modified).unwrap_or_default() < older {
+            continue;
+        }
+        if std::fs::remove_file(entry.path()).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
+}
+
 pub(crate) fn run(config_path: &Path, options: &Options) -> anyhow::Result<()> {
     let config = Config::load_or_create(config_path)
         .with_context(|| format!("settings {}", config_path.display()))?;
@@ -404,6 +442,12 @@ pub(crate) fn run(config_path: &Path, options: &Options) -> anyhow::Result<()> {
     };
     let clock = Arc::new(SystemClock);
     let session_id = Uuid::new_v4();
+    // A recognition that was killed left its WAV behind: the file belongs to the user only, and
+    // the sweep keeps the temporary directory from collecting months of speech
+    let swept = sweep_stale_wavs(&std::env::temp_dir(), STALE_WAV_AGE);
+    if swept > 0 {
+        tracing::info!(files = swept, "stale recognition audio removed");
+    }
     let detected = platform::detect();
     tracing::info!(
         platform = %detected.label(),
@@ -566,6 +610,33 @@ mod tests {
         assert_eq!(dictionary.apply("привет").1, 0);
     }
 
+    #[test]
+    fn the_sweep_removes_the_audio_of_a_recognition_that_never_finished() {
+        let directory = tempfile::tempdir().unwrap();
+        let stale = directory.path().join("molva-stt-abc.wav");
+        std::fs::write(&stale, b"speech").unwrap();
+
+        // Zero age means "everything this program left", which is what a start after a crash
+        // does with files older than an hour
+        assert_eq!(sweep_stale_wavs(directory.path(), std::time::Duration::ZERO), 1);
+        assert!(!stale.exists());
+    }
+
+    #[test]
+    fn the_sweep_leaves_fresh_audio_and_other_files_alone() {
+        let directory = tempfile::tempdir().unwrap();
+        let fresh = directory.path().join("molva-stt-now.wav");
+        let foreign = directory.path().join("meeting.wav");
+        std::fs::write(&fresh, b"speech").unwrap();
+        std::fs::write(&foreign, b"speech").unwrap();
+
+        assert_eq!(
+            sweep_stale_wavs(directory.path(), std::time::Duration::from_secs(3600)),
+            0
+        );
+        assert!(fresh.exists(), "a recognition that runs keeps its audio");
+        assert!(foreign.exists(), "a file of another program is not ours");
+    }
     /// A daemon that answers a ping and nothing else
     struct PingHandler;
 
