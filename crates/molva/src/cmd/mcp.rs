@@ -15,6 +15,7 @@ use molva_core::app::journal::{self, FileJournal};
 use molva_core::app::models;
 use molva_core::app::search;
 use molva_core::app::stats;
+use molva_core::config::ConfigError;
 use molva_core::domain::entry::Source;
 use molva_core::infra::ipc::{Client, IpcClientError};
 use molva_core::ipc::protocol::{Command, ErrorCode, FileReport, FileTranscriptionRequest};
@@ -28,6 +29,8 @@ use super::transcribe::{self, JobSource};
 use super::CmdError;
 
 const PROTOCOL_VERSION: &str = "2024-11-05";
+const CONFIG_UNAVAILABLE: &str = "cannot load the MCP settings; check the configuration files";
+const MCP_DISABLED: &str = "the MCP server is disabled: set mcp.enabled = true in the settings";
 
 /// A search answer is a page of hits rather than the whole index. The schema and the code
 /// carry the same numbers, so the schema describes what the code does
@@ -50,6 +53,36 @@ struct Context {
     socket: PathBuf,
 }
 
+fn load_mcp_config(path: &Path) -> Result<Config, &'static str> {
+    Config::load_strict(path).map_err(|error| match error {
+        ConfigError::Read {
+            path: failed,
+            source,
+        } if failed == path
+            && source.kind() == std::io::ErrorKind::NotFound
+            && std::fs::symlink_metadata(path)
+                .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound) =>
+        {
+            MCP_DISABLED
+        }
+        _ => CONFIG_UNAVAILABLE,
+    })
+}
+
+impl Context {
+    fn snapshot(&self) -> Result<Self, String> {
+        let config = load_mcp_config(&self.config_path).map_err(str::to_string)?;
+        if !config.mcp.enabled {
+            return Err(MCP_DISABLED.to_string());
+        }
+        Ok(Self {
+            config,
+            config_path: self.config_path.clone(),
+            socket: self.socket.clone(),
+        })
+    }
+}
+
 /// One JSON-RPC request or notification
 fn handle(ctx: &Context, request: &Value) -> Option<Value> {
     let id = request.get("id").cloned();
@@ -68,14 +101,20 @@ fn handle(ctx: &Context, request: &Value) -> Option<Value> {
         "notifications/initialized" => return None,
         // Both answer with an empty result object: they differ only in when a client sends them
         "ping" | "shutdown" => Ok(json!({})),
-        "tools/list" => Ok(json!({ "tools": tools() })),
+        "tools/list" => ctx
+            .snapshot()
+            .map(|_| json!({ "tools": tools() }))
+            .map_err(|message| (-32603, message)),
         "tools/call" => {
             let name = params.get("name").and_then(Value::as_str).unwrap_or("");
             let arguments = params
                 .get("arguments")
                 .cloned()
                 .unwrap_or_else(|| json!({}));
-            match call_tool(ctx, name, &arguments) {
+            match ctx
+                .snapshot()
+                .and_then(|snapshot| call_tool(&snapshot, name, &arguments))
+            {
                 Ok(value) => Ok(json!({
                     "content": [{ "type": "text", "text": serde_json::to_string_pretty(&value).unwrap_or_default() }],
                     "isError": false
@@ -391,11 +430,15 @@ fn lang_arg(arguments: &Value) -> Result<Option<String>, String> {
 
 /// The stdio loop: one request per line, one response per line, diagnostics on stderr
 pub(crate) fn run(config_path: &Path, socket: &Path) -> Result<(), CmdError> {
-    let config = Config::load(config_path).map_err(|e| CmdError::file(e.to_string()))?;
+    let config = load_mcp_config(config_path).map_err(|message| {
+        if message == MCP_DISABLED {
+            CmdError::args(message)
+        } else {
+            CmdError::file(message)
+        }
+    })?;
     if !config.mcp.enabled {
-        return Err(CmdError::args(
-            "the MCP server is disabled: set mcp.enabled = true in the settings",
-        ));
+        return Err(CmdError::args(MCP_DISABLED));
     }
     let ctx = Context {
         config,
@@ -435,16 +478,536 @@ mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
 
-    fn context() -> Context {
+    struct TestContext {
+        ctx: Context,
+        _directory: tempfile::TempDir,
+    }
+
+    impl std::ops::Deref for TestContext {
+        type Target = Context;
+
+        fn deref(&self) -> &Context {
+            &self.ctx
+        }
+    }
+
+    fn context() -> TestContext {
         context_at(Path::new("/tmp/molva-mcp-test.sock"))
     }
 
-    fn context_at(socket: &Path) -> Context {
-        Context {
-            config: Config::default(),
-            config_path: PathBuf::from("/tmp/molva-mcp-test.toml"),
-            socket: socket.to_path_buf(),
+    fn context_at(socket: &Path) -> TestContext {
+        let directory = tempfile::tempdir().unwrap();
+        let config_path = directory.path().join("synthetic.toml");
+        let mut config = Config::default();
+        config.mcp.enabled = true;
+        config.save_plain(&config_path).unwrap();
+        assert!(Config::runtime_path(&config_path).unwrap().is_none());
+        TestContext {
+            ctx: Context {
+                config,
+                config_path,
+                socket: socket.to_path_buf(),
+            },
+            _directory: directory,
         }
+    }
+
+    struct EncryptedJournalFixture {
+        directory: tempfile::TempDir,
+        ctx: Context,
+        entries: Vec<molva_core::domain::Entry>,
+        disk: Vec<u8>,
+        key: Vec<u8>,
+    }
+
+    impl EncryptedJournalFixture {
+        fn new() -> Self {
+            use molva_core::domain::journal::Journal;
+
+            let directory = tempfile::tempdir().unwrap();
+            let mut config = Config::default();
+            config.journal.path = directory
+                .path()
+                .join("synthetic.jsonl")
+                .display()
+                .to_string();
+            config.journal.key_path = directory.path().join("synthetic.key").display().to_string();
+            config.journal.key_source = "file".into();
+            config.journal.encrypt = true;
+            config.journal.include_text = true;
+            config.mcp.enabled = true;
+            let config_path = directory.path().join("synthetic.toml");
+            config.save_plain(&config_path).unwrap();
+            assert!(
+                Config::runtime_path(&config_path).unwrap().is_none(),
+                "synthetic MCP tests must not read an external runtime configuration"
+            );
+            let ctx = Context {
+                config: Config::load(&config_path).unwrap(),
+                config_path,
+                socket: directory.path().join("unused.sock"),
+            };
+            let entries = vec![
+                Self::entry(1, "2020-01-01T12:00:00Z", "file", 4, 10),
+                Self::entry(2, "2020-01-02T12:00:00Z", "mcp", 8, 20),
+                Self::entry(3, "2020-01-03T12:00:00Z", "mic", 12, 30),
+            ];
+            let mut journal = FileJournal::open_for(&ctx.config).unwrap();
+            assert!(journal.encrypts());
+            for entry in &entries {
+                journal.append(entry).unwrap();
+            }
+            let disk = std::fs::read(journal.path()).unwrap();
+            let key = std::fs::read(ctx.config.journal_key_path().unwrap()).unwrap();
+            Self {
+                directory,
+                ctx,
+                entries,
+                disk,
+                key,
+            }
+        }
+
+        fn entry(
+            id: u128,
+            ts: &str,
+            source: &str,
+            words: u32,
+            audio_secs: u32,
+        ) -> molva_core::domain::Entry {
+            serde_json::from_value(json!({
+                "schema": molva_core::domain::entry::SCHEMA_VERSION,
+                "id": uuid::Uuid::from_u128(id),
+                "session_id": uuid::Uuid::nil(),
+                "ts": ts,
+                "mode": "dictation",
+                "source": source,
+                "app": if id == 2 { "SyntheticPlayer" } else { "SyntheticEditor" },
+                "language": "en",
+                "words": words,
+                "audio_secs": audio_secs,
+                "style": "raw",
+                "stt_engine": "synthetic",
+                "stt_model": "synthetic",
+                "llm_used": id == 2,
+                "local_llm": id != 2,
+                "dict_hits": 0,
+                "latency_ms": { "stt": id * 50, "rules": 0, "total": id * 100 },
+                "tokens": if id == 2 { json!({"prompt":120,"completion":30}) } else { Value::Null },
+                "llm_cost_usd": if id == 2 { Some(0.125) } else { None },
+                "llm_calls": if id == 2 { 2 } else { 0 },
+                "llm_unpriced_calls": if id == 2 { 1 } else { 0 },
+                "text_raw": format!("synthetic raw nebula {id}"),
+                "text_final": format!("synthetic final nebula {id}"),
+                "audio_path": format!("synthetic-{id}.wav"),
+                "segments": [
+                    { "start_ms":1250,"end_ms":2500,"text":format!("synthetic segment comet {id}") },
+                    { "start_ms":3000,"end_ms":4500,"text":format!("synthetic segment meteor {id}") }
+                ]
+            }))
+            .unwrap()
+        }
+
+        fn assert_unchanged(&self) {
+            let path = self.ctx.config.journal_path().unwrap();
+            assert_eq!(std::fs::read(&path).unwrap(), self.disk);
+            assert_eq!(
+                std::fs::read(self.ctx.config.journal_key_path().unwrap()).unwrap(),
+                self.key
+            );
+            assert!(!FileJournal::open_for(&self.ctx.config)
+                .unwrap()
+                .broken_path()
+                .exists());
+            assert!(!path.with_extension("jsonl.tmp").exists());
+        }
+    }
+
+    #[test]
+    fn encrypted_mcp_fixture_seals_all_text_fields_on_disk() {
+        use molva_core::app::journal_crypto::is_encrypted;
+
+        let fixture = EncryptedJournalFixture::new();
+        let disk = std::str::from_utf8(&fixture.disk).unwrap();
+        let stored: Vec<molva_core::domain::Entry> = disk
+            .lines()
+            .skip(1)
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(stored.len(), fixture.entries.len());
+        for (sealed, original) in stored.iter().zip(&fixture.entries) {
+            for (ciphertext, plaintext) in [
+                (
+                    sealed.text_raw.as_deref().unwrap(),
+                    original.text_raw.as_deref().unwrap(),
+                ),
+                (
+                    sealed.text_final.as_deref().unwrap(),
+                    original.text_final.as_deref().unwrap(),
+                ),
+            ] {
+                assert!(is_encrypted(ciphertext));
+                assert!(!disk.contains(plaintext));
+            }
+            assert_eq!(sealed.segments.len(), original.segments.len());
+            for (sealed, original) in sealed.segments.iter().zip(&original.segments) {
+                assert!(is_encrypted(&sealed.text), "segment text is not encrypted");
+                assert!(!disk.contains(&original.text));
+                assert_eq!(
+                    (sealed.start_ms, sealed.end_ms),
+                    (original.start_ms, original.end_ms)
+                );
+            }
+            assert_eq!(sealed.words, original.words);
+            assert_eq!(sealed.source, original.source);
+        }
+        fixture.assert_unchanged();
+    }
+
+    #[test]
+    fn encrypted_mcp_history_decrypts_filters_and_limits_without_disk_changes() {
+        let fixture = EncryptedJournalFixture::new();
+        let answer = call_in(&fixture.ctx, "history_list", &json!({"limit":0}));
+        let mut expected = fixture.entries.clone();
+        expected.reverse();
+        assert_eq!(answer, serde_json::to_value(&expected).unwrap());
+        let filtered = call_in(
+            &fixture.ctx,
+            "history_list",
+            &json!({
+                "query":"RAW NEBULA", "app":"syntheticplayer",
+                "since":"2020-01-02T12:00:00Z", "until":"2020-01-02T12:00:00Z"
+            }),
+        );
+        assert_eq!(filtered, json!([fixture.entries[1]]));
+        for query in ["RAW NEBULA 2", "FINAL NEBULA 2"] {
+            assert_eq!(
+                call_in(&fixture.ctx, "history_list", &json!({"query":query})),
+                json!([fixture.entries[1]])
+            );
+        }
+        assert_eq!(
+            call_in(
+                &fixture.ctx,
+                "history_list",
+                &json!({"since":"2020-01-02T12:00:00Z","limit":0})
+            ),
+            json!([fixture.entries[2], fixture.entries[1]])
+        );
+        assert_eq!(
+            call_in(
+                &fixture.ctx,
+                "history_list",
+                &json!({"until":"2020-01-02T12:00:00Z","limit":0})
+            ),
+            json!([fixture.entries[1], fixture.entries[0]])
+        );
+        assert_eq!(
+            call_in(&fixture.ctx, "history_list", &json!({"limit":1})),
+            json!([fixture.entries[2]])
+        );
+        assert_eq!(
+            call_in(
+                &fixture.ctx,
+                "history_list",
+                &json!({"query":"absent asteroid"})
+            ),
+            json!([])
+        );
+        fixture.assert_unchanged();
+    }
+
+    #[test]
+    fn encrypted_mcp_search_returns_segment_timecodes_and_whole_transcripts() {
+        let fixture = EncryptedJournalFixture::new();
+        let hits = call_in(
+            &fixture.ctx,
+            "search_transcripts",
+            &json!({"query":" COMET ","limit":0}),
+        );
+        let hits = hits.as_array().unwrap();
+        assert_eq!(hits.len(), 2);
+        for (hit, entry) in hits.iter().zip([&fixture.entries[1], &fixture.entries[0]]) {
+            assert_eq!(hit["entry_id"], entry.id.to_string());
+            assert_eq!(hit["file"], entry.audio_path.as_deref().unwrap());
+            assert_eq!(hit["text"], entry.segments[0].text);
+            assert_eq!(hit["start_ms"], 1250);
+            assert_eq!(hit["end_ms"], 2500);
+            assert_eq!(hit["timecode"], "00:01.250 → 00:02.500");
+            assert_eq!(hit["language"], "en");
+        }
+        let whole = call_in(
+            &fixture.ctx,
+            "search_transcripts",
+            &json!({"query":"NEBULA","limit":1}),
+        );
+        assert_eq!(whole.as_array().unwrap().len(), 1);
+        assert_eq!(whole[0]["entry_id"], fixture.entries[1].id.to_string());
+        assert_eq!(
+            whole[0]["text"],
+            fixture.entries[1].text_final.as_deref().unwrap()
+        );
+        assert!(whole[0].get("start_ms").is_none());
+        assert!(whole[0].get("timecode").is_none());
+        assert_eq!(
+            call_in(
+                &fixture.ctx,
+                "search_transcripts",
+                &json!({"query":"absent asteroid"})
+            ),
+            json!([])
+        );
+        fixture.assert_unchanged();
+    }
+
+    #[test]
+    fn encrypted_mcp_stats_preserve_metrics_without_disk_changes() {
+        let fixture = EncryptedJournalFixture::new();
+        let answer = call_in(&fixture.ctx, "stats_summary", &json!({"days":0}));
+        assert_eq!(answer["total_words"], 24);
+        assert_eq!(answer["avg_wpm_all"], 24.0);
+        assert_eq!(answer["minutes_recorded"], 1.0);
+        assert_eq!(answer["mcp_entries"], 1);
+        assert_eq!(answer["mcp_words"], 8);
+        assert_eq!(answer["latency_ms"]["stt"], 100);
+        assert_eq!(answer["latency_ms"]["total"], 200);
+        assert_eq!(
+            answer["tokens"],
+            json!({
+                "prompt":120,"completion":30,"cost_usd":0.125,"calls":2,"unpriced_calls":1
+            })
+        );
+        assert_eq!(answer["series"].as_array().unwrap().len(), 3);
+        assert_eq!(answer["by_app"].as_array().unwrap().len(), 2);
+        fixture.assert_unchanged();
+    }
+
+    #[test]
+    fn encrypted_mcp_with_a_wrong_key_hides_text_but_keeps_statistics() {
+        let fixture = EncryptedJournalFixture::new();
+        let expected_stats = call_in(&fixture.ctx, "stats_summary", &json!({"days":0}));
+        let mut ctx = Context {
+            config: fixture.ctx.config.clone(),
+            config_path: fixture.ctx.config_path.clone(),
+            socket: fixture.ctx.socket.clone(),
+        };
+        ctx.config.journal.key_path = fixture
+            .directory
+            .path()
+            .join("wrong.key")
+            .display()
+            .to_string();
+        molva_core::app::journal_crypto::JournalCipher::from_key_file(
+            &ctx.config.journal_key_path().unwrap(),
+        )
+        .unwrap();
+        ctx.config.save_plain(&ctx.config_path).unwrap();
+        let history = call_in(&ctx, "history_list", &json!({"limit":0}));
+        assert_eq!(history.as_array().unwrap().len(), 3);
+        for entry in history.as_array().unwrap() {
+            assert!(entry.get("text_raw").is_none());
+            assert!(entry.get("text_final").is_none());
+            assert_eq!(entry["segments"][0]["text"], "");
+            assert_eq!(entry["segments"][0]["start_ms"], 1250);
+            assert_eq!(entry["segments"][1]["text"], "");
+        }
+        assert!(call_error(&ctx, "search_transcripts", &json!({"query":""})).contains("required"));
+        for query in ["comet", "enc1:"] {
+            assert_eq!(
+                call_in(&ctx, "search_transcripts", &json!({"query":query})),
+                json!([])
+            );
+        }
+        assert_eq!(
+            call_in(&ctx, "stats_summary", &json!({"days":0})),
+            expected_stats
+        );
+        fixture.ctx.config.save_plain(&ctx.config_path).unwrap();
+        assert_eq!(
+            call_in(&ctx, "history_list", &json!({"limit":1})),
+            json!([fixture.entries[2]])
+        );
+        fixture.assert_unchanged();
+    }
+
+    #[test]
+    fn encrypted_mcp_concurrent_read_calls_keep_the_journal_and_key_unchanged() {
+        let fixture = EncryptedJournalFixture::new();
+        std::thread::scope(|scope| {
+            let calls: Vec<_> = (0..4)
+                .map(|_| {
+                    let ctx = &fixture.ctx;
+                    scope.spawn(move || {
+                        let history = call_in(ctx, "history_list", &json!({"limit":0}));
+                        assert_eq!(history.as_array().unwrap().len(), 3);
+                        assert_eq!(history[0]["text_final"], "synthetic final nebula 3");
+                        let hits = call_in(ctx, "search_transcripts", &json!({"query":"comet"}));
+                        assert_eq!(hits.as_array().unwrap().len(), 2);
+                        assert_eq!(hits[0]["text"], "synthetic segment comet 2");
+                        let stats = call_in(ctx, "stats_summary", &json!({"days":0}));
+                        assert_eq!(stats["total_words"], 24);
+                        assert_eq!(stats["mcp_entries"], 1);
+                    })
+                })
+                .collect();
+            for call in calls {
+                call.join().expect("a concurrent MCP call failed");
+            }
+        });
+        fixture.assert_unchanged();
+    }
+
+    #[test]
+    fn encrypted_mcp_long_lived_context_reloads_configuration_on_each_call() {
+        let fixture = EncryptedJournalFixture::new();
+        let mut before = fixture.ctx.config.clone();
+        before.journal.encrypt = false;
+        before.save_plain(&fixture.ctx.config_path).unwrap();
+        let old = Context {
+            config: Config::load(&fixture.ctx.config_path).unwrap(),
+            config_path: fixture.ctx.config_path.clone(),
+            socket: fixture.ctx.socket.clone(),
+        };
+        fixture
+            .ctx
+            .config
+            .save_plain(&fixture.ctx.config_path)
+            .unwrap();
+        let fresh = Context {
+            config: Config::load(&fixture.ctx.config_path).unwrap(),
+            config_path: fixture.ctx.config_path.clone(),
+            socket: fixture.ctx.socket.clone(),
+        };
+        assert!(!old.config.journal.encrypt);
+        assert!(fresh.config.journal.encrypt);
+        let history = call_in(&old, "history_list", &json!({"limit":0}));
+        assert_eq!(history.as_array().unwrap().len(), 3);
+        let mut expected = fixture.entries.clone();
+        expected.reverse();
+        assert_eq!(history, serde_json::to_value(expected).unwrap());
+        let hits = call_in(&old, "search_transcripts", &json!({"query":"comet"}));
+        assert_eq!(hits.as_array().unwrap().len(), 2);
+        assert_eq!(hits[0]["text"], fixture.entries[1].segments[0].text);
+        assert_eq!(
+            call_in(&old, "stats_summary", &json!({"days":0})),
+            call_in(&fresh, "stats_summary", &json!({"days":0}))
+        );
+        let restored = call_in(&fresh, "history_list", &json!({"limit":1}));
+        assert_eq!(restored, json!([fixture.entries[2]]));
+        assert!(!fixture.directory.path().join("unused.sock").exists());
+        fixture.assert_unchanged();
+    }
+
+    #[test]
+    fn tools_reload_the_journal_path_and_stats_settings() {
+        let fixture = EncryptedJournalFixture::new();
+        let mut config = fixture.ctx.config.clone();
+        config.stats.typing_baseline_wpm = 10;
+        config.save_plain(&fixture.ctx.config_path).unwrap();
+        let stats = call_in(&fixture.ctx, "stats_summary", &json!({"days":0}));
+        assert!(
+            (stats["saved_minutes"].as_f64().unwrap() - 1.4).abs() < 1e-6,
+            "{stats}"
+        );
+        config.journal.path = fixture
+            .directory
+            .path()
+            .join("empty.jsonl")
+            .display()
+            .to_string();
+        config.save_plain(&fixture.ctx.config_path).unwrap();
+        assert_eq!(call_in(&fixture.ctx, "history_list", &json!({})), json!([]));
+        assert_eq!(
+            call_in(
+                &fixture.ctx,
+                "search_transcripts",
+                &json!({"query":"comet"})
+            ),
+            json!([])
+        );
+        assert_eq!(
+            call_in(&fixture.ctx, "stats_summary", &json!({"days":0}))["total_words"],
+            0
+        );
+        fixture.assert_unchanged();
+    }
+
+    fn list_response(ctx: &Context) -> Value {
+        handle(ctx, &json!({"jsonrpc":"2.0","id":9,"method":"tools/list"})).unwrap()
+    }
+
+    fn assert_tools_refused(ctx: &Context, secret: &str) {
+        let listed = list_response(ctx);
+        assert!(listed.get("error").is_some(), "{listed}");
+        assert!(listed.get("result").is_none(), "{listed}");
+        assert!(!listed.to_string().contains(secret));
+        for name in tool_names() {
+            let error = call_error(ctx, &name, &json!({"query":"voice","path":"unused.wav"}));
+            assert!(!error.contains(secret), "{error}");
+            assert!(!error.is_empty());
+        }
+    }
+
+    #[test]
+    fn tools_reload_the_enabled_flag_and_recover_after_reenable() {
+        let ctx = context();
+        assert_eq!(list_response(&ctx)["result"]["tools"], tools());
+        let mut config = ctx.config.clone();
+        config.mcp.enabled = false;
+        config.save_plain(&ctx.config_path).unwrap();
+        assert_tools_refused(&ctx, "synthetic-private-value");
+        config.mcp.enabled = true;
+        config.save_plain(&ctx.config_path).unwrap();
+        assert_eq!(list_response(&ctx)["result"]["tools"], tools());
+        assert!(call_in(&ctx, "search_docs", &json!({"query":"voice"}))["hits"].is_array());
+    }
+
+    #[test]
+    fn invalid_and_missing_configuration_refuse_tools_without_secret_leaks_or_fallback() {
+        let ctx = context();
+        let secret = "synthetic-private-config-value";
+        for invalid in [
+            format!("[mcp]\nenabled = \"{secret}\"\n"),
+            format!("[mcp]\nenabled = true\nsecret = \"{secret}"),
+            format!("[mcp]\nenabled = true\n[log]\nlevel = \"{secret}\"\n"),
+        ] {
+            std::fs::write(&ctx.config_path, invalid).unwrap();
+            assert_tools_refused(&ctx, secret);
+            for method in ["initialize", "ping"] {
+                let response = handle(&ctx, &json!({"id":1,"method":method})).unwrap();
+                assert!(response.get("result").is_some(), "{response}");
+            }
+        }
+        let moved = ctx.config_path.with_extension("saved");
+        std::fs::rename(&ctx.config_path, &moved).unwrap();
+        assert_tools_refused(&ctx, secret);
+        std::fs::rename(moved, &ctx.config_path).unwrap();
+        ctx.config.save_plain(&ctx.config_path).unwrap();
+        assert_eq!(list_response(&ctx)["result"]["tools"], tools());
+    }
+
+    #[test]
+    fn transcribe_checks_the_reloaded_model_before_contacting_the_daemon() {
+        let ctx = context();
+        let mut config = ctx.config.clone();
+        config.stt.model = "synthetic-new-model".into();
+        config.save_plain(&ctx.config_path).unwrap();
+        let error = call_error(
+            &ctx,
+            "transcribe",
+            &json!({
+                "path":"/synthetic/nonexistent.wav", "model":ctx.config.stt.model
+            }),
+        );
+        assert!(error.contains("settings"), "{error}");
+        let error = call_error(
+            &ctx,
+            "transcribe",
+            &json!({
+                "path":"/synthetic/nonexistent.wav", "model":config.stt.model
+            }),
+        );
+        assert!(error.contains("cannot read the path"), "{error}");
     }
 
     #[test]
@@ -735,6 +1298,31 @@ mod tests {
         assert_eq!(seen[0].path, wav.canonicalize().unwrap());
         assert!(seen[0].timecodes);
         assert_eq!(seen[0].source, Source::Mcp);
+    }
+
+    #[test]
+    fn transcribe_keeps_one_configuration_snapshot_for_the_whole_batch() {
+        let directory = tempfile::tempdir().unwrap();
+        let fixture = context();
+        let mut disabled = fixture.config.clone();
+        disabled.mcp.enabled = false;
+        let config_path = fixture.config_path.clone();
+        let daemon = FakeDaemon::start(move |_| {
+            disabled.save_plain(&config_path).unwrap();
+            Ok(report_json("snapshot batch"))
+        });
+        let ctx = Context {
+            config: fixture.config.clone(),
+            config_path: fixture.config_path.clone(),
+            socket: daemon.socket.clone(),
+        };
+        write_wav(&directory.path().join("one.wav"));
+        write_wav(&directory.path().join("two.wav"));
+        let answer = call_in(&ctx, "transcribe", &json!({"path":directory.path()}));
+        assert_eq!(answer["results"].as_array().unwrap().len(), 2);
+        assert_eq!(daemon.seen().len(), 2);
+        assert_tools_refused(&ctx, "synthetic-private-value");
+        assert_eq!(daemon.seen().len(), 2);
     }
 
     #[test]

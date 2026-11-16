@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! Live check of the MCP server over stdio against a real daemon
-//!
-//! The process under test is the real `molva` binary: `initialize`, `tools/list` and one
-//! `tools/call` per tool, all through the JSON lines that an MCP client sends. The daemon is not
-//! started by the test: the server starts it itself, as on a machine where nobody runs one yet,
-//! and the test stops it at the end. Nothing outside the temporary directory is touched: the
-//! settings, the socket and the journal live there, and the recognizer is the fake engine, so no
-//! weights are needed.
+//! Live checks of the MCP server over stdio against a daemon with a fake recognizer
 
 // The whole crate is a test: a panic here reports a failure, not an unhandled error
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
@@ -22,11 +15,64 @@ use serde_json::{json, Value};
 /// The daemon of one test: stopped when the test ends, however it ends
 struct DaemonGuard {
     socket: PathBuf,
+    child: Child,
+}
+
+impl DaemonGuard {
+    fn start(config: &Path, socket: &Path) -> Self {
+        let fake_config = config.with_file_name("daemon.toml");
+        let text = std::fs::read_to_string(config).unwrap();
+        std::fs::write(
+            &fake_config,
+            text.replace("engine = \"auto\"", "engine = \"fake\""),
+        )
+        .unwrap();
+        let child = Command::new(env!("CARGO_BIN_EXE_molva"))
+            .args([
+                "--config",
+                fake_config.to_str().unwrap(),
+                "--socket",
+                socket.to_str().unwrap(),
+                "daemon",
+                "--foreground",
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .unwrap();
+        let guard = Self {
+            socket: socket.to_path_buf(),
+            child,
+        };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while Client::connect(socket).is_err() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "daemon failed to start"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        guard
+    }
 }
 
 impl Drop for DaemonGuard {
     fn drop(&mut self) {
         if let Ok(mut client) = Client::connect(&self.socket) {
+            let _ = client.call_ok(IpcCommand::Shutdown);
+        } else {
+            let _ = self.child.kill();
+        }
+        let _ = self.child.wait();
+    }
+}
+
+struct AutoDaemonGuard(PathBuf);
+
+impl Drop for AutoDaemonGuard {
+    fn drop(&mut self) {
+        if let Ok(mut client) = Client::connect(&self.0) {
             let _ = client.call_ok(IpcCommand::Shutdown);
         }
     }
@@ -142,7 +188,7 @@ fn write_config_with(directory: &Path, mcp_enabled: bool) -> PathBuf {
 ui_language = "en"
 
 [stt]
-engine = "fake"
+engine = "auto"
 auto_pull = false
 model = "small"
 language = "ru"
@@ -151,6 +197,7 @@ language = "ru"
 path = "{journal}"
 enabled = true
 include_text = true
+encrypt = true
 
 [mcp]
 enabled = {mcp_enabled}
@@ -217,16 +264,66 @@ fn a_disabled_mcp_server_refuses_to_start() {
 }
 
 #[test]
-fn every_mcp_tool_answers_through_a_daemon_the_server_starts_itself() {
+fn missing_config_refuses_as_disabled_without_creating_anything() {
+    let directory = tempfile::tempdir().unwrap();
+    let config = directory.path().join("missing").join("config.toml");
+    let socket = directory.path().join("unused.sock");
+    let output = Command::new(env!("CARGO_BIN_EXE_molva"))
+        .arg("--config")
+        .arg(&config)
+        .arg("--socket")
+        .arg(&socket)
+        .arg("mcp")
+        .env_remove("MOLVA_RUNTIME_CONFIG")
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("mcp.enabled"));
+    assert!(output.stdout.is_empty());
+    assert!(!config.parent().unwrap().exists());
+    assert!(!socket.exists());
+}
+
+#[test]
+fn damaged_or_stale_runtime_refuses_start_without_changing_files() {
+    let directory = tempfile::tempdir().unwrap();
+    let config = write_config(directory.path());
+    let runtime = directory.path().join("runtime.toml");
+    let config_before = std::fs::read(&config).unwrap();
+    let config_text = molva_core::Config::load_strict(&config)
+        .unwrap()
+        .to_toml_string()
+        .unwrap();
+    for text in [
+        "invalid = = toml".to_string(),
+        format!("base = \"stale\"\n[config]\n{config_text}"),
+    ] {
+        std::fs::write(&runtime, &text).unwrap();
+        let output = Command::new(env!("CARGO_BIN_EXE_molva"))
+            .arg("--config")
+            .arg(&config)
+            .arg("mcp")
+            .env("MOLVA_RUNTIME_CONFIG", &runtime)
+            .stdin(Stdio::null())
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("cannot load"));
+        assert!(output.stdout.is_empty());
+        assert_eq!(std::fs::read_to_string(&runtime).unwrap(), text);
+        assert_eq!(std::fs::read(&config).unwrap(), config_before);
+    }
+}
+
+#[test]
+fn every_mcp_tool_answers_through_a_running_daemon() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let config = write_config(directory.path());
     let socket = directory.path().join("molva.sock");
     let wav = directory.path().join("lecture.wav");
     write_wav(&wav);
-    // The socket belongs to the daemon, but the guard needs its path before the daemon exists
-    let _daemon = DaemonGuard {
-        socket: socket.clone(),
-    };
+    let _daemon = DaemonGuard::start(&config, &socket);
 
     let mut mcp = Mcp::start(&config, &socket);
 
@@ -263,7 +360,7 @@ fn every_mcp_tool_answers_through_a_daemon_the_server_starts_itself() {
         assert!(names.iter().any(|name| name == expected), "{expected}");
     }
 
-    // 3. transcribe: the daemon is started here, because nobody answers on the socket yet
+    // 3. transcribe through the running daemon
     let report = mcp.call(
         3,
         "transcribe",
@@ -274,6 +371,9 @@ fn every_mcp_tool_answers_through_a_daemon_the_server_starts_itself() {
     assert_eq!(report["errors"], json!([]));
     let text = results[0]["text"].as_str().expect("the text");
     assert!(!text.trim().is_empty(), "the fake engine gave no text");
+    let disk = std::fs::read_to_string(directory.path().join("journal.jsonl")).unwrap();
+    assert!(!disk.contains(text), "journal contains plaintext");
+    assert!(disk.contains("enc1:"), "journal has no encrypted text");
     assert_eq!(
         results[0]["file"],
         wav.canonicalize().unwrap().display().to_string()
@@ -339,6 +439,80 @@ fn every_mcp_tool_answers_through_a_daemon_the_server_starts_itself() {
     assert_eq!(unknown["result"]["isError"], true);
 }
 
+#[test]
+fn mcp_starts_a_daemon_with_invalid_weights_and_reports_the_error() {
+    let directory = tempfile::tempdir().unwrap();
+    let config = write_config(directory.path());
+    let text = std::fs::read_to_string(&config).unwrap();
+    let model_path = toml_path(&directory.path().join("no-models"));
+    std::fs::write(
+        &config,
+        text.replace("[stt]", &format!("[stt]\nmodel_path = \"{model_path}\"")),
+    )
+    .unwrap();
+    let models = directory.path().join("no-models");
+    std::fs::create_dir(&models).unwrap();
+    let cfg = molva_core::Config::load_strict(&config).unwrap();
+    let weights = molva_core::app::models::model_path(&cfg, &cfg.stt.model).unwrap();
+    std::fs::write(weights, []).unwrap();
+    let socket = directory.path().join("molva.sock");
+    let wav = directory.path().join("audio.wav");
+    write_wav(&wav);
+    let _daemon = AutoDaemonGuard(socket.clone());
+    let mut mcp = Mcp::start(&config, &socket);
+    mcp.send(&json!({"id":1,"method":"tools/call","params":{"name":"transcribe","arguments":{"path":wav}}}));
+    let answer = mcp.answer();
+    assert!(
+        Client::connect(&socket).is_ok(),
+        "daemon did not open its socket: {answer}"
+    );
+    assert_eq!(answer["result"]["isError"], false, "{answer}");
+    let report: Value =
+        serde_json::from_str(answer["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert!(!report["errors"].as_array().unwrap().is_empty(), "{report}");
+}
+
+#[test]
+fn live_session_reloads_policy_and_rejects_invalid_settings() {
+    let directory = tempfile::tempdir().unwrap();
+    let config = write_config(directory.path());
+    let socket = directory.path().join("unused.sock");
+    let mut mcp = Mcp::start(&config, &socket);
+    mcp.send(&json!({"id":1,"method":"tools/list"}));
+    assert!(mcp.answer()["result"]["tools"].is_array());
+
+    let original = std::fs::read_to_string(&config).unwrap();
+    std::fs::write(
+        &config,
+        original.replace(
+            "enabled = true\n\n[privacy]",
+            "enabled = false\n\n[privacy]",
+        ),
+    )
+    .unwrap();
+    mcp.send(&json!({"id":2,"method":"tools/list"}));
+    assert!(mcp.answer()["error"].is_object());
+    mcp.send(&json!({"id":3,"method":"tools/call","params":{"name":"history_list"}}));
+    assert_eq!(mcp.answer()["result"]["isError"], true);
+
+    std::fs::write(&config, "[mcp]\nenabled = \"secret-sentinel\"\n").unwrap();
+    mcp.send(&json!({"id":4,"method":"tools/list"}));
+    let invalid = mcp.answer();
+    assert!(invalid["error"].is_object());
+    assert!(!invalid.to_string().contains("secret-sentinel"));
+    std::fs::remove_file(&config).unwrap();
+    mcp.send(&json!({"id":5,"method":"tools/list"}));
+    let missing = mcp.answer();
+    assert!(missing["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("mcp.enabled"));
+    assert!(!config.exists());
+    std::fs::write(&config, original).unwrap();
+    mcp.send(&json!({"id":6,"method":"tools/list"}));
+    assert!(mcp.answer()["result"]["tools"].is_array());
+}
+
 /// The daemon answers `status` with the socket of the settings, and stops on shutdown
 #[test]
 fn the_daemon_of_a_live_mcp_session_answers_status_and_stops() {
@@ -347,9 +521,7 @@ fn the_daemon_of_a_live_mcp_session_answers_status_and_stops() {
     let socket = directory.path().join("molva.sock");
     let wav = directory.path().join("short.wav");
     write_wav(&wav);
-    let daemon = DaemonGuard {
-        socket: socket.clone(),
-    };
+    let daemon = DaemonGuard::start(&config, &socket);
 
     let mut mcp = Mcp::start(&config, &socket);
     mcp.send(&json!({
