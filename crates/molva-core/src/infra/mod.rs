@@ -6,6 +6,7 @@
 
 pub mod audio;
 pub mod hotkeys;
+pub mod http_policy;
 pub mod inject;
 pub mod ipc;
 pub mod llm;

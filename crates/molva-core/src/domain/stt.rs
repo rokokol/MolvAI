@@ -71,6 +71,15 @@ pub struct Transcript {
     pub detected_language: Option<String>,
     /// Probability that there was no speech: used against hallucinations on silence
     pub no_speech_prob: Option<f32>,
+    /// What the provider charged for this recognition, in US dollars
+    ///
+    /// Only a provider that reports a price fills it. A local model costs nothing, which is a
+    /// known zero of the settings and not a price of the answer, so it stays `None` here too
+    #[serde(default)]
+    pub cost_usd: Option<f64>,
+    /// Seconds of audio the provider says it billed for
+    #[serde(default)]
+    pub billed_seconds: Option<f64>,
 }
 
 impl Transcript {
@@ -114,12 +123,12 @@ pub trait SttEngine: std::fmt::Debug + Send {
     /// Free the model memory; the next `transcribe` call loads it again
     fn unload(&mut self);
 
-    /// The job a client may give up on
+    /// The job a client may give up on, or `None` when no job is waiting on this engine
     ///
     /// An engine that runs in this process cannot be stopped in the middle of a call, so it keeps
     /// the default and answers the cancel only between two calls. An engine that runs a child
     /// process takes the token, and a cancel then kills that process
-    fn set_cancel(&mut self, _cancel: std::sync::Arc<crate::domain::cancel::CancelToken>) {}
+    fn set_cancel(&mut self, _cancel: Option<std::sync::Arc<crate::domain::cancel::CancelToken>>) {}
 
     /// Detect the language from the first seconds of the recording, choosing only among
     /// `opts.allowed_languages`

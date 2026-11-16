@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::app::{engine, models, secrets};
-use crate::config::{invalid_provider_slug, Config, LlmConfig};
+use crate::config::{invalid_provider_slug, Config, LlmConfig, RemoteSttConfig};
 use crate::domain::llm::{ChatRequest, LlmClient, LlmError};
 use crate::infra::llm::OpenAiCompatClient;
 
@@ -135,6 +135,22 @@ fn probe_api_key(cfg: &LlmConfig) -> Option<String> {
     });
     rx.recv_timeout(KEYRING_TIMEOUT)
         .unwrap_or_else(|_| secrets::api_key_with(cfg, |name| std::env::var(name).ok()))
+}
+
+/// The same for the recognizer: a key store that does not answer must not hold the settings page
+fn probe_stt_api_key(remote: &RemoteSttConfig) -> Option<String> {
+    let (tx, rx) = mpsc::channel();
+    let probe = remote.clone();
+    std::thread::spawn(move || {
+        let _ = tx.send(secrets::remote_stt_api_key(&probe));
+    });
+    rx.recv_timeout(KEYRING_TIMEOUT).unwrap_or_else(|_| {
+        secrets::remote_stt_api_key_with(
+            remote,
+            &secrets::MemoryStore::failing("no store"),
+            |name| std::env::var(name).ok(),
+        )
+    })
 }
 
 /// Run the draft model configuration against a harmless prompt
@@ -267,13 +283,62 @@ fn transcribe_cli_check(configured: &str) -> SttProbeCheck {
     }
 }
 
+/// One line of the recognition test about the cloud provider
+///
+/// It lists every setting that the recognizer needs and is missing, and says what the test itself
+/// does not do: a phrase sent to a provider is billed, so the draft check never sends audio
+fn remote_check(config: &Config, api_key: Option<&str>) -> SttProbeCheck {
+    let remote = &config.stt.remote;
+    let address = remote.base_url.trim();
+    let model = remote.model.trim();
+    let mut missing: Vec<String> = Vec::new();
+    if address.is_empty() {
+        missing.push(
+            "stt.remote.base_url is empty: set the address of the recognition API".to_string(),
+        );
+    }
+    if model.is_empty() {
+        missing.push(
+            "stt.remote.model is empty: set the model name, for example whisper-large-v3-turbo"
+                .to_string(),
+        );
+    }
+    if api_key.is_none() {
+        missing.push(format!(
+            "no key: set stt.remote.api_key_env, or add the entry {} to the key store",
+            secrets::STT_KEY_ENTRY
+        ));
+    }
+    let note = "this check sends no audio";
+    if missing.is_empty() {
+        return SttProbeCheck {
+            id: "remote".into(),
+            ok: true,
+            detail: format!("{address} · {model}; {note}"),
+            detail_key: None,
+        };
+    }
+    SttProbeCheck {
+        id: "remote".into(),
+        ok: false,
+        detail: format!("{}; {note}", missing.join("; ")),
+        detail_key: None,
+    }
+}
+
 /// Check the draft recognition settings without recording anything
 ///
 /// The engine is built and dropped: building checks the engine name and the weights of a local
-/// engine, loads no model and opens no device, so the microphone stays untouched
+/// engine, loads no model and opens no device, so the microphone stays untouched. A cloud engine
+/// is a client, so the check reads its settings and its key and sends nothing at all
 pub fn stt_probe(config: &Config) -> ProbeOutcome<SttProbeReport> {
-    let model = config.stt.model.trim().to_string();
     let engine = engine::resolve_engine(config, &engine::EngineChoice::default());
+    let remote = engine == engine::REMOTE_ENGINE;
+    let model = if remote {
+        config.stt.remote.model.trim().to_string()
+    } else {
+        config.stt.model.trim().to_string()
+    };
     let mut checks: Vec<SttProbeCheck> = Vec::new();
     match engine::build_stt_with(config, &engine::EngineChoice::default()) {
         Ok(built) => checks.push(SttProbeCheck {
@@ -282,12 +347,6 @@ pub fn stt_probe(config: &Config) -> ProbeOutcome<SttProbeReport> {
             detail: built.id().to_string(),
             detail_key: None,
         }),
-        Err(engine::EngineError::NotAvailable(_)) => checks.push(SttProbeCheck {
-            id: "remote".into(),
-            ok: false,
-            detail: String::new(),
-            detail_key: Some("settings.sttTest.remoteUnavailable".into()),
-        }),
         Err(error) => checks.push(SttProbeCheck {
             id: "engine".into(),
             ok: false,
@@ -295,7 +354,12 @@ pub fn stt_probe(config: &Config) -> ProbeOutcome<SttProbeReport> {
             detail_key: None,
         }),
     }
-    if engine != "remote-openai" {
+    if remote {
+        checks.push(remote_check(
+            config,
+            probe_stt_api_key(&config.stt.remote).as_deref(),
+        ));
+    } else {
         match models::installed_path(config, &model) {
             Ok(path) => checks.push(SttProbeCheck {
                 id: "model".into(),
@@ -483,13 +547,51 @@ mod tests {
     }
 
     #[test]
-    fn remote_recognition_is_reported_as_not_implemented() {
+    fn remote_recognition_is_checked_without_sending_audio() {
         let mut config = Config::default();
         config.stt.engine = "remote-openai".into();
+        // The environment source keeps the OS key store of the machine out of the case
+        config.stt.remote.api_key_source = "env".into();
+        config.stt.remote.api_key_env = "MOLVA_TEST_ABSENT_STT_KEY".into();
         let report = stt_probe(&config).report.unwrap();
-        assert!(!report.ok);
         assert_eq!(report.engine, "remote-openai");
-        assert_eq!(report.checks.len(), 1, "{report:?}");
+        assert_eq!(report.model, config.stt.remote.model);
+        assert!(!report.ok);
+        // A cloud engine has no weights and no program: those two lines belong to a local one
+        let ids: Vec<&str> = report.checks.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids, vec!["engine", "remote"], "{report:?}");
+        let remote = report.checks.iter().find(|c| c.id == "remote").unwrap();
+        assert!(!remote.ok);
+        assert!(remote.detail.contains("no key"), "{remote:?}");
+        assert!(remote.detail.contains("sends no audio"), "{remote:?}");
+    }
+
+    #[test]
+    fn a_complete_remote_draft_is_green_and_still_sends_no_audio() {
+        let config = Config::default();
+        let check = remote_check(&config, Some("sk-test-0123456789abcdef"));
+        assert!(check.ok, "{check:?}");
+        assert_eq!(check.id, "remote");
+        assert!(check.detail.contains("api.groq.com"), "{check:?}");
+        assert!(check.detail.contains("whisper-large-v3-turbo"), "{check:?}");
+        assert!(check.detail.contains("sends no audio"), "{check:?}");
+        // The key itself never reaches the report
+        assert!(!check.detail.contains("sk-test"), "{check:?}");
+
+        let missing = remote_check(&config, None);
+        assert!(!missing.ok, "{missing:?}");
+        assert!(missing.detail.contains("no key"), "{missing:?}");
+    }
+
+    #[test]
+    fn a_remote_draft_without_an_address_or_a_model_names_both() {
+        let mut config = Config::default();
+        config.stt.remote.base_url = "  ".into();
+        config.stt.remote.model = String::new();
+        let check = remote_check(&config, Some("sk-test-0123456789abcdef"));
+        assert!(!check.ok, "{check:?}");
+        assert!(check.detail.contains("stt.remote.base_url"), "{check:?}");
+        assert!(check.detail.contains("stt.remote.model"), "{check:?}");
     }
 
     /// A stand-in for the transcribe.cpp program: the search looks at the file alone

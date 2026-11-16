@@ -165,6 +165,8 @@ fn latency(args: &Args, config: &Config, stdout: &mut dyn Write) -> Result<(), C
             no_llm: false,
             source: Source::File,
             chunked: false,
+            // The benchmark has no client that could give up on it
+            job_id: None,
         };
         for _ in 0..args.repeat {
             let started = std::time::Instant::now();

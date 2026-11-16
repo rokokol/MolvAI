@@ -113,6 +113,16 @@ pub struct Entry {
     /// Calls that came back without a charge, so `llm_cost_usd` is not the whole bill
     #[serde(default, skip_serializing_if = "is_zero")]
     pub llm_unpriced_calls: u32,
+    /// What the remote recognizer charged for this phrase, in US dollars
+    ///
+    /// Only a provider that reports a price fills it; a local engine leaves it empty, because
+    /// its zero is a property of the settings and not a price of the answer
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stt_cost_usd: Option<f64>,
+    /// A remote recognition that came back without a charge, so `stt_cost_usd` is not the whole
+    /// bill of recognition
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub stt_unpriced: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     /// Absent in privacy mode
@@ -191,6 +201,8 @@ mod tests {
             llm_cost_usd: None,
             llm_calls: 0,
             llm_unpriced_calls: 0,
+            stt_cost_usd: None,
+            stt_unpriced: false,
             error: None,
             text_raw: Some("привет мир".into()),
             text_final: Some("Привет, мир.".into()),
@@ -247,5 +259,38 @@ mod tests {
         assert_eq!(entry.words, 10);
         let line = serde_json::to_string(&entry).unwrap();
         assert!(!line.contains("Привет"));
+    }
+
+    #[test]
+    fn the_charge_of_the_recognizer_reaches_the_line() {
+        let mut entry = sample();
+        entry.stt_cost_usd = Some(0.000_123);
+        let line = serde_json::to_string(&entry).unwrap();
+        assert!(line.contains("\"stt_cost_usd\":0.000123"), "{line}");
+        let back: Entry = serde_json::from_str(&line).unwrap();
+        assert_eq!(back.stt_cost_usd, Some(0.000_123));
+    }
+
+    #[test]
+    fn a_line_from_before_the_cost_of_recognition_reads_as_a_known_zero() {
+        // The journal of an older version has no such fields, and a missing field is not a damaged
+        // line: serde fills in nothing, which is what the aggregation expects
+        let mut line: serde_json::Value = serde_json::to_value(sample()).unwrap();
+        let object = line.as_object_mut().unwrap();
+        object.remove("stt_cost_usd");
+        object.remove("stt_unpriced");
+        let back: Entry = serde_json::from_value(line).unwrap();
+        assert_eq!(back.stt_cost_usd, None);
+        assert!(!back.stt_unpriced);
+    }
+
+    #[test]
+    fn a_remote_recognition_that_was_not_priced_is_serialized() {
+        let mut entry = sample();
+        entry.stt_unpriced = true;
+        let line = serde_json::to_string(&entry).unwrap();
+        assert!(line.contains("\"stt_unpriced\":true"), "{line}");
+        let back: Entry = serde_json::from_str(&line).unwrap();
+        assert!(back.stt_unpriced);
     }
 }

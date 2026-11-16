@@ -334,6 +334,8 @@ fn transcribe_tool(ctx: &Context, arguments: &Value) -> Result<Value, String> {
             chunked,
             // The journal separates an MCP transcription from a dictation and from the CLI
             source: Source::Mcp,
+            // The MCP client has no command of its own that stops one job
+            job_id: None,
         };
         let answer = file_request(&mut client, &request, BUSY_WAIT)?;
         report.results.extend(answer.results);
@@ -1348,6 +1350,7 @@ mod tests {
                 no_llm: true,
                 source: Source::Mcp,
                 chunked: false,
+                job_id: None,
             },
             Duration::from_secs(5),
         )
@@ -1370,6 +1373,7 @@ mod tests {
                 no_llm: false,
                 source: Source::Mcp,
                 chunked: false,
+                job_id: None,
             },
             Duration::from_millis(400),
         )

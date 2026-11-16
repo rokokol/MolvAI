@@ -18,6 +18,10 @@ use tracing::warn;
 use crate::app::secrets::ApiKey;
 use crate::config::{provider_slugs, LlmConfig};
 use crate::domain::llm::{ChatRequest, ChatResponse, LlmClient, LlmError};
+use crate::infra::http_policy::{with_causes, ConsentError, HttpPolicy};
+
+/// Re-exported, so the diagnostic and the settings page keep asking the one function of the policy
+pub use crate::infra::http_policy::is_loopback_url;
 
 /// Known providers: presets of the base URL and of the local flag
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,7 +109,7 @@ pub struct OpenAiCompatClient {
     require_parameters: bool,
     http: reqwest::blocking::Client,
     local_http: reqwest::blocking::Client,
-    cloud_consent: bool,
+    policy: HttpPolicy,
 }
 
 pub fn configured_base_url(cfg: &LlmConfig) -> &str {
@@ -114,33 +118,6 @@ pub fn configured_base_url(cfg: &LlmConfig) -> &str {
     } else {
         &cfg.base_url
     }
-}
-
-/// Whether a URL names a loopback address
-pub fn is_loopback_url(base_url: &str) -> bool {
-    let input = base_url.trim();
-    let input = if input.contains("://") {
-        input.to_string()
-    } else {
-        format!("http://{input}")
-    };
-    let Ok(url) = reqwest::Url::parse(&input) else {
-        return false;
-    };
-    if !matches!(url.scheme(), "http" | "https")
-        || !url.username().is_empty()
-        || url.password().is_some()
-    {
-        return false;
-    }
-    let Some(host) = url.host_str() else {
-        return false;
-    };
-    host.eq_ignore_ascii_case("localhost")
-        || host
-            .trim_matches(['[', ']'])
-            .parse::<std::net::IpAddr>()
-            .is_ok_and(|ip| ip.is_loopback())
 }
 
 /// What to send in `reasoning_effort` by the setting and the provider type. `auto` turns off
@@ -177,22 +154,13 @@ impl OpenAiCompatClient {
         provider_id: impl Into<String>,
         is_local: bool,
     ) -> Result<Self, LlmError> {
-        let http = reqwest::blocking::Client::builder()
-            .timeout(timeout)
-            .build()
+        // Both states of the policy are built once: a request either leaves with the consent of
+        // the settings or without it, and the consent may arrive after the construction
+        let http = HttpPolicy::new(true)
+            .client(timeout)
             .map_err(|e| LlmError::Unavailable(with_causes(&e)))?;
-        let local_http = reqwest::blocking::Client::builder()
-            .timeout(timeout)
-            .no_proxy()
-            .redirect(reqwest::redirect::Policy::none())
-            .resolve_to_addrs(
-                "localhost",
-                &[
-                    ([127, 0, 0, 1], 0).into(),
-                    (std::net::Ipv6Addr::LOCALHOST, 0).into(),
-                ],
-            )
-            .build()
+        let local_http = HttpPolicy::new(false)
+            .client(timeout)
             .map_err(|e| LlmError::Unavailable(with_causes(&e)))?;
         Ok(Self {
             base_url: base_url.into().trim_end_matches('/').to_string(),
@@ -209,13 +177,13 @@ impl OpenAiCompatClient {
             require_parameters: false,
             http,
             local_http,
-            cloud_consent: false,
+            policy: HttpPolicy::new(false),
         })
     }
 
     #[must_use]
     pub fn with_cloud_consent(mut self, consent: bool) -> Self {
-        self.cloud_consent = consent;
+        self.policy = HttpPolicy::new(consent);
         self
     }
 
@@ -325,10 +293,10 @@ impl OpenAiCompatClient {
         let request = request
             .build()
             .map_err(|err| LlmError::Unavailable(with_causes(&err)))?;
-        if !self.cloud_consent && !is_loopback_url(request.url().as_str()) {
-            return Err(LlmError::Consent);
-        }
-        let http = if self.cloud_consent {
+        self.policy
+            .guard(request.url().as_str())
+            .map_err(|_| LlmError::Consent)?;
+        let http = if self.policy.cloud_consent() {
             &self.http
         } else {
             &self.local_http
@@ -341,19 +309,14 @@ impl OpenAiCompatClient {
                 LlmError::Unavailable(format!("{url}: {}", with_causes(&err)))
             }
         })?;
-        if !self.cloud_consent && response.status().is_redirection() {
-            let remote = response
-                .headers()
-                .get(reqwest::header::LOCATION)
-                .and_then(|value| value.to_str().ok())
-                .and_then(|location| response.url().join(location).ok())
-                .is_some_and(|url| !is_loopback_url(url.as_str()));
-            return Err(if remote {
-                LlmError::Consent
-            } else {
-                LlmError::Unavailable("local redirect refused".into())
-            });
-        }
+        self.policy
+            .guard_response(&response)
+            .map_err(|error| match error {
+                ConsentError::LocalRedirect => {
+                    LlmError::Unavailable("local redirect refused".into())
+                }
+                _ => LlmError::Consent,
+            })?;
         Ok(response)
     }
 
@@ -438,20 +401,6 @@ const ERROR_SNIPPET: usize = 200;
 
 fn snippet(text: &str) -> String {
     text.chars().take(ERROR_SNIPPET).collect()
-}
-
-/// Error text together with the `source()` chain. reqwest writes only "builder error"
-/// or "error sending request" at the top, and keeps the reason that lets the user fix something —
-/// no certificates, connection refused — in the source
-fn with_causes(error: &dyn std::error::Error) -> String {
-    let mut text = error.to_string();
-    let mut cause = error.source();
-    while let Some(inner) = cause {
-        text.push_str(": ");
-        text.push_str(&inner.to_string());
-        cause = inner.source();
-    }
-    text
 }
 
 impl LlmClient for OpenAiCompatClient {

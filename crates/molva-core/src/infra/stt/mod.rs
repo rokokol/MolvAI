@@ -4,9 +4,11 @@
 //! The policy is moved out of the engine into a pure function: tests check it on a fake with no
 //! model, and it works the same for any engine (whisper.cpp, cloud)
 
+pub mod remote_openai;
 pub mod transcribe_cpp;
 pub mod whisper;
 
+pub use remote_openai::RemoteOpenAiEngine;
 pub use transcribe_cpp::TranscribeCppEngine;
 pub use whisper::WhisperEngine;
 

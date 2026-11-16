@@ -239,6 +239,9 @@ pub struct RemoteSttConfig {
     pub api_key_source: String,
     pub api_key_env: String,
     pub model: String,
+    /// How long one recognition request may take, in seconds. Bounded: a phrase waits for the
+    /// answer, and a provider that stopped answering must not hold the recognizer
+    pub timeout_secs: u32,
 }
 
 impl Default for RemoteSttConfig {
@@ -248,6 +251,7 @@ impl Default for RemoteSttConfig {
             api_key_source: "keyring".into(),
             api_key_env: "GROQ_API_KEY".into(),
             model: "whisper-large-v3-turbo".into(),
+            timeout_secs: 120,
         }
     }
 }
@@ -1202,6 +1206,13 @@ impl Config {
             "stt.remote.api_key_source",
             &self.stt.remote.api_key_source,
             &["keyring", "env", "none"],
+        );
+        in_range(
+            issues,
+            "stt.remote.timeout_secs",
+            f64::from(self.stt.remote.timeout_secs),
+            5.0,
+            900.0,
         );
         let mirror = self.stt.models_mirror.trim();
         if !mirror.is_empty() && !mirror.starts_with("https://") && !mirror.starts_with("http://") {
@@ -2337,6 +2348,27 @@ mod tests {
         let keys: Vec<&str> = issues.iter().map(|i| i.key.as_str()).collect();
         assert!(keys.contains(&"style.default"), "{keys:?}");
         assert!(keys.contains(&"style.by_app.kitty"), "{keys:?}");
+    }
+
+    #[test]
+    fn the_remote_recognizer_keeps_its_defaults_and_refuses_an_impossible_timeout() {
+        // A file written before the recognizer had a timeout still loads: the field is optional
+        let remote: RemoteSttConfig = toml::from_str("base_url = \"http://localhost:9000/v1\"")
+            .expect("the older file still reads");
+        assert_eq!(remote.timeout_secs, 120);
+        assert_eq!(remote.model, "whisper-large-v3-turbo");
+
+        let mut config = Config::default();
+        config.stt.remote.timeout_secs = 0;
+        let issues = config.validate().unwrap_err();
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.key == "stt.remote.timeout_secs"),
+            "{issues:?}"
+        );
+        config.stt.remote.timeout_secs = 120;
+        assert_eq!(config.validate(), Ok(()));
     }
 
     #[test]

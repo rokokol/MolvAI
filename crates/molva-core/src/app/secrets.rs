@@ -18,7 +18,7 @@ use std::sync::Mutex;
 
 use tracing::warn;
 
-use crate::config::{Config, LlmConfig};
+use crate::config::{Config, LlmConfig, RemoteSttConfig};
 
 /// Service name in the OS store: all molva entries live under it
 pub const SERVICE: &str = "molva";
@@ -311,6 +311,11 @@ pub fn store_for_source(source: &str) -> Box<dyn SecretStore> {
     }
 }
 
+/// Name of the store entry with the key of remote recognition
+///
+/// One remote recognizer is configured at a time, so one entry holds its key
+pub const STT_KEY_ENTRY: &str = "stt-api-key";
+
 /// Key for the configured provider; `None` means there is no key, which is no error for local
 /// models
 pub fn api_key(cfg: &LlmConfig) -> Option<String> {
@@ -336,44 +341,119 @@ pub fn api_key_with_store<F>(cfg: &LlmConfig, store: &dyn SecretStore, lookup: F
 where
     F: Fn(&str) -> Option<String>,
 {
-    let source = cfg.api_key_source.trim().to_lowercase();
+    read_key(
+        &KeyQuery {
+            source: &cfg.api_key_source,
+            entry: &llm_key_entry(&cfg.provider),
+            env: &cfg.api_key_env,
+            plain: &cfg.api_key_plain,
+            set_hint: "printf '%s' \"$KEY\" | molva secret set llm",
+        },
+        store,
+        &lookup,
+    )
+}
+
+/// Key of the remote recognizer, by `stt.remote.api_key_source`
+///
+/// The store entry is [`STT_KEY_ENTRY`]; a missing entry or a store that does not answer falls back
+/// to the variable `stt.remote.api_key_env`
+pub fn remote_stt_api_key(remote: &RemoteSttConfig) -> Option<String> {
+    let store = store_for_source(&remote.api_key_source);
+    remote_stt_api_key_with(remote, store.as_ref(), |name| std::env::var(name).ok())
+}
+
+/// The same, with an explicit store and source of environment variables: the tests check both
+/// paths without the OS store and without the environment of the process
+pub fn remote_stt_api_key_with<F>(
+    remote: &RemoteSttConfig,
+    store: &dyn SecretStore,
+    lookup: F,
+) -> Option<String>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    read_key(
+        &KeyQuery {
+            source: &remote.api_key_source,
+            entry: STT_KEY_ENTRY,
+            env: &remote.api_key_env,
+            // The settings of the recognizer carry no key in clear text: the plain source belongs
+            // to the model provider alone
+            plain: "",
+            set_hint: "",
+        },
+        store,
+        &lookup,
+    )
+}
+
+/// What to read, and where the value lives
+struct KeyQuery<'a> {
+    /// `none`, `plain`, `keyring` or `file`
+    source: &'a str,
+    /// Name of the entry in the store
+    entry: &'a str,
+    /// Name of the environment variable
+    env: &'a str,
+    /// The key that the `plain` source keeps in the settings file
+    plain: &'a str,
+    /// The command that adds an entry, named in the warning about a missing one
+    set_hint: &'a str,
+}
+
+/// One reader for every key: the order of the sources and the warnings about a missing entry are
+/// the same for the model provider and for the recognizer, so they live here once
+fn read_key<F>(query: &KeyQuery<'_>, store: &dyn SecretStore, lookup: &F) -> Option<String>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let source = query.source.trim().to_lowercase();
     if source == "none" {
         return None;
     }
     if source == "plain" {
-        return non_blank(&cfg.api_key_plain);
+        return non_blank(query.plain);
     }
     if source == "keyring" || source == "file" {
-        let entry = llm_key_entry(&cfg.provider);
-        match store.get(&entry) {
+        match store.get(query.entry) {
             Ok(Some(value)) => {
                 if let Some(value) = non_blank(&value) {
                     return Some(value);
                 }
                 warn!(
-                    entry,
-                    "the store entry is empty, reading the variable {}", cfg.api_key_env
+                    entry = query.entry,
+                    "the store entry is empty, reading the variable {}", query.env
                 );
             }
             Ok(None) => warn!(
-                entry,
-                "no entry in the key store, reading the variable {}; \
-                 to add one: printf '%s' \"$KEY\" | molva secret set llm",
-                cfg.api_key_env
+                entry = query.entry,
+                "no entry in the key store, reading the variable {}{}",
+                query.env,
+                hint(query.set_hint)
             ),
             Err(error) => warn!(
-                entry,
+                entry = query.entry,
                 %error,
                 "the key store did not answer, reading the variable {}",
-                cfg.api_key_env
+                query.env
             ),
         }
     }
-    let name = cfg.api_key_env.trim();
+    let name = query.env.trim();
     if name.is_empty() {
         return None;
     }
     non_blank(&lookup(name)?)
+}
+
+/// Tail of the warning about a missing store entry, with the command that would add one
+fn hint(command: &str) -> String {
+    if command.is_empty() {
+        String::new()
+    } else {
+        format!("; to add one: {command}")
+    }
 }
 
 fn non_blank(value: &str) -> Option<String> {
@@ -492,6 +572,64 @@ mod tests {
         assert_eq!(api_key_with(&cfg("env", ""), |_| Some("x".into())), None);
         assert_eq!(
             api_key_with(&cfg("none", "MOLVA_TEST_KEY"), |_| Some("x".into())),
+            None
+        );
+    }
+
+    fn remote(source: &str, env: &str) -> RemoteSttConfig {
+        RemoteSttConfig {
+            api_key_source: source.into(),
+            api_key_env: env.into(),
+            ..RemoteSttConfig::default()
+        }
+    }
+
+    #[test]
+    fn the_key_of_the_recognizer_lives_in_its_own_entry() {
+        let store = MemoryStore::new();
+        store.set(STT_KEY_ENTRY, "sk-stt-0005").unwrap();
+        let key = remote_stt_api_key_with(
+            &remote("keyring", "MOLVA_TEST_KEY"),
+            &store,
+            env_with("sk-from-env-0002"),
+        );
+        assert_eq!(key.as_deref(), Some("sk-stt-0005"));
+        // The entry of the model provider is a different secret and is not read here
+        let other = MemoryStore::new();
+        other.set("llm-api-key-groq", "sk-model-0006").unwrap();
+        assert_eq!(
+            remote_stt_api_key_with(&remote("keyring", "MOLVA_TEST_KEY"), &other, |_| None),
+            None
+        );
+    }
+
+    #[test]
+    fn a_missing_entry_of_the_recognizer_falls_back_to_its_variable() {
+        let store = MemoryStore::new();
+        let key = remote_stt_api_key_with(
+            &remote("keyring", "MOLVA_TEST_KEY"),
+            &store,
+            env_with("sk-from-env-0002"),
+        );
+        assert_eq!(key.as_deref(), Some("sk-from-env-0002"));
+    }
+
+    #[test]
+    fn the_env_source_of_the_recognizer_ignores_the_store_and_none_gives_nothing() {
+        let store = MemoryStore::new();
+        store.set(STT_KEY_ENTRY, "sk-stt-0005").unwrap();
+        let key = remote_stt_api_key_with(
+            &remote("env", "MOLVA_TEST_KEY"),
+            &store,
+            env_with("sk-from-env-0002"),
+        );
+        assert_eq!(key.as_deref(), Some("sk-from-env-0002"));
+        assert_eq!(
+            remote_stt_api_key_with(
+                &remote("none", "MOLVA_TEST_KEY"),
+                &store,
+                env_with("sk-from-env-0002")
+            ),
             None
         );
     }

@@ -34,6 +34,8 @@ The reference for the type is `crates/molva-core/src/domain/entry.rs` (`Entry`)
 | `llm_cost_usd` | number | no | what the provider charged for the model calls of this phrase, in US dollars. A retry is billed too, so an answer that was thrown away keeps its charge. Absent when no call named a price |
 | `llm_calls` | int | no | requests that left for the provider, including the ones whose answer was thrown away |
 | `llm_unpriced_calls` | int | no | calls that came back without a charge, so `llm_cost_usd` is not the whole bill |
+| `stt_cost_usd` | number | no | what the remote recognizer charged for this phrase, in US dollars. A local engine leaves it absent: its zero comes from the settings and is not a price the provider reported |
+| `stt_unpriced` | bool | no | a remote recognition that came back without a charge, so `stt_cost_usd` is not the whole bill of recognition |
 | `error` | string | no | error text, if the phrase was not delivered |
 | `text_raw` | string | no | raw text of the recognizer; absent in privacy mode |
 | `text_final` | string | no | text after the dictionary, the rules and the model; absent in privacy mode |

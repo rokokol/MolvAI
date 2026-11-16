@@ -296,12 +296,13 @@ impl Pipeline {
         }
     }
 
-    /// Give the pipeline the flag that a client sets to stop the file transcription
-    /// Give the pipeline the token that a client cancels: the engine takes it too, so the
-    /// process of the recognizer dies with the job
-    pub fn set_file_cancel(&mut self, cancel: Arc<crate::domain::cancel::CancelToken>) {
-        self.file_cancel = Some(Arc::clone(&cancel));
-        self.stt.set_cancel(cancel);
+    /// Give the pipeline the token of the file job that runs now, or `None` when the job is over
+    ///
+    /// The engine takes the token too, so the process of the recognizer dies with the job. The
+    /// token of a cancelled job must not outlive it: a stale one would stop the next dictation
+    pub fn set_file_cancel(&mut self, cancel: Option<Arc<crate::domain::cancel::CancelToken>>) {
+        self.stt.set_cancel(cancel.clone());
+        self.file_cancel = cancel;
     }
 
     /// Whether a client has given up on the file that is being transcribed
@@ -397,6 +398,15 @@ impl Pipeline {
     ///
     pub fn transcribe_file(&mut self, request: &FileTranscriptionRequest) -> FileReport {
         let mut report = FileReport::default();
+        // The client gave up before the job reached the worker: reading and decoding the file
+        // would spend the disk and the memory of a job that nobody waits for
+        if self.file_cancelled() {
+            report.errors.push(FileFailure {
+                file: request.path.display().to_string(),
+                reason: SttError::Cancelled.to_string(),
+            });
+            return report;
+        }
         // The daemon has its own working directory: a relative path would name a different file
         // there, so the label and the read go by the absolute one
         let path = match std::fs::canonicalize(&request.path) {
@@ -447,6 +457,7 @@ impl Pipeline {
             .transcribe_ready(&ready, &options, request.chunked)
             .map_err(|err| err.to_string())?;
         let stt_ms = millis_since(started, self.clock.instant());
+        let is_remote = self.stt.id() == crate::app::engine::REMOTE_ENGINE;
 
         // The same guard as for a phrase: whisper prints a confident phrase on silence, and such
         // a text is not a transcript of the file
@@ -504,6 +515,10 @@ impl Pipeline {
             llm_cost_usd: None,
             llm_calls: 0,
             llm_unpriced_calls: 0,
+            stt_cost_usd: transcript.cost_usd,
+            // A remote recognition that reported no price is a bill this journal cannot show,
+            // and a local one costs nothing whatever it reports
+            stt_unpriced: is_remote && transcript.cost_usd.is_none(),
             error: None,
             text_raw: Some(text_raw),
             text_final: None,
@@ -548,7 +563,7 @@ impl Pipeline {
     ) -> Result<Transcript, SttError> {
         if !chunked {
             if self.file_cancelled() {
-                return Err(SttError::Inference("cancelled".into()));
+                return Err(SttError::Cancelled);
             }
             return transcribe_with_language_policy(self.stt.as_mut(), ready, options);
         }
@@ -570,14 +585,24 @@ impl Pipeline {
         let mut text = Vec::new();
         let mut segments = Vec::new();
         let mut detected_language = None;
+        // A remote recognizer bills every chunk, and the price of the file is their sum: the
+        // aggregated transcript is what the caller sees, so the sum travels with it
+        let mut cost_usd: Option<f64> = None;
+        let mut billed_seconds: Option<f64> = None;
         for chunk in chunks {
             // The client may give up while the model works on the previous chunk: the next one is
             // not started, and the whole job answers as cancelled
             if self.file_cancelled() {
-                return Err(SttError::Inference("cancelled".into()));
+                return Err(SttError::Cancelled);
             }
             let transcript =
                 transcribe_with_language_policy(self.stt.as_mut(), &chunk.audio, options)?;
+            if let Some(cost) = transcript.cost_usd {
+                cost_usd = Some(cost_usd.unwrap_or(0.0) + cost);
+            }
+            if let Some(seconds) = transcript.billed_seconds {
+                billed_seconds = Some(billed_seconds.unwrap_or(0.0) + seconds);
+            }
             if detected_language.is_none() {
                 detected_language.clone_from(&transcript.detected_language);
             }
@@ -613,6 +638,8 @@ impl Pipeline {
             segments,
             detected_language,
             no_speech_prob: None,
+            cost_usd,
+            billed_seconds,
         })
     }
 
@@ -736,6 +763,11 @@ impl Pipeline {
             llm_cost_usd: None,
             llm_calls: 0,
             llm_unpriced_calls: 0,
+            stt_cost_usd: transcript.cost_usd,
+            // The remote engine reports a price only where the provider does; a call without one
+            // is counted apart, so the sum is never mistaken for the whole bill
+            stt_unpriced: self.stt.id() == crate::app::engine::REMOTE_ENGINE
+                && transcript.cost_usd.is_none(),
             error: None,
             text_raw: Some(text_raw),
             text_final: None,
@@ -2258,7 +2290,7 @@ mod tests {
         // The client gave up before the job started: the flag is already set
         let cancel = Arc::new(crate::domain::cancel::CancelToken::new());
         cancel.cancel();
-        harness.pipeline.set_file_cancel(cancel);
+        harness.pipeline.set_file_cancel(Some(cancel));
         let request = FileTranscriptionRequest {
             path: std::path::PathBuf::from("/tmp/lecture.wav"),
             style: None,
@@ -2266,6 +2298,7 @@ mod tests {
             no_llm: true,
             source: Source::File,
             chunked: true,
+            job_id: None,
         };
         let error = harness
             .pipeline
@@ -2279,6 +2312,165 @@ mod tests {
         assert!(
             harness.stt.lock().unwrap().calls.is_empty(),
             "the model was asked after the cancel"
+        );
+    }
+
+    #[test]
+    fn a_cancelled_job_does_not_stop_the_file_that_follows() {
+        // The daemon gives every job a token of its own and clears it when the job ends. A token
+        // of a job that was stopped must not stay in the pipeline: the next file would then be
+        // cancelled before it starts, and its text would be lost
+        let mut harness = build("фраза", None, PipelineConfig::default());
+        let cancelled = Arc::new(crate::domain::cancel::CancelToken::new());
+        cancelled.cancel();
+        harness.pipeline.set_file_cancel(Some(cancelled));
+        let request = FileTranscriptionRequest {
+            path: std::path::PathBuf::from("/tmp/lecture.wav"),
+            style: None,
+            timecodes: false,
+            no_llm: true,
+            source: Source::File,
+            chunked: false,
+            job_id: None,
+        };
+        harness
+            .pipeline
+            .transcribe_audio(
+                String::from("lecture.wav"),
+                PcmAudio::new(vec![0.1; 16_000], 16_000),
+                &request,
+            )
+            .expect_err("the file was cancelled");
+
+        harness.pipeline.set_file_cancel(None);
+        let result = harness
+            .pipeline
+            .transcribe_audio(
+                String::from("lecture.wav"),
+                PcmAudio::new(vec![0.1; 16_000], 16_000),
+                &request,
+            )
+            .expect("the next file is transcribed");
+        assert!(!result.text.is_empty(), "the text of the next file is lost");
+    }
+
+    /// A recognizer that names itself remote, so an entry records what the provider reported
+    #[derive(Debug)]
+    struct RemoteStt {
+        answer: Transcript,
+    }
+
+    impl SttEngine for RemoteStt {
+        fn id(&self) -> &'static str {
+            crate::app::engine::REMOTE_ENGINE
+        }
+
+        fn model_name(&self) -> &'static str {
+            "whisper-large-v3-turbo"
+        }
+
+        fn transcribe(
+            &mut self,
+            _audio: &PcmAudio,
+            _options: &SttOptions,
+        ) -> Result<Transcript, SttError> {
+            Ok(self.answer.clone())
+        }
+
+        fn unload(&mut self) {}
+    }
+
+    /// The pipeline of a phrase with a remote recognizer in place of the local one
+    fn remote_pipeline(answer: Transcript) -> Pipeline {
+        Pipeline::new(
+            Box::new(RemoteStt { answer }),
+            None,
+            Box::new(RecordingInjector::default()),
+            Box::new(MemJournal::default()),
+            clock(),
+            PipelineConfig::default(),
+        )
+    }
+
+    fn priced_answer(cost: Option<f64>, seconds: Option<f64>) -> Transcript {
+        Transcript {
+            text: "цена запроса".into(),
+            segments: Vec::new(),
+            detected_language: Some("ru".into()),
+            no_speech_prob: None,
+            cost_usd: cost,
+            billed_seconds: seconds,
+        }
+    }
+
+    #[test]
+    fn a_remote_recognition_puts_its_price_on_the_entry() {
+        let mut priced = remote_pipeline(priced_answer(Some(0.000_6), Some(3.0)));
+        let entry = priced
+            .run(audio(4.0), Mode::Dictation, None, None)
+            .expect("the phrase is processed");
+        assert_eq!(entry.stt_cost_usd, Some(0.000_6));
+        assert!(!entry.stt_unpriced, "a reported price is not unpriced");
+
+        // A provider that reports no price leaves the sum honest: nothing is invented for it,
+        // and the entry says that the bill is larger than the number
+        let mut unpriced = remote_pipeline(priced_answer(None, None));
+        let entry = unpriced
+            .run(audio(4.0), Mode::Dictation, None, None)
+            .expect("the phrase is processed");
+        assert_eq!(entry.stt_cost_usd, None);
+        assert!(entry.stt_unpriced, "a missing price is counted apart");
+    }
+
+    #[test]
+    fn a_local_recognition_is_never_counted_as_unpriced() {
+        let mut harness = build("локальная фраза", None, PipelineConfig::default());
+        let entry = harness
+            .pipeline
+            .run(audio(4.0), Mode::Dictation, None, None)
+            .expect("the phrase is processed");
+        assert_eq!(entry.stt_cost_usd, None);
+        assert!(
+            !entry.stt_unpriced,
+            "a local model costs nothing rather than an unknown sum"
+        );
+    }
+
+    #[test]
+    fn a_chunked_remote_file_sums_what_every_chunk_was_charged() {
+        let mut config = PipelineConfig::default();
+        config.stt.chunk_pause_ms = 300;
+        config.audio.silence_threshold_db = -45.0;
+        let journal = Arc::new(Mutex::new(MemJournal::default()));
+        let mut pipeline = Pipeline::new(
+            Box::new(RemoteStt {
+                answer: priced_answer(Some(0.000_4), Some(1.0)),
+            }),
+            None,
+            Box::new(RecordingInjector::default()),
+            Box::new(SharedJournal(Arc::clone(&journal))),
+            clock(),
+            config,
+        );
+        let mut samples = vec![0.1; 3_200 * 16];
+        samples.extend(vec![0.0; 800 * 16]);
+        samples.extend(vec![0.1; 800 * 16]);
+        let ready = PcmAudio::new(samples, 16_000);
+        let options = pipeline.stt_options(true);
+        let transcript = pipeline
+            .transcribe_ready(&ready, &options, true)
+            .expect("the file is transcribed");
+
+        // A file is billed per chunk, so the sum is what the file costs, and the seconds say how
+        // many chunks were paid for
+        let seconds = transcript
+            .billed_seconds
+            .expect("every chunk reported its seconds");
+        assert!(seconds >= 2.0, "one chunk was charged: {seconds}");
+        let cost = transcript.cost_usd.expect("a reported price is kept");
+        assert!(
+            (cost - 0.000_4 * seconds).abs() < 1e-9,
+            "the file costs what its chunks cost: {cost} for {seconds} seconds"
         );
     }
 
@@ -2298,6 +2490,7 @@ mod tests {
             no_llm: true,
             source: Source::File,
             chunked: true,
+            job_id: None,
         };
         let result = harness
             .pipeline

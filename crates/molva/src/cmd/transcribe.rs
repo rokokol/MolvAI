@@ -513,6 +513,8 @@ pub(crate) fn transcribe_jobs_as(
                 .llm
                 .as_ref()
                 .map_or(0, |trace| u32::from(trace.cost_usd.is_none())),
+            stt_cost_usd: None,
+            stt_unpriced: false,
             error: None,
             text_raw: Some(raw),
             text_final: Some(text.clone()),
@@ -820,6 +822,8 @@ fn transcribe_outcome_with_engine(
             no_llm: args.no_llm,
             source,
             chunked: args.chunked,
+            // The batched CLI runs the pipeline in this process, with no job to name
+            job_id: None,
         };
         match pipeline.transcribe_audio(job.label.clone(), audio, &request) {
             Ok(result) => outcome.results.push(result),
@@ -1646,6 +1650,8 @@ mod tests {
             }],
             detected_language: Some("ru".into()),
             no_speech_prob: None,
+            cost_usd: None,
+            billed_seconds: None,
         })]);
         let mut journal = MemJournal::default();
         let outcome = transcribe_jobs(
@@ -1678,6 +1684,8 @@ mod tests {
             }],
             detected_language: Some("ru".into()),
             no_speech_prob: None,
+            cost_usd: None,
+            billed_seconds: None,
         })]);
 
         transcribe_jobs(

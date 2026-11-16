@@ -79,6 +79,20 @@ pub struct TokenSummary {
     pub unpriced_calls: u32,
 }
 
+/// What recognition cost over the period, when it ran on a provider that bills
+///
+/// A local model is not counted here at all: it costs nothing, and that is a known zero of the
+/// settings rather than a price that a provider did not report
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct SttCostSummary {
+    /// Sum of the charges the providers reported for recognition, in US dollars
+    pub cost_usd: f64,
+    /// Phrases that a provider recognized, including the ones it charged nothing for
+    pub entries: u32,
+    /// Phrases whose provider reported no charge, so `cost_usd` is not the whole bill
+    pub unpriced: u32,
+}
+
 /// One day of the series: the basis of the speed chart and the sparkline
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DayStats {
@@ -115,6 +129,7 @@ pub struct StatsSummary {
     pub saved_minutes: f32,
     pub latency_ms: LatencySummary,
     pub tokens: TokenSummary,
+    pub stt: SttCostSummary,
     pub series: Vec<DayStats>,
     pub by_app: Vec<AppStats>,
     /// Files transcribed through the MCP server, separate from the CLI and dictation
@@ -224,6 +239,7 @@ pub fn summary(
         saved_minutes: no_minus_zero(saved_minutes(&all, cfg)),
         latency_ms: latency_summary(&range),
         tokens: token_summary(&range),
+        stt: stt_cost_summary(&range),
         series: series(&range, range_start, today),
         by_app: by_app(&range),
         mcp_entries: mcp.len() as u32,
@@ -345,6 +361,21 @@ pub fn token_summary(entries: &[&Entry]) -> TokenSummary {
         sum.calls += entry.llm_calls;
         sum.unpriced_calls += entry.llm_unpriced_calls;
         if let Some(cost) = entry.llm_cost_usd {
+            sum.cost_usd += cost;
+        }
+    }
+    sum
+}
+
+/// Cost of recognition: the charges the providers reported, and the phrases they did not price
+pub fn stt_cost_summary(entries: &[&Entry]) -> SttCostSummary {
+    let mut sum = SttCostSummary::default();
+    for entry in entries {
+        if entry.stt_unpriced {
+            sum.entries += 1;
+            sum.unpriced += 1;
+        } else if let Some(cost) = entry.stt_cost_usd {
+            sum.entries += 1;
             sum.cost_usd += cost;
         }
     }
@@ -849,6 +880,56 @@ mod tests {
     }
 
     #[test]
+    fn the_charges_of_the_recognizer_are_summed_apart_from_the_model() {
+        let mut first = test_entry("2026-09-05T10:00:00Z", 10, 4.0, "kitty");
+        first.llm_used = true;
+        first.local_llm = false;
+        first.llm_cost_usd = Some(0.000_004);
+        first.llm_calls = 1;
+        first.stt_cost_usd = Some(0.000_1);
+        let mut second = test_entry("2026-09-05T10:01:00Z", 10, 4.0, "kitty");
+        second.stt_cost_usd = Some(0.000_2);
+
+        let summary = summary(&[first, second], now_at("2026-09-05T12:00:00Z"), &cfg(), 7);
+        assert!(
+            (summary.stt.cost_usd - 0.000_3).abs() < 1e-12,
+            "{summary:?}"
+        );
+        assert_eq!(summary.stt.entries, 2);
+        assert_eq!(summary.stt.unpriced, 0);
+        // Recognition and the model are two bills: one sum must not swallow the other
+        assert!((summary.tokens.cost_usd - 0.000_004).abs() < 1e-12);
+        assert_eq!(summary.tokens.calls, 1);
+    }
+
+    #[test]
+    fn a_recognition_without_a_reported_charge_is_counted_as_unpriced() {
+        let mut priced = test_entry("2026-09-05T10:00:00Z", 10, 4.0, "kitty");
+        priced.stt_cost_usd = Some(0.000_1);
+        let mut silent = test_entry("2026-09-05T10:01:00Z", 10, 4.0, "kitty");
+        silent.stt_unpriced = true;
+
+        let summary = summary(&[priced, silent], now_at("2026-09-05T12:00:00Z"), &cfg(), 7);
+        assert_eq!(summary.stt.entries, 2, "{summary:?}");
+        assert_eq!(summary.stt.unpriced, 1, "{summary:?}");
+        assert!(
+            (summary.stt.cost_usd - 0.000_1).abs() < 1e-12,
+            "{summary:?}"
+        );
+    }
+
+    #[test]
+    fn a_local_engine_is_not_a_cloud_call_of_any_kind() {
+        let mut local = test_entry("2026-09-05T10:00:00Z", 10, 4.0, "kitty");
+        local.stt_engine = "whisper-cpp".into();
+
+        let summary = summary(&[local], now_at("2026-09-05T12:00:00Z"), &cfg(), 7);
+        assert_eq!(summary.stt.entries, 0);
+        assert_eq!(summary.stt.unpriced, 0);
+        assert_eq!(summary.stt.cost_usd, 0.0);
+    }
+
+    #[test]
     fn json_shape_matches_the_contract_for_the_gui() {
         let entries = vec![test_entry("2026-09-05T10:00:00Z", 10, 4.0, "kitty")];
         let summary = summary(&entries, now_at("2026-09-05T12:00:00Z"), &cfg(), 1);
@@ -867,6 +948,7 @@ mod tests {
             "saved_minutes",
             "latency_ms",
             "tokens",
+            "stt",
             "series",
             "by_app",
             "mcp_entries",
@@ -900,6 +982,13 @@ mod tests {
                 value["tokens"].get(key).is_some(),
                 "missing field tokens.{key}: {}",
                 value["tokens"]
+            );
+        }
+        for key in ["cost_usd", "entries", "unpriced"] {
+            assert!(
+                value["stt"].get(key).is_some(),
+                "missing field stt.{key}: {}",
+                value["stt"]
             );
         }
         assert_eq!(value["series"][0]["day"], "2026-09-05");

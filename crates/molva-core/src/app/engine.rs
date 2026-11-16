@@ -9,9 +9,11 @@ use thiserror::Error;
 
 use crate::app::models::{self, ModelError};
 use crate::app::probe;
-use crate::config::Config;
+use crate::app::secrets;
+use crate::config::{Config, RemoteSttConfig};
 use crate::domain::fakes::FakeStt;
 use crate::domain::stt::SttEngine;
+use crate::infra::stt::RemoteOpenAiEngine;
 use crate::infra::stt::TranscribeCppEngine;
 use crate::infra::stt::WhisperEngine;
 
@@ -20,6 +22,9 @@ pub const DEFAULT_FAKE_TEXT: &str = "тестовая расшифровка";
 
 /// Name of the fake engine: `MOLVA_STT=fake`, `--engine fake`, `stt.engine = "fake"`
 pub const FAKE_ENGINE: &str = "fake";
+
+/// Name of the cloud recognizer: an OpenAI-compatible `/audio/transcriptions` endpoint
+pub const REMOTE_ENGINE: &str = "remote-openai";
 
 #[derive(Debug, Error)]
 pub enum EngineError {
@@ -34,6 +39,10 @@ pub enum EngineError {
          set stt.transcribe_cli to the binary, or choose a whisper model in stt.model"
     )]
     CliMissing { model: String, wanted: String },
+    /// The cloud recognizer is missing something it cannot run without: the address, the model or
+    /// the key. Each names the setting and the next step, so the user fixes it before a phrase
+    #[error("cannot use remote recognition: {0}")]
+    RemoteConfig(String),
     #[error(transparent)]
     Model(#[from] ModelError),
 }
@@ -140,11 +149,52 @@ pub fn build_stt_with(
                 cfg.stt.threads as usize,
             )))
         }
-        "remote-openai" => Err(EngineError::NotAvailable(
-            "remote recognition is wired up separately; use stt.engine = \"whisper-cpp\"".into(),
-        )),
+        REMOTE_ENGINE => {
+            // The engine is a client of a provider: nothing is downloaded, nothing is loaded, and
+            // every reason it cannot run is a setting the user owns
+            let remote = &cfg.stt.remote;
+            if remote.base_url.trim().is_empty() {
+                return Err(EngineError::RemoteConfig(
+                    "stt.remote.base_url is empty: set the address of the recognition API".into(),
+                ));
+            }
+            if remote.model.trim().is_empty() {
+                return Err(EngineError::RemoteConfig(
+                    "stt.remote.model is empty: set the model of the recognition API, for example \
+                     whisper-large-v3-turbo"
+                        .into(),
+                ));
+            }
+            let key = secrets::remote_stt_api_key(remote)
+                .ok_or_else(|| EngineError::RemoteConfig(missing_remote_key(remote)))?;
+            let engine = RemoteOpenAiEngine::from_remote(remote, &key, cfg.privacy.cloud_consent)
+                .map_err(|err| EngineError::RemoteConfig(err.to_string()))?;
+            Ok(Box::new(engine))
+        }
         other => Err(EngineError::Unknown(other.to_string())),
     }
+}
+
+/// Why no key was found, and the two places that can hold one
+fn missing_remote_key(remote: &RemoteSttConfig) -> String {
+    if remote.api_key_source.trim().eq_ignore_ascii_case("none") {
+        return "stt.remote.api_key_source is `none`, so no key is read: choose `keyring` or `env`, \
+                or turn off stt.engine = \"remote-openai\""
+            .to_string();
+    }
+    let variable = remote.api_key_env.trim();
+    if variable.is_empty() {
+        return format!(
+            "no key: add the entry {} to the key store, or set stt.remote.api_key_env to the name \
+             of a variable that holds it",
+            secrets::STT_KEY_ENTRY
+        );
+    }
+    format!(
+        "no key: set the environment variable {variable} (stt.remote.api_key_env), or add the \
+         entry {} to the key store of stt.remote.api_key_source",
+        secrets::STT_KEY_ENTRY
+    )
 }
 
 #[cfg(test)]
@@ -334,5 +384,95 @@ mod tests {
 
         let choice = EngineChoice::fake();
         assert_eq!(resolve_engine(&cfg, &choice), FAKE_ENGINE);
+    }
+
+    /// Remote recognition from the settings: the address, the model and the key are checked
+    /// before anything is sent, so a broken draft fails at the start and not at the first phrase
+    #[test]
+    fn a_remote_engine_names_the_setting_that_stops_it() {
+        let mut cfg = Config::default();
+        cfg.stt.engine = "remote-openai".into();
+        cfg.stt.remote.base_url = "   ".into();
+        let err = build_stt(&cfg, None).unwrap_err().to_string();
+        assert!(err.contains("stt.remote.base_url"), "{err}");
+
+        cfg.stt.remote.base_url = "http://127.0.0.1:9/v1".into();
+        cfg.stt.remote.model = "  ".into();
+        let err = build_stt(&cfg, None).unwrap_err().to_string();
+        assert!(err.contains("stt.remote.model"), "{err}");
+
+        // No key: the environment variable of the settings is the next step, and it is named
+        cfg.stt.remote.model = "whisper-large-v3-turbo".into();
+        cfg.stt.remote.api_key_source = "env".into();
+        cfg.stt.remote.api_key_env = "MOLVA_TEST_ABSENT_STT_KEY".into();
+        let err = build_stt(&cfg, None).unwrap_err().to_string();
+        assert!(err.contains("no key"), "{err}");
+        assert!(err.contains("MOLVA_TEST_ABSENT_STT_KEY"), "{err}");
+
+        // A key source that reads nothing says so instead of blaming the environment
+        cfg.stt.remote.api_key_source = "none".into();
+        let err = build_stt(&cfg, None).unwrap_err().to_string();
+        assert!(err.contains("stt.remote.api_key_source"), "{err}");
+    }
+
+    /// The engine is built from the settings and the key, and the consent of the settings reaches
+    /// it. The key is in the environment, so the case is a child process of its own: the tests of
+    /// one run share one environment
+    #[test]
+    fn the_remote_engine_is_built_from_the_settings_the_key_and_the_consent() {
+        const CHILD: &str = "MOLVA_STT_REMOTE_CHILD";
+        const KEY: &str = "sk-child-0123456789abcdef";
+        if std::env::var(CHILD).is_ok() {
+            let mut cfg = Config::default();
+            cfg.stt.engine = "remote-openai".into();
+            // Not this machine: without the consent of the settings nothing may be sent there
+            cfg.stt.remote.base_url = "http://0.0.0.0:9/v1".into();
+            cfg.stt.remote.api_key_source = "env".into();
+            cfg.stt.remote.api_key_env = "MOLVA_TEST_STT_KEY".into();
+            let audio = PcmAudio::new(vec![0.1; 160], 16_000);
+
+            let mut engine = build_stt(&cfg, None).expect("the key is in the environment");
+            assert_eq!(engine.id(), "remote-openai");
+            assert_eq!(engine.model_name(), "remote-openai");
+            let refused = engine
+                .transcribe(&audio, &SttOptions::default())
+                .unwrap_err()
+                .to_string();
+            assert!(refused.contains("cloud_consent"), "{refused}");
+
+            cfg.privacy.cloud_consent = true;
+            let mut engine = build_stt(&cfg, None).expect("the key is in the environment");
+            let tried = engine
+                .transcribe(&audio, &SttOptions::default())
+                .unwrap_err()
+                .to_string();
+            assert!(
+                !tried.contains("cloud_consent"),
+                "the consent of the settings must reach the engine: {tried}"
+            );
+            let printed = format!("{engine:?}");
+            assert!(!printed.contains(KEY), "{printed}");
+            return;
+        }
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "app::engine::tests::the_remote_engine_is_built_from_the_settings_the_key_and_the_consent",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .env("MOLVA_TEST_STT_KEY", KEY)
+            // No proxy: the case needs a refusal of the connection, not a wait on another machine
+            .env_remove("HTTP_PROXY")
+            .env_remove("http_proxy")
+            .env_remove("ALL_PROXY")
+            .env_remove("all_proxy")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 }

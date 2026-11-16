@@ -323,6 +323,8 @@ fn collect_transcript(state: &WhisperState) -> Result<Transcript, SttError> {
         segments,
         detected_language,
         no_speech_prob: aggregate_no_speech(&no_speech),
+        cost_usd: None,
+        billed_seconds: None,
     })
 }
 
