@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Window shell: left navigation, shared daemon state and a subscription to its events
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 
 import { api, asCommandError } from "./api";
@@ -20,11 +20,13 @@ import type {
   WorkerJob,
 } from "./types";
 import Dashboard from "./views/Dashboard";
-import Files from "./views/Files";
 import History from "./views/History";
-import Settings from "./views/Settings";
-import Snippets from "./views/Snippets";
-import Stats from "./views/Stats";
+// The three heavy views come in their own chunk: the window opens on the dashboard, and the
+// settings page alone is larger than everything the dashboard needs
+const Files = lazy(() => import("./views/Files"));
+const Settings = lazy(() => import("./views/Settings"));
+const Snippets = lazy(() => import("./views/Snippets"));
+const Stats = lazy(() => import("./views/Stats"));
 
 export type Tab = "dashboard" | "history" | "stats" | "files" | "snippets" | "settings";
 export type Theme = "system" | "light" | "dark";
@@ -290,12 +292,14 @@ export default function App() {
                 />
               )}
               {tab === "history" && <History />}
-              {tab === "stats" && <Stats {...shared} />}
-              {tab === "files" && <Files {...shared} />}
-              {tab === "snippets" && <Snippets {...shared} />}
-              {tab === "settings" && (
-                <Settings {...shared} theme={theme} onThemeChange={setTheme} />
-              )}
+              <Suspense fallback={<p className="muted">{t("common.loading")}</p>}>
+                {tab === "stats" && <Stats {...shared} />}
+                {tab === "files" && <Files {...shared} />}
+                {tab === "snippets" && <Snippets {...shared} />}
+                {tab === "settings" && (
+                  <Settings {...shared} theme={theme} onThemeChange={setTheme} />
+                )}
+              </Suspense>
             </main>
           </div>
         </HistoryProvider>
