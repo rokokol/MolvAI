@@ -53,6 +53,9 @@ function config(change: (draft: Config) => void = () => undefined): Config {
         api_key_env: "OPENAI_API_KEY",
         model: "whisper-1",
         timeout_secs: 120,
+        temperature: 0,
+        prompt: "",
+        max_retries: 2,
       },
     },
     dictionary: { path: "", fuzzy: true, in_prompt: true },
@@ -202,6 +205,85 @@ describe("Settings: recognition", () => {
     expect(html).toContain('id="stt-engine"');
     expect(html).toContain(translate("en", "settings.provider.remote"));
     expect(html).toContain('id="stt-model-path"');
+  });
+
+  it("keeps the cloud engine chosen even though the model belongs to the local catalog", () => {
+    // The engine of a catalog model is the local one; a cloud engine has no catalog model, and
+    // reading the engine from the model alone made the choice collapse back
+    const html = render(
+      config((draft) => {
+        draft.stt.engine = "remote-openai";
+      }),
+    );
+    expect(html).toContain('id="remote-provider"');
+    expect(html).toContain('id="remote-base-url"');
+  });
+
+  it("offers the transcribing providers, with the same names the model choice uses", () => {
+    // The presets come from the Rust side, so this render has none of them: the list itself is
+    // checked in providers.test.ts, and here the page must carry the key field of the cloud
+    // recognizer next to the choice
+    const html = render(
+      config((draft) => {
+        draft.stt.engine = "remote-openai";
+        draft.stt.remote.base_url = "https://api.groq.com/openai/v1";
+      }),
+    );
+    expect(html).toContain('id="remote-provider"');
+    expect(html).toContain('id="stt-key-source"');
+    expect(html).toContain('id="stt-key-value"');
+    expect(html).toContain(translate("en", "settings.remote.cloudHint"));
+  });
+
+  it("carries the knobs of the cloud recognizer, as the model section does", () => {
+    const html = render(
+      config((draft) => {
+        draft.stt.engine = "remote-openai";
+        draft.stt.remote.temperature = 0.35;
+        draft.stt.remote.max_retries = 3;
+        draft.stt.remote.prompt = "Molva, ГигаАМ";
+      }),
+    );
+    expect(html).toContain('id="remote-temperature"');
+    expect(html).toContain('id="remote-timeout"');
+    expect(html).toContain('id="remote-retries"');
+    expect(html).toContain('id="remote-prompt"');
+    expect(html).toContain("Molva, ГигаАМ");
+    for (const key of [
+      "settings.remote.temperatureHint",
+      "settings.remote.retriesHint",
+      "settings.remote.promptHint",
+    ]) {
+      expect(html).toContain(translate("en", key));
+    }
+  });
+
+  it("offers no clear-text key to the recognizer, which keeps none in its settings", () => {
+    const html = render(
+      config((draft) => {
+        draft.stt.engine = "remote-openai";
+      }),
+    );
+    const select = html.match(/<select id="stt-key-source"[\s\S]*?<\/select>/)?.[0] ?? "";
+    expect(select).toContain(translate("en", "settings.keySource.env"));
+    expect(select).toContain(translate("en", "settings.keySource.none"));
+    expect(select).not.toContain(translate("en", "settings.keySource.plain"));
+  });
+
+  it("shows the journal encryption and where its key lives", () => {
+    const off = render(config());
+    expect(off).toContain(translate("en", "settings.privacy.encrypt"));
+    expect(off).not.toContain('id="journal-key-source"');
+
+    const on = render(
+      config((draft) => {
+        draft.journal.encrypt = true;
+        draft.journal.key_source = "keyring";
+      }),
+    );
+    expect(on).toContain('id="journal-key-source"');
+    expect(on).toContain(translate("en", "settings.journalKey.keyring"));
+    expect(on).toContain(translate("en", "settings.journalKey.file"));
   });
 });
 

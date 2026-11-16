@@ -14,6 +14,10 @@ import {
   pickModel,
   providerOfEngine,
   REMOTE_ENGINE,
+  remoteSttProvider,
+  selectedEngine,
+  sttProviders,
+  type TranscribingProvider,
 } from "./providers";
 
 const catalog: SttModelOption[] = [
@@ -108,5 +112,55 @@ describe("humanSize", () => {
     expect(humanSize(183948704)).toBe("175 MiB");
     expect(humanSize(1624555275)).toBe("1.5 GiB");
     expect(humanSize(0)).toBe("0 MiB");
+  });
+});
+
+describe("selectedEngine", () => {
+  it("reads the engine of a catalog model", () => {
+    expect(selectedEngine(catalog, "whisper-cpp", "gigaam-v3-e2e-rnnt-q4_k_m")).toBe(
+      "transcribe-cpp",
+    );
+  });
+
+  it("keeps the cloud engine even though the saved model belongs to the catalog", () => {
+    // The bug: the engine came from the model alone, the cloud choice collapsed back to the
+    // local one, and the picker did nothing
+    expect(selectedEngine(catalog, REMOTE_ENGINE, "gigaam-v3-e2e-rnnt-q4_k_m")).toBe(
+      REMOTE_ENGINE,
+    );
+  });
+
+  it("keeps the saved engine for a model the catalog does not know", () => {
+    expect(selectedEngine(catalog, "whisper-cpp", "my-own-model.bin")).toBe("whisper-cpp");
+  });
+});
+
+const providers: TranscribingProvider[] = [
+  { id: "ollama", base_url: "http://localhost:11434/v1", api_key_env: "", stt_model: null },
+  { id: "openai", base_url: "https://api.openai.com/v1", api_key_env: "OPENAI_API_KEY", stt_model: "whisper-1" },
+  { id: "openrouter", base_url: "https://openrouter.ai/api/v1", api_key_env: "OPENROUTER_API_KEY", stt_model: null },
+  { id: "groq", base_url: "https://api.groq.com/openai/v1", api_key_env: "GROQ_API_KEY", stt_model: "whisper-large-v3-turbo" },
+  { id: "custom", base_url: "", api_key_env: "", stt_model: "" },
+];
+
+describe("the providers of the cloud recognizer", () => {
+  it("keeps only the ones whose API transcribes, and the one set by hand", () => {
+    expect(sttProviders(providers).map((item) => item.id)).toEqual([
+      "openai",
+      "groq",
+      "custom",
+    ]);
+  });
+
+  it("names the preset by its address, whatever the trailing slashes", () => {
+    expect(remoteSttProvider(providers, "https://api.groq.com/openai/v1")).toBe("groq");
+    expect(remoteSttProvider(providers, "https://api.groq.com/openai/v1/")).toBe("groq");
+    expect(remoteSttProvider(providers, " https://api.openai.com/v1 ")).toBe("openai");
+  });
+
+  it("calls an address of the person's own one set by hand", () => {
+    expect(remoteSttProvider(providers, "http://localhost:9000/v1")).toBe("custom");
+    // An address of a provider that serves no transcription is not that provider's preset
+    expect(remoteSttProvider(providers, "https://openrouter.ai/api/v1")).toBe("custom");
   });
 });

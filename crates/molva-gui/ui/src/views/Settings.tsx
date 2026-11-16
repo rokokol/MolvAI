@@ -17,7 +17,6 @@ import type {
   LlmProbeReport,
   LlmProviderOption,
   HyprlandBinds,
-  ProviderKeyStatus,
   SttModelOption,
   SttProbeReport,
   StyleOption,
@@ -28,13 +27,7 @@ import DeviceField from "../settings/DeviceField";
 import HotkeyField from "../settings/HotkeyField";
 import { StyleEditor } from "../settings/StyleEditor";
 import { RECOGNITION_LANGUAGES } from "../settings/language";
-import {
-  keyField,
-  keySourceChoices,
-  storesInKeyring,
-  storeUnavailable,
-  warnsAboutClearText,
-} from "../settings/keysource";
+import ProviderKeyField from "../settings/ProviderKeyField";
 import {
   engineOfModel,
   humanSize,
@@ -43,6 +36,10 @@ import {
   modelsForEngine,
   pickModel,
   REMOTE_ENGINE,
+  remoteSttProvider,
+  selectedEngine,
+  STT_KEY_SOURCES,
+  sttProviders,
 } from "../settings/providers";
 import { mcpCommandLine, mcpProfiles } from "../settings/mcp";
 import {
@@ -70,12 +67,6 @@ const RULE_KEYS = [
   "remove_repeats",
   "numbers_as_digits",
 ] as const;
-
-/** A model name that an OpenAI-compatible transcription endpoint serves, per provider */
-const REMOTE_STT_MODELS: Record<string, string> = {
-  openai: "whisper-1",
-  openrouter: "openai/whisper-1",
-};
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -150,9 +141,6 @@ export default function Settings({
   const [models, setModels] = useState<SttModelOption[]>([]);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [providers, setProviders] = useState<LlmProviderOption[]>([]);
-  const [keyStatus, setKeyStatus] = useState<ProviderKeyStatus | null>(null);
-  const [keyDraft, setKeyDraft] = useState("");
-  const [keyBusy, setKeyBusy] = useState(false);
   // The test buttons work from the draft: nothing is saved before a test runs
   const [llmProbe, setLlmProbe] = useState<ProbeState<LlmProbeReport>>(idleProbe());
   const [sttProbe, setSttProbe] = useState<ProbeState<SttProbeReport>>(idleProbe());
@@ -204,23 +192,6 @@ export default function Settings({
     api.hyprlandBinds().then(setHyprland).catch(() => setHyprland(null));
   }, [config]);
 
-  // Whether the key entry exists is a property of the provider and of the store, not of the
-  // rest of the form: a keystroke elsewhere must not ask the store again
-  const provider = draft?.llm.provider ?? "";
-  const keySource = draft?.llm.api_key_source ?? "keyring";
-  useEffect(() => {
-    if (provider === "" || !storesInKeyring(keySource)) {
-      setKeyStatus(null);
-      return;
-    }
-    api
-      .providerKeyStatus(provider, keySource)
-      .then(setKeyStatus)
-      .catch((err) =>
-        setKeyStatus({ present: false, entry: "", detail: asCommandError(err).message }),
-      );
-  }, [provider, keySource]);
-
   const patch = useCallback((change: (next: Config) => void) => {
     setSaved(false);
     setDraft((prev) => {
@@ -246,8 +217,6 @@ export default function Settings({
   const llmCloud =
     !["ollama", "lmstudio", "custom"].includes(draft.llm.provider);
   const styleProblems = styleIssues(draft.style.custom);
-
-  const keyStoreRefused = keyStatus !== null && storeUnavailable(keyStatus);
 
   const save = async () => {
     try {
@@ -297,7 +266,10 @@ export default function Settings({
     }
   };
 
-  const engine = engineOfModel(models, draft.stt.model) ?? draft.stt.engine;
+  // The catalog model names the engine for the local weights, but a cloud engine has no model in
+  // the catalog: reading the engine from the model alone collapsed the cloud choice back to the
+  // local one, and the picker looked like it did nothing
+  const engine = selectedEngine(models, draft.stt.engine, draft.stt.model);
   const selectedLanguages =
     draft.stt.language === "auto"
       ? draft.stt.allowed_languages
@@ -316,24 +288,9 @@ export default function Settings({
       setNewLanguage(availableLanguages[0]);
     }
   }, [availableLanguages, newLanguage]);
-  const remoteProvider = draft.stt.remote.base_url.includes("openrouter")
-    ? "openrouter"
-    : "openai";
+  const remoteProvider = remoteSttProvider(providers, draft.stt.remote.base_url);
+  const sttProviderChoices = sttProviders(providers);
   const profile = mcpProfiles().find((item) => item.id === mcpProfile) ?? mcpProfiles()[0];
-
-  const storeKey = async () => {
-    setKeyBusy(true);
-    try {
-      const next = await api.storeProviderKey(provider, keySource, keyDraft);
-      setKeyStatus(next);
-      // The value leaves the page at once: it lives in the store, not in the window
-      setKeyDraft("");
-    } catch (err) {
-      onError(asCommandError(err));
-    } finally {
-      setKeyBusy(false);
-    }
-  };
 
   return (
     <>
@@ -732,18 +689,25 @@ export default function Settings({
                   value={remoteProvider}
                   onChange={(event) => {
                     const id = event.target.value;
-                    const preset = providers.find((item) => item.id === id);
+                    const preset = sttProviderChoices.find((item) => item.id === id);
                     patch((next) => {
+                      // "Set by hand" keeps what is typed below: there is no address to copy
+                      if (id === "custom") {
+                        return;
+                      }
                       next.stt.remote.base_url = preset?.base_url ?? next.stt.remote.base_url;
-                      next.stt.remote.model = REMOTE_STT_MODELS[id] ?? next.stt.remote.model;
-                      next.stt.remote.api_key_env =
-                        preset?.api_key_env ?? next.stt.remote.api_key_env;
+                      if (preset?.stt_model) {
+                        next.stt.remote.model = preset.stt_model;
+                      }
+                      if (preset && preset.api_key_env !== "") {
+                        next.stt.remote.api_key_env = preset.api_key_env;
+                      }
                     });
                   }}
                 >
-                  {Object.keys(REMOTE_STT_MODELS).map((id) => (
-                    <option key={id} value={id}>
-                      {id === "openai" ? "OpenAI" : "OpenRouter"}
+                  {sttProviderChoices.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {t(`settings.llmProvider.${item.id}`, { id: item.id })}
                     </option>
                   ))}
                 </select>
@@ -774,35 +738,94 @@ export default function Settings({
                   }
                 />
               </div>
+            </div>
+            <ProviderKeyField
+              kind="stt"
+              idPrefix="stt"
+              sources={STT_KEY_SOURCES}
+              source={draft.stt.remote.api_key_source}
+              onSource={(source) =>
+                patch((next) => {
+                  next.stt.remote.api_key_source = source;
+                })
+              }
+              env={draft.stt.remote.api_key_env}
+              onEnv={(env) =>
+                patch((next) => {
+                  next.stt.remote.api_key_env = env;
+                })
+              }
+              onError={onError}
+            />
+
+            <div className="field">
+              <label htmlFor="remote-temperature">
+                {t("settings.remote.temperature")}:{" "}
+                {draft.stt.remote.temperature.toFixed(2)}
+              </label>
+              <input
+                id="remote-temperature"
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={draft.stt.remote.temperature}
+                onChange={(event) =>
+                  patch((next) => {
+                    next.stt.remote.temperature = Number(event.target.value);
+                  })
+                }
+              />
+              <p className="small muted">{t("settings.remote.temperatureHint")}</p>
+            </div>
+
+            <div className="formgrid">
               <div className="field">
-                <label htmlFor="remote-key-source">{t("settings.llm.keySource")}</label>
-                <select
-                  id="remote-key-source"
-                  value={draft.stt.remote.api_key_source}
-                  onChange={(event) =>
-                    patch((next) => {
-                      next.stt.remote.api_key_source = event.target.value;
-                    })
-                  }
-                >
-                  <option value="keyring">{t("settings.keySource.keyring")}</option>
-                  <option value="env">{t("settings.keySource.env")}</option>
-                  <option value="none">{t("settings.keySource.none")}</option>
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor="remote-key-env">{t("settings.llm.keyEnv")}</label>
+                <label htmlFor="remote-timeout">{t("settings.remote.timeout")}</label>
                 <input
-                  id="remote-key-env"
-                  type="text"
-                  value={draft.stt.remote.api_key_env}
+                  id="remote-timeout"
+                  type="number"
+                  min={5}
+                  max={900}
+                  value={draft.stt.remote.timeout_secs}
                   onChange={(event) =>
                     patch((next) => {
-                      next.stt.remote.api_key_env = event.target.value;
+                      next.stt.remote.timeout_secs = Number(event.target.value);
                     })
                   }
                 />
               </div>
+              <div className="field">
+                <label htmlFor="remote-retries">{t("settings.remote.retries")}</label>
+                <input
+                  id="remote-retries"
+                  type="number"
+                  min={0}
+                  max={5}
+                  value={draft.stt.remote.max_retries}
+                  onChange={(event) =>
+                    patch((next) => {
+                      next.stt.remote.max_retries = Number(event.target.value);
+                    })
+                  }
+                />
+                <p className="small muted">{t("settings.remote.retriesHint")}</p>
+              </div>
+            </div>
+
+            <div className="field wide">
+              <label htmlFor="remote-prompt">{t("settings.remote.prompt")}</label>
+              <input
+                id="remote-prompt"
+                type="text"
+                value={draft.stt.remote.prompt}
+                onChange={(event) =>
+                  patch((next) => {
+                    next.stt.remote.prompt = event.target.value;
+                  })
+                }
+              />
+              <p className="small muted">{t("settings.remote.promptHint")}</p>
             </div>
           </>
         ) : (
@@ -1161,110 +1184,30 @@ export default function Settings({
             />
           </div>
 
-          <div className="field">
-            <label htmlFor="llm-key-source">{t("settings.llm.keySource")}</label>
-            <select
-              id="llm-key-source"
-              value={draft.llm.api_key_source}
-              onChange={(event) => {
-                const source = event.target.value;
-                patch((next) => {
-                  next.llm.api_key_source = source;
-                });
-              }}
-            >
-              {keySourceChoices(draft.llm.api_key_source).map((source) => (
-                <option key={source} value={source}>
-                  {t(`settings.keySource.${keyField(source)}`, { source })}
-                </option>
-              ))}
-            </select>
-            <p className="small muted">{t(`settings.keySourceHint.${keyField(keySource)}`)}</p>
-          </div>
-
-          {keyField(keySource) === "store" && (
-            <div className="field wide">
-              <label htmlFor="llm-key-value">{t("settings.llm.keyValue")}</label>
-              <div className="field-inline">
-                <input
-                  id="llm-key-value"
-                  type="password"
-                  autoComplete="off"
-                  value={keyDraft}
-                  onChange={(event) => setKeyDraft(event.target.value)}
-                />
-                <button
-                  type="button"
-                  className="primary"
-                  disabled={keyBusy || keyDraft.trim() === ""}
-                  onClick={() => void storeKey()}
-                >
-                  {t("settings.llm.keyStore")}
-                </button>
-                <button
-                  type="button"
-                  disabled={keyBusy || keyStatus?.present !== true}
-                  onClick={() =>
-                    api
-                      .removeProviderKey(provider, keySource)
-                      .then(setKeyStatus)
-                      .catch((err) => onError(asCommandError(err)))
-                  }
-                >
-                  {t("settings.llm.keyRemove")}
-                </button>
-              </div>
-              <p className="small" aria-live="polite">
-                {keyStatus?.present
-                  ? t("settings.llm.keyPresent", { entry: keyStatus.entry })
-                  : t("settings.llm.keyMissing")}
-              </p>
-              {keyStoreRefused && keyStatus?.detail && (
-                <div className="notice warning" role="alert">
-                  <p>{t("settings.llm.keyStoreRefused")}</p>
-                  <p className="mono small">{keyStatus.detail}</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {warnsAboutClearText(keySource) && (
-            <>
-              <div className="notice warning" role="alert">
-                <p>{t("settings.keySource.plainWarning")}</p>
-              </div>
-              <div className="field wide">
-                <label htmlFor="llm-key-plain">{t("settings.llm.keyValue")}</label>
-                <input
-                  id="llm-key-plain"
-                  type="password"
-                  autoComplete="off"
-                  value={draft.llm.api_key_plain}
-                  onChange={(event) =>
-                    patch((next) => {
-                      next.llm.api_key_plain = event.target.value;
-                    })
-                  }
-                />
-              </div>
-            </>
-          )}
-
-          {keyField(keySource) === "env" && (
-            <div className="field">
-              <label htmlFor="llm-key-env">{t("settings.llm.keyEnv")}</label>
-              <input
-                id="llm-key-env"
-                type="text"
-                value={draft.llm.api_key_env}
-                onChange={(event) =>
-                  patch((next) => {
-                    next.llm.api_key_env = event.target.value;
-                  })
-                }
-              />
-            </div>
-          )}
+          <ProviderKeyField
+            kind="llm"
+            idPrefix="llm"
+            provider={draft.llm.provider}
+            source={draft.llm.api_key_source}
+            onSource={(source) =>
+              patch((next) => {
+                next.llm.api_key_source = source;
+              })
+            }
+            env={draft.llm.api_key_env}
+            onEnv={(env) =>
+              patch((next) => {
+                next.llm.api_key_env = env;
+              })
+            }
+            plain={draft.llm.api_key_plain}
+            onPlain={(plain) =>
+              patch((next) => {
+                next.llm.api_key_plain = plain;
+              })
+            }
+            onError={onError}
+          />
 
           <div className="field">
             <label htmlFor="llm-temperature">
@@ -1458,6 +1401,34 @@ export default function Settings({
               })
             }
           />
+          <Check
+            label={t("settings.privacy.encrypt")}
+            hint={t("settings.privacy.encryptHint")}
+            checked={draft.journal.encrypt}
+            onChange={(value) =>
+              patch((next) => {
+                next.journal.encrypt = value;
+              })
+            }
+          />
+          {draft.journal.encrypt && (
+            <div className="field">
+              <label htmlFor="journal-key-source">{t("settings.privacy.keySource")}</label>
+              <select
+                id="journal-key-source"
+                value={draft.journal.key_source}
+                onChange={(event) => {
+                  const source = event.target.value;
+                  patch((next) => {
+                    next.journal.key_source = source;
+                  });
+                }}
+              >
+                <option value="file">{t("settings.journalKey.file")}</option>
+                <option value="keyring">{t("settings.journalKey.keyring")}</option>
+              </select>
+            </div>
+          )}
           <Check
             label={t("settings.privacy.keepAudio")}
             checked={draft.journal.keep_audio}

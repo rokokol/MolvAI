@@ -6,18 +6,21 @@
 // owner named and never rewrites a stored value behind the user's back
 
 import type { ProviderKeyStatus } from "../types";
-
 export type KeyField = "store" | "plain" | "env" | "none" | "legacy";
 
 /** The sources that the page offers, in the order of the choice */
 export const KEY_SOURCE_ORDER = ["keyring", "plain", "env", "none"] as const;
 
 /**
- * The choices of the select: the fixed order, plus `legacy` when the file already says
- * something the page does not offer. Without that, the select would show an empty value
+ * The choices of the select: the offered sources in their order, plus `legacy` when the file
+ * already says something the page does not offer. Without that, the select would show an empty
+ * value
  */
-export function keySourceChoices(current: string): string[] {
-  const choices: string[] = [...KEY_SOURCE_ORDER];
+export function keySourceChoices(
+  current: string,
+  allowed: readonly string[] = KEY_SOURCE_ORDER,
+): string[] {
+  const choices: string[] = [...allowed];
   const stored = current.trim();
   if (stored !== "" && !choices.includes(stored)) {
     choices.push(stored);

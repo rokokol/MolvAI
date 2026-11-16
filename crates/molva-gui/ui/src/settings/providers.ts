@@ -9,6 +9,35 @@ import type { SttModelOption } from "../types";
 /** The engine name that means "recognize through a remote API" */
 export const REMOTE_ENGINE = "remote-openai";
 
+/** The key sources the remote recognizer accepts: it keeps no key in clear text in its settings */
+export const STT_KEY_SOURCES = ["keyring", "env", "none"] as const;
+
+/** A provider whose API serves transcription, as the model choice offers it */
+export interface TranscribingProvider {
+  id: string;
+  base_url: string;
+  api_key_env: string;
+  /** The model this provider transcribes with, empty when the person names it by hand */
+  stt_model: string | null;
+}
+
+/** The providers the recognizer offers: `stt_model` is `null` where the API transcribes nothing */
+export function sttProviders<T extends TranscribingProvider>(providers: T[]): T[] {
+  return providers.filter((item) => item.stt_model !== null);
+}
+
+/** Which preset an address belongs to; an address of the person's own means "set by hand" */
+export function remoteSttProvider(
+  providers: TranscribingProvider[],
+  baseUrl: string,
+): string {
+  const wanted = baseUrl.trim().replace(/\/+$/, "");
+  const preset = sttProviders(providers).find(
+    (item) => item.base_url.trim().replace(/\/+$/, "") === wanted,
+  );
+  return preset?.id ?? "custom";
+}
+
 export type SttProvider = "local" | "remote";
 
 /** A provider comes from the engine alone: there is one remote engine and the rest are local */
@@ -44,6 +73,24 @@ export function modelFitsEngine(
 /** The engine of a model, or `undefined` for a name that the catalog does not know */
 export function engineOfModel(models: SttModelOption[], model: string): string | undefined {
   return models.find((item) => item.name === model)?.engine;
+}
+
+/**
+ * The engine the page works with, from the settings and the catalog
+ *
+ * The catalog names the engine of a local model, but a cloud engine has no model in the catalog:
+ * reading the engine from the model alone turned a chosen cloud engine back into the local one, so
+ * the picker looked like it did nothing
+ */
+export function selectedEngine(
+  models: SttModelOption[],
+  configured: string,
+  model: string,
+): string {
+  if (configured === REMOTE_ENGINE) {
+    return REMOTE_ENGINE;
+  }
+  return engineOfModel(models, model) ?? configured;
 }
 
 /**

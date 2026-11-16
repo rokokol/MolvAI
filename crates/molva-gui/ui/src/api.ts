@@ -65,6 +65,13 @@ export const api = {
     invoke<ProviderKeyStatus>("store_provider_key", { provider, source, key }),
   removeProviderKey: (provider: string, source: string) =>
     invoke<ProviderKeyStatus>("remove_provider_key", { provider, source }),
+  /** The one entry of the remote recognizer: it is configured with a single provider */
+  sttKeyStatus: (source: string) =>
+    invoke<ProviderKeyStatus>("stt_key_status", { source }),
+  storeSttKey: (source: string, key: string) =>
+    invoke<ProviderKeyStatus>("store_stt_key", { source, key }),
+  removeSttKey: (source: string) =>
+    invoke<ProviderKeyStatus>("remove_stt_key", { source }),
   /** Validate a captured combination with the parser the daemon uses */
   checkHotkey: (value: string) => invoke<{ value: string }>("check_hotkey", { value }),
   listDevices: () => invoke<DeviceInfo[]>("list_devices"),

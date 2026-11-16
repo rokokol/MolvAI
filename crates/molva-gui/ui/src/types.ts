@@ -173,6 +173,8 @@ export interface LlmProviderOption {
   model: string;
   api_key_env: string;
   is_local: boolean;
+  /** The model this provider transcribes with; `null` when its API serves no transcription */
+  stt_model: string | null;
 }
 
 /** An entry of the secret store: whether it exists, never the value */
@@ -291,6 +293,12 @@ export interface RemoteSttConfig {
   model: string;
   /** How long one recognition request may take, in seconds */
   timeout_secs: number;
+  /** Decoder temperature; 0 reads a phrase the same way every time */
+  temperature: number;
+  /** Words the model should lean towards; empty sends no prompt */
+  prompt: string;
+  /** How many more requests follow a timeout, a rate limit or a provider error */
+  max_retries: number;
 }
 
 export interface Config {

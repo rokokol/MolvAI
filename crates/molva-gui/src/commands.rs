@@ -13,7 +13,6 @@ use std::sync::{mpsc, Mutex};
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
-use molva_core::app::engine::{build_stt_with, EngineChoice, EngineError};
 use molva_core::app::hotkeys::HotkeySpec;
 use molva_core::app::models::{self, DownloadProgress};
 use molva_core::app::probe::{LlmProbeReport, ProbeFailure, ProbeOutcome, SttProbeReport};
@@ -334,6 +333,7 @@ pub async fn stt_models(state: State<'_, AppState>) -> Result<Vec<SttModelOption
 /// the page shows its fields and the consent warning instead of hiding them behind an answer
 #[cfg(test)]
 pub fn remote_stt_available(config: &Config) -> bool {
+    use molva_core::app::engine::{build_stt_with, EngineChoice, EngineError};
     let mut probe = config.clone();
     probe.stt.engine = "remote-openai".into();
     !matches!(
@@ -341,7 +341,6 @@ pub fn remote_stt_available(config: &Config) -> bool {
         Err(EngineError::NotAvailable(_))
     )
 }
-
 
 /// The key of one provider as the page may show it: never the value
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -356,22 +355,21 @@ pub struct ProviderKeyStatus {
 }
 
 /// State of the key entry in `store`; the value never leaves the store
-pub fn key_status(store: &dyn SecretStore, provider: &str) -> ProviderKeyStatus {
-    let entry = secrets::llm_key_entry(provider);
-    match store.get(&entry) {
+pub fn key_status(store: &dyn SecretStore, entry: &str) -> ProviderKeyStatus {
+    match store.get(entry) {
         Ok(Some(value)) => ProviderKeyStatus {
             present: !value.trim().is_empty(),
-            entry,
+            entry: entry.to_string(),
             detail: None,
         },
         Ok(None) => ProviderKeyStatus {
             present: false,
-            entry,
+            entry: entry.to_string(),
             detail: None,
         },
         Err(error) => ProviderKeyStatus {
             present: false,
-            entry,
+            entry: entry.to_string(),
             detail: Some(error.to_string()),
         },
     }
@@ -381,29 +379,24 @@ pub fn key_status(store: &dyn SecretStore, provider: &str) -> ProviderKeyStatus 
 /// entry name and whether it is there, so no log line and no error message can echo it
 pub fn store_key(
     store: &dyn SecretStore,
-    provider: &str,
+    entry: &str,
     key: &str,
 ) -> Result<ProviderKeyStatus, CommandError> {
     let key = key.trim();
     if key.is_empty() {
         return Err(CommandError::new("key", i18n::t("settings.llm.keyEmpty")));
     }
-    let entry = secrets::llm_key_entry(provider);
-    store.set(&entry, key).map_err(store_error)?;
+    store.set(entry, key).map_err(store_error)?;
     Ok(ProviderKeyStatus {
         present: true,
-        entry,
+        entry: entry.to_string(),
         detail: None,
     })
 }
 
-pub fn remove_key(
-    store: &dyn SecretStore,
-    provider: &str,
-) -> Result<ProviderKeyStatus, CommandError> {
-    let entry = secrets::llm_key_entry(provider);
-    store.delete(&entry).map_err(store_error)?;
-    Ok(key_status(store, provider))
+pub fn remove_key(store: &dyn SecretStore, entry: &str) -> Result<ProviderKeyStatus, CommandError> {
+    store.delete(entry).map_err(store_error)?;
+    Ok(key_status(store, entry))
 }
 
 fn store_error(error: SecretError) -> CommandError {
@@ -421,19 +414,20 @@ const KEYRING_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// Ask the store with a bound: a locked collection may wait for an unlock prompt that Hyprland
 /// never shows, and the settings page must show a reason instead of staying in "checking"
-fn key_status_with_timeout(provider: &str, source: &str) -> ProviderKeyStatus {
+fn key_status_with_timeout(entry: &str, source: &str) -> ProviderKeyStatus {
     let (tx, rx) = mpsc::channel();
-    let provider_for_thread = provider.to_string();
+    let entry = entry.to_string();
+    let entry_for_thread = entry.clone();
     let source_for_thread = source.to_string();
     std::thread::spawn(move || {
         let _ = tx.send(key_status(
             key_store(&source_for_thread).as_ref(),
-            &provider_for_thread,
+            &entry_for_thread,
         ));
     });
     rx.recv_timeout(KEYRING_TIMEOUT).unwrap_or_else(|_| ProviderKeyStatus {
         present: false,
-        entry: secrets::llm_key_entry(provider),
+        entry,
         detail: Some(
             "the key store did not answer within 3 s; unlock the keyring or use the environment variable source"
                 .into(),
@@ -445,11 +439,12 @@ fn key_status_with_timeout(provider: &str, source: &str) -> ProviderKeyStatus {
 pub async fn provider_key_status(provider: String, source: String) -> ProviderKeyStatus {
     // The OS key store can block while its service starts or asks for an unlock. A synchronous
     // Tauri command would freeze the window on Settings open, so the call runs off the UI thread.
-    tauri::async_runtime::spawn_blocking(move || key_status_with_timeout(&provider, &source))
+    let entry = secrets::llm_key_entry(&provider);
+    tauri::async_runtime::spawn_blocking(move || key_status_with_timeout(&entry, &source))
         .await
         .unwrap_or(ProviderKeyStatus {
             present: false,
-            entry: "llm-api-key".into(),
+            entry: secrets::llm_key_entry(&provider),
             detail: Some("the key store check crashed; use the environment variable source".into()),
         })
 }
@@ -460,8 +455,9 @@ pub async fn store_provider_key(
     source: String,
     key: String,
 ) -> Result<ProviderKeyStatus, CommandError> {
+    let entry = secrets::llm_key_entry(&provider);
     tauri::async_runtime::spawn_blocking(move || {
-        store_key(key_store(&source).as_ref(), &provider, &key)
+        store_key(key_store(&source).as_ref(), &entry, &key)
     })
     .await
     .map_err(|error| CommandError::new("internal", error.to_string()))?
@@ -472,9 +468,43 @@ pub async fn remove_provider_key(
     provider: String,
     source: String,
 ) -> Result<ProviderKeyStatus, CommandError> {
-    tauri::async_runtime::spawn_blocking(move || remove_key(key_store(&source).as_ref(), &provider))
+    let entry = secrets::llm_key_entry(&provider);
+    tauri::async_runtime::spawn_blocking(move || remove_key(key_store(&source).as_ref(), &entry))
         .await
         .map_err(|error| CommandError::new("internal", error.to_string()))?
+}
+
+/// State of the entry with the key of the remote recognizer. One recognizer is configured at a
+/// time, so the page shows one entry instead of a key per provider
+#[tauri::command]
+pub async fn stt_key_status(source: String) -> ProviderKeyStatus {
+    tauri::async_runtime::spawn_blocking(move || {
+        key_status_with_timeout(secrets::STT_KEY_ENTRY, &source)
+    })
+    .await
+    .unwrap_or(ProviderKeyStatus {
+        present: false,
+        entry: secrets::STT_KEY_ENTRY.into(),
+        detail: Some("the key store check crashed; use the environment variable source".into()),
+    })
+}
+
+#[tauri::command]
+pub async fn store_stt_key(source: String, key: String) -> Result<ProviderKeyStatus, CommandError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        store_key(key_store(&source).as_ref(), secrets::STT_KEY_ENTRY, &key)
+    })
+    .await
+    .map_err(|error| CommandError::new("internal", error.to_string()))?
+}
+
+#[tauri::command]
+pub async fn remove_stt_key(source: String) -> Result<ProviderKeyStatus, CommandError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        remove_key(key_store(&source).as_ref(), secrets::STT_KEY_ENTRY)
+    })
+    .await
+    .map_err(|error| CommandError::new("internal", error.to_string()))?
 }
 
 /// The providers the settings page offers, with the URL and the local flag of each
@@ -2144,34 +2174,37 @@ mod tests {
     #[test]
     fn a_stored_key_is_reported_present_and_never_echoed() {
         let store = MemoryStore::new();
-        let status = store_key(&store, "openai", "sk-secret-value-1234").unwrap();
+        let entry = secrets::llm_key_entry("openai");
+        let status = store_key(&store, &entry, "sk-secret-value-1234").unwrap();
         assert!(status.present);
         assert_eq!(status.entry, "llm-api-key-openai");
         let json = serde_json::to_string(&status).unwrap();
         assert!(!json.contains("sk-secret-value-1234"), "{json}");
-        assert!(key_status(&store, "openai").present);
+        assert!(key_status(&store, &entry).present);
     }
 
     #[test]
     fn removing_the_key_empties_the_entry() {
         let store = MemoryStore::new();
-        store_key(&store, "openrouter", "sk-value").unwrap();
-        let status = remove_key(&store, "openrouter").unwrap();
+        let entry = secrets::llm_key_entry("openrouter");
+        store_key(&store, &entry, "sk-value").unwrap();
+        let status = remove_key(&store, &entry).unwrap();
         assert!(!status.present);
-        assert!(!key_status(&store, "openrouter").present);
+        assert!(!key_status(&store, &entry).present);
     }
 
     #[test]
     fn an_empty_key_is_refused_before_the_store_is_touched() {
         let store = MemoryStore::new();
-        assert!(store_key(&store, "openai", "   ").is_err());
-        assert!(!key_status(&store, "openai").present);
+        let entry = secrets::llm_key_entry("openai");
+        assert!(store_key(&store, &entry, "   ").is_err());
+        assert!(!key_status(&store, &entry).present);
     }
 
     #[test]
     fn a_refusing_store_is_named_and_not_reported_as_a_missing_key() {
         let store = MemoryStore::failing("no key store on this machine");
-        let status = key_status(&store, "openai");
+        let status = key_status(&store, &secrets::llm_key_entry("openai"));
         assert!(!status.present);
         assert!(status.detail.unwrap().contains("no key store"));
     }

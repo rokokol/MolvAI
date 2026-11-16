@@ -22,6 +22,23 @@ describe("keySourceChoices", () => {
   it("keeps the fixed choices", () => {
     expect(keySourceChoices("keyring")).toEqual([...KEY_SOURCE_ORDER]);
   });
+
+  it("offers only the sources the service accepts", () => {
+    // The recognizer keeps no key in clear text in its settings, so it must not offer one
+    expect(keySourceChoices("keyring", ["keyring", "env", "none"])).toEqual([
+      "keyring",
+      "env",
+      "none",
+    ]);
+  });
+
+  it("keeps a stored source that the select does not offer", () => {
+    expect(keySourceChoices("plain", ["keyring", "env"])).toEqual([
+      "keyring",
+      "env",
+      "plain",
+    ]);
+  });
 });
 
 describe("keyField", () => {

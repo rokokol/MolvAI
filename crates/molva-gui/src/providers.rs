@@ -21,26 +21,43 @@ pub struct LlmProviderOption {
     pub api_key_env: String,
     /// A local provider needs no key and does not send the text away
     pub is_local: bool,
+    /// The model this provider transcribes with, as a starting point; `None` means its API
+    /// serves no transcription at all, and the recognizer must not offer it
+    pub stt_model: Option<String>,
 }
 
 /// `llm.provider` → a starting model and a key variable
 ///
 /// An unknown id falls into `custom`: the user sets every field by hand. `Provider::parse`
 /// makes the same decision, so the URL and the local flag always agree with the client.
-const PRESETS: [(&str, &str, &str); 6] = [
-    ("ollama", "qwen3.5:4b", ""),
-    ("lmstudio", "local-model", ""),
-    ("openai", "gpt-4o-mini", "OPENAI_API_KEY"),
-    ("openrouter", "z-ai/glm-5.3-flash", "OPENROUTER_API_KEY"),
-    ("groq", "llama-3.3-70b-versatile", "GROQ_API_KEY"),
-    ("custom", "", ""),
+///
+/// `stt_model` is `Some` only where `/audio/transcriptions` answers: Ollama and LM Studio
+/// serve chat alone, and OpenRouter lists no transcription model, so offering either of them
+/// for sound would be a promise the API does not keep
+const PRESETS: [(&str, &str, &str, Option<&str>); 6] = [
+    ("ollama", "qwen3.5:4b", "", None),
+    ("lmstudio", "local-model", "", None),
+    ("openai", "gpt-4o-mini", "OPENAI_API_KEY", Some("whisper-1")),
+    (
+        "openrouter",
+        "z-ai/glm-5.3-flash",
+        "OPENROUTER_API_KEY",
+        None,
+    ),
+    (
+        "groq",
+        "llama-3.3-70b-versatile",
+        "GROQ_API_KEY",
+        Some("whisper-large-v3-turbo"),
+    ),
+    ("custom", "", "", Some("")),
 ];
 
 /// The providers the settings page offers, in the order of the list above
 pub fn llm_providers() -> Vec<LlmProviderOption> {
     PRESETS
         .iter()
-        .map(|(id, model, api_key_env)| {
+        .map(|(id, model, api_key_env, stt_model)| {
             let provider = Provider::parse(id);
             LlmProviderOption {
                 id: (*id).to_string(),
@@ -48,6 +65,7 @@ pub fn llm_providers() -> Vec<LlmProviderOption> {
                 model: (*model).to_string(),
                 api_key_env: (*api_key_env).to_string(),
                 is_local: provider.is_local_by_default(),
+                stt_model: stt_model.map(str::to_string),
             }
         })
         .collect()
@@ -101,5 +119,29 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn only_a_provider_whose_api_transcribes_is_offered_for_sound() {
+        let transcribing: Vec<String> = llm_providers()
+            .into_iter()
+            .filter(|o| o.stt_model.is_some())
+            .map(|o| o.id)
+            .collect();
+        assert_eq!(transcribing, vec!["openai", "groq", "custom"]);
+        for option in llm_providers()
+            .into_iter()
+            .filter(|o| o.stt_model.is_some())
+        {
+            assert!(!option.is_local, "{} runs on this machine", option.id);
+        }
+        let openrouter = llm_providers()
+            .into_iter()
+            .find(|o| o.id == "openrouter")
+            .expect("OpenRouter is in the list");
+        assert!(
+            openrouter.stt_model.is_none(),
+            "OpenRouter serves no transcription endpoint"
+        );
     }
 }
