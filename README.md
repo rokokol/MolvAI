@@ -109,7 +109,7 @@ molva test-inject            # check that text reaches the active field
 molva status                 # daemon state
 ```
 
-`molva doctor` names the missing piece and the command that fixes it. If the daemon is not running, `molva record start` exits with code 3; the GUI starts the daemon itself
+`molva doctor` prints one line per check — the session and the paste tools, the permissions, the daemon, the weights of the chosen model, `transcribe-cli` while a transcribe.cpp model is chosen, and the provider — and names the way out of a missing weight, a missing `transcribe-cli` or a daemon that does not answer. A phrase that fails while the panel looks healthy is a recognition problem, and the "Test recognition" button of the Settings tab checks the engine, the weights and `transcribe-cli` without opening the microphone. If the daemon is not running, `molva record start` exits with code 3; the GUI starts the daemon itself
 
 ## The daemon
 
@@ -215,7 +215,9 @@ The GUI settings page edits the effective settings, not necessarily the file on 
 
 `molva mcp` speaks the Model Context Protocol over standard input and output: the MCP client starts the process itself, so there is no port, no URL and no autostart. The server exposes transcription, search, statistics, history, the model catalog and its own documentation; it does not read or write the settings
 
-A transcription goes to the daemon: the server starts the daemon when nobody answers on the socket and reuses its recognizer and model, so an MCP call does not load a second copy of the weights. `mcp.enabled` gates the server, and the GUI settings page turns it off without touching the harness configuration
+The MCP server is off by default. To use it, enable it in the GUI settings or run `molva config set mcp.enabled true`. The switch does not change the harness configuration
+
+A transcription goes to the daemon: the server starts the daemon when nobody answers on the socket and reuses its recognizer and model, so an MCP call does not load a second copy of the weights
 
 | Tool                 | What it returns                                                                                                                                   |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |

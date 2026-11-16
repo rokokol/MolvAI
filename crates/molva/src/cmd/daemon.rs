@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context};
-use molva_core::app::daemon::{Daemon, DaemonParts};
+use molva_core::app::daemon::{Daemon, DaemonHandle, DaemonParts};
 use molva_core::app::dictionary::Dictionary;
 use molva_core::app::engine;
 use molva_core::app::journal::{FileJournal, NullJournal};
@@ -31,6 +31,13 @@ use molva_core::infra::platform;
 use molva_core::infra::sound;
 use molva_core::ipc::protocol::Command;
 use uuid::Uuid;
+
+#[cfg(target_os = "linux")]
+use molva_core::{
+    app::daemon::Input,
+    domain::hotkeys::{HotkeyAction, HotkeyEvent, HotkeySource, KeyState},
+    infra::hotkeys::{evdev_source::EvdevHotkeys, specs_from_config},
+};
 
 use crate::cmd::CmdError;
 
@@ -102,7 +109,7 @@ fn build_audio(config: &Config) -> Box<dyn AudioSource> {
 }
 
 /// The phrase journal: a JSONL file, or "nowhere" in the no-record mode
-fn build_journal(config: &Config) -> anyhow::Result<Box<dyn Journal>> {
+pub(crate) fn build_journal(config: &Config) -> anyhow::Result<Box<dyn Journal>> {
     if config.privacy.no_record_mode || !config.journal.enabled {
         return Ok(Box::new(NullJournal));
     }
@@ -125,7 +132,9 @@ pub(crate) fn build_llm(config: &Config) -> Option<Arc<dyn LlmClient>> {
         return None;
     }
     match OpenAiCompatClient::from_config(&config.llm, secrets::api_key(&config.llm)) {
-        Ok(client) => Some(Arc::new(client)),
+        Ok(client) => Some(Arc::new(
+            client.with_cloud_consent(config.privacy.cloud_consent),
+        )),
         Err(err) => {
             tracing::warn!(error = %err, "post-processing model unavailable, working without it");
             None
@@ -282,6 +291,106 @@ fn spawn_daemon(exe: &Path, config_path: &Path, socket: &Path) -> Result<Child, 
     })
 }
 
+/// Which keys the daemon takes for itself
+///
+/// `external` and `gui` leave the keys outside the daemon: the binds of the compositor call
+/// `molva`, and the window registers its own global hotkeys. `auto` gives the same: the path
+/// that the settings of the desktop need runs without the daemon
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HotkeyBackend {
+    Auto,
+    External,
+    Gui,
+    Evdev,
+}
+
+/// The backend that a value of `hotkeys.backend` names
+///
+/// An unknown value works as `auto` and says so in the log: a damaged or a newer settings file
+/// must not stop the daemon
+fn hotkey_backend(value: &str) -> HotkeyBackend {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "" | "auto" => HotkeyBackend::Auto,
+        "external" => HotkeyBackend::External,
+        "gui" => HotkeyBackend::Gui,
+        "evdev" => HotkeyBackend::Evdev,
+        _ => {
+            tracing::warn!(
+                value,
+                "hotkeys.backend is not auto, external, evdev or gui: working as auto"
+            );
+            HotkeyBackend::Auto
+        }
+    }
+}
+
+/// Whether a pause of the hotkeys must swallow this event
+///
+/// A key that begins a phrase is swallowed, and the release and the cancel are not: a pause
+/// during a recording must not leave the microphone open
+#[cfg(target_os = "linux")]
+fn starts_phrase(event: &HotkeyEvent) -> bool {
+    event.state == KeyState::Pressed
+        && matches!(
+            event.action,
+            HotkeyAction::PushToTalk
+                | HotkeyAction::Toggle
+                | HotkeyAction::Command
+                | HotkeyAction::StyleNext
+        )
+}
+
+/// Start the source of key events, when the settings ask the daemon to read the devices
+///
+/// `evdev` is the only backend that the daemon runs itself, so it is the only one started
+/// here. A source that will not start leaves the daemon working, and the hotkeys answer
+/// nothing; `molva doctor` shows which devices the user can read
+#[cfg(target_os = "linux")]
+fn spawn_hotkeys(config: &Config, handle: &DaemonHandle) {
+    if hotkey_backend(&config.hotkeys.backend) != HotkeyBackend::Evdev {
+        return;
+    }
+    let specs = match specs_from_config(&config.hotkeys) {
+        Ok(specs) => specs,
+        Err(err) => {
+            tracing::error!(error = %err, "hotkeys: a combination is not valid, no key works");
+            return;
+        }
+    };
+    if specs.is_empty() {
+        tracing::warn!("hotkeys: every combination is empty, nothing to listen for");
+        return;
+    }
+    let (tx, rx) = std::sync::mpsc::channel();
+    // The source blocks in `run` while it reads the devices, so the events go through a thread
+    // of their own
+    let forward = handle.clone();
+    std::thread::spawn(move || {
+        for event in rx {
+            if starts_phrase(&event) && Config::hotkeys_paused() {
+                continue;
+            }
+            forward.send_async(Input::Hotkey(event));
+        }
+    });
+    let source: Box<dyn HotkeySource> = Box::new(EvdevHotkeys::new(specs));
+    std::thread::spawn(move || {
+        if let Err(err) = source.run(tx) {
+            tracing::error!(
+                error = %err,
+                "hotkeys: the source of key events stopped; reading /dev/input/event* needs the input group"
+            );
+        }
+    });
+}
+
+#[cfg(not(target_os = "linux"))]
+fn spawn_hotkeys(config: &Config, _handle: &DaemonHandle) {
+    if hotkey_backend(&config.hotkeys.backend) == HotkeyBackend::Evdev {
+        tracing::warn!("hotkeys: evdev needs Linux; the global hotkeys of the window stay in use");
+    }
+}
+
 pub(crate) fn run(config_path: &Path, options: &Options) -> anyhow::Result<()> {
     let config = Config::load_or_create(config_path)
         .with_context(|| format!("settings {}", config_path.display()))?;
@@ -333,6 +442,7 @@ pub(crate) fn run(config_path: &Path, options: &Options) -> anyhow::Result<()> {
     let handle = daemon.handle();
     // `config.reload` and `style.set` reread the same file the daemon was started with
     handle.set_config_path(config_path.to_path_buf());
+    spawn_hotkeys(&config, &handle);
 
     let server = Server::bind(&options.socket)
         .with_context(|| format!("socket {}", options.socket.display()))?;
@@ -562,5 +672,54 @@ mod tests {
             err.message
         );
         assert!(err.message.contains("foreground"), "{}", err.message);
+    }
+
+    #[test]
+    fn only_evdev_asks_the_daemon_for_a_source_of_its_own() {
+        assert_eq!(hotkey_backend("evdev"), HotkeyBackend::Evdev);
+        assert_eq!(hotkey_backend("  Evdev "), HotkeyBackend::Evdev);
+        assert_eq!(hotkey_backend("auto"), HotkeyBackend::Auto);
+        assert_eq!(hotkey_backend("external"), HotkeyBackend::External);
+        assert_eq!(hotkey_backend("gui"), HotkeyBackend::Gui);
+    }
+
+    #[test]
+    fn an_unknown_backend_works_as_auto_and_does_not_panic() {
+        for value in ["", "   ", "keyboard", "EVDEV2", "nonsense"] {
+            assert_eq!(hotkey_backend(value), HotkeyBackend::Auto, "{value:?}");
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_pause_swallows_the_keys_that_begin_a_phrase_and_nothing_else() {
+        let event = |action, state| HotkeyEvent {
+            action,
+            state,
+            at: Instant::now(),
+        };
+        for action in [
+            HotkeyAction::PushToTalk,
+            HotkeyAction::Toggle,
+            HotkeyAction::Command,
+            HotkeyAction::StyleNext,
+        ] {
+            assert!(
+                starts_phrase(&event(action, KeyState::Pressed)),
+                "{action:?}"
+            );
+        }
+        for (action, state) in [
+            (HotkeyAction::PushToTalk, KeyState::Released),
+            (HotkeyAction::Command, KeyState::Released),
+            (HotkeyAction::Toggle, KeyState::Released),
+            (HotkeyAction::Cancel, KeyState::Pressed),
+            (HotkeyAction::Cancel, KeyState::Released),
+        ] {
+            assert!(
+                !starts_phrase(&event(action, state)),
+                "{action:?} {state:?}"
+            );
+        }
     }
 }

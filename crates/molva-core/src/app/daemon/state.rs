@@ -74,6 +74,33 @@ pub enum Input {
     Hotkey(HotkeyEvent),
 }
 
+/// The input that a hotkey event means, or `None` when it moves nothing
+///
+/// A source of key events sends `Input::Hotkey` and maps no action itself: the translation
+/// stays beside the machine that acts on its result
+pub fn input_for(event: &HotkeyEvent) -> Option<Input> {
+    match (event.action, event.state) {
+        (HotkeyAction::PushToTalk, KeyState::Pressed) => Some(Input::RecordStart {
+            mode: Mode::Dictation,
+            style: None,
+        }),
+        (HotkeyAction::Command, KeyState::Pressed) => Some(Input::RecordStart {
+            mode: Mode::Command,
+            style: None,
+        }),
+        (HotkeyAction::PushToTalk | HotkeyAction::Command, KeyState::Released) => {
+            Some(Input::RecordStop)
+        }
+        (HotkeyAction::Toggle, KeyState::Pressed) => Some(Input::RecordToggle {
+            mode: Mode::Dictation,
+            style: None,
+        }),
+        (HotkeyAction::Cancel, KeyState::Pressed) => Some(Input::RecordCancel),
+        // The release of toggle/cancel and a style change do not move the state machine
+        _ => None,
+    }
+}
+
 /// Result of a transition: what to do and what to reply to the client
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Outcome {
@@ -203,27 +230,7 @@ impl Machine {
     }
 
     fn on_hotkey(&mut self, event: HotkeyEvent) -> Outcome {
-        let input = match (event.action, event.state) {
-            (HotkeyAction::PushToTalk, KeyState::Pressed) => Some(Input::RecordStart {
-                mode: Mode::Dictation,
-                style: None,
-            }),
-            (HotkeyAction::Command, KeyState::Pressed) => Some(Input::RecordStart {
-                mode: Mode::Command,
-                style: None,
-            }),
-            (HotkeyAction::PushToTalk | HotkeyAction::Command, KeyState::Released) => {
-                Some(Input::RecordStop)
-            }
-            (HotkeyAction::Toggle, KeyState::Pressed) => Some(Input::RecordToggle {
-                mode: Mode::Dictation,
-                style: None,
-            }),
-            (HotkeyAction::Cancel, KeyState::Pressed) => Some(Input::RecordCancel),
-            // The release of toggle/cancel and a style change do not move the state machine
-            _ => None,
-        };
-        match input {
+        match input_for(&event) {
             Some(input) => self.apply(input, event.at),
             None => Outcome::nothing(),
         }
@@ -850,6 +857,76 @@ mod tests {
         }));
         assert!(out.actions.is_empty());
         assert_eq!(m.state(), DaemonState::Idle);
+    }
+
+    fn event(action: HotkeyAction, state: KeyState) -> HotkeyEvent {
+        HotkeyEvent {
+            action,
+            state,
+            at: Instant::now(),
+        }
+    }
+
+    #[test]
+    fn a_push_to_talk_press_starts_and_its_release_stops() {
+        assert_eq!(
+            input_for(&event(HotkeyAction::PushToTalk, KeyState::Pressed)),
+            Some(Input::RecordStart {
+                mode: Mode::Dictation,
+                style: None
+            })
+        );
+        assert_eq!(
+            input_for(&event(HotkeyAction::PushToTalk, KeyState::Released)),
+            Some(Input::RecordStop)
+        );
+    }
+
+    #[test]
+    fn a_toggle_press_toggles() {
+        assert_eq!(
+            input_for(&event(HotkeyAction::Toggle, KeyState::Pressed)),
+            Some(toggle())
+        );
+    }
+
+    #[test]
+    fn a_command_press_records_in_command_mode_and_its_release_stops() {
+        assert_eq!(
+            input_for(&event(HotkeyAction::Command, KeyState::Pressed)),
+            Some(Input::RecordStart {
+                mode: Mode::Command,
+                style: None
+            })
+        );
+        assert_eq!(
+            input_for(&event(HotkeyAction::Command, KeyState::Released)),
+            Some(Input::RecordStop)
+        );
+    }
+
+    #[test]
+    fn a_cancel_press_cancels() {
+        assert_eq!(
+            input_for(&event(HotkeyAction::Cancel, KeyState::Pressed)),
+            Some(Input::RecordCancel)
+        );
+    }
+
+    #[test]
+    fn the_events_that_move_nothing_give_no_input() {
+        for (action, state) in [
+            (HotkeyAction::Toggle, KeyState::Released),
+            (HotkeyAction::Cancel, KeyState::Released),
+            (HotkeyAction::StyleNext, KeyState::Pressed),
+            (HotkeyAction::StyleNext, KeyState::Released),
+        ] {
+            assert_eq!(
+                input_for(&event(action, state)),
+                None,
+                "{action:?} {state:?}"
+            );
+        }
     }
 
     #[test]

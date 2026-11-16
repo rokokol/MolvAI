@@ -7,7 +7,9 @@
 use std::path::Path;
 use std::time::Duration;
 
+use molva_core::app::engine::{self, EngineChoice};
 use molva_core::app::models;
+use molva_core::app::probe;
 use molva_core::app::secrets::{self, OsKeyring, SecretStore};
 use molva_core::domain::llm::LlmError;
 use molva_core::infra::inject::clipboard::SystemClipboard;
@@ -110,6 +112,27 @@ pub(crate) fn whisper_model_check(config: &Config) -> Check {
     }
 }
 
+/// The program that the default GigaAM model runs
+///
+/// The weights can be in place and the program absent, and then the daemon starts and looks
+/// healthy while every phrase fails. The line names the way out, because the error of the first
+/// phrase sends the person here
+pub(crate) fn transcribe_cli_check(config: &Config) -> Check {
+    const NAME: &str = "transcribe-cli";
+    const NEXT: &str =
+        "install transcribe.cpp, set stt.transcribe_cli, or choose a whisper model in stt.model";
+    let configured = config.stt.transcribe_cli.trim();
+    match probe::transcribe_cli_program(configured) {
+        Some(path) => Check::new(NAME, true, path.display().to_string()),
+        None if configured.is_empty() => Check::new(
+            NAME,
+            false,
+            format!("not found beside the molva binary or in PATH; {NEXT}"),
+        ),
+        None => Check::new(NAME, false, format!("{configured} is not there; {NEXT}")),
+    }
+}
+
 /// The language model: switched off in the settings, or the provider answers and knows the
 /// configured model
 pub(crate) fn llm_check(config: &Config) -> Check {
@@ -121,26 +144,17 @@ pub(crate) fn llm_check(config: &Config) -> Check {
         );
     }
     let provider = Provider::parse(&config.llm.provider);
-    let base_url = if config.llm.base_url.trim().is_empty() {
-        provider.default_base_url().to_string()
-    } else {
-        config.llm.base_url.clone()
-    };
+    let base_url =
+        molva_core::infra::llm::openai_compat::configured_base_url(&config.llm).to_string();
     let client = match OpenAiCompatClient::new(
         base_url.clone(),
         config.llm.model.clone(),
         secrets::api_key(&config.llm),
         LLM_PROBE_TIMEOUT,
         provider.id(),
-        // The address decides, as in the client itself: Ollama Cloud answers at the same provider
-        // id and is not this machine
-        if config.llm.base_url.trim().is_empty() {
-            provider.is_local_by_default()
-        } else {
-            molva_core::infra::llm::openai_compat::is_loopback_url(&base_url)
-        },
+        molva_core::infra::llm::openai_compat::is_loopback_url(&base_url),
     ) {
-        Ok(client) => client,
+        Ok(client) => client.with_cloud_consent(config.privacy.cloud_consent),
         Err(error) => return client_not_built(&error),
     };
     match client.list_models() {
@@ -260,6 +274,9 @@ pub(crate) fn checks_with(socket: &Path, config: &Config, store: &dyn SecretStor
         ),
     });
     checks.push(whisper_model_check(config));
+    if engine::resolve_engine(config, &EngineChoice::default()) == "transcribe-cpp" {
+        checks.push(transcribe_cli_check(config));
+    }
     checks.push(llm_check(config));
     checks.push(keyring_check(store));
     checks
@@ -322,11 +339,74 @@ mod tests {
             "/dev/uinput",
             "daemon",
             "whisper model",
+            "transcribe-cli",
             "LLM",
             "key store",
         ] {
             assert!(names.contains(&expected), "{names:?}");
         }
+    }
+
+    #[test]
+    fn a_whisper_setting_leaves_the_gigaam_program_out_of_the_report() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut config = offline_config(directory.path());
+        config.stt.engine = "whisper-cpp".into();
+        config.stt.model = "small".into();
+        let checks = checks_with(
+            &directory.path().join("absent.sock"),
+            &config,
+            &MemoryStore::new(),
+        );
+        let names: Vec<&str> = checks.iter().map(|c| c.name.as_str()).collect();
+        assert!(!names.contains(&"transcribe-cli"), "{names:?}");
+    }
+
+    #[test]
+    fn a_missing_program_of_the_default_model_names_the_way_out() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut config = offline_config(directory.path());
+        let missing = directory.path().join("no-such-cli");
+        config.stt.transcribe_cli = missing.display().to_string();
+        let check = transcribe_cli_check(&config);
+        assert!(!check.ok);
+        assert!(
+            check.detail.contains(&missing.display().to_string()),
+            "{}",
+            check.detail
+        );
+        assert!(check.detail.contains("transcribe.cpp"), "{}", check.detail);
+        assert!(check.detail.contains("stt.model"), "{}", check.detail);
+    }
+
+    #[test]
+    fn the_verdict_of_the_program_follows_the_search() {
+        // The default setting names no program, so the answer comes from this machine: the line
+        // must wrap that answer as it is, and a missing one must carry the next step
+        let directory = tempfile::tempdir().unwrap();
+        let config = offline_config(directory.path());
+        assert!(config.stt.transcribe_cli.is_empty());
+        let check = transcribe_cli_check(&config);
+        let found = probe::transcribe_cli_program(&config.stt.transcribe_cli);
+        assert_eq!(check.ok, found.is_some(), "{}", check.detail);
+        if let Some(path) = found {
+            assert_eq!(check.detail, path.display().to_string());
+        } else {
+            assert!(check.detail.contains("transcribe.cpp"), "{}", check.detail);
+            assert!(check.detail.contains("stt.model"), "{}", check.detail);
+        }
+    }
+
+    #[test]
+    fn a_found_program_is_reported_with_its_path() {
+        let directory = tempfile::tempdir().unwrap();
+        let cli = directory.path().join("transcribe-cli");
+        std::fs::write(&cli, "#!/bin/sh\n").unwrap();
+        let mut config = offline_config(directory.path());
+        config.stt.transcribe_cli = cli.display().to_string();
+        let check = transcribe_cli_check(&config);
+        assert!(check.ok, "{}", check.detail);
+        assert_eq!(check.detail, cli.display().to_string());
     }
 
     #[test]

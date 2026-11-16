@@ -32,7 +32,7 @@ Offer the user one of three methods and explain the difference in one sentence e
 
 ### Step 3. Install the dependencies
 
-Run `./install.sh --check` and show the output. The script prints what is missing and commands like `  $ sudo apt install …`. Run exactly those commands and add nothing of your own. Guides for the systems:
+Run `./install.sh --check` and show the output. The script prints what is missing and commands like `  $ sudo apt install …`. Run exactly those commands and add nothing of your own. A warning about `transcribe-cli` may appear as well: the script installs nothing for it, and step 5 decides what to do. Guides for the systems:
 
 - Debian, Ubuntu: `sudo apt install build-essential cmake pkg-config libasound2-dev libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxkbcommon-dev`
 - Fedora: `sudo dnf install gcc-c++ cmake pkgconf-pkg-config alsa-lib-devel webkit2gtk4.1-devel gtk3-devel libappindicator-gtk3-devel librsvg2-devel libxkbcommon-devel`
@@ -53,13 +53,33 @@ cargo build --release --bin molva
 
 Make sure that the binary answers: `molva --version`
 
-### Step 5. Download the model
+### Step 5. Choose the recognizer and download the model
+
+The model and the engine that runs it are chosen together, and `molva` takes the engine from the catalog entry of the model, so the user chooses the model
+
+The default is `gigaam-v3-e2e-rnnt-q4_k_m`: Russian, cased and punctuated, and it runs on the processor. It is not a whisper file, so it needs the external program `transcribe-cli` from [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp). The weights alone are not enough: without that program `molva` starts, looks healthy and fails every phrase. On NixOS the flake installs it through `programs.molvai.transcribeCli`, and nothing is done by hand there
+
+Find out whether it is there:
 
 ```sh
-molva models pull small
+molva doctor
 ```
 
-Ask the user which model they need and explain the choice. `base` is faster and worse. `small` is a reasonable compromise and the default. `large-v3-turbo` is clearly more accurate but needs more memory and time. The weights come from Hugging Face and are checked against SHA-256. They are not part of the repository, and their licenses are in [model-licenses.md](model-licenses.md)
+The `transcribe-cli` line answers while the engine is `transcribe-cpp`, which is what the default model asks for, and it names the way out when the program is absent. Then offer the user the choice in one sentence each:
+
+- install transcribe.cpp, build `transcribe-cli` and put it in `PATH`, or write its path into `stt.transcribe_cli`; the GigaAM model then works, and it gives the best Russian
+- take a whisper model instead, which `molva` computes itself and which needs no external program. `base` is faster and worse, `small` is a reasonable compromise, `large-v3-turbo` is clearly more accurate but needs more memory and time
+
+Download the weights:
+
+```sh
+molva models pull gigaam-v3-e2e-rnnt-q4_k_m    # or: molva models pull small
+molva models list                              # what is on the disk
+```
+
+The weights come from Hugging Face and are checked against SHA-256. They are not part of the repository, and their licenses are in [model-licenses.md](model-licenses.md)
+
+Check the choice before going on. `molva doctor` prints a line for the weights and a line for `transcribe-cli`. In the GUI the Settings tab has the "Test recognition" button: it builds the engine from the settings shown on the screen, checks the weights and `transcribe-cli`, and records nothing
 
 ### Step 6. Choose the microphone
 

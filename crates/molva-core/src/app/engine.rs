@@ -8,6 +8,7 @@
 use thiserror::Error;
 
 use crate::app::models::{self, ModelError};
+use crate::app::probe;
 use crate::config::Config;
 use crate::domain::fakes::FakeStt;
 use crate::domain::stt::SttEngine;
@@ -26,6 +27,13 @@ pub enum EngineError {
     Unknown(String),
     #[error("engine not available in this build: {0}")]
     NotAvailable(String),
+    /// The program that the engine shells out to is not on this machine: the weights alone load
+    /// nothing, so the failure belongs to the build and not to the first phrase
+    #[error(
+        "cannot find transcribe-cli{wanted}, which runs the model {model}: install transcribe.cpp, \
+         set stt.transcribe_cli to the binary, or choose a whisper model in stt.model"
+    )]
+    CliMissing { model: String, wanted: String },
     #[error(transparent)]
     Model(#[from] ModelError),
 }
@@ -80,6 +88,14 @@ pub fn resolve_engine(cfg: &Config, choice: &EngineChoice) -> String {
     }
 }
 
+/// Where the settings name the program, when they name a place
+fn configured_cli(configured: &str) -> String {
+    match configured.trim() {
+        "" => String::new(),
+        path => format!(" at {path}"),
+    }
+}
+
 /// Build the engine with the full set of overrides
 pub fn build_stt_with(
     cfg: &Config,
@@ -104,11 +120,22 @@ pub fn build_stt_with(
             )))
         }
         "transcribe-cpp" => {
+            // The weights are half of what this engine needs; the program it runs is the other
+            // half. A missing program failed every phrase with one error after a start that
+            // looked healthy. The found path goes into the engine, because the search also
+            // reaches beside the running binary, and the bare name would not
+            let program =
+                probe::transcribe_cli_program(&cfg.stt.transcribe_cli).ok_or_else(|| {
+                    EngineError::CliMissing {
+                        model: model.to_string(),
+                        wanted: configured_cli(&cfg.stt.transcribe_cli),
+                    }
+                })?;
             let path = models::installed_path(cfg, model)?;
             Ok(Box::new(TranscribeCppEngine::new(
                 path,
                 model.to_string(),
-                cfg.stt.transcribe_cli.clone(),
+                program.display().to_string(),
                 cfg.stt.transcribe_backend.clone(),
                 cfg.stt.threads as usize,
             )))
@@ -209,16 +236,69 @@ mod tests {
     #[test]
     fn auto_engine_follows_the_catalog() {
         let directory = tempfile::tempdir().unwrap();
-        std::fs::write(
-            directory.path().join("gigaam-v3-e2e-rnnt-Q4_K_M.gguf"),
-            "weights",
-        )
-        .unwrap();
-        let mut cfg = cfg_with_models_dir(directory.path());
+        let mut cfg = gigaam_config(directory.path());
         cfg.stt.engine = "auto".into();
-        cfg.stt.model = "gigaam-v3-e2e-rnnt-q4_k_m".into();
+        let cli = directory.path().join("transcribe-cli");
+        std::fs::write(&cli, "#!/bin/sh\n").unwrap();
+        cfg.stt.transcribe_cli = cli.display().to_string();
         let engine = build_stt(&cfg, None).expect("the GigaAM weights are in place");
         assert_eq!(engine.id(), "transcribe-cpp");
+    }
+
+    /// The default model with its weights in place: only the program it runs varies
+    fn gigaam_config(directory: &std::path::Path) -> Config {
+        std::fs::write(directory.join("gigaam-v3-e2e-rnnt-Q4_K_M.gguf"), "weights").unwrap();
+        let mut cfg = cfg_with_models_dir(directory);
+        cfg.stt.model = "gigaam-v3-e2e-rnnt-q4_k_m".into();
+        cfg
+    }
+
+    #[test]
+    fn the_default_model_without_its_program_fails_before_the_first_phrase() {
+        let directory = tempfile::tempdir().unwrap();
+        let cfg = gigaam_config(directory.path());
+        // The premise of this case is a machine without transcribe.cpp. The search reads PATH
+        // and the directory of this test binary, and the test controls neither
+        assert!(
+            probe::transcribe_cli_program("").is_none(),
+            "transcribe-cli is installed on this machine: the case needs it absent"
+        );
+        let err = build_stt(&cfg, None).unwrap_err().to_string();
+        assert!(err.contains("transcribe-cli"), "{err}");
+        assert!(err.contains("stt.transcribe_cli"), "{err}");
+        assert!(err.contains("stt.model"), "{err}");
+    }
+
+    #[test]
+    fn a_named_program_that_is_absent_is_named_in_the_error() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut cfg = gigaam_config(directory.path());
+        let missing = directory.path().join("no-such-cli");
+        cfg.stt.transcribe_cli = missing.display().to_string();
+        let err = build_stt(&cfg, None).unwrap_err().to_string();
+        assert!(err.contains("transcribe-cli"), "{err}");
+        assert!(err.contains(&missing.display().to_string()), "{err}");
+    }
+
+    #[test]
+    fn a_present_program_builds_the_gigaam_engine() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut cfg = gigaam_config(directory.path());
+        let cli = directory.path().join("transcribe-cli");
+        std::fs::write(&cli, "#!/bin/sh\n").unwrap();
+        cfg.stt.transcribe_cli = cli.display().to_string();
+        let engine = build_stt(&cfg, None).expect("the weights and the program are in place");
+        assert_eq!(engine.id(), "transcribe-cpp");
+    }
+
+    #[test]
+    fn a_whisper_model_is_built_without_any_transcribe_cli() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("ggml-tiny.bin"), "not real weights").unwrap();
+        let cfg = cfg_with_models_dir(directory.path());
+        assert!(cfg.stt.transcribe_cli.is_empty());
+        let engine = build_stt(&cfg, Some("tiny")).expect("whisper needs no external program");
+        assert_eq!(engine.id(), "whisper-cpp");
     }
 
     #[test]

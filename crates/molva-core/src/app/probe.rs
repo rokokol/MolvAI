@@ -5,7 +5,8 @@
 // microphone or records a phrase. They live here, and not in the window, because the daemon owns
 // the key source, the engine factory and the environment that the engine needs
 
-use std::path::PathBuf;
+use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -19,6 +20,9 @@ use crate::infra::llm::OpenAiCompatClient;
 
 /// Prompt of the model test: it carries nothing the person dictated
 pub const LLM_PROBE_PROMPT: &str = "Reply with the single word: ok";
+
+/// The program behind the default GigaAM model
+pub const TRANSCRIBE_CLI: &str = "transcribe-cli";
 
 const LLM_PROBE_SYSTEM: &str = "This is a connectivity check. Answer in one word.";
 const LLM_PROBE_ANSWER: usize = 200;
@@ -86,10 +90,6 @@ pub struct SttProbeReport {
     pub checks: Vec<SttProbeCheck>,
 }
 
-fn cloud_provider(provider: &str) -> bool {
-    !matches!(provider, "ollama" | "lmstudio" | "custom")
-}
-
 fn request_for(cfg: &LlmConfig) -> ChatRequest {
     ChatRequest {
         model: cfg.model.clone(),
@@ -119,7 +119,7 @@ fn complete_with_retries(
                 }
                 return Ok((response.text, attempt, started.elapsed().as_millis() as u64));
             }
-            Err(LlmError::Auth) => return Err(LlmError::Auth),
+            Err(err @ (LlmError::Auth | LlmError::Consent)) => return Err(err),
             Err(err) => last = err,
         }
     }
@@ -160,14 +160,8 @@ pub fn llm_probe(config: &Config) -> ProbeOutcome<LlmProbeReport> {
             }),
         };
     }
-    if cloud_provider(&cfg.provider) && !config.privacy.cloud_consent {
-        return ProbeOutcome {
-            report: None,
-            error: Some(ProbeFailure::Consent),
-        };
-    }
     let client = match OpenAiCompatClient::from_config(cfg, probe_api_key(cfg)) {
-        Ok(client) => client,
+        Ok(client) => client.with_cloud_consent(config.privacy.cloud_consent),
         Err(err) => {
             return ProbeOutcome {
                 report: None,
@@ -181,7 +175,11 @@ pub fn llm_probe(config: &Config) -> ProbeOutcome<LlmProbeReport> {
             Err(err) => {
                 return ProbeOutcome {
                     report: None,
-                    error: Some(ProbeFailure::Llm(err)),
+                    error: Some(if err == LlmError::Consent {
+                        ProbeFailure::Consent
+                    } else {
+                        ProbeFailure::Llm(err)
+                    }),
                 }
             }
         };
@@ -195,10 +193,45 @@ pub fn llm_probe(config: &Config) -> ProbeOutcome<LlmProbeReport> {
     })
 }
 
-/// Where a program of `PATH` would be found, or `None`
-fn program_in_path(program: &str) -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
+/// The directory of the running binary: an AppImage and a package keep their helpers beside it,
+/// and no such directory is in `PATH`
+fn executable_directory() -> Option<PathBuf> {
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(Path::to_path_buf))
+}
+
+/// The program that the recognition engine will execute, in the order the engine tries it: the
+/// value of `stt.transcribe_cli`, a copy beside the running binary, then `PATH`
+pub fn transcribe_cli_program(configured: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH");
+    transcribe_cli_at(
+        configured,
+        executable_directory().as_deref(),
+        path.as_deref(),
+    )
+}
+
+/// The same search with its environment in the arguments: a test places the program in a
+/// directory of its own instead of depending on where the test binary stands and on `PATH`
+fn transcribe_cli_at(
+    configured: &str,
+    exe_dir: Option<&Path>,
+    path: Option<&OsStr>,
+) -> Option<PathBuf> {
+    let configured = configured.trim();
+    if !configured.is_empty() {
+        let named = expand_tilde(configured);
+        return named.is_file().then_some(named);
+    }
+    let neighbour = exe_dir
+        .map(|directory| directory.join(TRANSCRIBE_CLI))
+        .filter(|candidate| candidate.is_file());
+    neighbour.or_else(|| program_in_dirs(TRANSCRIBE_CLI, std::env::split_paths(path?)))
+}
+
+fn program_in_dirs(program: &str, directories: impl Iterator<Item = PathBuf>) -> Option<PathBuf> {
+    directories
         .map(|directory| directory.join(program))
         .find(|candidate| candidate.is_file())
 }
@@ -218,14 +251,7 @@ fn expand_tilde(input: &str) -> PathBuf {
 
 /// The program that the recognition engine will execute
 fn transcribe_cli_check(configured: &str) -> SttProbeCheck {
-    let configured = configured.trim();
-    let found = if configured.is_empty() {
-        program_in_path("transcribe-cli")
-    } else {
-        let path = expand_tilde(configured);
-        path.is_file().then_some(path)
-    };
-    match found {
+    match transcribe_cli_program(configured) {
         Some(path) => SttProbeCheck {
             id: "cli".into(),
             ok: true,
@@ -378,6 +404,15 @@ mod tests {
     }
 
     #[test]
+    fn a_remote_draft_needs_consent_regardless_of_provider_name() {
+        for provider in ["custom", "ollama", "lmstudio"] {
+            let mut config = local_draft("http://0.0.0.0:9/v1");
+            config.llm.provider = provider.into();
+            assert_eq!(llm_probe(&config).error, Some(ProbeFailure::Consent));
+        }
+    }
+
+    #[test]
     fn a_draft_without_a_model_names_the_field() {
         let mut config = local_draft("http://127.0.0.1:9/v1");
         config.llm.model = "  ".into();
@@ -455,5 +490,63 @@ mod tests {
         assert!(!report.ok);
         assert_eq!(report.engine, "remote-openai");
         assert_eq!(report.checks.len(), 1, "{report:?}");
+    }
+
+    /// A stand-in for the transcribe.cpp program: the search looks at the file alone
+    fn program(directory: &Path) -> PathBuf {
+        let path = directory.join(TRANSCRIBE_CLI);
+        std::fs::write(&path, "#!/bin/sh\n").unwrap();
+        path
+    }
+
+    #[test]
+    fn the_named_program_wins_over_a_neighbour_and_the_path() {
+        let named = tempfile::tempdir().unwrap();
+        let beside = tempfile::tempdir().unwrap();
+        let in_path = tempfile::tempdir().unwrap();
+        let named_program = program(named.path());
+        program(beside.path());
+        program(in_path.path());
+        let found = transcribe_cli_at(
+            &named_program.display().to_string(),
+            Some(beside.path()),
+            Some(in_path.path().as_os_str()),
+        );
+        assert_eq!(found, Some(named_program));
+    }
+
+    #[test]
+    fn a_program_beside_the_binary_is_found_with_an_empty_setting_and_path() {
+        let beside = tempfile::tempdir().unwrap();
+        let empty_path = tempfile::tempdir().unwrap();
+        let expected = program(beside.path());
+        for configured in ["", "   "] {
+            let found = transcribe_cli_at(
+                configured,
+                Some(beside.path()),
+                Some(empty_path.path().as_os_str()),
+            );
+            assert_eq!(found, Some(expected.clone()), "{configured:?}");
+        }
+    }
+
+    #[test]
+    fn the_path_is_the_last_place_searched() {
+        let beside = tempfile::tempdir().unwrap();
+        let in_path = tempfile::tempdir().unwrap();
+        let expected = program(in_path.path());
+        let found = transcribe_cli_at("", Some(beside.path()), Some(in_path.path().as_os_str()));
+        assert_eq!(found, Some(expected));
+    }
+
+    #[test]
+    fn a_program_nowhere_is_reported_as_missing() {
+        let beside = tempfile::tempdir().unwrap();
+        let empty_path = tempfile::tempdir().unwrap();
+        assert_eq!(
+            transcribe_cli_at("", Some(beside.path()), Some(empty_path.path().as_os_str())),
+            None
+        );
+        assert_eq!(transcribe_cli_at("", None, None), None);
     }
 }

@@ -375,6 +375,25 @@ if ((${#absent[@]})); then
   echo "install.sh: without them paste falls back to the clipboard — a working mode, but not the best one" >&2
 fi
 
+# transcribe-cli is not a dependency of the build: molva starts and looks healthy without it,
+# and every phrase fails on the default GigaAM model. A warning, not a refusal, because a whisper
+# model is computed inside molva and needs no external program. The order of the search is the
+# one the engine uses (crates/molva-core/src/app/probe.rs): stt.transcribe_cli, a copy beside the
+# binary, then PATH. The setting is not read here, so a warning is all this check can give
+transcribe_cli_found=0
+if command -v transcribe-cli >/dev/null 2>&1; then
+  transcribe_cli_found=1
+elif [[ -f "$here/target/release/transcribe-cli" || -f "$PREFIX/bin/transcribe-cli" ]]; then
+  transcribe_cli_found=1
+fi
+if ((transcribe_cli_found == 0)); then
+  echo "install.sh: transcribe-cli is not in PATH or beside the molva binary, the install goes on" >&2
+  echo "install.sh: the default GigaAM model runs on it, so dictation fails until it is there: either" >&2
+  echo "install.sh: install transcribe.cpp and put transcribe-cli in PATH (or name it in" >&2
+  echo "install.sh: stt.transcribe_cli), or pull a whisper model, which needs no external program" >&2
+  echo "install.sh:   molva models pull small" >&2
+fi
+
 if ((CHECK_ONLY)); then
   echo "install.sh: the required dependencies are present, the install is possible"
   exit 0
@@ -452,5 +471,9 @@ case ":$PATH:" in
 esac
 
 echo
-echo "Next: molva model download small && molva devices && molva test-inject"
+if ((transcribe_cli_found)); then
+  echo "Next: molva models pull gigaam-v3-e2e-rnnt-q4_k_m && molva devices && molva test-inject"
+else
+  echo "Next: molva models pull small && molva devices && molva test-inject"
+fi
 echo "Uninstall: $here/install.sh --uninstall"
