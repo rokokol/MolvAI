@@ -325,8 +325,14 @@ pub async fn stt_models(state: State<'_, AppState>) -> Result<Vec<SttModelOption
 
 /// Whether this build can recognize through a remote API
 ///
-/// The question is put to the engine factory rather than answered from a list: the day the
-/// core builds a remote client, the settings page stops saying "unavailable" by itself
+/// The question is put to the engine factory rather than answered from a list: a build that
+/// drops the cloud engine answers `false` here on its own. A missing address or key is not this
+/// question — the factory names it in `EngineError::RemoteConfig`, and the settings page reports
+/// that from the probe instead of hiding the engine.
+///
+/// The settings page no longer asks: every build of this version carries the cloud engine, and
+/// the page shows its fields and the consent warning instead of hiding them behind an answer
+#[cfg(test)]
 pub fn remote_stt_available(config: &Config) -> bool {
     let mut probe = config.clone();
     probe.stt.engine = "remote-openai".into();
@@ -336,13 +342,6 @@ pub fn remote_stt_available(config: &Config) -> bool {
     )
 }
 
-#[tauri::command]
-pub async fn stt_remote_available(state: State<'_, AppState>) -> Result<bool, CommandError> {
-    let config = state.config();
-    tauri::async_runtime::spawn_blocking(move || remote_stt_available(&config))
-        .await
-        .map_err(|error| CommandError::new("internal", error.to_string()))
-}
 
 /// The key of one provider as the page may show it: never the value
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -1477,6 +1476,10 @@ pub async fn set_autostart<R: Runtime>(
     app: AppHandle<R>,
     enabled: bool,
 ) -> Result<bool, CommandError> {
+    // The module of a declarative home writes the entry itself: switching the plugin off would
+    // leave that entry in place and the window would start again at the next login, while the
+    // switch said off
+    refuse_managed_autostart(managed_autostart_file().is_some_and(|path| path.exists()))?;
     tauri::async_runtime::spawn_blocking(move || {
         use tauri_plugin_autostart::ManagerExt;
         let manager = app.autolaunch();
@@ -1493,6 +1496,26 @@ pub async fn set_autostart<R: Runtime>(
     })
     .await
     .map_err(|error| CommandError::new("internal", error.to_string()))?
+}
+
+/// Whether the autostart entry belongs to the Nix module rather than to this window
+///
+/// The page asks before it draws the switch: an entry it cannot remove must not look like one it
+/// can
+#[tauri::command]
+pub fn autostart_managed() -> bool {
+    managed_autostart_file().is_some_and(|path| path.exists())
+}
+
+/// A window cannot turn off an entry that a configuration wrote
+fn refuse_managed_autostart(managed: bool) -> Result<(), CommandError> {
+    if !managed {
+        return Ok(());
+    }
+    Err(
+        CommandError::new("autostart", i18n::t("error.autostartManaged"))
+            .with_hint(Some(i18n::t("settings.autostartManagedHint"))),
+    )
 }
 
 /// The XDG autostart entry that the Nix module writes, independent of the plugin's own file
@@ -1517,45 +1540,80 @@ pub async fn get_autostart<R: Runtime>(app: AppHandle<R>) -> bool {
 }
 
 // --- History ---
+//
+// Reading the journal parses every line of it, sorts it and copies what the filters keep: tens
+// of milliseconds on a journal of ten thousand phrases, and seconds on the journal of a person
+// who dictates for years. A command without `async` runs on the thread that answers the window,
+// so the work of the journal goes to the blocking pool and the window stays answerable
+
+/// How long the window waits for one journal operation before the task counts as lost
+const JOURNAL_WORK: &str = "the journal operation was interrupted";
 
 #[tauri::command]
-pub fn history_list(
+pub async fn history_list(
     state: State<'_, AppState>,
     filter: Option<Filter>,
 ) -> Result<Vec<Entry>, CommandError> {
-    let entries = history::load_for(&state.config())?;
-    Ok(history::filter_entries(
-        entries,
-        &filter.unwrap_or_default(),
-    ))
+    let config = state.config();
+    tauri::async_runtime::spawn_blocking(move || -> Result<Vec<Entry>, CommandError> {
+        let entries = history::load_for(&config)?;
+        Ok(history::filter_entries(
+            entries,
+            &filter.unwrap_or_default(),
+        ))
+    })
+    .await
+    .map_err(|error| CommandError::new("internal", format!("{JOURNAL_WORK}: {error}")))?
 }
 
 #[tauri::command]
-pub fn history_apps(state: State<'_, AppState>) -> Result<Vec<String>, CommandError> {
-    Ok(history::apps_of(&history::load_for(&state.config())?))
+pub async fn history_apps(state: State<'_, AppState>) -> Result<Vec<String>, CommandError> {
+    let config = state.config();
+    tauri::async_runtime::spawn_blocking(move || -> Result<Vec<String>, CommandError> {
+        Ok(history::apps_of(&history::load_for(&config)?))
+    })
+    .await
+    .map_err(|error| CommandError::new("internal", format!("{JOURNAL_WORK}: {error}")))?
 }
 
 #[tauri::command]
-pub fn search_files(
+pub async fn search_files(
     state: State<'_, AppState>,
     query: String,
     limit: usize,
 ) -> Result<Vec<molva_core::app::search::Hit>, CommandError> {
-    let entries = history::load_for(&state.config())?;
-    Ok(molva_core::app::search::search(&entries, &query, limit))
+    let config = state.config();
+    tauri::async_runtime::spawn_blocking(
+        move || -> Result<Vec<molva_core::app::search::Hit>, CommandError> {
+            let entries = history::load_for(&config)?;
+            Ok(molva_core::app::search::search(&entries, &query, limit))
+        },
+    )
+    .await
+    .map_err(|error| CommandError::new("internal", format!("{JOURNAL_WORK}: {error}")))?
 }
 
 #[tauri::command]
-pub fn history_delete(state: State<'_, AppState>, id: String) -> Result<bool, CommandError> {
+pub async fn history_delete(state: State<'_, AppState>, id: String) -> Result<bool, CommandError> {
     let id = Uuid::parse_str(&id)
         .map_err(|e| CommandError::new("history", format!("invalid id: {e}")))?;
-    Ok(history::delete(&state.config(), id)?)
+    let config = state.config();
+    tauri::async_runtime::spawn_blocking(move || -> Result<bool, CommandError> {
+        Ok(history::delete(&config, id)?)
+    })
+    .await
+    .map_err(|error| CommandError::new("internal", format!("{JOURNAL_WORK}: {error}")))?
 }
 
 #[tauri::command]
-pub fn history_clear(state: State<'_, AppState>) -> Result<(), CommandError> {
-    let path = history::journal_path(&state.config())?;
-    Ok(history::clear(&path)?)
+pub async fn history_clear(state: State<'_, AppState>) -> Result<(), CommandError> {
+    let config = state.config();
+    tauri::async_runtime::spawn_blocking(move || -> Result<(), CommandError> {
+        let path = history::journal_path(&config)?;
+        Ok(history::clear(&path)?)
+    })
+    .await
+    .map_err(|error| CommandError::new("internal", format!("{JOURNAL_WORK}: {error}")))?
 }
 
 #[tauri::command]
@@ -1574,22 +1632,26 @@ pub fn open_path<R: Runtime>(app: AppHandle<R>, path: String) -> Result<(), Comm
 // --- Statistics ---
 
 #[tauri::command]
-pub fn stats_summary(
+pub async fn stats_summary(
     state: State<'_, AppState>,
     range_days: Option<u32>,
 ) -> Result<StatsSummary, CommandError> {
     let config = state.config();
-    let entries = history::load_for(&config)?;
-    Ok(stats::summary(
-        &entries,
-        Utc::now(),
-        &config.stats,
-        range_days.unwrap_or(7),
-    ))
+    tauri::async_runtime::spawn_blocking(move || -> Result<StatsSummary, CommandError> {
+        let entries = history::load_for(&config)?;
+        Ok(stats::summary(
+            &entries,
+            Utc::now(),
+            &config.stats,
+            range_days.unwrap_or(7),
+        ))
+    })
+    .await
+    .map_err(|error| CommandError::new("internal", format!("{JOURNAL_WORK}: {error}")))?
 }
 
 #[tauri::command]
-pub fn stats_export_csv(
+pub async fn stats_export_csv(
     state: State<'_, AppState>,
     range_days: Option<u32>,
 ) -> Result<String, CommandError> {
@@ -1597,13 +1659,17 @@ pub fn stats_export_csv(
     // second shape built from the day series would be a second answer to the same question
     let _ = range_days;
     let config = state.config();
-    let entries = history::load_for(&config)?;
-    let dir = history::data_dir()?;
-    std::fs::create_dir_all(&dir).map_err(|e| CommandError::new("history", e.to_string()))?;
-    let path = dir.join(format!("molva-stats-{}.csv", Utc::now().format("%Y-%m-%d")));
-    std::fs::write(&path, stats::export_csv(&entries))
-        .map_err(|e| CommandError::new("history", e.to_string()))?;
-    Ok(path.display().to_string())
+    tauri::async_runtime::spawn_blocking(move || -> Result<String, CommandError> {
+        let entries = history::load_for(&config)?;
+        let dir = history::data_dir()?;
+        std::fs::create_dir_all(&dir).map_err(|e| CommandError::new("history", e.to_string()))?;
+        let path = dir.join(format!("molva-stats-{}.csv", Utc::now().format("%Y-%m-%d")));
+        std::fs::write(&path, stats::export_csv(&entries))
+            .map_err(|e| CommandError::new("history", e.to_string()))?;
+        Ok(path.display().to_string())
+    })
+    .await
+    .map_err(|error| CommandError::new("internal", format!("{JOURNAL_WORK}: {error}")))?
 }
 
 /// A stage of one file transcription, as the window shows it
@@ -1638,6 +1704,24 @@ pub struct TranscribeProgress {
 /// The daemon refuses a file while a person records, and the refusal is the right answer: the
 /// phrase is gone if it is not delivered. The window keeps asking, because the file can wait
 const FILE_BUSY_WAIT: Duration = Duration::from_secs(60);
+
+/// Identifier of the file job that the window waits for, and that `file_cancel` names
+///
+/// The one-file rule of the daemon is not enough on this side: the window may press cancel while
+/// its own job still waits for a daemon that is busy, and the cancel must then reach that job and
+/// no other
+static RUNNING_FILE_JOB: Mutex<Option<String>> = Mutex::new(None);
+
+/// Clear the identifier of the running job however its transcription ends
+struct JobMark;
+
+impl Drop for JobMark {
+    fn drop(&mut self) {
+        if let Ok(mut slot) = RUNNING_FILE_JOB.lock() {
+            *slot = None;
+        }
+    }
+}
 
 /// Transcribe one file through the daemon
 ///
@@ -1685,7 +1769,13 @@ pub async fn transcribe_file<R: Runtime>(
             chunked,
             // The journal separates a file from a dictation and from an MCP request
             source: Source::File,
+            // The identifier of the queue item: the window cancels the job by this name
+            job_id: Some(id.clone()),
         };
+        if let Ok(mut slot) = RUNNING_FILE_JOB.lock() {
+            *slot = Some(id.clone());
+        }
+        let _mark = JobMark;
         // The phase follows the answer of the daemon: it works on the file, or it refuses and
         // the window waits, and the stage the user sees is the one that is true now
         match file_request(&request, FILE_BUSY_WAIT, &emit) {
@@ -1712,13 +1802,18 @@ pub async fn transcribe_file<R: Runtime>(
     })?
 }
 
-/// Stop the file transcription that runs in the daemon now
+/// Stop the file transcription that this window waits for
 ///
-/// The daemon works on one file at a time, so the command needs no identifier: it is sent by the
-/// window that gave up, and the job it stops answers as cancelled
+/// The job travels by the identifier of its queue item, so the cancel stops exactly that file: a
+/// job that already ended, or the next one in the queue, is left alone with `Ok(false)`
 #[tauri::command]
 pub fn file_cancel() -> Result<bool, CommandError> {
-    let value = ipc::request(Command::FileCancel)?;
+    let job_id = RUNNING_FILE_JOB.lock().ok().and_then(|slot| slot.clone());
+    let Some(job_id) = job_id else {
+        // Nothing of this window waits for a file, so there is no job to stop
+        return Ok(false);
+    };
+    let value = ipc::request(Command::FileCancel { job_id })?;
     Ok(value
         .get("cancelled")
         .and_then(serde_json::Value::as_bool)
@@ -2031,10 +2126,25 @@ mod tests {
     }
 
     #[test]
-    fn remote_recognition_is_unavailable_while_the_core_refuses_the_engine() {
-        // The day the core builds a remote client this fails, and the settings page must stop
-        // saying "unavailable": the question is put to the engine factory, not to a list
-        assert!(!remote_stt_available(&Config::default()));
+    fn remote_recognition_is_available_now_that_the_core_builds_the_engine() {
+        // The factory answers RemoteConfig for a missing key or an empty address and never
+        // NotAvailable, so the settings page must stop saying "unavailable". The `none` source
+        // keeps the OS key store out of this test; it does not decide the verdict
+        let mut config = Config::default();
+        config.stt.remote.api_key_source = "none".into();
+        assert!(remote_stt_available(&config));
+    }
+
+    #[test]
+    fn an_entry_written_by_a_configuration_cannot_be_switched_off_by_the_window() {
+        // The switch would answer "off" while the module's file keeps the window in the session
+        let refused = refuse_managed_autostart(true).unwrap_err();
+        assert_eq!(refused.kind, "autostart");
+        assert!(
+            refused.hint.is_some(),
+            "the refusal has to name what owns the entry"
+        );
+        assert!(refuse_managed_autostart(false).is_ok());
     }
 
     #[test]

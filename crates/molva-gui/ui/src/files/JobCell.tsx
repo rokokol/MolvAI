@@ -2,11 +2,12 @@
 // One cell of the queue: the name, the state and a progress bar while collapsed; the player,
 // the loudness of the recording and the timecoded transcript once expanded.
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import { api } from "../api";
 import { formatElapsed } from "../format";
 import { useI18n } from "../i18n";
+import type { FileResult } from "../types";
 import { useFilesQueue } from "./FilesProvider";
 import {
   elapsedMs,
@@ -14,6 +15,7 @@ import {
   statusKey,
   statusTone,
   type Job,
+  type SeekRequest,
 } from "./jobs";
 import MediaPreview from "./MediaPreview";
 import ProgressBar from "./ProgressBar";
@@ -36,16 +38,13 @@ export default function JobCell({
   onOpen,
 }: JobCellProps) {
   const { t } = useI18n();
-  const { isExpanded, toggleExpanded, cancel, retry, seek, seekFor, remove } = useFilesQueue();
+  const { isExpanded, toggleExpanded, cancel, retry, seekFor, remove } = useFilesQueue();
   const expanded = isExpanded(job.id);
   const status = t(statusKey(job.status));
   const elapsed = elapsedMs(job, now);
   const running = job.status === "running";
   const phase = running && job.progress ? t(phaseKey(job.progress.phase)) : null;
   const resultCount = job.results.length;
-  // The position belongs to a player of one result, and only the player updates it: a seek
-  // request travels the other way, from the transcript into `seek`
-  const [positions, setPositions] = useState<Record<number, number>>({});
 
   return (
     <li className={`entry job ${job.status}`}>
@@ -152,35 +151,78 @@ export default function JobCell({
             </p>
           ) : (
             job.results.map((result, index) => (
-              <section className="result" key={`${job.id}-${index}`}>
-                {/* The player keeps its size and the timecoded transcript scrolls beside it, so
-                    a long lecture does not push the rest of the queue off the screen */}
-                <div className="result-media">
-                  <MediaPreview
-                    path={result.file}
-                    seek={seekFor(job.id, index)}
-                    onTime={(ms) =>
-                      setPositions((current) => ({ ...current, [index]: ms }))
-                    }
-                    onOpen={onOpen}
-                    prepare={api.prepareMedia}
-                  />
-                </div>
-                <div className="result-text">
-                  <Transcript
-                    result={result}
-                    timecodes={timecodes}
-                    currentMs={positions[index] ?? null}
-                    onSeek={(ms) => seek(job.id, index, ms)}
-                    onTimecodesChange={onTimecodesChange}
-                    onOpen={onOpen}
-                  />
-                </div>
-              </section>
+              <ResultPane
+                key={`${job.id}-${index}`}
+                jobId={job.id}
+                index={index}
+                result={result}
+                seekRequest={seekFor(job.id, index)}
+                timecodes={timecodes}
+                onTimecodesChange={onTimecodesChange}
+                onOpen={onOpen}
+              />
             ))
           )}
         </div>
       )}
     </li>
+  );
+}
+
+/**
+ * One result of a job: the player and its transcript.
+ *
+ * The position of the player is the state of this result alone, and the callbacks into the
+ * transcript keep their identity, so a tick of the player rebuilds neither the other results of
+ * the job nor the rows of the transcript that did not move
+ */
+function ResultPane({
+  jobId,
+  index,
+  result,
+  seekRequest,
+  timecodes,
+  onTimecodesChange,
+  onOpen,
+}: {
+  jobId: string;
+  index: number;
+  result: FileResult;
+  seekRequest: SeekRequest | null;
+  timecodes: boolean;
+  onTimecodesChange?: (value: boolean) => void;
+  onOpen: (path: string) => void;
+}) {
+  const { seek } = useFilesQueue();
+  const [position, setPosition] = useState<number | null>(null);
+  const onTime = useCallback((ms: number) => setPosition(ms), []);
+  const onSeek = useCallback(
+    (ms: number) => seek(jobId, index, ms),
+    [seek, jobId, index],
+  );
+  return (
+    <section className="result">
+      {/* The player keeps its size and the timecoded transcript scrolls beside it, so
+          a long lecture does not push the rest of the queue off the screen */}
+      <div className="result-media">
+        <MediaPreview
+          path={result.file}
+          seek={seekRequest}
+          onTime={onTime}
+          onOpen={onOpen}
+          prepare={api.prepareMedia}
+        />
+      </div>
+      <div className="result-text">
+        <Transcript
+          result={result}
+          timecodes={timecodes}
+          currentMs={position}
+          onSeek={onSeek}
+          onTimecodesChange={onTimecodesChange}
+          onOpen={onOpen}
+        />
+      </div>
+    </section>
   );
 }

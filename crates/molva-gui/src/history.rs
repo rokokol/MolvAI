@@ -133,6 +133,8 @@ mod tests {
             style: "cleanup".into(),
             stt_engine: "whisper-cpp".into(),
             stt_model: "small".into(),
+            stt_cost_usd: None,
+            stt_unpriced: false,
             llm_provider: None,
             llm_model: None,
             llm_used: false,

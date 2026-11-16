@@ -6,7 +6,7 @@
 // what belongs to the input of the moment. Transcript search, global and inside one result, is
 // here too, so the Files tab is the one place where transcriptions are reviewed.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 
 import { api, asCommandError } from "../api";
@@ -70,8 +70,11 @@ export default function Files({ onError }: ViewProps) {
     { status: "interrupted", count: summary.interrupted },
   ];
 
-  const openTarget = (target: string) =>
-    api.openPath(target).catch((err) => onError(asCommandError(err)));
+  const openTarget = useCallback(
+    (target: string) =>
+      api.openPath(target).catch((err) => onError(asCommandError(err))),
+    [onError],
+  );
 
   const chooseFile = async () => {
     const selected = await open({

@@ -111,17 +111,21 @@ describe("the recognition test result", () => {
     expect(html).not.toContain(translate("en", "settings.sttTest.failed"));
   });
 
-  it("names the remote engine honestly", () => {
+  it("shows the wording of the daemon for a remote check", () => {
     const html = render(
       <SttProbeResult
         state={{
           pending: false,
           report: {
             engine: "remote-openai",
-            model: "whisper-1",
+            model: "whisper-large-v3-turbo",
             ok: false,
             checks: [
-              { id: "remote", ok: false, detail: translate("en", "settings.sttTest.remoteUnavailable") },
+              {
+                id: "remote",
+                ok: false,
+                detail: "no key: set stt.remote.api_key_env; this check sends no audio",
+              },
             ],
           },
           error: null,
@@ -129,6 +133,37 @@ describe("the recognition test result", () => {
       />,
     );
     expect(html).toContain(translate("en", "settings.sttTest.check.remote"));
-    expect(html).toContain(translate("en", "settings.sttTest.remoteUnavailable"));
+    // A cloud check carries no `detail_key`: the person reads what the daemon said. A key that
+    // the dictionary does not hold would show up as the key itself, which is why the raw
+    // dictionary prefix must stay out of the page
+    expect(html).toContain("this check sends no audio");
+    expect(html).toContain("no key");
+    expect(html).not.toContain("settings.sttTest.");
+  });
+
+  it("prefers the translated wording when a check names a dictionary key", () => {
+    const html = render(
+      <SttProbeResult
+        state={{
+          pending: false,
+          report: {
+            engine: "transcribe-cpp",
+            model: "gigaam-v3-e2e-rnnt-q4_k_m",
+            ok: false,
+            checks: [
+              {
+                id: "cli",
+                ok: false,
+                detail: "transcribe-cli: not found",
+                detail_key: "settings.sttTest.cliMissing",
+              },
+            ],
+          },
+          error: null,
+        }}
+      />,
+    );
+    expect(html).toContain(translate("en", "settings.sttTest.cliMissing"));
+    expect(html).not.toContain("transcribe-cli: not found");
   });
 });

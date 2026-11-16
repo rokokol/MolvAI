@@ -14,7 +14,7 @@ import {
 } from "../format";
 import { useI18n } from "../i18n";
 import type { ViewProps } from "../App";
-import type { StatsSummary, Tokens } from "../types";
+import type { StatsSummary, SttCost, Tokens } from "../types";
 import WordsChart from "../components/WordsChart";
 
 const RANGES = [7, 30, 90];
@@ -33,6 +33,17 @@ function costValue(tokens: Tokens, t: (key: string) => string): string {
     return t("stats.costUnknown");
   }
   return formatCost(tokens.cost_usd);
+}
+
+/** The charge of the remote recognizers, by the same rule: a sum only where a price was told */
+function sttCostValue(stt: SttCost, t: (key: string) => string): string {
+  if (stt.entries === 0) {
+    return t("stats.costNone");
+  }
+  if (stt.unpriced === stt.entries) {
+    return t("stats.costUnknown");
+  }
+  return formatCost(stt.cost_usd);
 }
 
 export default function Stats({ onError }: ViewProps) {
@@ -226,6 +237,19 @@ export default function Stats({ onError }: ViewProps) {
                       .replace("{total}", String(summary.tokens.calls))}
                   </span>
                 )}
+            </dd>
+          </div>
+          <div className="tile">
+            <dt>{t("stats.sttCost")}</dt>
+            <dd>
+              {sttCostValue(summary.stt, t)}
+              {summary.stt.unpriced > 0 && summary.stt.unpriced < summary.stt.entries && (
+                <span className="unit unit-note">
+                  {t("stats.costPartial")
+                    .replace("{unpriced}", String(summary.stt.unpriced))
+                    .replace("{total}", String(summary.stt.entries))}
+                </span>
+              )}
             </dd>
           </div>
         </dl>

@@ -52,6 +52,7 @@ function config(change: (draft: Config) => void = () => undefined): Config {
         api_key_source: "keyring",
         api_key_env: "OPENAI_API_KEY",
         model: "whisper-1",
+        timeout_secs: 120,
       },
     },
     dictionary: { path: "", fuzzy: true, in_prompt: true },

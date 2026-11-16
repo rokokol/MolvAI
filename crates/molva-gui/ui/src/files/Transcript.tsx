@@ -4,8 +4,13 @@
 // A row is a button: it moves the player to the start of the segment. The search inside the
 // transcript filters the rows, counts the matches and marks them, and the copy actions keep the
 // whole text reachable with or without timecodes.
+//
+// The position arrives several times a second while the file plays, and the whole transcript
+// renders again on every step. A row is therefore its own component behind `memo`: only the two
+// rows whose active flag flips are built again, and the list of rows for a query is worked out
+// once per result instead of once per step.
 
-import { useEffect, useId, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { copyToClipboard } from "../api";
 import { formatElapsed, formatTimecode, renderFileResult, renderSegment } from "../format";
@@ -14,9 +19,9 @@ import type { FileResult, Segment } from "../types";
 import {
   activeSegmentIndex,
   highlightParts,
-  matchingSegments,
   type MatchingSegment,
 } from "./jobs";
+import { transcriptView } from "./transcript-view";
 
 export interface TranscriptProps {
   result: FileResult;
@@ -31,6 +36,9 @@ export interface TranscriptProps {
   onOpen: (path: string) => void;
 }
 
+/** A result without segments keeps one shared empty list, so its view stays cached too */
+const NO_SEGMENTS: Segment[] = [];
+
 export default function Transcript({
   result,
   timecodes,
@@ -41,10 +49,10 @@ export default function Transcript({
 }: TranscriptProps) {
   const { t } = useI18n();
   const [query, setQuery] = useState("");
-  const [copied, setCopied] = useState<string | null>(null);
+  const [copied, setCopied] = useState<number | null>(null);
   const searchId = useId();
-  const segments = result.segments ?? [];
-  const { segments: shown, matches } = matchingSegments(segments, query);
+  const segments = result.segments ?? NO_SEGMENTS;
+  const view = transcriptView(segments, query);
   const active = activeSegmentIndex(segments, currentMs ?? null);
   // The row that plays is scrolled into view: a lecture of fifty segments is longer than the
   // window of the transcript, and following the sound by hand is not a job for the reader
@@ -60,15 +68,50 @@ export default function Transcript({
 
   const copyAll = async () => {
     if (await copyToClipboard(renderFileResult(result, timecodes))) {
-      setCopied("all");
+      setCopied(-1);
     }
   };
 
-  const copyOne = async (segment: Segment, key: string) => {
-    if (await copyToClipboard(renderSegment(segment, timecodes))) {
-      setCopied(key);
-    }
-  };
+  // One function for every row: a new closure per row would break the memo of the rows that
+  // did not change
+  const seekTo = useCallback(
+    (ms: number) => {
+      onSeek?.(ms);
+    },
+    [onSeek],
+  );
+
+  const copyOne = useCallback(
+    async (index: number, segment: Segment) => {
+      if (await copyToClipboard(renderSegment(segment, timecodes))) {
+        setCopied(index);
+      }
+    },
+    [timecodes],
+  );
+
+  // The rows are element objects, and React compares them by identity before it compares their
+  // props: a step that stays inside one segment must not build ten thousand of them again. Only
+  // the crossing into the next segment changes `active`, and only then is the list rebuilt
+  const seekable = onSeek !== undefined;
+  const rows = useMemo(
+    () =>
+      view.segments.map((item) => (
+        <SegmentRow
+          key={item.index}
+          item={item}
+          query={query}
+          active={item.index === active}
+          activeRef={item.index === active ? activeRow : undefined}
+          showTimecodes={timecodes}
+          seekable={seekable}
+          onSeek={seekTo}
+          onCopy={copyOne}
+          copied={copied === item.index}
+        />
+      )),
+    [view, query, active, timecodes, seekable, seekTo, copyOne, copied],
+  );
 
   return (
     <div className="transcript">
@@ -94,12 +137,12 @@ export default function Transcript({
         />
         <span className="small muted" role="status">
           {query.trim() !== ""
-            ? t("files.matches", { count: matches })
+            ? t("files.matches", { count: view.matches })
             : t("files.segmentCount", { count: segments.length })}
         </span>
         <div className="row">
           <button type="button" className="chip" onClick={() => void copyAll()}>
-            {copied === "all" ? t("common.copied") : t("files.copyAll")}
+            {copied === -1 ? t("common.copied") : t("files.copyAll")}
           </button>
           {onTimecodesChange && (
             <button
@@ -122,35 +165,23 @@ export default function Transcript({
           <p className="small muted">{t("files.noSegments")}</p>
           <p className="text">{result.text}</p>
         </div>
-      ) : shown.length === 0 ? (
+      ) : view.segments.length === 0 ? (
         <p className="small muted">{t("files.noMatches")}</p>
       ) : (
-        <ol className="segments">
-          {shown.map((item) => (
-            <SegmentRow
-              key={item.index}
-              item={item}
-              query={query}
-              active={item.index === active}
-              activeRef={item.index === active ? activeRow : undefined}
-              showTimecodes={timecodes}
-              onSeek={onSeek ? () => onSeek(item.segment.start_ms) : undefined}
-              onCopy={() => void copyOne(item.segment, String(item.index))}
-              copied={copied === String(item.index)}
-            />
-          ))}
-        </ol>
+        <ol className="segments">{rows}</ol>
       )}
     </div>
   );
 }
 
-function SegmentRow({
+/** A row of the transcript: exported because a test holds it to its memo boundary */
+export const SegmentRow = memo(function SegmentRow({
   item,
   query,
   active,
   activeRef,
   showTimecodes,
+  seekable,
   onSeek,
   onCopy,
   copied,
@@ -161,12 +192,14 @@ function SegmentRow({
   /** Marks the active row, so the transcript can scroll it into view while the file plays */
   activeRef: React.Ref<HTMLLIElement> | undefined;
   showTimecodes: boolean;
-  onSeek?: () => void;
-  onCopy: () => void;
+  /** Whether the caller has a player to move: a row without one is plain text */
+  seekable: boolean;
+  onSeek: (ms: number) => void;
+  onCopy: (index: number, segment: Segment) => void;
   copied: boolean;
 }) {
   const { t } = useI18n();
-  const { segment } = item;
+  const { segment, index } = item;
   const parts = highlightParts(segment.text, query);
   const content = (
     <>
@@ -181,11 +214,11 @@ function SegmentRow({
         </span>
       )}
       <span className="segment-text">
-        {parts.map((part, index) =>
+        {parts.map((part, partIndex) =>
           part.match ? (
-            <mark key={index}>{part.text}</mark>
+            <mark key={partIndex}>{part.text}</mark>
           ) : (
-            <span key={index}>{part.text}</span>
+            <span key={partIndex}>{part.text}</span>
           ),
         )}
       </span>
@@ -193,13 +226,13 @@ function SegmentRow({
   );
   return (
     <li className={active ? "segment active" : "segment"} ref={active ? activeRef : undefined}>
-      {onSeek ? (
+      {seekable ? (
         <button
           type="button"
           className="segment-main"
           aria-current={active ? "true" : undefined}
           aria-label={t("files.seek", { time: formatTimecode(segment.start_ms) })}
-          onClick={onSeek}
+          onClick={() => onSeek(segment.start_ms)}
         >
           {content}
         </button>
@@ -212,10 +245,10 @@ function SegmentRow({
         type="button"
         className="chip segment-copy"
         aria-label={t("files.copySegment", { time: formatTimecode(segment.start_ms) })}
-        onClick={onCopy}
+        onClick={() => onCopy(index, segment)}
       >
         {copied ? t("common.copied") : t("common.copy")}
       </button>
     </li>
   );
-}
+});

@@ -90,11 +90,14 @@ function Check({
   label,
   hint,
   checked,
+  disabled,
   onChange,
 }: {
   label: string;
   hint?: string;
   checked: boolean;
+  /** A setting that a configuration owns: the box shows its value and takes no click */
+  disabled?: boolean;
   onChange: (value: boolean) => void;
 }) {
   return (
@@ -102,6 +105,7 @@ function Check({
       <input
         type="checkbox"
         checked={checked}
+        disabled={disabled}
         onChange={(event) => onChange(event.target.checked)}
       />
       <span>
@@ -149,7 +153,6 @@ export default function Settings({
   const [builtins, setBuiltins] = useState<StyleOption[]>([]);
   const [models, setModels] = useState<SttModelOption[]>([]);
   const [modelsError, setModelsError] = useState<string | null>(null);
-  const [remoteAvailable, setRemoteAvailable] = useState(true);
   const [providers, setProviders] = useState<LlmProviderOption[]>([]);
   const [keyStatus, setKeyStatus] = useState<ProviderKeyStatus | null>(null);
   const [keyDraft, setKeyDraft] = useState("");
@@ -158,6 +161,7 @@ export default function Settings({
   const [llmProbe, setLlmProbe] = useState<ProbeState<LlmProbeReport>>(idleProbe());
   const [sttProbe, setSttProbe] = useState<ProbeState<SttProbeReport>>(idleProbe());
   const [autostart, setAutostart] = useState(false);
+  const [autostartManaged, setAutostartManaged] = useState(false);
   const [configPath, setConfigPath] = useState("");
   const [runtimePath, setRuntimePath] = useState<string | null>(null);
   const [hyprland, setHyprland] = useState<HyprlandBinds | null>(null);
@@ -179,6 +183,10 @@ export default function Settings({
 
   useEffect(() => {
     api.getAutostart().then(setAutostart).catch(() => setAutostart(false));
+    api
+      .autostartManaged()
+      .then(setAutostartManaged)
+      .catch(() => setAutostartManaged(false));
     api.getConfigPath().then(setConfigPath).catch(() => setConfigPath(""));
     api
       .getRuntimeConfigPath()
@@ -191,7 +199,6 @@ export default function Settings({
         setModelsError(null);
       })
       .catch((err) => setModelsError(asCommandError(err).message));
-    api.sttRemoteAvailable().then(setRemoteAvailable).catch(() => setRemoteAvailable(true));
     api.llmProviders().then(setProviders).catch(() => setProviders([]));
   }, []);
 
@@ -465,6 +472,10 @@ export default function Settings({
         </div>
         <Check
           label={t("settings.autostart")}
+          hint={
+            autostartManaged ? t("settings.autostartManagedHint") : undefined
+          }
+          disabled={autostartManaged}
           checked={autostart}
           onChange={(value) => {
             api
@@ -664,13 +675,10 @@ export default function Settings({
                   {engineLabel(id, t)}
                 </option>
               ))}
-              <option value={REMOTE_ENGINE} disabled={!remoteAvailable}>
+              <option value={REMOTE_ENGINE}>
                 {t("settings.provider.remote")}
               </option>
             </select>
-            {engine === REMOTE_ENGINE && !remoteAvailable && (
-              <p className="small warning-text">{t("settings.provider.remoteOff")}</p>
-            )}
           </div>
 
           {engine !== REMOTE_ENGINE && (
@@ -726,8 +734,8 @@ export default function Settings({
         {engine === REMOTE_ENGINE ? (
           <>
             <div className="notice warning" role="alert">
-              <strong>{t("settings.remote.off")}</strong>
-              <p>{t("settings.remote.offHint")}</p>
+              <strong>{t("settings.remote.cloud")}</strong>
+              <p>{t("settings.remote.cloudHint")}</p>
             </div>
             <div className="formgrid">
               <div className="field">
@@ -735,7 +743,6 @@ export default function Settings({
                 <select
                   id="remote-provider"
                   value={remoteProvider}
-                  disabled={!remoteAvailable}
                   onChange={(event) => {
                     const id = event.target.value;
                     const preset = providers.find((item) => item.id === id);
@@ -759,7 +766,6 @@ export default function Settings({
                 <input
                   id="remote-model"
                   type="text"
-                  disabled={!remoteAvailable}
                   value={draft.stt.remote.model}
                   onChange={(event) =>
                     patch((next) => {
@@ -773,7 +779,6 @@ export default function Settings({
                 <input
                   id="remote-base-url"
                   type="text"
-                  disabled={!remoteAvailable}
                   value={draft.stt.remote.base_url}
                   onChange={(event) =>
                     patch((next) => {
@@ -786,7 +791,6 @@ export default function Settings({
                 <label htmlFor="remote-key-source">{t("settings.llm.keySource")}</label>
                 <select
                   id="remote-key-source"
-                  disabled={!remoteAvailable}
                   value={draft.stt.remote.api_key_source}
                   onChange={(event) =>
                     patch((next) => {
@@ -804,7 +808,6 @@ export default function Settings({
                 <input
                   id="remote-key-env"
                   type="text"
-                  disabled={!remoteAvailable}
                   value={draft.stt.remote.api_key_env}
                   onChange={(event) =>
                     patch((next) => {

@@ -53,8 +53,6 @@ export const api = {
   builtinStyles: () => invoke<StyleOption[]>("builtin_styles"),
   /** The catalog of `models.toml`, each entry with the engine that can load it */
   sttModels: () => invoke<SttModelOption[]>("stt_models"),
-  /** Whether this build can recognize through a remote API */
-  sttRemoteAvailable: () => invoke<boolean>("stt_remote_available"),
   /** Check the draft recognition settings: no recording, no microphone */
   testStt: (config: Config) => invoke<SttProbeReport>("test_stt", { config }),
   /** Send one short prompt through the draft model settings; nothing is saved */
@@ -92,6 +90,8 @@ export const api = {
   writeHyprlandBinds: () => invoke<HyprlandBinds>("write_hyprland_binds"),
   setAutostart: (enabled: boolean) => invoke<boolean>("set_autostart", { enabled }),
   getAutostart: () => invoke<boolean>("get_autostart"),
+  /** Whether a Nix configuration owns the autostart entry, so the switch is read-only */
+  autostartManaged: () => invoke<boolean>("autostart_managed"),
 
   historyList: (filter: Partial<HistoryFilter>) =>
     invoke<Entry[]>("history_list", {

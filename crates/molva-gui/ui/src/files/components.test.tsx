@@ -16,7 +16,7 @@ import JobCell from "./JobCell";
 import { newJob } from "./jobs";
 import PathInput from "./PathInput";
 import ProgressBar from "./ProgressBar";
-import Transcript from "./Transcript";
+import Transcript, { SegmentRow } from "./Transcript";
 
 const i18n = { lang: "en" as const, t: (key: string, vars?: Record<string, string | number>) => translate("en", key, vars) };
 
@@ -121,6 +121,12 @@ describe("Transcript", () => {
     // The button keeps the time for a screen reader; the row itself shows none of it
     expect(html).not.toContain("→");
     expect(html).toContain("привет");
+  });
+
+  it("lets React skip every row the playback position did not move into", () => {
+    // The position arrives several times a second. Without this boundary each arrival redraws
+    // every row of a lecture, which is what made a long transcript freeze the window
+    expect(SegmentRow).toHaveProperty("$$typeof", Symbol.for("react.memo"));
   });
 
   it("carries the timecodes into the copied text only when they are on", () => {

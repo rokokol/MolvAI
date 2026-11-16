@@ -4,13 +4,13 @@
 
 import { useEffect } from "react";
 
-import { api, copyToClipboard } from "../api";
-import { entryTag, formatLatency, formatTimestamp, formatWpm } from "../format";
+import { api } from "../api";
 import { useHistoryState } from "../history/HistoryProvider";
+import HistoryList from "../history/HistoryList";
 import { useI18n } from "../i18n";
 
 export default function History() {
-  const { t, lang } = useI18n();
+  const { t } = useI18n();
   const {
     entries,
     apps,
@@ -122,60 +122,12 @@ export default function History() {
       ) : entries.length === 0 ? (
         <p className="empty">{filtered ? t("history.emptyFiltered") : t("history.empty")}</p>
       ) : (
-        <ul className="entry-list">
-          {entries.map((entry) => {
-            const text = entry.text_final ?? entry.text_raw ?? null;
-            const source = entryTag(entry);
-            return (
-              <li key={entry.id} className="entry">
-                <div className="meta">
-                  <span>{formatTimestamp(entry.ts, lang)}</span>
-                  <span>
-                    {formatWpm(entry.wpm)} {t("common.wpm")}
-                  </span>
-                  <span>{formatLatency(entry.latency_ms.total)}</span>
-                  <span>{entry.style}</span>
-                  {entry.app && <span>{entry.app}</span>}
-                  <span>
-                    {entry.words} {t("common.words")}
-                  </span>
-                  {source ? (
-                    <span className="badge">{t(source)}</span>
-                  ) : (
-                    entry.llm_used && (
-                      <span className="badge">
-                        LLM · {entry.llm_provider ?? "?"}
-                        {entry.llm_model ? ` / ${entry.llm_model}` : ""}
-                      </span>
-                    )
-                  )}
-                </div>
-                <p className={text ? "text" : "text muted"}>{text ?? t("history.noText")}</p>
-                <div className="row">
-                  <button
-                    type="button"
-                    className="chip"
-                    disabled={!text}
-                    onClick={async () => {
-                      if (text && (await copyToClipboard(text))) {
-                        setCopiedId(entry.id);
-                      }
-                    }}
-                  >
-                    {copiedId === entry.id ? t("common.copied") : t("common.copy")}
-                  </button>
-                  <button
-                    type="button"
-                    className="chip danger"
-                    onClick={() => void remove(entry.id)}
-                  >
-                    {t("common.delete")}
-                  </button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+        <HistoryList
+          entries={entries}
+          copiedId={copiedId}
+          onCopied={setCopiedId}
+          onDelete={remove}
+        />
       )}
     </>
   );

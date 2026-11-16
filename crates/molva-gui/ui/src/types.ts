@@ -36,6 +36,16 @@ export interface Tokens {
   unpriced_calls: number;
 }
 
+/** What the remote recognizers cost, by the same rule as the model calls */
+export interface SttCost {
+  /** Sum of the charges the providers reported for recognition, in US dollars */
+  cost_usd: number;
+  /** Phrases a provider recognized, the free ones included */
+  entries: number;
+  /** Phrases whose provider reported no charge, so the sum above is not the whole bill */
+  unpriced: number;
+}
+
 /** A journal line: one phrase */
 export interface Entry {
   schema: number;
@@ -242,6 +252,7 @@ export interface StatsSummary {
   saved_minutes: number;
   latency_ms: StatsLatency;
   tokens: Tokens;
+  stt: SttCost;
   series: DayPoint[];
   by_app: AppRow[];
   /** Files transcribed through the MCP server, inside the same totals */
@@ -278,6 +289,8 @@ export interface RemoteSttConfig {
   api_key_source: string;
   api_key_env: string;
   model: string;
+  /** How long one recognition request may take, in seconds */
+  timeout_secs: number;
 }
 
 export interface Config {
