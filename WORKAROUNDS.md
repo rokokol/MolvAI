@@ -42,3 +42,25 @@ Open the window at 900×600 and inspect `window.devicePixelRatio`, `window.inner
 **Removal check:** on Hyprland, record a phrase with the physical keyboard on Russian, then run `hyprctl devices -j` and compare `active_keymap` for the physical keyboard and `molvai-virtual-keyboard`. Both must remain Russian after the phrase. Run voice editing once with a selection and repeat the comparison, because the copy combination takes the same path. The same check on Sway, KDE and GNOME decides whether their guard can stay
 
 **Upstream:** Hyprland `InputManager` assigns the group of the keyboard that sent the modifier. The exact upstream report is not filed yet; the virtual device is a normal evdev keyboard from Hyprland's point of view, so the compositor has no way to know it is a paste helper
+
+---
+
+## The Nix package links the system AWS-LC
+
+**Where:** `flake.nix`, the `buildInputs` of the `molva` package. It covers every build through `rustPlatform.buildRustPackage` whose nixpkgs carries [NixOS/nixpkgs#537108](https://github.com/NixOS/nixpkgs/pull/537108)
+
+**Symptom it prevents:** the build stops in `aws-lc-sys-0.45.0` with `panicked at builder/main.rs:767: AWS_LC_SYS_USE_SYSTEM=1 requires a system-installed AWS-LC, but none was found`. The rejected candidate is `openssl`, because a plain OpenSSL has no `include/openssl/base.h`
+
+**Why it happens:** nixpkgs' `rustPlatform.cargoSetupHook` now exports `AWS_LC_SYS_USE_SYSTEM=1`, `OPENSSL_NO_VENDOR=1` and the like into every cargo build. The tracking issues are [NixOS/nixpkgs#570938](https://github.com/NixOS/nixpkgs/issues/570938) and [NixOS/nixpkgs#570943](https://github.com/NixOS/nixpkgs/issues/570943). `aws-lc-sys` from 0.42 treats that value as a hard requirement, while the older versions fell back to compiling AWS-LC from source. An older nixpkgs, one without the hook, builds without the line. The line matters to a consumer whose nixpkgs carries it, and `huix` is one
+
+**Why this works:** `aws-lc` in `buildInputs` puts `aws-lc.pc` on `PKG_CONFIG_PATH`. The build script takes that candidate, whose headers sit in `include/aws-lc/openssl`, and links `libcrypto-awslc` with `libssl-awslc` instead of compiling AWS-LC itself. nixpkgs fixes its own packages the same way, `rqbit` in [NixOS/nixpkgs#588523](https://github.com/NixOS/nixpkgs/pull/588523) among them
+
+**Removal check:** build against a nixpkgs that carries the hook, with the `aws-lc` line still in place and then without it
+
+```sh
+nix build --no-link .#molva --override-input nixpkgs github:NixOS/nixpkgs/nixos-unstable
+```
+
+A build that passes without the line means the hook no longer demands a system AWS-LC, and the line can go. A panic naming `AWS_LC_SYS_USE_SYSTEM` means it must stay
+
+**Upstream:** neither crate is at fault: `aws-lc-sys` documents `AWS_LC_SYS_USE_SYSTEM=1` as a hard requirement, and nixpkgs sets it deliberately. Moving this package into nixpkgs would inherit the fix from `default-crate-overrides.nix`, which passes `aws-lc` to `aws-lc-sys` from 0.42 on

@@ -98,7 +98,12 @@
               '';
               buildInputs =
                 with pkgs;
-                [ openssl ]
+                [
+                  # The cargo setup hook of nixpkgs sets AWS_LC_SYS_USE_SYSTEM, and aws-lc-sys
+                  # links this library instead of compiling its own copy
+                  aws-lc
+                  openssl
+                ]
                 ++ pkgs.lib.optionals isLinux [
                   alsa-lib
                   libxkbcommon
