@@ -131,6 +131,7 @@ function config(change: (draft: Config) => void = () => undefined): Config {
     },
     mcp: { enabled: true },
     gui: {
+      start_in_tray: false,
       tray_animation: false,
     },
     log: { level: "info", max_size_mb: 10 },
@@ -154,6 +155,26 @@ function render(view: Config): string {
     </I18nContext.Provider>,
   );
 }
+
+describe("Settings: start in tray", () => {
+  it("shows the saved opt-in and explains the manual launch exception", () => {
+    for (const enabled of [false, true]) {
+      const html = render(config((draft) => {
+        draft.gui.start_in_tray = enabled;
+      }));
+      const label = translate("en", "settings.startInTray");
+      expect(label).not.toBe("settings.startInTray");
+      expect(html).toContain(label);
+      const field = html.match(/<label\b[^>]*>[\s\S]*?<\/label>/g)?.find((item) => item.includes(label));
+      const checkbox = field?.match(/<input[^>]+>/)?.[0];
+      expect(checkbox).toBeDefined();
+      expect(checkbox?.includes('checked=""')).toBe(enabled);
+      expect(html).toContain(translate("en", "settings.startInTrayHint"));
+    }
+    expect(translate("ru", "settings.startInTray")).not.toBe("settings.startInTray");
+    expect(translate("ru", "settings.startInTrayHint")).not.toBe("settings.startInTrayHint");
+  });
+});
 
 describe("Settings: recognition", () => {
   it("shows the recognition language as removable chips", () => {
@@ -200,6 +221,24 @@ describe("Settings: the rules are checkboxes", () => {
 });
 
 describe("Settings: hotkeys", () => {
+  it("shows the saved tap toggle state and its explanation in both languages", () => {
+    for (const lang of ["en", "ru"] as const) {
+      for (const key of ["settings.hotkeys.tapToggles", "settings.hotkeys.tapTogglesHint"]) {
+        expect(translate(lang, key)).not.toBe(key);
+      }
+    }
+    for (const enabled of [false, true]) {
+      const html = render(config((draft) => { draft.hotkeys.tap_toggles = enabled; }));
+      const label = translate("en", "settings.hotkeys.tapToggles");
+      const field = html.match(/<label\b[^>]*>[\s\S]*?<\/label>/g)?.find((item) => item.includes(label));
+      const checkbox = field?.match(/<input[^>]+>/)?.[0];
+      expect(checkbox).toBeDefined();
+      expect(checkbox?.includes('checked=""')).toBe(enabled);
+      expect(checkbox).not.toContain("disabled");
+      expect(field).toContain(translate("en", "settings.hotkeys.tapTogglesHint"));
+    }
+  });
+
   it("shows a recorder button instead of a text field", () => {
     const html = render(config());
     expect(html).toContain('id="hotkey-push_to_talk"');

@@ -219,6 +219,7 @@ in
         description = ''
           The command an autostart entry runs. When null, the module uses the installed
           {option}`guiPackage`, or `molva-gui` from `PATH` when no package is given
+          The command uses Desktop Entry Exec syntax, not shell syntax. The module appends `--autostart`
         '';
       };
     };
@@ -279,7 +280,7 @@ in
           Type=Application
           Name=MolvAI
           Comment=System-wide voice input
-          Exec=${guiCommand}
+          Exec=${guiCommand} --autostart
           Terminal=false
           X-GNOME-Autostart-enabled=true
         '';

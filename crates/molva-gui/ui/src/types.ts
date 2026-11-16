@@ -403,6 +403,7 @@ export interface Config {
    * touching the harness configuration */
   mcp: { enabled: boolean };
   gui: {
+    start_in_tray: boolean;
     tray_animation: boolean;
   };
   log: { level: string; max_size_mb: number };

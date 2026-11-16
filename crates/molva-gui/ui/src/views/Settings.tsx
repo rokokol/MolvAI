@@ -473,6 +473,16 @@ export default function Settings({
               .catch((err) => onError(asCommandError(err)));
           }}
         />
+        <Check
+          label={t("settings.startInTray")}
+          hint={t("settings.startInTrayHint")}
+          checked={draft.gui.start_in_tray}
+          onChange={(value) =>
+            patch((next) => {
+              next.gui.start_in_tray = value;
+            })
+          }
+        />
         {configPath && (
           <p className="small muted">
             {t("settings.configPath")}: <span className="mono">{configPath}</span>
@@ -501,6 +511,17 @@ export default function Settings({
             />
           ))}
         </div>
+
+        <Check
+          label={t("settings.hotkeys.tapToggles")}
+          hint={t("settings.hotkeys.tapTogglesHint")}
+          checked={draft.hotkeys.tap_toggles}
+          onChange={(value) =>
+            patch((next) => {
+              next.hotkeys.tap_toggles = value;
+            })
+          }
+        />
 
         {hyprland?.session && (
           <details className="help">

@@ -97,9 +97,22 @@ let
     );
     settings = config.programs.molvai.settings;
   };
+
+  expectAutostart =
+    expected: user:
+    let
+      result = summary (eval user);
+    in
+    assert lib.assertMsg (builtins.elem "Exec=${expected}" (
+      lib.splitString "\n" result.guiAutostart
+    )) "GUI autostart Exec must preserve the command and append --autostart";
+    result;
+
+  customCommand = ''"/opt/MolvAI GUI/molva-gui" --config "/home/u/config file.toml" --label "100%%" %f'';
+  guiPackage = pkgs.runCommand "module-test-gui" { meta.mainProgram = "molva-gui"; } "touch $out";
 in
 {
-  lua = summary (eval (luaHyprland // { programs.molvai.enable = true; }));
+  lua = expectAutostart "molva-gui --autostart" (luaHyprland // { programs.molvai.enable = true; });
   hyprlang = summary (eval {
     programs.molvai.enable = true;
     wayland.windowManager.hyprland.enable = true;
@@ -128,12 +141,32 @@ in
       guiAutostart.enable = false;
     };
   });
-  customGuiCommand = summary (eval {
+  customGuiCommand = expectAutostart "/run/current-system/sw/bin/molva-gui --autostart" {
     programs.molvai = {
       enable = true;
       guiAutostart.command = "/run/current-system/sw/bin/molva-gui";
     };
-  });
+  };
+  quotedGuiCommand = expectAutostart "${customCommand} --autostart" {
+    programs.molvai = {
+      enable = true;
+      inherit guiPackage;
+      guiAutostart.command = customCommand;
+    };
+  };
+  packagedGui = expectAutostart "${lib.getExe guiPackage} --autostart" {
+    programs.molvai = {
+      enable = true;
+      inherit guiPackage;
+    };
+  };
+  guiWithoutDaemon = expectAutostart "molva-gui --autostart" {
+    programs.molvai = {
+      enable = true;
+      daemon.enable = false;
+      guiAutostart.enable = true;
+    };
+  };
   whisper = summary (eval {
     programs.molvai = {
       enable = true;

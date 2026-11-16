@@ -29,10 +29,11 @@ pub mod media_server;
 pub mod paths;
 pub mod providers;
 pub mod sidecar;
+mod startup;
 pub mod tray;
 
 use std::path::PathBuf;
-use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 use std::time::{Duration, Instant};
 
 use molva_core::ipc::{Command, Event};
@@ -285,6 +286,18 @@ fn spawn_subscription(app: AppHandle) {
     });
 }
 
+fn configure_startup_windows(
+    config: &mut tauri::utils::config::Config,
+    autostart: bool,
+    start_in_tray: bool,
+) {
+    for window in &mut config.app.windows {
+        if window.label == "main" {
+            window.visible = startup::initially_visible(autostart, start_in_tray);
+        }
+    }
+}
+
 /// Start the application. An error while reading the settings is not silent: it shows in
 /// the terminal
 // The Tauri build is the only failure with nobody to return it to: see `expect` at the end
@@ -306,15 +319,29 @@ pub fn run() {
         }
     };
 
+    let mut context = tauri::generate_context!();
+    configure_startup_windows(
+        context.config_mut(),
+        startup::is_autostart(std::env::args_os()),
+        state.config().gui.start_in_tray,
+    );
+    let startup = Arc::new(Mutex::new(startup::Startup::default()));
+    let setup_startup = startup.clone();
     let mut builder = tauri::Builder::default();
 
     // The single-instance plugin registers first: a second copy must hand control
     // to the first one before it creates its own window
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            tray::show_window(app, None);
-        }));
+        let instance_startup = startup.clone();
+        builder = builder.plugin(tauri_plugin_single_instance::init(
+            move |app, argv, _cwd| {
+                // Plugin callbacks can arrive before Tauri creates the configured windows
+                if lock(&instance_startup).secondary_instance(startup::is_autostart(argv)) {
+                    tray::show_window(app, None);
+                }
+            },
+        ));
     }
 
     builder = builder
@@ -324,7 +351,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            None,
+            Some(vec![startup::AUTOSTART_ARG]),
         ));
 
     #[cfg(not(target_os = "linux"))]
@@ -386,18 +413,23 @@ pub fn run() {
             commands::path_suggestions,
             commands::ui_language,
         ])
-        .setup(|app| {
+        .setup(move |app| {
             let handle = app.handle().clone();
-            // The tray icon must not take the window down with it: where libappindicator
-            // is missing, the dependency panics, but the application must still open
-            let tray =
-                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| tray::init(&handle)));
-            match tray {
-                Ok(Ok(())) => {}
-                Ok(Err(err)) => tracing::warn!(%err, "tray icon not created"),
-                Err(_) => tracing::warn!(
-                    "tray icon unavailable: libayatana-appindicator3 did not load"
-                ),
+            // Tray libraries can panic when a runtime dependency is absent
+            let tray_ready = match startup::try_tray(|| tray::init(&handle)) {
+                startup::TrayOutcome::Ready => true,
+                startup::TrayOutcome::Error(err) => {
+                    tracing::warn!(%err, "tray icon not created");
+                    false
+                }
+                startup::TrayOutcome::Panicked => {
+                    tracing::warn!("tray icon initialization panicked");
+                    false
+                }
+            };
+            // A successful init does not prove that the desktop has a tray host
+            if lock(&setup_startup).finish_setup(tray_ready) {
+                tray::show_window(&handle, None);
             }
             spawn_subscription(handle.clone());
 
@@ -413,16 +445,41 @@ pub fn run() {
             });
             Ok(())
         })
-        .on_window_event(|window, event| {
-            // Closing the window hides it in the tray: the daemon keeps running
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
+        .on_window_event(move |window, event| {
+            if window.label() == "main" && lock(&startup).hide_on_close() {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
             }
         })
-        .run(tauri::generate_context!())
+        .run(context)
         // The only place with nobody to return an error to: the application did not build,
         // there is no window, and nothing can show a message. The panic here is the report
         // to the user
         .expect("cannot start the Tauri application");
+}
+
+#[cfg(test)]
+mod startup_context_tests {
+    use super::*;
+
+    #[test]
+    fn main_visibility_is_set_in_the_context_before_window_creation() {
+        for autostart in [false, true] {
+            for start_in_tray in [false, true] {
+                let mut context: tauri::Context<tauri::Wry> = tauri::generate_context!();
+                configure_startup_windows(context.config_mut(), autostart, start_in_tray);
+                let main = context
+                    .config()
+                    .app
+                    .windows
+                    .iter()
+                    .find(|w| w.label == "main")
+                    .unwrap();
+                assert_eq!(main.visible, !(autostart && start_in_tray));
+                assert!(main.create);
+            }
+        }
+    }
 }
