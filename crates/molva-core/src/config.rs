@@ -590,7 +590,10 @@ pub struct JournalConfig {
     /// itself, with permissions for the owner only
     pub key_path: String,
     pub keep_audio: bool,
+    /// Phrases the journal keeps; a rotation cuts a tenth below this, so the file is not
+    /// rewritten with every phrase once it reaches the cap
     pub max_entries: u32,
+    /// Megabytes the journal may take; a rotation cuts below it by the same tenth
     pub max_size_mb: u32,
 }
 
