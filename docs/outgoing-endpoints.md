@@ -23,7 +23,7 @@ Everything else in the default configuration happens on the machine: recording f
 | `https://api.openai.com/v1` | `llm.provider = "openai"` | the text of the phrase goes to a third-party provider |
 | `https://openrouter.ai/api/v1` | `llm.provider = "openrouter"` | the same |
 | `https://api.groq.com/openai/v1` | `llm.provider = "groq"`, or `stt.engine = "remote-openai"` with this `stt.remote.base_url` | the text of the phrase, and for remote recognition the audio recording itself |
-| `https://api.openai.com/v1` or `https://openrouter.ai/api/v1` | `stt.engine = "remote-openai"` with this `stt.remote.base_url` | the audio recording, and nothing else; the service answers with the transcript |
+| `https://api.openai.com/v1` | `stt.engine = "remote-openai"` with this `stt.remote.base_url` | the audio recording, and nothing else; the service answers with the transcript. OpenRouter serves no transcription endpoint and is not offered for sound |
 | any address | `llm.provider = "custom"` together with `llm.base_url` | what the user configured |
 
 Two settings close the whole right half of the table at once. `privacy.send_to_llm = false` forbids sending text to a language model, whatever the provider. `privacy.no_record_mode = true` also turns off the journal and the history

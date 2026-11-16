@@ -231,6 +231,10 @@ impl Default for SttConfig {
     }
 }
 
+/// The longest prompt the cloud recognizer accepts: the provider cuts a longer one inside the
+/// window of its decoder anyway
+pub const MAX_STT_PROMPT_CHARS: usize = 400;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RemoteSttConfig {
@@ -242,6 +246,15 @@ pub struct RemoteSttConfig {
     /// How long one recognition request may take, in seconds. Bounded: a phrase waits for the
     /// answer, and a provider that stopped answering must not hold the recognizer
     pub timeout_secs: u32,
+    /// Sampling temperature of the provider, 0 for greedy decoding: the same phrase must read the
+    /// same way every time it is sent
+    pub temperature: f32,
+    /// Words the model should lean towards: names, jargon and the spelling the dictionary holds.
+    /// Empty means no prompt at all
+    pub prompt: String,
+    /// How many more requests follow one that failed on a timeout, a rate limit or a provider
+    /// error. An authorization error is never repeated
+    pub max_retries: u32,
 }
 
 impl Default for RemoteSttConfig {
@@ -252,6 +265,9 @@ impl Default for RemoteSttConfig {
             api_key_env: "GROQ_API_KEY".into(),
             model: "whisper-large-v3-turbo".into(),
             timeout_secs: 120,
+            temperature: 0.0,
+            prompt: String::new(),
+            max_retries: 2,
         }
     }
 }
@@ -1217,6 +1233,30 @@ impl Config {
             5.0,
             900.0,
         );
+        in_range(
+            issues,
+            "stt.remote.temperature",
+            f64::from(self.stt.remote.temperature),
+            0.0,
+            1.0,
+        );
+        in_range(
+            issues,
+            "stt.remote.max_retries",
+            f64::from(self.stt.remote.max_retries),
+            0.0,
+            5.0,
+        );
+        // The provider keeps the prompt within the window of the decoder: a longer text is cut
+        // there anyway, and the person must know it before the phrase is sent
+        let prompt_chars = self.stt.remote.prompt.chars().count();
+        if prompt_chars > MAX_STT_PROMPT_CHARS {
+            issues.push(ConfigIssue::new(
+                "stt.remote.prompt",
+                &prompt_chars.to_string(),
+                &format!("at most {MAX_STT_PROMPT_CHARS} characters"),
+            ));
+        }
         let mirror = self.stt.models_mirror.trim();
         if !mirror.is_empty() && !mirror.starts_with("https://") && !mirror.starts_with("http://") {
             issues.push(ConfigIssue::new(
@@ -1704,11 +1744,9 @@ mod tests {
                 std::fs::metadata(path).unwrap().permissions().mode() & 0o777,
                 0o600
             );
-            assert!(
-                std::fs::read_to_string(path)
-                    .unwrap()
-                    .contains("secret-for-test")
-            );
+            assert!(std::fs::read_to_string(path)
+                .unwrap()
+                .contains("secret-for-test"));
         }
         assert_eq!(
             Config::import(&export).unwrap().llm.api_key_plain,
@@ -1757,11 +1795,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let parent = dir.path().join("file");
         std::fs::write(&parent, "unchanged").unwrap();
-        assert!(
-            Config::default()
-                .save_plain(&parent.join("config.toml"))
-                .is_err()
-        );
+        assert!(Config::default()
+            .save_plain(&parent.join("config.toml"))
+            .is_err());
         assert_eq!(std::fs::read_to_string(parent).unwrap(), "unchanged");
     }
 

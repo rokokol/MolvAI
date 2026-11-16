@@ -42,12 +42,34 @@ const ERROR_SNIPPET: usize = 200;
 pub const MIN_TIMEOUT_SECS: u64 = 5;
 pub const MAX_TIMEOUT_SECS: u64 = 900;
 
+/// How many more requests the engine repeats at most: a provider that is down stays down, and a
+/// phrase must not wait through an endless chain of attempts
+pub const MAX_RETRIES: u32 = 5;
+
+/// Pause before the second attempt, multiplied by the number of the attempt: a rate limit eases
+/// while the engine waits
+const RETRY_PAUSE: Duration = Duration::from_millis(300);
+
+/// One attempt and how the next one should treat it
+enum Attempt {
+    /// The provider answered something that a repeat will not change
+    Fatal(SttError),
+    /// A timeout, a rate limit or a provider error: the same request may succeed
+    Transient(SttError),
+}
+
 /// Recognizer on a remote OpenAI-compatible API
 pub struct RemoteOpenAiEngine {
     base_url: String,
     model: String,
     api_key: ApiKey,
     timeout: Duration,
+    /// Sampling temperature of the provider; 0 keeps the reading of a phrase the same every time
+    temperature: f32,
+    /// Words the model should lean towards; empty sends no prompt at all
+    prompt: String,
+    /// How many more requests follow a timeout, a rate limit or a provider error
+    max_retries: u32,
     policy: HttpPolicy,
     http: reqwest::blocking::Client,
     /// The job a client may give up on; checked before the send and after the answer
@@ -81,10 +103,34 @@ impl RemoteOpenAiEngine {
             model: model.into(),
             api_key: ApiKey::new(api_key),
             timeout,
+            temperature: 0.0,
+            prompt: String::new(),
+            max_retries: 0,
             policy,
             http,
             cancel: None,
         })
+    }
+
+    /// Temperature of the decoder: 0 is greedy decoding, which is what a dictated phrase wants
+    #[must_use]
+    pub fn with_temperature(mut self, temperature: f32) -> Self {
+        self.temperature = temperature.clamp(0.0, 1.0);
+        self
+    }
+
+    /// Words the model should lean towards: names, jargon and the spelling of the dictionary
+    #[must_use]
+    pub fn with_prompt(mut self, prompt: impl Into<String>) -> Self {
+        self.prompt = prompt.into();
+        self
+    }
+
+    /// How many more requests follow one that failed on a timeout, a rate limit or a 5xx
+    #[must_use]
+    pub fn with_retries(mut self, retries: u32) -> Self {
+        self.max_retries = retries.min(MAX_RETRIES);
+        self
     }
 
     /// Client from the settings: the address, the model and the timeout come from
@@ -102,6 +148,12 @@ impl RemoteOpenAiEngine {
             Duration::from_secs(seconds),
             cloud_consent,
         )
+        .map(|engine| {
+            engine
+                .with_temperature(remote.temperature)
+                .with_prompt(remote.prompt.clone())
+                .with_retries(remote.max_retries)
+        })
     }
 
     /// `{base_url}/audio/transcriptions`
@@ -114,6 +166,80 @@ impl RemoteOpenAiEngine {
         self.cancel
             .as_ref()
             .is_some_and(|token| token.is_cancelled())
+    }
+
+    /// One request, classified by what a repeat of it would mean
+    fn attempt(&self, url: &str, wav: &[u8], options: &SttOptions) -> Result<Transcript, Attempt> {
+        let (content_type, body) = multipart_body(
+            &self.model,
+            language_field(options),
+            self.temperature,
+            &self.prompt,
+            wav,
+        );
+        let response = self
+            .http
+            .post(url)
+            .header(reqwest::header::CONTENT_TYPE, content_type)
+            .bearer_auth(self.api_key.expose())
+            .body(body)
+            .send()
+            .map_err(|err| {
+                let error = transport_error(&err, url, self.timeout);
+                // A timeout and a connection that dropped may pass on the next try; a request the
+                // client itself refused never will
+                if err.is_timeout() || err.is_connect() || err.is_request() {
+                    Attempt::Transient(error)
+                } else {
+                    Attempt::Fatal(error)
+                }
+            })?;
+        if self.policy.guard_response(&response).is_err() {
+            return Err(Attempt::Fatal(SttError::Inference(
+                "the provider answered with a redirect, and remote recognition follows none".into(),
+            )));
+        }
+        let status = response.status();
+        let text = response.text().map_err(|err| {
+            Attempt::Fatal(SttError::Inference(format!(
+                "cannot read the answer of the provider: {}",
+                with_causes(&err)
+            )))
+        })?;
+        if !status.is_success() {
+            let error = provider_error(status, &text);
+            // A rate limit and a provider error of its own side pass; a key or a model the provider
+            // refuses does not
+            return Err(
+                if status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
+                    Attempt::Transient(error)
+                } else {
+                    Attempt::Fatal(error)
+                },
+            );
+        }
+        let transcript = parse_transcript(&text).map_err(Attempt::Fatal)?;
+        if self.is_cancelled() {
+            return Err(Attempt::Fatal(SttError::Cancelled));
+        }
+        Ok(transcript)
+    }
+
+    /// Wait between two attempts in slices, so a cancelled job leaves at once
+    ///
+    /// Returns `true` when the client cancelled during the wait
+    fn pause(&self, total: Duration) -> bool {
+        const SLICE: Duration = Duration::from_millis(50);
+        let mut left = total;
+        while left > Duration::ZERO {
+            if self.is_cancelled() {
+                return true;
+            }
+            let step = left.min(SLICE);
+            std::thread::sleep(step);
+            left -= step;
+        }
+        self.is_cancelled()
     }
 }
 
@@ -153,7 +279,13 @@ fn to_i16(sample: f32) -> i16 {
 }
 
 /// Body of the request and the value of its `Content-Type`
-fn multipart_body(model: &str, language: Option<&str>, wav: &[u8]) -> (String, Vec<u8>) {
+fn multipart_body(
+    model: &str,
+    language: Option<&str>,
+    temperature: f32,
+    prompt: &str,
+    wav: &[u8],
+) -> (String, Vec<u8>) {
     let boundary = boundary_for(wav);
     let mut body = Vec::with_capacity(wav.len() + 512);
     body.extend_from_slice(
@@ -170,10 +302,30 @@ fn multipart_body(model: &str, language: Option<&str>, wav: &[u8]) -> (String, V
         text_part(&mut body, &boundary, "language", language);
     }
     text_part(&mut body, &boundary, "response_format", RESPONSE_FORMAT);
-    // Greedy decoding: a phrase must read the same way every time it is sent
-    text_part(&mut body, &boundary, "temperature", "0");
+    // Greedy decoding is the default of a dictated phrase: the same phrase must read the same way
+    // every time it is sent
+    text_part(
+        &mut body,
+        &boundary,
+        "temperature",
+        &format_temperature(temperature),
+    );
+    let prompt = prompt.trim();
+    if !prompt.is_empty() {
+        text_part(&mut body, &boundary, "prompt", prompt);
+    }
     body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
     (format!("multipart/form-data; boundary={boundary}"), body)
+}
+
+/// The temperature as the provider parses it: `0` rather than `0.000000` for the default
+fn format_temperature(temperature: f32) -> String {
+    let value = f64::from(temperature.clamp(0.0, 1.0));
+    if value.fract() == 0.0 {
+        format!("{value:.0}")
+    } else {
+        format!("{value:.2}")
+    }
 }
 
 fn text_part(body: &mut Vec<u8>, boundary: &str, name: &str, value: &str) {
@@ -383,35 +535,21 @@ impl SttEngine for RemoteOpenAiEngine {
             ));
         }
         let wav = wav_bytes(audio)?;
-        let (content_type, body) = multipart_body(&self.model, language_field(options), &wav);
-        let response = self
-            .http
-            .post(&url)
-            .header(reqwest::header::CONTENT_TYPE, content_type)
-            .bearer_auth(self.api_key.expose())
-            .body(body)
-            .send()
-            .map_err(|err| transport_error(&err, &url, self.timeout))?;
-        if self.policy.guard_response(&response).is_err() {
-            return Err(SttError::Inference(
-                "the provider answered with a redirect, and remote recognition follows none".into(),
-            ));
+        let attempts = self.max_retries.saturating_add(1);
+        let mut last: Option<SttError> = None;
+        for attempt in 0..attempts {
+            if attempt > 0 && self.pause(RETRY_PAUSE * attempt) {
+                return Err(SttError::Cancelled);
+            }
+            match self.attempt(&url, &wav, options) {
+                Ok(transcript) => return Ok(transcript),
+                Err(Attempt::Fatal(error)) => return Err(error),
+                Err(Attempt::Transient(error)) => last = Some(error),
+            }
         }
-        let status = response.status();
-        let text = response.text().map_err(|err| {
-            SttError::Inference(format!(
-                "cannot read the answer of the provider: {}",
-                with_causes(&err)
-            ))
-        })?;
-        if !status.is_success() {
-            return Err(provider_error(status, &text));
-        }
-        let transcript = parse_transcript(&text)?;
-        if self.is_cancelled() {
-            return Err(SttError::Cancelled);
-        }
-        Ok(transcript)
+        Err(last.unwrap_or_else(|| {
+            SttError::Inference("the request was not sent: no attempt was made".into())
+        }))
     }
 
     /// Nothing to free: the weights are the provider's
@@ -931,6 +1069,135 @@ mod tests {
                 .unwrap()
                 .timeout,
             Duration::from_secs(MAX_TIMEOUT_SECS)
+        );
+    }
+
+    #[test]
+    fn the_temperature_and_the_prompt_reach_the_provider() {
+        let server = MockServer::spawn(vec![Some(verbose_json())]);
+        let mut engine = engine_at(&server.base_url(), false, Duration::from_secs(5))
+            .with_temperature(0.4)
+            .with_prompt("Molva, ГигаАМ");
+        engine.transcribe(&audio(), &russian()).unwrap();
+
+        let request = body_of(&server.last());
+        assert!(
+            find(&request, b"name=\"temperature\"\r\n\r\n0.40\r\n").is_some(),
+            "{}",
+            String::from_utf8_lossy(&request)
+        );
+        assert!(
+            find(
+                &request,
+                "name=\"prompt\"\r\n\r\nMolva, ГигаАМ\r\n".as_bytes()
+            )
+            .is_some(),
+            "{}",
+            String::from_utf8_lossy(&request)
+        );
+    }
+
+    #[test]
+    fn a_default_decoder_sends_zero_and_no_prompt() {
+        let server = MockServer::spawn(vec![Some(verbose_json())]);
+        engine_at(&server.base_url(), false, Duration::from_secs(5))
+            .with_prompt("   ")
+            .transcribe(&audio(), &russian())
+            .unwrap();
+
+        let request = body_of(&server.last());
+        assert!(find(&request, b"name=\"temperature\"\r\n\r\n0\r\n").is_some());
+        assert!(
+            find(&request, b"name=\"prompt\"").is_none(),
+            "a blank prompt must not occupy the window of the decoder"
+        );
+    }
+
+    #[test]
+    fn a_rate_limit_is_repeated_and_the_second_answer_wins() {
+        let server = MockServer::spawn(vec![
+            Some(http(
+                "429 Too Many Requests",
+                r#"{"error":{"message":"slow down"}}"#,
+            )),
+            Some(verbose_json()),
+        ]);
+        let mut engine =
+            engine_at(&server.base_url(), false, Duration::from_secs(5)).with_retries(1);
+        let transcript = engine.transcribe(&audio(), &russian()).unwrap();
+
+        assert_eq!(transcript.text, "Привет, мир.");
+        assert_eq!(
+            server.calls(),
+            2,
+            "the rate limit is worth one more request"
+        );
+    }
+
+    #[test]
+    fn a_rejected_key_is_not_repeated() {
+        let server = MockServer::spawn(vec![
+            Some(http(
+                "401 Unauthorized",
+                r#"{"error":{"message":"bad key"}}"#,
+            )),
+            Some(verbose_json()),
+        ]);
+        let mut engine =
+            engine_at(&server.base_url(), false, Duration::from_secs(5)).with_retries(3);
+        let error = engine.transcribe(&audio(), &russian()).unwrap_err();
+
+        assert!(error.to_string().contains("rejected the key"), "{error}");
+        assert_eq!(
+            server.calls(),
+            1,
+            "a key does not become right by asking again"
+        );
+    }
+
+    #[test]
+    fn the_retries_stop_at_the_configured_number() {
+        let failed = || {
+            Some(http(
+                "500 Internal Server Error",
+                r#"{"error":{"message":"down"}}"#,
+            ))
+        };
+        let server = MockServer::spawn(vec![failed(), failed(), failed(), failed()]);
+        let mut engine =
+            engine_at(&server.base_url(), false, Duration::from_secs(5)).with_retries(2);
+        let error = engine.transcribe(&audio(), &russian()).unwrap_err();
+
+        assert!(error.to_string().contains("500"), "{error}");
+        assert_eq!(server.calls(), 3, "the first request and the two repeats");
+    }
+
+    #[test]
+    fn a_cancel_during_the_pause_leaves_without_the_next_request() {
+        let failed = || {
+            Some(http(
+                "503 Service Unavailable",
+                r#"{"error":{"message":"later"}}"#,
+            ))
+        };
+        let server = MockServer::spawn(vec![failed(), failed(), Some(verbose_json())]);
+        let token = Arc::new(CancelToken::new());
+        let mut engine =
+            engine_at(&server.base_url(), false, Duration::from_secs(5)).with_retries(2);
+        engine.set_cancel(Some(Arc::clone(&token)));
+        let cancelling = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(120));
+            token.cancel();
+        });
+
+        let error = engine.transcribe(&audio(), &russian()).unwrap_err();
+        cancelling.join().unwrap();
+
+        assert!(matches!(error, SttError::Cancelled), "{error}");
+        assert_eq!(
+            server.calls(),
+            1,
+            "a cancelled job sends no further request"
         );
     }
 }

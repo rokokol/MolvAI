@@ -10,7 +10,9 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ### Added
 
-- Recognition through an OpenAI-compatible cloud service: `stt.engine = "remote-openai"` sends the recording to `stt.remote.base_url` (OpenAI, Groq, OpenRouter or a server of your own) and reads the transcript back with its timecodes. `stt.remote.timeout_secs` caps one request, `molva secret set stt` writes the key, and `molva secret status` shows the entry beside the model key and the journal key
+- Recognition through an OpenAI-compatible cloud service: `stt.engine = "remote-openai"` sends the recording to `stt.remote.base_url` (OpenAI, Groq or a server of your own) and reads the transcript back with its timecodes. `stt.remote.timeout_secs` caps one request, `molva secret set stt` writes the key, and `molva secret status` shows the entry beside the model key and the journal key
+
+- The remote recognizer carries the knobs of the post-processing model: `stt.remote.temperature` (0 by default, so a phrase reads the same way every time), `stt.remote.prompt` for names and jargon (empty means no prompt is sent), and `stt.remote.max_retries`, which repeats a request that failed on a timeout, a rate limit or a provider error and never one that failed on the key. The Settings page shows them beside the key, in the order of the model section
 
 - The consent to a cloud provider now covers the audio as well, checked on the address of the request: without `privacy.cloud_consent` a remote service receives nothing, while a loopback address needs no consent because the recording stays on the machine
 
