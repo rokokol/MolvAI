@@ -81,6 +81,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clap = { version = "4", features = ["derive", "env"] }
 strsim = "0.11"
 tempfile = "3"
+# Cross-process lock of the journal file: flock on unix, LockFileEx on Windows
+fs4 = "1.1"
 # Track F: IPC, paste, hotkeys, notifications
 interprocess = "2.4"
 which = "8"

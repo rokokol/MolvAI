@@ -128,8 +128,8 @@ defect 'audio/gain-clamp' 'crates/molva-core/src/infra/audio/cpal_source.rs' \
   'the input gain pushes the signal out of range: clipping breaks recognition'
 
 defect 'journal/privacy-strips-text' 'crates/molva-core/src/app/journal.rs' \
-  '            owned = entry.clone().without_text();' \
-  '            owned = entry.clone();' \
+  '            entry.clone().without_text()' \
+  '            entry.clone()' \
   'in privacy mode the texts of phrases still reach the journal file'
 
 defect 'journal/corrupt-line-quarantined' 'crates/molva-core/src/app/journal.rs' \

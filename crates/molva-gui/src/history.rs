@@ -57,8 +57,8 @@ pub fn load_for(config: &Config) -> Result<Vec<Entry>, HistoryError> {
 }
 
 /// Delete one phrase. `false` means no entry had this identifier
-pub fn delete(path: &Path, id: Uuid) -> Result<bool, HistoryError> {
-    Ok(FileJournal::open(path)?.delete(id)?)
+pub fn delete(config: &Config, id: Uuid) -> Result<bool, HistoryError> {
+    Ok(FileJournal::open_for(config)?.delete(id)?)
 }
 
 /// Clear the whole journal
@@ -158,6 +158,63 @@ mod tests {
             entry(2, "2026-09-03T10:00:00Z", Some("firefox"), "Письмо коллеге"),
             entry(3, "2026-09-05T10:00:00Z", None, "ПРИВЕТ ещё раз"),
         ]
+    }
+
+    #[test]
+    fn delete_preserves_the_other_encrypted_phrase() {
+        use molva_core::domain::journal::Journal;
+
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("journal.jsonl");
+        let mut config = Config::default();
+        config.journal.path = path.display().to_string();
+        config.journal.encrypt = true;
+        config.journal.include_text = true;
+        config.journal.key_source = "file".into();
+        config.journal.key_path = directory.path().join("journal.key").display().to_string();
+        let mut journal = FileJournal::open_for(&config).unwrap();
+        let removed = entry(1, "2026-09-01T10:00:00Z", None, "fixture-remove");
+        let mut kept = entry(2, "2026-09-02T10:00:00Z", None, "fixture-raw");
+        kept.text_final = Some("fixture-final".into());
+        journal.append(&removed).unwrap();
+        journal.append(&kept).unwrap();
+        assert_eq!(
+            load_for(&config).unwrap(),
+            vec![kept.clone(), removed.clone()]
+        );
+
+        assert!(delete(&config, removed.id).unwrap());
+
+        assert_eq!(load_for(&config).unwrap(), vec![kept]);
+        let disk = std::fs::read_to_string(&path).unwrap();
+        assert!(!disk.contains("fixture-remove"));
+        assert!(!disk.contains("fixture-raw"));
+        assert!(!disk.contains("fixture-final"));
+        assert!(!delete(&config, removed.id).unwrap());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), disk);
+    }
+
+    #[test]
+    fn delete_rejects_a_damaged_configured_key_without_rewriting() {
+        use molva_core::domain::journal::Journal;
+
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("journal.jsonl");
+        let key_path = directory.path().join("journal.key");
+        let mut config = Config::default();
+        config.journal.path = path.display().to_string();
+        config.journal.encrypt = true;
+        config.journal.include_text = true;
+        config.journal.key_source = "file".into();
+        config.journal.key_path = key_path.display().to_string();
+        let mut journal = FileJournal::open_for(&config).unwrap();
+        let removed = entry(1, "2026-09-01T10:00:00Z", None, "fixture-remove");
+        journal.append(&removed).unwrap();
+        let before = std::fs::read(&path).unwrap();
+        std::fs::write(&key_path, b"fixture-invalid-key").unwrap();
+
+        assert!(delete(&config, removed.id).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), before);
     }
 
     #[test]

@@ -9,6 +9,11 @@
 //! No file handle is kept between writes: each write opens the file again. So the `&self`
 //! methods that replace the file through `rename` do not leave the journal writing to a deleted
 //! inode
+//!
+//! Every operation takes a lock on `<journal>.lock`, which keeps its inode across a rewrite:
+//! writers exclude each other, and a reader sees the file either before or after a rewrite, never
+//! during it. A process that does not take the lock — an older build of the daemon — is not
+//! excluded, and a network file system gives no promise beyond what its own lock daemon keeps
 
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Write};
@@ -20,7 +25,7 @@ use tracing::warn;
 use uuid::Uuid;
 
 use crate::app::journal_crypto::{self, JournalCipher};
-use crate::app::secrets;
+use crate::app::secrets::{self, SecretStore};
 use crate::domain::entry::{Entry, SCHEMA_VERSION};
 use crate::domain::journal::{Journal, JournalError};
 
@@ -35,6 +40,82 @@ fn io_err(path: &Path, err: &std::io::Error) -> JournalError {
     JournalError::Io(format!("{}: {err}", path.display()))
 }
 
+/// Lock file that belongs to `path`: a rewrite replaces the journal by `rename`, and a lock taken
+/// on the replaced inode leaves the next writer free, so the lock lives on a file of its own
+fn sibling_lock_path(path: &Path) -> PathBuf {
+    let mut name = path.as_os_str().to_os_string();
+    name.push(".lock");
+    PathBuf::from(name)
+}
+
+/// Lock held for the length of one operation, released when the guard drops
+///
+/// The lock orders the processes that take it, and nothing more: a process that writes the
+/// journal without it is still able to lose a rewrite. It also must not outlive the operation —
+/// a guard kept in `FileJournal` between calls would deadlock the next call of the same process
+struct JournalLock(File);
+
+impl std::fmt::Debug for JournalLock {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.debug_tuple("JournalLock").field(&self.0).finish()
+    }
+}
+
+impl JournalLock {
+    /// Writers wait for each other and for the readers
+    fn exclusive(path: &Path) -> Result<Self, JournalError> {
+        Self::acquire(path, true)
+    }
+
+    /// Readers share the file, and wait only for a writer
+    fn shared(path: &Path) -> Result<Self, JournalError> {
+        Self::acquire(path, false)
+    }
+
+    fn acquire(path: &Path, exclusive: bool) -> Result<Self, JournalError> {
+        let file = open_lock_file(path)?;
+        // The trait is named in full: `File::lock` of the standard library arrived in Rust 1.89,
+        // and this workspace keeps 1.85 as its floor
+        let locked = if exclusive {
+            fs4::FileExt::lock(&file)
+        } else {
+            fs4::FileExt::lock_shared(&file)
+        };
+        // An operation without its lock loses a concurrent write: the caller gets the error
+        // instead, and no line reaches the journal half done
+        locked.map_err(|e| JournalError::Io(format!("cannot lock {}: {e}", path.display())))?;
+        Ok(Self(file))
+    }
+}
+
+impl Drop for JournalLock {
+    fn drop(&mut self) {
+        // Closing the handle releases the lock as well; the explicit call keeps the boundary
+        // visible and turns a stuck lock into a log line
+        if let Err(e) = fs4::FileExt::unlock(&self.0) {
+            warn!(error = %e, "the journal lock did not release");
+        }
+    }
+}
+
+fn open_lock_file(path: &Path) -> Result<File, JournalError> {
+    let mut options = OpenOptions::new();
+    options.read(true).write(true).create(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.mode(0o600);
+    }
+    let file = options.open(path).map_err(|e| io_err(path, &e))?;
+    restrict_permissions(&file, path)?;
+    Ok(file)
+}
+
+/// The shortest line an entry of this schema can produce, with a wide margin below the real one.
+/// A file shorter than `max_entries` of these cannot hold that many entries, so the count of the
+/// lines is not read at all. A test holds the bound to the schema
+const MIN_ENTRY_BYTES: u64 = 128;
+
 /// Journal in a JSONL file
 #[derive(Debug, Clone)]
 pub struct FileJournal {
@@ -44,6 +125,10 @@ pub struct FileJournal {
     /// Cipher of the phrase texts (`journal.encrypt`); with `None` the texts are written in
     /// plain text
     cipher: Option<JournalCipher>,
+    /// `journal.max_entries` applied by `append`; zero turns the limit off
+    max_entries: u32,
+    /// `journal.max_size_mb` applied by `append`; zero turns the limit off
+    max_size_mb: u32,
 }
 
 impl FileJournal {
@@ -59,6 +144,16 @@ impl FileJournal {
                 std::fs::create_dir_all(parent).map_err(|e| io_err(parent, &e))?;
             }
         }
+        let journal = Self {
+            path: path.to_path_buf(),
+            include_text,
+            cipher: None,
+            max_entries: 0,
+            max_size_mb: 0,
+        };
+        // The existence check and the header belong to one critical section: two processes that
+        // both saw no file each wrote a header of their own
+        let _lock = journal.lock_exclusive()?;
         let existed = path.exists();
         let file = OpenOptions::new()
             .create(true)
@@ -77,40 +172,100 @@ impl FileJournal {
             writeln!(file, "{line}").map_err(|e| io_err(path, &e))?;
             file.sync_all().map_err(|e| io_err(path, &e))?;
         }
-        Ok(Self {
-            path: path.to_path_buf(),
-            include_text,
-            cipher: None,
-        })
+        Ok(journal)
     }
 
-    /// Journal by the settings: the path, the privacy mode and the cipher come from one place,
-    /// so the daemon, the CLI and the GUI open the same file in the same way. With
-    /// `journal.encrypt = true`, the key is read or created by `journal.key_source`: in the OS
-    /// store (entry `journal-key`) or in the file `journal.key_path`
+    /// Journal by the settings: the path, the privacy mode, the cipher and the retention limits
+    /// come from one place, so the daemon, the CLI and the GUI open the same file in the same way.
+    /// With `journal.encrypt = true`, the key is read or created by `journal.key_source`: in the
+    /// OS store (entry `journal-key`) or in the file `journal.key_path`
     pub fn open_for(config: &crate::config::Config) -> Result<Self, JournalError> {
         let path = config
             .journal_path()
             .map_err(|e| JournalError::Io(e.to_string()))?;
-        let journal = Self::open_with(&path, config.journal.include_text)?;
+        let mut journal = Self::open_with(&path, config.journal.include_text)?;
+        journal.max_entries = config.journal.max_entries;
+        journal.max_size_mb = config.journal.max_size_mb;
         if !config.journal.encrypt {
             return Ok(journal);
         }
-        let cipher = if config
+        let cipher = journal.cipher_for(config)?;
+        Ok(journal.with_cipher(Some(cipher)))
+    }
+
+    /// Key for `journal.encrypt`. A key is created only when the journal holds no ciphertext
+    fn cipher_for(&self, config: &crate::config::Config) -> Result<JournalCipher, JournalError> {
+        let entry = secrets::JOURNAL_KEY_ENTRY;
+        if config
             .journal
             .key_source
             .trim()
             .eq_ignore_ascii_case("keyring")
         {
-            JournalCipher::from_store(&secrets::OsKeyring, secrets::JOURNAL_KEY_ENTRY)
-        } else {
-            let key_path = config
-                .journal_key_path()
-                .map_err(|e| JournalError::Io(e.to_string()))?;
-            JournalCipher::from_key_file(&key_path)
+            let store = secrets::OsKeyring;
+            match store.get(entry) {
+                Ok(Some(_)) => {}
+                // The OS store gives no lock shared by the processes that use it, so two of them
+                // that find no entry at the same moment can both write one, and the later write
+                // wins. The check below still keeps a new key away from encrypted history
+                Ok(None) => self.refuse_new_key(&format!("the OS key store entry {entry}"))?,
+                Err(error) => return Err(JournalError::Io(error.to_string())),
+            }
+            return JournalCipher::from_store(&store, entry)
+                .map_err(|e| JournalError::Io(e.to_string()));
         }
-        .map_err(|e| JournalError::Io(e.to_string()))?;
-        Ok(journal.with_cipher(Some(cipher)))
+        let key_path = config
+            .journal_key_path()
+            .map_err(|e| JournalError::Io(e.to_string()))?;
+        match key_path.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => {
+                std::fs::create_dir_all(parent).map_err(|e| io_err(parent, &e))?;
+            }
+            _ => {}
+        }
+        // The key gets a lock file of its own, and the key is read again under it: the caller
+        // that lost the race reads the key the winner wrote instead of creating a second one
+        let _lock = JournalLock::exclusive(&sibling_lock_path(&key_path))?;
+        if !key_path.is_file() {
+            self.refuse_new_key(&format!("the key file {}", key_path.display()))?;
+        }
+        JournalCipher::from_key_file(&key_path).map_err(|e| JournalError::Io(e.to_string()))
+    }
+
+    /// A new key cannot read the lines the journal already holds, so it would lock the user out
+    /// of their own history without a word. A line that does not parse may hide ciphertext, and
+    /// counts as one
+    fn refuse_new_key(&self, key: &str) -> Result<(), JournalError> {
+        let text = match std::fs::read_to_string(&self.path) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(io_err(&self.path, &e)),
+        };
+        for (index, line) in text.lines().enumerate() {
+            let line = line.trim();
+            if line.is_empty() || is_header(line) {
+                continue;
+            }
+            let sealed = match serde_json::from_str::<Entry>(line) {
+                Err(_) => true,
+                Ok(entry) => entry
+                    .segments
+                    .iter()
+                    .map(|segment| &segment.text)
+                    .chain(entry.text_raw.iter())
+                    .chain(entry.text_final.iter())
+                    .any(|field| journal_crypto::is_encrypted(field)),
+            };
+            if sealed {
+                return Err(JournalError::Io(format!(
+                    "{key} is missing, but line {} of {} holds encrypted text: restore the key, \
+                     or move the journal away before a new key is created",
+                    index + 1,
+                    self.path.display()
+                )));
+            }
+        }
+        Ok(())
     }
 
     /// Turn on text encryption: with `Some`, the texts of new lines are written as ciphertext
@@ -140,6 +295,30 @@ impl FileJournal {
         };
         entry.text_raw = unlock(entry.text_raw);
         entry.text_final = unlock(entry.text_final);
+        for segment in &mut entry.segments {
+            segment.text = unlock(Some(std::mem::take(&mut segment.text))).unwrap_or_default();
+        }
+        entry
+    }
+
+    fn encrypted(&self, mut entry: Entry, preserve_ciphertext: bool) -> Entry {
+        if let Some(cipher) = &self.cipher {
+            let seal = |text: &mut String| {
+                // Stored ciphertext can use another key; new fields are always plaintext
+                if !preserve_ciphertext || !journal_crypto::is_encrypted(text) {
+                    *text = cipher.encrypt(text);
+                }
+            };
+            if let Some(text) = &mut entry.text_raw {
+                seal(text);
+            }
+            if let Some(text) = &mut entry.text_final {
+                seal(text);
+            }
+            for segment in &mut entry.segments {
+                seal(&mut segment.text);
+            }
+        }
         entry
     }
 
@@ -162,8 +341,36 @@ impl FileJournal {
         PathBuf::from(name)
     }
 
+    /// Lock file held for the length of one operation, created beside the journal
+    pub fn lock_path(&self) -> PathBuf {
+        sibling_lock_path(&self.path)
+    }
+
+    fn lock_exclusive(&self) -> Result<JournalLock, JournalError> {
+        JournalLock::exclusive(&self.lock_path())
+    }
+
+    fn lock_shared(&self) -> Result<JournalLock, JournalError> {
+        JournalLock::shared(&self.lock_path())
+    }
+
     /// All entries in order. Broken lines do not fail the load: they go to `<path>.broken`
     pub fn load_all(&self) -> Result<Vec<Entry>, JournalError> {
+        let _lock = self.lock_shared()?;
+        self.entries_locked()
+    }
+
+    /// Read and decrypt under a lock the caller already holds
+    fn entries_locked(&self) -> Result<Vec<Entry>, JournalError> {
+        Ok(self
+            .load_stored()?
+            .into_iter()
+            .map(|entry| self.decrypted(entry))
+            .collect())
+    }
+
+    // Mutations must not save the empty fields that reads return without a valid key
+    fn load_stored(&self) -> Result<Vec<Entry>, JournalError> {
         let text = match std::fs::read_to_string(&self.path) {
             Ok(text) => text,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -177,7 +384,7 @@ impl FileJournal {
                 continue;
             }
             match serde_json::from_str::<Entry>(line) {
-                Ok(entry) => entries.push(self.decrypted(entry)),
+                Ok(entry) => entries.push(entry),
                 Err(_) if is_header(line) => {}
                 Err(err) => {
                     warn!(
@@ -212,30 +419,92 @@ impl FileJournal {
 
     /// Search by substring in the phrase texts, ignoring case
     pub fn search(&self, substring: &str) -> Result<Vec<Entry>, JournalError> {
-        Ok(search_entries(&self.load_all()?, substring))
+        let _lock = self.lock_shared()?;
+        Ok(search_entries(&self.entries_locked()?, substring))
     }
 
     /// Delete one entry by identifier; `false` means no entry had this id
     pub fn delete(&self, id: Uuid) -> Result<bool, JournalError> {
-        let entries = self.load_all()?;
+        let _lock = self.lock_exclusive()?;
+        let entries = self.load_stored()?;
         let kept: Vec<Entry> = entries.iter().filter(|e| e.id != id).cloned().collect();
         if kept.len() == entries.len() {
             return Ok(false);
         }
-        self.rewrite(&kept)?;
+        self.rewrite_locked(&kept)?;
         Ok(true)
     }
 
     /// Clear the whole journal, and leave only the header
     pub fn clear(&self) -> Result<(), JournalError> {
-        self.rewrite(&[])
+        let _lock = self.lock_exclusive()?;
+        self.rewrite_locked(&[])
     }
 
     /// Rotation: keep at most `max_entries` latest entries and stay within `max_size_mb`
     ///
     /// A zero in either limit turns that limit off. Returns the number of removed entries
     pub fn rotate(&self, max_entries: u32, max_size_mb: u32) -> Result<usize, JournalError> {
-        let entries = self.load_all()?;
+        let _lock = self.lock_exclusive()?;
+        self.rotate_locked(max_entries, max_size_mb)
+    }
+
+    /// Retention after an append, under the lock the append already holds
+    fn apply_retention_locked(&self) -> Result<(), JournalError> {
+        if !self.limits_exceeded()? {
+            return Ok(());
+        }
+        self.rotate_locked(self.max_entries, self.max_size_mb)
+            .map(|_| ())
+    }
+
+    /// Whether a limit may have been crossed, decided without parsing a line. A full rotation on
+    /// every append parses and re-serialises the whole history, which costs tens of milliseconds
+    /// on a journal of ten thousand entries, and an append usually crosses no limit at all
+    fn limits_exceeded(&self) -> Result<bool, JournalError> {
+        let length = match std::fs::metadata(&self.path) {
+            Ok(metadata) => metadata.len(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(e) => return Err(io_err(&self.path, &e)),
+        };
+        if self.max_size_mb > 0 && length > u64::from(self.max_size_mb) * 1024 * 1024 {
+            return Ok(true);
+        }
+        if self.max_entries == 0 {
+            return Ok(false);
+        }
+        if length < u64::from(self.max_entries) * MIN_ENTRY_BYTES {
+            return Ok(false);
+        }
+        // Every line of the file is one entry or the header
+        Ok(self.count_lines()?.saturating_sub(1) > u64::from(self.max_entries))
+    }
+
+    /// Lines in the file, counted by byte rather than parsed: the count only decides whether a
+    /// rotation is due, and the rotation counts the entries itself
+    ///
+    /// The byte scan stays hand-written: a dependency for one pass over a 64 KB buffer is not
+    /// worth its place in the lock file
+    #[allow(clippy::naive_bytecount)]
+    fn count_lines(&self) -> Result<u64, JournalError> {
+        use std::io::Read as _;
+
+        let mut file = File::open(&self.path).map_err(|e| io_err(&self.path, &e))?;
+        let mut buffer = vec![0u8; 64 * 1024];
+        let mut lines = 0u64;
+        loop {
+            let read = file.read(&mut buffer).map_err(|e| io_err(&self.path, &e))?;
+            if read == 0 {
+                return Ok(lines);
+            }
+            lines += buffer[..read].iter().filter(|byte| **byte == b'\n').count() as u64;
+        }
+    }
+
+    /// Rotation under a lock the caller already holds: a second acquisition of the same lock in
+    /// one process would wait for itself
+    fn rotate_locked(&self, max_entries: u32, max_size_mb: u32) -> Result<usize, JournalError> {
+        let entries = self.load_stored()?;
         let total = entries.len();
         let mut kept: &[Entry] = &entries;
         if max_entries > 0 && kept.len() > max_entries as usize {
@@ -243,24 +512,27 @@ impl FileJournal {
         }
         if max_size_mb > 0 {
             let limit = u64::from(max_size_mb) * 1024 * 1024;
-            while !kept.is_empty() && serialized_size(kept)? > limit {
+            // The newest entry stays whatever its size: it is the line that was just written,
+            // and a limit smaller than it must not throw the phrase away
+            while kept.len() > 1 && serialized_size(kept)? > limit {
                 // Cut the oldest: fresh history is worth more to the user
                 let drop = (kept.len() / 10).max(1);
-                kept = &kept[drop.min(kept.len())..];
+                kept = &kept[drop.min(kept.len() - 1)..];
             }
         }
         if kept.len() == total {
             return Ok(0);
         }
         let kept = kept.to_vec();
-        self.rewrite(&kept)?;
+        self.rewrite_locked(&kept)?;
         Ok(total - kept.len())
     }
 
     /// Export of all entries to JSONL (the same format as the journal itself, but without the
     /// header)
     pub fn export_jsonl(&self, path: &Path) -> Result<usize, JournalError> {
-        let entries = self.load_all()?;
+        let _lock = self.lock_shared()?;
+        let entries = self.entries_locked()?;
         let mut out = String::new();
         for entry in &entries {
             let line =
@@ -274,73 +546,81 @@ impl FileJournal {
 
     /// Export of all entries to CSV
     pub fn export_csv(&self, path: &Path) -> Result<usize, JournalError> {
-        let entries = self.load_all()?;
+        let _lock = self.lock_shared()?;
+        let entries = self.entries_locked()?;
         std::fs::write(path, entries_to_csv(&entries)).map_err(|e| io_err(path, &e))?;
         Ok(entries.len())
     }
 
-    /// Atomic rewrite: a temporary file next to it + `rename`
-    fn rewrite(&self, entries: &[Entry]) -> Result<(), JournalError> {
-        let mut tmp_name = self.path.as_os_str().to_os_string();
-        tmp_name.push(".tmp");
-        let tmp = PathBuf::from(tmp_name);
-        {
-            let file = File::create(&tmp).map_err(|e| io_err(&tmp, &e))?;
-            restrict_permissions(&file, &tmp)?;
-            let mut writer = BufWriter::new(file);
-            let header = Header {
-                schema: SCHEMA_VERSION,
-                created: Utc::now(),
-            };
-            let line = serde_json::to_string(&header)
+    /// Atomic rewrite under a lock the caller already holds: a temporary file in the same
+    /// directory, then `rename`. A unique name per call keeps two rewrites apart, and the file
+    /// removes itself when the write fails
+    fn rewrite_locked(&self, entries: &[Entry]) -> Result<(), JournalError> {
+        let parent = self
+            .path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        let mut tmp = tempfile::NamedTempFile::new_in(parent).map_err(|e| io_err(parent, &e))?;
+        let tmp_path = tmp.path().to_path_buf();
+        restrict_permissions(tmp.as_file(), &tmp_path)?;
+        let mut writer = BufWriter::new(tmp.as_file_mut());
+        let header = Header {
+            schema: SCHEMA_VERSION,
+            created: Utc::now(),
+        };
+        let line =
+            serde_json::to_string(&header).map_err(|e| JournalError::Serialize(e.to_string()))?;
+        writeln!(writer, "{line}").map_err(|e| io_err(&tmp_path, &e))?;
+        for entry in entries {
+            let line = serde_json::to_string(&self.encrypted(entry.clone(), true))
                 .map_err(|e| JournalError::Serialize(e.to_string()))?;
-            writeln!(writer, "{line}").map_err(|e| io_err(&tmp, &e))?;
-            for entry in entries {
-                let line = serde_json::to_string(entry)
-                    .map_err(|e| JournalError::Serialize(e.to_string()))?;
-                writeln!(writer, "{line}").map_err(|e| io_err(&tmp, &e))?;
-            }
-            let file = writer
-                .into_inner()
-                .map_err(|e| JournalError::Io(format!("{}: {}", tmp.display(), e.error())))?;
-            file.sync_all().map_err(|e| io_err(&tmp, &e))?;
+            writeln!(writer, "{line}").map_err(|e| io_err(&tmp_path, &e))?;
         }
-        std::fs::rename(&tmp, &self.path).map_err(|e| io_err(&self.path, &e))
+        writer.flush().map_err(|e| io_err(&tmp_path, &e))?;
+        drop(writer);
+        tmp.as_file()
+            .sync_all()
+            .map_err(|e| io_err(&tmp_path, &e))?;
+        tmp.persist(&self.path)
+            .map(|_| ())
+            .map_err(|e| io_err(&self.path, &e.error))
     }
 }
 
 impl Journal for FileJournal {
     fn append(&mut self, entry: &Entry) -> Result<(), JournalError> {
-        let owned;
-        let entry = if !self.include_text {
-            owned = entry.clone().without_text();
-            &owned
-        } else if let Some(cipher) = &self.cipher {
-            // Only the texts are encrypted: statistics and filters need the other fields
-            // without the key
-            let mut sealed = entry.clone();
-            sealed.text_raw = sealed.text_raw.as_deref().map(|text| cipher.encrypt(text));
-            sealed.text_final = sealed
-                .text_final
-                .as_deref()
-                .map(|text| cipher.encrypt(text));
-            owned = sealed;
-            &owned
+        let entry = if self.include_text {
+            entry.clone()
         } else {
-            entry
+            entry.clone().without_text()
         };
-        let line =
-            serde_json::to_string(entry).map_err(|e| JournalError::Serialize(e.to_string()))?;
+        let line = serde_json::to_string(&self.encrypted(entry, false))
+            .map_err(|e| JournalError::Serialize(e.to_string()))?;
         debug_assert!(!line.contains('\n'), "a journal line must not wrap");
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.path)
-            .map_err(|e| io_err(&self.path, &e))?;
-        restrict_permissions(&file, &self.path)?;
-        writeln!(file, "{line}").map_err(|e| io_err(&self.path, &e))?;
-        file.flush().map_err(|e| io_err(&self.path, &e))?;
-        file.sync_all().map_err(|e| io_err(&self.path, &e))
+        let _lock = self.lock_exclusive()?;
+        {
+            let mut file = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&self.path)
+                .map_err(|e| io_err(&self.path, &e))?;
+            restrict_permissions(&file, &self.path)?;
+            writeln!(file, "{line}").map_err(|e| io_err(&self.path, &e))?;
+            file.flush().map_err(|e| io_err(&self.path, &e))?;
+            file.sync_all().map_err(|e| io_err(&self.path, &e))?;
+        }
+        if self.max_entries == 0 && self.max_size_mb == 0 {
+            return Ok(());
+        }
+        // Retention runs under the lock the append holds: a release and a new acquisition would
+        // let another process append in between, and the rotation would cut that line unseen
+        self.apply_retention_locked().map_err(|error| {
+            JournalError::Io(format!(
+                "the entry was written, but the retention did not finish: {error}"
+            ))
+        })?;
+        Ok(())
     }
 }
 
@@ -537,6 +817,36 @@ mod tests {
         let path = directory.path().join("data").join("journal.jsonl");
         let journal = FileJournal::open(&path).unwrap();
         (directory, journal)
+    }
+
+    #[test]
+    fn the_shortest_entry_is_longer_than_the_cheap_count_bound() {
+        // `limits_exceeded` skips the line count of a file too short to hold `max_entries`
+        // entries, and that shortcut rests on this bound
+        let mut entry = test_entry("2026-09-05T10:00:00Z", 0, 0.0, "");
+        entry.app = None;
+        entry.language = None;
+        entry.llm_provider = None;
+        entry.llm_model = None;
+        entry.wpm = None;
+        entry.inject_method = None;
+        entry.tokens = None;
+        entry.llm_cost_usd = None;
+        entry.error = None;
+        entry.text_raw = None;
+        entry.text_final = None;
+        entry.audio_path = None;
+        entry.segments = Vec::new();
+        entry.latency_ms = crate::domain::entry::LatencyMs::default();
+        entry.style = String::new();
+        entry.stt_engine = String::new();
+        entry.stt_model = String::new();
+        let line = serde_json::to_string(&entry).unwrap();
+        assert!(
+            line.len() as u64 > MIN_ENTRY_BYTES,
+            "an entry line is {} bytes, the bound claims more than {MIN_ENTRY_BYTES}",
+            line.len()
+        );
     }
 
     #[test]
@@ -830,6 +1140,206 @@ mod tests {
         assert_eq!(blind[0].text_raw, None);
     }
 
+    fn private_entry() -> Entry {
+        let mut entry = test_entry("2026-09-05T12:00:00Z", 4, 3.0, "fixture");
+        entry.text_raw = Some("fixture-private-raw".into());
+        entry.text_final = Some("fixture-private-final".into());
+        entry.audio_path = Some("fixture.wav".into());
+        entry.segments = vec![crate::domain::stt::Segment {
+            start_ms: 10,
+            end_ms: 100,
+            text: "fixture-private-segment".into(),
+        }];
+        entry
+    }
+
+    fn stored_entries(journal: &FileJournal) -> Vec<Entry> {
+        std::fs::read_to_string(journal.path())
+            .unwrap()
+            .lines()
+            .filter_map(|line| serde_json::from_str(line).ok())
+            .collect()
+    }
+
+    fn assert_sealed(journal: &FileJournal, original: &Entry) {
+        let disk = std::fs::read_to_string(journal.path()).unwrap();
+        for text in [
+            original.text_raw.as_deref().unwrap(),
+            original.text_final.as_deref().unwrap(),
+            original.segments[0].text.as_str(),
+        ] {
+            assert!(!disk.contains(text), "plaintext leaked: {text}");
+        }
+        for entry in stored_entries(journal) {
+            assert!(journal_crypto::is_encrypted(
+                entry.text_raw.as_ref().unwrap()
+            ));
+            assert!(journal_crypto::is_encrypted(
+                entry.text_final.as_ref().unwrap()
+            ));
+            assert!(journal_crypto::is_encrypted(&entry.segments[0].text));
+        }
+    }
+
+    #[test]
+    fn encryption_covers_segments_and_hides_unavailable_text() {
+        let (_dir, journal) = journal();
+        let mut journal = journal.with_cipher(Some(JournalCipher::from_key(&[3; 32])));
+        let entry = private_entry();
+        journal.append(&entry).unwrap();
+        assert_sealed(&journal, &entry);
+        assert_eq!(journal.load_all().unwrap(), vec![entry.clone()]);
+        for cipher in [None, Some(JournalCipher::from_key(&[4; 32]))] {
+            let blind = FileJournal::open(journal.path())
+                .unwrap()
+                .with_cipher(cipher);
+            let loaded = blind.load_all().unwrap();
+            assert_eq!(loaded[0].text_raw, None);
+            assert_eq!(loaded[0].text_final, None);
+            assert_eq!(loaded[0].segments[0].text, "");
+            assert_eq!(loaded[0].segments[0].start_ms, 10);
+            assert_eq!(loaded[0].segments[0].end_ms, 100);
+        }
+    }
+
+    #[test]
+    fn append_encrypts_new_text_even_with_a_ciphertext_prefix() {
+        let cipher = JournalCipher::from_key(&[3; 32]);
+        for text in [
+            "enc1:".to_string(),
+            "enc1:fixture-private-plaintext".to_string(),
+            cipher.encrypt("fixture-private-inner"),
+        ] {
+            let (_dir, journal) = journal();
+            let mut journal = journal.with_cipher(Some(cipher.clone()));
+            let mut entry = private_entry();
+            entry.text_raw = Some(text.clone());
+            entry.text_final = Some(text.clone());
+            entry.segments[0].text = text;
+            journal.append(&entry).unwrap();
+            let stored = &stored_entries(&journal)[0];
+            assert_ne!(stored.text_raw, entry.text_raw);
+            assert_ne!(stored.text_final, entry.text_final);
+            assert_ne!(stored.segments[0].text, entry.segments[0].text);
+            assert_eq!(journal.load_all().unwrap(), vec![entry]);
+        }
+    }
+
+    #[test]
+    fn encrypted_delete_and_rotate_preserve_text_with_any_key_access() {
+        for cipher in [
+            None,
+            Some(JournalCipher::from_key(&[3; 32])),
+            Some(JournalCipher::from_key(&[4; 32])),
+        ] {
+            let (_dir, journal) = journal();
+            let mut writer = journal.with_cipher(Some(JournalCipher::from_key(&[3; 32])));
+            let first = private_entry();
+            let mut second = first.clone();
+            second.id = Uuid::new_v4();
+            let mut third = first.clone();
+            third.id = Uuid::new_v4();
+            for entry in [&first, &second, &third] {
+                writer.append(entry).unwrap();
+            }
+            let before = stored_entries(&writer);
+            let editor = FileJournal::open_with(writer.path(), false)
+                .unwrap()
+                .with_cipher(cipher);
+            assert!(editor.delete(first.id).unwrap());
+            assert_eq!(stored_entries(&editor), before[1..]);
+            assert_eq!(editor.rotate(1, 0).unwrap(), 1);
+            assert_eq!(stored_entries(&editor), before[2..]);
+            assert_sealed(&editor, &third);
+            assert_eq!(writer.load_all().unwrap(), vec![third]);
+        }
+    }
+
+    #[test]
+    fn malformed_ciphertext_stays_hidden_and_survives_rewrite() {
+        let (_dir, mut journal) = journal();
+        let first = private_entry();
+        journal.append(&first).unwrap();
+        let mut damaged = first.clone();
+        damaged.id = Uuid::new_v4();
+        damaged.text_raw = Some("enc1:not-hex-raw".into());
+        damaged.text_final = Some("enc1:not-hex-final".into());
+        damaged.segments[0].text = "enc1:not-hex-segment".into();
+        journal.append(&damaged).unwrap();
+        for cipher in [None, Some(JournalCipher::from_key(&[3; 32]))] {
+            let reader = journal.clone().with_cipher(cipher);
+            let hidden = &reader.load_all().unwrap()[1];
+            assert_eq!(hidden.text_raw, None);
+            assert_eq!(hidden.text_final, None);
+            assert_eq!(hidden.segments[0].text, "");
+        }
+        let encrypted = journal.with_cipher(Some(JournalCipher::from_key(&[3; 32])));
+        assert!(encrypted.delete(first.id).unwrap());
+        assert_eq!(stored_entries(&encrypted), vec![damaged]);
+    }
+
+    #[test]
+    fn encrypted_rewrite_seals_legacy_plaintext_after_delete_and_rotate() {
+        for rotate in [false, true] {
+            let (_dir, mut journal) = journal();
+            let first = private_entry();
+            let mut second = first.clone();
+            second.id = Uuid::new_v4();
+            journal.append(&first).unwrap();
+            journal.append(&second).unwrap();
+            let journal = journal.with_cipher(Some(JournalCipher::from_key(&[3; 32])));
+            if rotate {
+                assert_eq!(journal.rotate(1, 0).unwrap(), 1);
+            } else {
+                assert!(journal.delete(first.id).unwrap());
+            }
+            assert_sealed(&journal, &second);
+            assert_eq!(journal.load_all().unwrap(), vec![second]);
+        }
+    }
+
+    #[test]
+    fn encryption_preserves_existing_ciphertext_and_plaintext_history() {
+        let (_dir, mut plain) = journal();
+        let original = private_entry();
+        plain.append(&original).unwrap();
+        assert_eq!(plain.load_all().unwrap(), vec![original.clone()]);
+        let mut encrypted = plain
+            .clone()
+            .with_cipher(Some(JournalCipher::from_key(&[3; 32])));
+        let mut second = original.clone();
+        second.id = Uuid::new_v4();
+        encrypted.append(&second).unwrap();
+        let sealed = stored_entries(&encrypted)[1].clone();
+        let mut copy = original.clone();
+        copy.id = Uuid::new_v4();
+        plain.append(&copy).unwrap();
+        assert_eq!(stored_entries(&encrypted)[2], copy);
+        assert_eq!(encrypted.load_all().unwrap()[0], original);
+        assert!(plain.delete(copy.id).unwrap());
+        assert_eq!(stored_entries(&plain)[0], original);
+        assert_eq!(stored_entries(&plain)[1], sealed);
+        assert_eq!(encrypted.load_all().unwrap(), vec![original, second]);
+    }
+
+    #[test]
+    fn privacy_mode_strips_new_text_but_preserves_history_on_rewrite() {
+        let (_dir, mut journal) = journal();
+        let first = private_entry();
+        let mut second = first.clone();
+        second.id = Uuid::new_v4();
+        journal = journal.with_cipher(Some(JournalCipher::from_key(&[3; 32])));
+        journal.append(&first).unwrap();
+        journal.append(&second).unwrap();
+        let stored = stored_entries(&journal)[1].clone();
+        let mut blind = FileJournal::open_with(journal.path(), false).unwrap();
+        assert!(blind.delete(first.id).unwrap());
+        assert_eq!(stored_entries(&blind), vec![stored]);
+        assert_eq!(journal.load_all().unwrap(), vec![second]);
+        blind.append(&first).unwrap();
+        assert_eq!(journal.load_all().unwrap()[1], first.without_text());
+    }
+
     #[test]
     fn open_for_creates_the_key_file_next_to_the_journal_only_when_asked() {
         let directory = tempfile::tempdir().unwrap();
@@ -850,7 +1360,392 @@ mod tests {
             path: directory.path().join("absent.jsonl"),
             include_text: true,
             cipher: None,
+            max_entries: 0,
+            max_size_mb: 0,
         };
         assert!(journal.load_all().unwrap().is_empty());
+    }
+
+    // Journal shared by several processes: the daemon appends while the CLI and the GUI delete
+
+    fn config_in(directory: &Path) -> crate::config::Config {
+        let mut config = crate::config::Config::default();
+        config.journal.path = directory.join("journal.jsonl").display().to_string();
+        config.journal.key_path = directory.join("journal.key").display().to_string();
+        config
+    }
+
+    fn ids(journal: &FileJournal) -> Vec<Uuid> {
+        journal
+            .load_all()
+            .unwrap()
+            .iter()
+            .map(|entry| entry.id)
+            .collect()
+    }
+
+    #[test]
+    fn an_append_during_a_deletion_is_not_lost() {
+        use std::sync::{Arc, Barrier};
+
+        let (_dir, mut journal) = journal();
+        // A long history widens the window between reading the file and replacing it
+        for minute in 0..200 {
+            journal
+                .append(&test_entry(
+                    &format!("2026-09-05T{:02}:{:02}:00Z", 10 + minute / 60, minute % 60),
+                    minute + 1,
+                    4.0,
+                    "kitty",
+                ))
+                .unwrap();
+        }
+        let old = ids(&journal);
+        let path = journal.path().to_path_buf();
+        let barrier = Arc::new(Barrier::new(2));
+
+        let writer = {
+            let path = path.clone();
+            let barrier = Arc::clone(&barrier);
+            std::thread::spawn(move || {
+                let mut journal = FileJournal::open(&path).unwrap();
+                barrier.wait();
+                let mut written = Vec::new();
+                for minute in 0..30 {
+                    let entry = test_entry(
+                        &format!("2026-09-06T11:{minute:02}:00Z"),
+                        minute + 1,
+                        4.0,
+                        "kitty",
+                    );
+                    journal.append(&entry).unwrap();
+                    written.push(entry.id);
+                }
+                written
+            })
+        };
+        let deleter = {
+            let path = path.clone();
+            let barrier = Arc::clone(&barrier);
+            std::thread::spawn(move || {
+                let journal = FileJournal::open(&path).unwrap();
+                barrier.wait();
+                for id in old {
+                    journal.delete(id).unwrap();
+                }
+            })
+        };
+
+        let written = writer.join().unwrap();
+        deleter.join().unwrap();
+        let left = ids(&FileJournal::open(&path).unwrap());
+        let lost: Vec<Uuid> = written
+            .iter()
+            .filter(|id| !left.contains(id))
+            .copied()
+            .collect();
+        assert!(
+            lost.is_empty(),
+            "a concurrent deletion dropped appended entries: {lost:?}"
+        );
+    }
+
+    #[test]
+    fn concurrent_open_of_a_missing_journal_writes_one_header() {
+        use std::sync::{Arc, Barrier};
+
+        for round in 0..8 {
+            let directory = tempfile::tempdir().unwrap();
+            let path = directory
+                .path()
+                .join("data")
+                .join(format!("journal-{round}.jsonl"));
+            let barrier = Arc::new(Barrier::new(6));
+            let handles: Vec<_> = (0..6)
+                .map(|_| {
+                    let path = path.clone();
+                    let barrier = Arc::clone(&barrier);
+                    std::thread::spawn(move || {
+                        barrier.wait();
+                        FileJournal::open(&path).unwrap();
+                    })
+                })
+                .collect();
+            for handle in handles {
+                handle.join().unwrap();
+            }
+            let text = std::fs::read_to_string(&path).unwrap();
+            let lines: Vec<&str> = text
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .collect();
+            assert_eq!(
+                lines.len(),
+                1,
+                "round {round} wrote {} lines: {text}",
+                lines.len()
+            );
+            assert!(is_header(lines[0]), "round {round}: {text}");
+        }
+    }
+
+    #[test]
+    fn concurrent_rewrites_do_not_collide() {
+        use std::sync::{Arc, Barrier};
+
+        let (directory, journal) = journal();
+        let path = journal.path().to_path_buf();
+        for round in 0..6 {
+            let mut filler = FileJournal::open(&path).unwrap();
+            for minute in 0..60 {
+                let mut entry = test_entry(
+                    &format!("2026-09-05T12:{minute:02}:00Z"),
+                    minute + 1,
+                    4.0,
+                    "kitty",
+                );
+                // Large lines keep the two rewrites writing at the same time
+                entry.text_final = Some("x".repeat(30 * 1024));
+                filler.append(&entry).unwrap();
+            }
+            let barrier = Arc::new(Barrier::new(2));
+            let clearer = {
+                let path = path.clone();
+                let barrier = Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    FileJournal::open(&path).unwrap().clear()
+                })
+            };
+            let rotator = {
+                let path = path.clone();
+                let barrier = Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    FileJournal::open(&path).unwrap().rotate(10, 0)
+                })
+            };
+            clearer.join().unwrap().unwrap();
+            rotator.join().unwrap().unwrap();
+
+            // Serialised either way, both operations leave an empty journal: a clear that runs
+            // first leaves nothing for the rotation to keep
+            let text = std::fs::read_to_string(&path).unwrap();
+            let headers = text.lines().filter(|line| is_header(line)).count();
+            assert_eq!(headers, 1, "round {round}: {text}");
+            for line in text.lines().filter(|line| !line.trim().is_empty()) {
+                assert!(
+                    serde_json::from_str::<Entry>(line).is_ok() || is_header(line),
+                    "round {round} left a torn line: {line}"
+                );
+            }
+            let left = FileJournal::open(&path).unwrap().load_all().unwrap();
+            assert!(left.is_empty(), "round {round} kept {} entries", left.len());
+        }
+        // No rewrite leaves a temporary file behind
+        let stray: Vec<String> = std::fs::read_dir(directory.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.contains(".tmp"))
+            .collect();
+        assert!(stray.is_empty(), "temporary files left: {stray:?}");
+    }
+
+    #[test]
+    fn a_rewrite_uses_a_temporary_file_of_its_own() {
+        // A rewrite that crashed under the old fixed name leaves a stump; a new rewrite must not
+        // reuse or truncate it, or two writers would share one file again
+        let (_dir, mut journal) = journal();
+        journal
+            .append(&test_entry("2026-09-05T10:00:00Z", 10, 4.0, "kitty"))
+            .unwrap();
+        let mut name = journal.path().as_os_str().to_os_string();
+        name.push(".tmp");
+        let stray = PathBuf::from(name);
+        std::fs::write(&stray, "stump").unwrap();
+
+        journal.clear().unwrap();
+
+        assert_eq!(std::fs::read_to_string(&stray).unwrap(), "stump");
+        assert!(journal.load_all().unwrap().is_empty());
+    }
+
+    #[test]
+    fn open_for_applies_the_entry_limit_to_every_append() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut config = config_in(directory.path());
+        config.journal.max_entries = 3;
+        config.journal.max_size_mb = 0;
+        let mut journal = FileJournal::open_for(&config).unwrap();
+        for minute in 0..10 {
+            journal
+                .append(&test_entry(
+                    &format!("2026-09-05T10:{minute:02}:00Z"),
+                    minute + 1,
+                    4.0,
+                    "kitty",
+                ))
+                .unwrap();
+        }
+        let left = journal.load_all().unwrap();
+        assert_eq!(left.len(), 3, "{left:#?}");
+        assert_eq!(left[2].words, 10, "the newest entry is kept");
+    }
+
+    #[test]
+    fn a_plain_open_holds_no_limits() {
+        // `open` and `open_with` pass zero limits, so the callers that never read the settings
+        // keep the history they had
+        let (_dir, mut journal) = journal();
+        for minute in 0..12 {
+            journal
+                .append(&test_entry(
+                    &format!("2026-09-05T10:{minute:02}:00Z"),
+                    minute + 1,
+                    4.0,
+                    "kitty",
+                ))
+                .unwrap();
+        }
+        assert_eq!(journal.load_all().unwrap().len(), 12);
+    }
+
+    #[test]
+    fn open_for_keeps_the_history_within_the_size_limit() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut config = config_in(directory.path());
+        config.journal.max_entries = 0;
+        config.journal.max_size_mb = 1;
+        let mut journal = FileJournal::open_for(&config).unwrap();
+        let mut written = Vec::new();
+        for minute in 0..12 {
+            let mut entry = test_entry(
+                &format!("2026-09-05T10:{minute:02}:00Z"),
+                minute + 1,
+                4.0,
+                "kitty",
+            );
+            entry.text_final = Some("x".repeat(200 * 1024));
+            journal.append(&entry).unwrap();
+            written.push(entry.id);
+        }
+        let left = journal.load_all().unwrap();
+        assert!(left.len() < written.len(), "nothing was rotated away");
+        assert_eq!(left.last().unwrap().id, *written.last().unwrap());
+        let size = std::fs::metadata(journal.path()).unwrap().len();
+        let headroom = 400 * 1024;
+        assert!(
+            size <= 1024 * 1024 + headroom,
+            "the journal outgrew the limit with no headroom: {size} bytes"
+        );
+    }
+
+    #[test]
+    fn one_entry_over_the_limit_is_kept_and_the_limit_yields() {
+        // Retention drops the oldest entries, never the entry that was just written: a limit
+        // smaller than one entry leaves that entry on disk, and the journal stays readable
+        let directory = tempfile::tempdir().unwrap();
+        let mut config = config_in(directory.path());
+        config.journal.max_entries = 0;
+        config.journal.max_size_mb = 1;
+        let mut journal = FileJournal::open_for(&config).unwrap();
+        let mut entry = test_entry("2026-09-05T10:00:00Z", 4, 3.0, "kitty");
+        entry.text_final = Some("x".repeat(2 * 1024 * 1024));
+        journal.append(&entry).unwrap();
+        let left = journal.load_all().unwrap();
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].id, entry.id);
+    }
+
+    #[test]
+    fn a_missing_key_over_an_encrypted_journal_is_an_error_and_creates_no_key() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut config = config_in(directory.path());
+        config.journal.encrypt = true;
+        let key = directory.path().join("journal.key");
+        {
+            let mut journal = FileJournal::open_for(&config).unwrap();
+            journal.append(&private_entry()).unwrap();
+        }
+        std::fs::remove_file(&key).unwrap();
+
+        let error = FileJournal::open_for(&config).unwrap_err().to_string();
+        assert!(error.contains("key"), "{error}");
+        assert!(error.contains("encrypted"), "{error}");
+        assert!(
+            !key.exists(),
+            "a new key was written over ciphertext: {error}"
+        );
+        let on_disk = std::fs::read_to_string(directory.path().join("journal.jsonl")).unwrap();
+        assert!(
+            on_disk.contains("enc1:"),
+            "the fixture must hold ciphertext"
+        );
+    }
+
+    #[test]
+    fn a_damaged_line_also_blocks_a_new_key() {
+        // A line that does not parse may hide ciphertext, so a new key is refused as well
+        let directory = tempfile::tempdir().unwrap();
+        let mut config = config_in(directory.path());
+        config.journal.encrypt = true;
+        let key = directory.path().join("journal.key");
+        let journal_path = directory.path().join("journal.jsonl");
+        FileJournal::open(&journal_path).unwrap();
+        let mut file = OpenOptions::new().append(true).open(&journal_path).unwrap();
+        writeln!(file, "{{not json").unwrap();
+        drop(file);
+
+        assert!(FileJournal::open_for(&config).is_err());
+        assert!(!key.exists());
+    }
+
+    #[test]
+    fn a_missing_key_over_a_plain_journal_is_created() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut config = config_in(directory.path());
+        let path = directory.path().join("journal.jsonl");
+        // A history written without encryption holds no ciphertext, so a new key hides nothing
+        let mut plain = FileJournal::open(&path).unwrap();
+        plain.append(&private_entry()).unwrap();
+        drop(plain);
+
+        config.journal.encrypt = true;
+        assert!(FileJournal::open_for(&config).unwrap().encrypts());
+        assert!(directory.path().join("journal.key").is_file());
+    }
+
+    #[test]
+    fn concurrent_key_creation_leaves_one_key() {
+        use std::sync::{Arc, Barrier};
+
+        let directory = tempfile::tempdir().unwrap();
+        let mut config = config_in(directory.path());
+        config.journal.encrypt = true;
+        let key = directory.path().join("journal.key");
+        let config = Arc::new(config);
+        let barrier = Arc::new(Barrier::new(6));
+        let handles: Vec<_> = (0..6)
+            .map(|_| {
+                let config = Arc::clone(&config);
+                let barrier = Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    FileJournal::open_for(&config).unwrap()
+                })
+            })
+            .collect();
+        let journals: Vec<FileJournal> = handles
+            .into_iter()
+            .map(|handle| handle.join().unwrap())
+            .collect();
+        // Every process must see the same key, or the entries written by one are unreadable
+        // for the others
+        let mut writer = journals.into_iter().next().unwrap();
+        let entry = private_entry();
+        writer.append(&entry).unwrap();
+        assert_eq!(writer.load_all().unwrap(), vec![entry]);
+        assert_eq!(std::fs::read_to_string(&key).unwrap().trim().len(), 64);
     }
 }
