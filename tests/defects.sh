@@ -539,10 +539,10 @@ defect 'config/validation-collects-every-issue' 'crates/molva-core/src/config.rs
   '        let _ = (key, value, allowed);' \
   'a wrong value from the list of allowed ones passes the check silently'
 
-defect 'probe/cloud-consent' 'crates/molva-core/src/app/probe.rs' \
-  '    if cloud_provider(&cfg.provider) && !config.privacy.cloud_consent {' \
-  '    if false {' \
-  'a draft can send text to a cloud model without the consent of the user'
+defect 'http-policy/consent-guard' 'crates/molva-core/src/infra/http_policy.rs' \
+  '        if self.allows(url) {' \
+  '        if true {' \
+  'a request leaves for a remote address without the consent of the user'
 
 defect 'probe/stt-cli-check' 'crates/molva-core/src/app/probe.rs' \
   '        if engine == "transcribe-cpp" {' \
