@@ -10,11 +10,18 @@
 //! methods that replace the file through `rename` do not leave the journal writing to a deleted
 //! inode
 //!
-//! Every operation takes a lock on `<journal>.lock`, which keeps its inode across a rewrite:
-//! writers exclude each other, and a reader sees the file either before or after a rewrite, never
-//! during it. A process that does not take the lock — an older build of the daemon — is not
-//! excluded, and a network file system gives no promise beyond what its own lock daemon keeps
+//! Every write takes a lock on `<journal>.lock`, which keeps its inode across a rewrite: writers
+//! exclude each other, and a reader that takes the shared lock sees the file either before or
+//! after a rewrite, never during it. A process that does not take the lock — an older build of
+//! the daemon — is not excluded, and a network file system gives no promise beyond what its own
+//! lock daemon keeps
+//!
+//! A line that does not parse goes to `<journal>.broken`. One holder of the exclusive lock moves
+//! it, and that holder reads the file again under the lock, so two readers cannot move the same
+//! line twice: the second one finds the journal clean. A reader that cannot take the exclusive
+//! lock at this instant reads without it and leaves the line to the next write
 
+use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -64,27 +71,36 @@ impl std::fmt::Debug for JournalLock {
 impl JournalLock {
     /// Writers wait for each other and for the readers
     fn exclusive(path: &Path) -> Result<Self, JournalError> {
-        Self::acquire(path, true)
-    }
-
-    /// Readers share the file, and wait only for a writer
-    fn shared(path: &Path) -> Result<Self, JournalError> {
-        Self::acquire(path, false)
-    }
-
-    fn acquire(path: &Path, exclusive: bool) -> Result<Self, JournalError> {
         let file = open_lock_file(path)?;
         // The trait is named in full: `File::lock` of the standard library arrived in Rust 1.89,
         // and this workspace keeps 1.85 as its floor
-        let locked = if exclusive {
-            fs4::FileExt::lock(&file)
-        } else {
-            fs4::FileExt::lock_shared(&file)
-        };
         // An operation without its lock loses a concurrent write: the caller gets the error
         // instead, and no line reaches the journal half done
-        locked.map_err(|e| JournalError::Io(format!("cannot lock {}: {e}", path.display())))?;
+        fs4::FileExt::lock(&file)
+            .map_err(|e| JournalError::Io(format!("cannot lock {}: {e}", path.display())))?;
         Ok(Self(file))
+    }
+
+    /// The lock, or `None` when another process holds the journal at this instant
+    ///
+    /// A reader takes the exclusive lock this way, because a read must not wait for a writer, and
+    /// moves a damaged line only under the exclusive lock. `exclusive = false` asks for the shared
+    /// lock, which a read takes when other readers hold the file
+    fn try_acquire(path: &Path, exclusive: bool) -> Result<Option<Self>, JournalError> {
+        let file = open_lock_file(path)?;
+        let locked = if exclusive {
+            fs4::FileExt::try_lock(&file)
+        } else {
+            fs4::FileExt::try_lock_shared(&file)
+        };
+        match locked {
+            Ok(()) => Ok(Some(Self(file))),
+            Err(fs4::TryLockError::WouldBlock) => Ok(None),
+            Err(fs4::TryLockError::Error(error)) => Err(JournalError::Io(format!(
+                "cannot lock {}: {error}",
+                path.display()
+            ))),
+        }
     }
 }
 
@@ -115,6 +131,13 @@ fn open_lock_file(path: &Path) -> Result<File, JournalError> {
 /// A file shorter than `max_entries` of these cannot hold that many entries, so the count of the
 /// lines is not read at all. A test holds the bound to the schema
 const MIN_ENTRY_BYTES: u64 = 128;
+
+/// One pass over the file: the entries, and the lines that did not parse
+#[derive(Debug, Default)]
+struct Scan {
+    entries: Vec<Entry>,
+    broken: Vec<String>,
+}
 
 /// Journal in a JSONL file
 #[derive(Debug, Clone)]
@@ -350,60 +373,154 @@ impl FileJournal {
         JournalLock::exclusive(&self.lock_path())
     }
 
-    fn lock_shared(&self) -> Result<JournalLock, JournalError> {
-        JournalLock::shared(&self.lock_path())
+    /// The exclusive lock, or `None` when a writer or a reader holds the journal now
+    fn try_lock_exclusive(&self) -> Result<Option<JournalLock>, JournalError> {
+        JournalLock::try_acquire(&self.lock_path(), true)
     }
 
-    /// All entries in order. Broken lines do not fail the load: they go to `<path>.broken`
+    /// The shared lock, or `None` when a writer holds the journal now
+    fn try_lock_shared(&self) -> Result<Option<JournalLock>, JournalError> {
+        JournalLock::try_acquire(&self.lock_path(), false)
+    }
+
+    /// All entries in order. A damaged line does not fail the load: it goes to `<path>.broken`
+    /// when the journal is free at this instant, and waits for the next write otherwise
     pub fn load_all(&self) -> Result<Vec<Entry>, JournalError> {
-        let _lock = self.lock_shared()?;
-        self.entries_locked()
+        self.entries()
     }
 
-    /// Read and decrypt under a lock the caller already holds
-    fn entries_locked(&self) -> Result<Vec<Entry>, JournalError> {
-        Ok(self
-            .load_stored()?
+    /// Read and decrypt
+    ///
+    /// A damaged line leaves the journal only under the exclusive lock, and only its holder moves
+    /// it: two readers that each wrote under a shared lock put the same line in the quarantine
+    /// twice. A read never waits for that lock, because a reader that waited would stop behind a
+    /// writer, so a line that cannot move now waits for the next write
+    fn entries(&self) -> Result<Vec<Entry>, JournalError> {
+        if let Some(_lock) = self.try_lock_exclusive()? {
+            let scan = self.scan()?;
+            if !scan.broken.is_empty() {
+                // The entries a read can show are worth more than the cleanup: a quarantine that
+                // fails, by a missing permission or a full disk, does not fail the read
+                if let Err(error) = self.quarantine_locked(&scan.broken, &scan.entries) {
+                    warn!(error = %error, "the damaged lines stay in the journal");
+                }
+            }
+            return Ok(self.decrypted_all(scan.entries));
+        }
+        // A writer or another reader holds the journal. A rewrite replaces the file by `rename`,
+        // so the snapshot is whole, and only the line a writer appends at this instant can be seen
+        // half done: it stays in the file and parses on the next read
+        let _shared = self.try_lock_shared()?;
+        let scan = self.scan()?;
+        if !scan.broken.is_empty() {
+            warn!(
+                lines = scan.broken.len(),
+                "the journal is busy, so the damaged lines wait for the next write"
+            );
+        }
+        Ok(self.decrypted_all(scan.entries))
+    }
+
+    /// Decrypt the text fields of every line the file stored
+    fn decrypted_all(&self, entries: Vec<Entry>) -> Vec<Entry> {
+        entries
             .into_iter()
             .map(|entry| self.decrypted(entry))
-            .collect())
+            .collect()
     }
 
-    // Mutations must not save the empty fields that reads return without a valid key
-    fn load_stored(&self) -> Result<Vec<Entry>, JournalError> {
+    /// The file as it is now, under a lock the caller holds: the entries and the lines that did
+    /// not parse. Nothing is written here, so a caller without the exclusive lock can use it
+    fn scan(&self) -> Result<Scan, JournalError> {
         let text = match std::fs::read_to_string(&self.path) {
             Ok(text) => text,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Scan::default()),
             Err(e) => return Err(io_err(&self.path, &e)),
         };
-        let mut entries = Vec::new();
-        let mut broken = Vec::new();
+        let mut scan = Scan::default();
         for (index, line) in text.lines().enumerate() {
             let line = line.trim();
             if line.is_empty() {
                 continue;
             }
             match serde_json::from_str::<Entry>(line) {
-                Ok(entry) => entries.push(entry),
+                Ok(entry) => scan.entries.push(entry),
                 Err(_) if is_header(line) => {}
                 Err(err) => {
-                    warn!(
-                        line = index + 1,
-                        error = %err,
-                        "damaged journal line moved to quarantine"
-                    );
-                    broken.push(line.to_string());
+                    warn!(line = index + 1, error = %err, "a journal line did not parse");
+                    scan.broken.push(line.to_string());
                 }
             }
         }
-        if !broken.is_empty() {
-            self.quarantine(&broken)?;
-        }
-        Ok(entries)
+        Ok(scan)
     }
 
-    /// Append broken lines to the quarantine file, and leave the journal itself untouched
-    fn quarantine(&self, lines: &[String]) -> Result<(), JournalError> {
+    /// Entries as the file stores them, under the exclusive lock the caller holds: a damaged line
+    /// goes to the quarantine first, so no rewrite puts it back
+    ///
+    /// A mutation takes the stored entries and not the decrypted ones: a read without a valid key
+    /// returns empty text fields, and a rewrite would save those over the history
+    fn load_stored(&self) -> Result<Vec<Entry>, JournalError> {
+        let scan = self.scan()?;
+        if !scan.broken.is_empty() {
+            self.quarantine_locked(&scan.broken, &scan.entries)?;
+        }
+        Ok(scan.entries)
+    }
+
+    /// Move damaged lines to the quarantine, and take them out of the journal
+    ///
+    /// The caller holds the exclusive lock, and both lists come from a scan under that same lock:
+    /// a list older than the lock names lines another process has moved already. The move is
+    /// idempotent, so a rewrite that failed leaves a journal the next call finishes cleaning
+    fn quarantine_locked(&self, broken: &[String], entries: &[Entry]) -> Result<(), JournalError> {
+        let path = self.broken_path();
+        let pending = self.not_yet_quarantined(broken)?;
+        if !pending.is_empty() {
+            self.append_quarantine(&pending)?;
+        }
+        self.rewrite_locked(entries).map_err(|error| {
+            JournalError::Io(format!(
+                "the damaged lines are in {} but they stay in the journal: {error}",
+                path.display()
+            ))
+        })?;
+        warn!(
+            lines = broken.len(),
+            quarantine = %path.display(),
+            "the damaged journal lines moved to the quarantine"
+        );
+        Ok(())
+    }
+
+    /// The lines of `broken` that the quarantine does not hold yet
+    ///
+    /// The count matters: two equal damaged lines in the journal are two records, so one copy in
+    /// the quarantine excuses one occurrence and no more
+    fn not_yet_quarantined(&self, broken: &[String]) -> Result<Vec<String>, JournalError> {
+        let path = self.broken_path();
+        let held = match std::fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(e) => return Err(io_err(&path, &e)),
+        };
+        let mut counted: HashMap<&str, usize> = HashMap::new();
+        for line in held.lines().map(str::trim).filter(|line| !line.is_empty()) {
+            *counted.entry(line).or_default() += 1;
+        }
+        let mut pending = Vec::new();
+        for line in broken {
+            match counted.get_mut(line.as_str()) {
+                Some(count) if *count > 0 => *count -= 1,
+                _ => pending.push(line.clone()),
+            }
+        }
+        Ok(pending)
+    }
+
+    /// Append lines to the quarantine file. It holds the text of a phrase, so it gets the
+    /// permissions of the journal itself
+    fn append_quarantine(&self, lines: &[String]) -> Result<(), JournalError> {
         let path = self.broken_path();
         let mut file = OpenOptions::new()
             .create(true)
@@ -419,8 +536,7 @@ impl FileJournal {
 
     /// Search by substring in the phrase texts, ignoring case
     pub fn search(&self, substring: &str) -> Result<Vec<Entry>, JournalError> {
-        let _lock = self.lock_shared()?;
-        Ok(search_entries(&self.entries_locked()?, substring))
+        Ok(search_entries(&self.entries()?, substring))
     }
 
     /// Delete one entry by identifier; `false` means no entry had this id
@@ -531,8 +647,7 @@ impl FileJournal {
     /// Export of all entries to JSONL (the same format as the journal itself, but without the
     /// header)
     pub fn export_jsonl(&self, path: &Path) -> Result<usize, JournalError> {
-        let _lock = self.lock_shared()?;
-        let entries = self.entries_locked()?;
+        let entries = self.entries()?;
         let mut out = String::new();
         for entry in &entries {
             let line =
@@ -546,8 +661,7 @@ impl FileJournal {
 
     /// Export of all entries to CSV
     pub fn export_csv(&self, path: &Path) -> Result<usize, JournalError> {
-        let _lock = self.lock_shared()?;
-        let entries = self.entries_locked()?;
+        let entries = self.entries()?;
         std::fs::write(path, entries_to_csv(&entries)).map_err(|e| io_err(path, &e))?;
         Ok(entries.len())
     }
@@ -609,6 +723,17 @@ impl Journal for FileJournal {
             writeln!(file, "{line}").map_err(|e| io_err(&self.path, &e))?;
             file.flush().map_err(|e| io_err(&self.path, &e))?;
             file.sync_all().map_err(|e| io_err(&self.path, &e))?;
+        }
+        // A damaged line waits for the next write, and this is one: the reader that found it may
+        // have had to go on without the lock. The pass is one parse of a file the limits bound
+        let scan = self.scan()?;
+        if !scan.broken.is_empty() {
+            self.quarantine_locked(&scan.broken, &scan.entries)
+                .map_err(|error| {
+                    JournalError::Io(format!(
+                        "the entry was written, but the damaged lines stay in the journal: {error}"
+                    ))
+                })?;
         }
         if self.max_entries == 0 && self.max_size_mb == 0 {
             return Ok(());
@@ -800,6 +925,8 @@ pub(crate) fn test_entry(ts: &str, words: u32, audio_secs: f32, app: &str) -> En
         llm_cost_usd: None,
         llm_calls: 0,
         llm_unpriced_calls: 0,
+        stt_cost_usd: None,
+        stt_unpriced: false,
         error: None,
         text_raw: Some(format!("сырой текст {words}")),
         text_final: Some(format!("Итоговый текст {words}.")),
@@ -817,6 +944,31 @@ mod tests {
         let path = directory.path().join("data").join("journal.jsonl");
         let journal = FileJournal::open(&path).unwrap();
         (directory, journal)
+    }
+
+    /// A line written past the journal, as a torn append or a foreign writer leaves it
+    fn append_raw(journal: &FileJournal, line: &str) {
+        let mut file = OpenOptions::new()
+            .append(true)
+            .open(journal.path())
+            .unwrap();
+        writeln!(file, "{line}").unwrap();
+    }
+
+    fn broken_lines(journal: &FileJournal) -> Vec<String> {
+        match std::fs::read_to_string(journal.broken_path()) {
+            Ok(text) => text
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(str::to_string)
+                .collect(),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+            Err(error) => panic!(
+                "the quarantine {} is unreadable: {error}",
+                journal.broken_path().display()
+            ),
+        }
     }
 
     #[test]
@@ -910,6 +1062,154 @@ mod tests {
         assert_eq!(entries[1].words, 30);
         let broken = std::fs::read_to_string(journal.broken_path()).unwrap();
         assert!(broken.contains("this is not json"), "{broken}");
+    }
+
+    #[test]
+    fn two_readers_move_a_damaged_line_to_the_quarantine_once() {
+        use std::sync::{Arc, Barrier};
+
+        let (_dir, mut journal) = journal();
+        let kept = test_entry("2026-09-05T10:00:00Z", 10, 4.0, "kitty");
+        journal.append(&kept).unwrap();
+        append_raw(&journal, "{not json");
+        let path = journal.path().to_path_buf();
+        let barrier = Arc::new(Barrier::new(2));
+        let readers: Vec<_> = (0..2)
+            .map(|_| {
+                let path = path.clone();
+                let barrier = Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    let journal = FileJournal::open(&path).unwrap();
+                    barrier.wait();
+                    journal.load_all().unwrap()
+                })
+            })
+            .collect();
+
+        for reader in readers {
+            let entries = reader.join().unwrap();
+            assert_eq!(
+                entries.len(),
+                1,
+                "a reader lost the whole line: {entries:#?}"
+            );
+            assert_eq!(entries[0].id, kept.id);
+            assert_eq!(entries[0].words, 10);
+        }
+        assert_eq!(broken_lines(&journal), vec!["{not json".to_string()]);
+        let text = std::fs::read_to_string(journal.path()).unwrap();
+        assert!(
+            !text.contains("not json"),
+            "the journal still holds the damaged line: {text}"
+        );
+    }
+
+    #[test]
+    fn a_quarantined_line_is_not_moved_again_by_the_next_read() {
+        let (_dir, mut journal) = journal();
+        journal
+            .append(&test_entry("2026-09-05T10:00:00Z", 10, 4.0, "kitty"))
+            .unwrap();
+        append_raw(&journal, "{not json");
+
+        assert_eq!(journal.load_all().unwrap().len(), 1);
+        assert_eq!(journal.load_all().unwrap().len(), 1);
+        assert_eq!(journal.search("Итоговый").unwrap().len(), 1);
+        assert_eq!(broken_lines(&journal), vec!["{not json".to_string()]);
+        assert_eq!(journal.load_all().unwrap().len(), 1);
+        assert_eq!(broken_lines(&journal).len(), 1);
+    }
+
+    #[test]
+    fn two_equal_damaged_lines_leave_two_records_in_the_quarantine() {
+        let (_dir, mut journal) = journal();
+        journal
+            .append(&test_entry("2026-09-05T10:00:00Z", 10, 4.0, "kitty"))
+            .unwrap();
+        append_raw(&journal, "{not json");
+        append_raw(&journal, "{not json");
+
+        assert_eq!(journal.load_all().unwrap().len(), 1);
+        assert_eq!(
+            broken_lines(&journal),
+            vec!["{not json".to_string(), "{not json".to_string()]
+        );
+        // The second read finds nothing left to move, so it adds nothing
+        assert_eq!(journal.load_all().unwrap().len(), 1);
+        assert_eq!(broken_lines(&journal).len(), 2);
+    }
+
+    #[test]
+    fn a_copy_already_in_the_quarantine_is_not_written_again() {
+        // The rewrite that takes the line out of the journal fails after the quarantine write:
+        // the next attempt finishes the job without a second copy of the same line
+        let (_dir, mut journal) = journal();
+        journal
+            .append(&test_entry("2026-09-05T10:00:00Z", 10, 4.0, "kitty"))
+            .unwrap();
+        append_raw(&journal, "{not json");
+        std::fs::write(journal.broken_path(), "{not json\n").unwrap();
+
+        assert_eq!(journal.load_all().unwrap().len(), 1);
+        assert_eq!(broken_lines(&journal), vec!["{not json".to_string()]);
+        assert!(!std::fs::read_to_string(journal.path())
+            .unwrap()
+            .contains("not json"));
+    }
+
+    #[test]
+    fn a_read_while_a_writer_holds_the_journal_keeps_every_whole_line() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let (_dir, mut journal) = journal();
+        let first = test_entry("2026-09-05T10:00:00Z", 10, 4.0, "kitty");
+        let second = test_entry("2026-09-05T10:01:00Z", 20, 8.0, "kitty");
+        journal.append(&first).unwrap();
+        journal.append(&second).unwrap();
+        append_raw(&journal, "{not json");
+
+        // A writer in the middle of its work holds the journal for the whole read
+        let reader_journal = journal.clone();
+        let writer = journal.lock_exclusive().unwrap();
+        let (sender, receiver) = mpsc::channel();
+        let reader = std::thread::spawn(move || {
+            sender.send(reader_journal.load_all()).unwrap();
+        });
+        let entries = receiver
+            .recv_timeout(Duration::from_secs(10))
+            .expect("the read waited for the writer instead of reading a snapshot")
+            .unwrap();
+        assert_eq!(entries.len(), 2, "a reader lost a whole line: {entries:#?}");
+        assert_eq!(entries[0].id, first.id);
+        assert_eq!(entries[1].id, second.id);
+        assert!(
+            !journal.broken_path().exists(),
+            "a read moved a line without the exclusive lock"
+        );
+        drop(writer);
+        reader.join().unwrap();
+
+        // The damaged line waits for the next write, and that write moves it once
+        journal
+            .append(&test_entry("2026-09-05T10:02:00Z", 30, 9.0, "kitty"))
+            .unwrap();
+        assert_eq!(broken_lines(&journal), vec!["{not json".to_string()]);
+        assert_eq!(journal.load_all().unwrap().len(), 3);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_quarantine_file_is_readable_only_by_owner() {
+        use std::os::unix::fs::PermissionsExt;
+        let (_dir, journal) = journal();
+        append_raw(&journal, "{not json");
+        assert!(journal.load_all().unwrap().is_empty());
+        let mode = std::fs::metadata(journal.broken_path())
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600, "{mode:o}");
     }
 
     #[test]

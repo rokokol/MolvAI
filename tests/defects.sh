@@ -133,9 +133,19 @@ defect 'journal/privacy-strips-text' 'crates/molva-core/src/app/journal.rs' \
   'in privacy mode the texts of phrases still reach the journal file'
 
 defect 'journal/corrupt-line-quarantined' 'crates/molva-core/src/app/journal.rs' \
-  '                    broken.push(line.to_string());' \
-  '                    let _ = &broken;' \
+  '                    scan.broken.push(line.to_string());' \
+  '                    let _ = &scan.broken;' \
   'a broken line is silently lost: the user does not learn that a part of the history is unreadable'
+
+defect 'journal/quarantine-needs-the-exclusive-lock' 'crates/molva-core/src/app/journal.rs' \
+  '        if let Some(_lock) = self.try_lock_exclusive()? {' \
+  '        if true {' \
+  'a read moves a damaged line without the exclusive lock, and two readers put it in the quarantine twice'
+
+defect 'journal/quarantine-writes-no-duplicate' 'crates/molva-core/src/app/journal.rs' \
+  '                Some(count) if *count > 0 => *count -= 1,' \
+  '                Some(_count) => pending.push(line.clone()),' \
+  'a line the quarantine already holds is written again on every attempt to clean the journal'
 
 defect 'journal/rotation-keeps-newest' 'crates/molva-core/src/app/journal.rs' \
   '            kept = &kept[kept.len() - max_entries as usize..];' \
@@ -752,10 +762,10 @@ defect 'dictionary/reload-notices-a-same-mtime-change' 'crates/molva-core/src/ap
 
 defect 'doctor/wrong-model-hash-is-not-ok' 'crates/molva/src/cmd/doctor.rs' \
   '        Ok(false) => Check::new(
-            "whisper model",
+            "model",
             false,' \
   '        Ok(false) => Check::new(
-            "whisper model",
+            "model",
             true,' \
   'doctor calls broken whisper weights sound'
 

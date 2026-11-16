@@ -211,7 +211,9 @@ fn main() -> ExitCode {
     match run(cli) {
         Ok(()) => ExitCode::from(exit::OK),
         Err(error) => {
-            eprintln!("error: {error}");
+            // The whole chain, not only the outermost context: `journal <path>` says where, and
+            // only the cause says why, which is the part the person can act on
+            eprintln!("error: {error:#}");
             ExitCode::from(exit_code_for(&error))
         }
     }
