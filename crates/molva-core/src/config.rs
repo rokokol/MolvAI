@@ -57,6 +57,14 @@ pub enum ConfigError {
     },
     #[error("error in the settings file {path}: {message}")]
     Parse { path: PathBuf, message: String },
+    #[error("runtime settings {path} refer to base {actual:?}, expected {expected:?}")]
+    RuntimeIdentity {
+        path: PathBuf,
+        expected: String,
+        actual: String,
+    },
+    #[error("the settings target changed while reading {path}")]
+    Changed { path: PathBuf },
     #[error("could not serialize the settings: {0}")]
     Serialize(String),
     #[error("could not find the settings directory of the user")]
@@ -502,6 +510,11 @@ impl Default for OutputConfig {
 #[serde(default)]
 pub struct HotkeysConfig {
     /// `auto` | `external` | `evdev` | `gui`
+    ///
+    /// Only `evdev` makes the daemon read `/dev/input/event*` itself. `auto`, `external` and
+    /// `gui` keep the keys outside the daemon: the binds of the compositor call `molva`, and
+    /// the window registers its own global hotkeys. A value that is none of these works as
+    /// `auto`
     pub backend: String,
     pub push_to_talk: String,
     pub toggle: String,
@@ -641,13 +654,15 @@ pub struct McpConfig {
 
 impl Default for McpConfig {
     fn default() -> Self {
-        Self { enabled: true }
+        Self { enabled: false }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GuiConfig {
+    /// Hide the initial window only for an autostart launch
+    pub start_in_tray: bool,
     /// Animate the tray icon during the recording; `false` by default
     ///
     /// It is off on purpose: the icon changes only when the state changes (idle, recording,
@@ -723,6 +738,79 @@ impl Config {
         Self::load_with_override(path, Self::runtime_path(path)?.as_deref())
     }
 
+    /// Privacy and MCP policy must not fall back to defaults or stale runtime values
+    pub fn load_strict(path: &Path) -> Result<Self, ConfigError> {
+        Self::load_strict_with_runtime(path, |target| {
+            if let Some(explicit) = std::env::var_os("MOLVA_RUNTIME_CONFIG") {
+                return Ok(Some(PathBuf::from(explicit)));
+            }
+            if target.starts_with("/nix/store") {
+                return Ok(Some(Self::default_dir()?.join("runtime.toml")));
+            }
+            Ok(None)
+        })
+    }
+
+    fn load_strict_with_runtime(
+        path: &Path,
+        runtime_for_target: impl FnOnce(&Path) -> Result<Option<PathBuf>, ConfigError>,
+    ) -> Result<Self, ConfigError> {
+        let target = std::fs::canonicalize(path).map_err(|source| ConfigError::Read {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        let runtime = runtime_for_target(&target)?;
+        // Read the same target that supplies the runtime identity, not the mutable symlink
+        let text = std::fs::read_to_string(&target).map_err(|source| ConfigError::Read {
+            path: target.clone(),
+            source,
+        })?;
+        let base = Self::from_toml_str(&target, &text)?;
+        base.validate().map_err(ConfigError::Invalid)?;
+        let effective = match runtime {
+            None => base,
+            Some(runtime) => match std::fs::read_to_string(&runtime) {
+                Ok(text) => {
+                    let saved: RuntimeConfig =
+                        toml::from_str(&text).map_err(|err| ConfigError::Parse {
+                            path: runtime.clone(),
+                            message: err.to_string(),
+                        })?;
+                    let expected = target.to_string_lossy().into_owned();
+                    if saved.base != expected {
+                        return Err(ConfigError::RuntimeIdentity {
+                            path: runtime,
+                            expected,
+                            actual: saved.base,
+                        });
+                    }
+                    saved.config.validate().map_err(ConfigError::Invalid)?;
+                    saved.config
+                }
+                Err(source)
+                    if source.kind() == std::io::ErrorKind::NotFound
+                        && std::fs::symlink_metadata(&runtime)
+                            .is_err_and(|err| err.kind() == std::io::ErrorKind::NotFound) =>
+                {
+                    base
+                }
+                Err(source) => {
+                    return Err(ConfigError::Read {
+                        path: runtime,
+                        source,
+                    });
+                }
+            },
+        };
+        // This resolution only checks for a path change; it never supplies data or identity
+        if std::fs::canonicalize(path).ok().as_ref() != Some(&target) {
+            return Err(ConfigError::Changed {
+                path: path.to_path_buf(),
+            });
+        }
+        Ok(effective)
+    }
+
     fn load_plain(path: &Path) -> Result<Self, ConfigError> {
         match std::fs::read_to_string(path) {
             Ok(text) => Self::from_toml_str(path, &text),
@@ -750,7 +838,7 @@ impl Config {
                 return Err(ConfigError::Read {
                     path: runtime.to_path_buf(),
                     source,
-                })
+                });
             }
         };
         let saved: RuntimeConfig = match toml::from_str(&text) {
@@ -813,19 +901,28 @@ impl Config {
                 source,
             })?;
         }
-        // The window and the daemon can write the same runtime file at once. A process owns
-        // its own staging file, so neither truncates the other's
-        let mut staged = path.as_os_str().to_os_string();
-        staged.push(format!(".{}.tmp", std::process::id()));
-        let staged = PathBuf::from(staged);
-        std::fs::write(&staged, text).map_err(|source| ConfigError::Write {
-            path: staged.clone(),
-            source,
-        })?;
-        std::fs::rename(&staged, path).map_err(|source| ConfigError::Write {
+        use std::io::Write;
+
+        let parent = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        let mut staged =
+            tempfile::NamedTempFile::new_in(parent).map_err(|source| ConfigError::Write {
+                path: path.to_path_buf(),
+                source,
+            })?;
+        staged
+            .write_all(text.as_bytes())
+            .map_err(|source| ConfigError::Write {
+                path: path.to_path_buf(),
+                source,
+            })?;
+        staged.persist(path).map_err(|error| ConfigError::Write {
             path: path.to_path_buf(),
-            source,
-        })
+            source: error.error,
+        })?;
+        Ok(())
     }
 
     /// Where runtime values live: `MOLVA_RUNTIME_CONFIG` or the config directory of the user
@@ -1123,6 +1220,23 @@ impl Config {
             "output.mode",
             &self.output.mode,
             &["auto", "paste", "type", "clipboard"],
+        );
+        // The methods come from the chain itself, so a name the chain drops leaves this list in
+        // the same commit. A method this platform does not have stays valid here: the chain warns
+        // about it and keeps its automatic order
+        let mut backends = vec!["auto"];
+        backends.extend_from_slice(crate::infra::inject::chain::BACKEND_NAMES);
+        one_of(
+            issues,
+            "output.paste_backend",
+            &self.output.paste_backend,
+            &backends,
+        );
+        one_of(
+            issues,
+            "output.type_backend",
+            &self.output.type_backend,
+            &backends,
         );
         in_range(
             issues,
@@ -1554,6 +1668,109 @@ fn parse_like(existing: &toml::Value, raw: &str, key: &str) -> Result<toml::Valu
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
+    #[test]
+    fn secret_outputs_replace_public_files_with_private_files() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().join("base.toml");
+        let runtime = dir.path().join("runtime.toml");
+        let export = dir.path().join("export.toml");
+        let mut config = Config::default();
+        config.llm.api_key_plain = "secret-for-test".into();
+        for path in [&base, &runtime, &export] {
+            std::fs::write(path, "old").unwrap();
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        }
+        config.save_plain(&base).unwrap();
+        config.save_with_override(&base, &runtime).unwrap();
+        config.export(&export).unwrap();
+        for path in [&base, &runtime, &export] {
+            assert_eq!(
+                std::fs::metadata(path).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+            assert!(
+                std::fs::read_to_string(path)
+                    .unwrap()
+                    .contains("secret-for-test")
+            );
+        }
+        assert_eq!(
+            Config::import(&export).unwrap().llm.api_key_plain,
+            "secret-for-test"
+        );
+    }
+
+    #[test]
+    fn concurrent_saves_produce_a_complete_configuration() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::thread::scope(|scope| {
+            for n in 0..8 {
+                let path = &path;
+                scope.spawn(move || {
+                    let mut config = Config::default();
+                    config.llm.api_key_plain = format!("secret-{n}");
+                    for _ in 0..20 {
+                        config.save_plain(path).unwrap();
+                    }
+                });
+            }
+        });
+        let result = Config::import(&path).unwrap();
+        assert!(result.llm.api_key_plain.starts_with("secret-"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn predictable_staging_symlink_is_not_followed() {
+        use std::os::unix::fs::symlink;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        let victim = dir.path().join("victim");
+        std::fs::write(&victim, "untouched").unwrap();
+        let staged = dir
+            .path()
+            .join(format!("config.toml.{}.tmp", std::process::id()));
+        symlink(&victim, staged).unwrap();
+        Config::default().save_plain(&path).unwrap();
+        assert_eq!(std::fs::read_to_string(victim).unwrap(), "untouched");
+    }
+
+    #[test]
+    fn save_reports_invalid_parent_without_changing_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let parent = dir.path().join("file");
+        std::fs::write(&parent, "unchanged").unwrap();
+        assert!(
+            Config::default()
+                .save_plain(&parent.join("config.toml"))
+                .is_err()
+        );
+        assert_eq!(std::fs::read_to_string(parent).unwrap(), "unchanged");
+    }
+
+    #[test]
+    fn start_in_tray_is_opt_in_and_round_trips() {
+        assert!(!Config::default().gui.start_in_tray);
+        let old =
+            Config::from_toml_str(Path::new("old.toml"), "[gui]\ntray_animation = true\n").unwrap();
+        assert!(!old.gui.start_in_tray);
+        assert!(old.gui.tray_animation);
+        let enabled =
+            Config::from_toml_str(Path::new("enabled.toml"), "[gui]\nstart_in_tray = true\n")
+                .unwrap();
+        assert!(enabled.gui.start_in_tray);
+        let saved = enabled.to_toml_string().unwrap();
+        assert!(
+            Config::from_toml_str(Path::new("saved.toml"), &saved)
+                .unwrap()
+                .gui
+                .start_in_tray
+        );
+    }
+
     #[test]
     fn defaults_round_trip_through_toml() {
         let config = Config::default();
@@ -1596,6 +1813,220 @@ mod tests {
         assert_eq!(created, Config::default());
         let loaded = Config::load(&path).unwrap();
         assert_eq!(loaded, created);
+    }
+
+    fn strict_with_runtime(path: &Path, runtime: Option<&Path>) -> Result<Config, ConfigError> {
+        Config::load_strict_with_runtime(path, |_| Ok(runtime.map(Path::to_path_buf)))
+    }
+
+    #[test]
+    fn mcp_is_disabled_without_an_explicit_opt_in() {
+        assert!(!Config::default().mcp.enabled);
+        for text in ["", "[mcp]\n", "[mcp]\nenabled = false\n"] {
+            assert!(
+                !Config::from_toml_str(Path::new("config.toml"), text)
+                    .unwrap()
+                    .mcp
+                    .enabled
+            );
+        }
+        assert!(
+            Config::from_toml_str(Path::new("config.toml"), "[mcp]\nenabled = true\n")
+                .unwrap()
+                .mcp
+                .enabled
+        );
+    }
+
+    #[test]
+    fn strict_load_requires_a_readable_valid_base() {
+        let directory = tempfile::tempdir().unwrap();
+        let base = directory.path().join("config.toml");
+        assert!(matches!(
+            strict_with_runtime(&base, None),
+            Err(ConfigError::Read { .. })
+        ));
+        assert!(!base.exists());
+        std::fs::write(&base, "not = = toml").unwrap();
+        assert!(matches!(
+            strict_with_runtime(&base, None),
+            Err(ConfigError::Parse { .. })
+        ));
+        assert_eq!(std::fs::read_to_string(&base).unwrap(), "not = = toml");
+        std::fs::write(&base, "[output]\nmode = \"telepathy\"\n").unwrap();
+        assert!(matches!(
+            strict_with_runtime(&base, None),
+            Err(ConfigError::Invalid(_))
+        ));
+        std::fs::write(&base, "version = 1\n").unwrap();
+        assert_eq!(strict_with_runtime(&base, None).unwrap().version, 1);
+        assert_eq!(std::fs::read_to_string(&base).unwrap(), "version = 1\n");
+    }
+
+    #[test]
+    fn strict_load_uses_base_only_when_runtime_is_absent() {
+        let directory = tempfile::tempdir().unwrap();
+        let base = directory.path().join("config.toml");
+        let runtime = directory.path().join("runtime.toml");
+        let mut config = Config::default();
+        config.privacy.no_record_mode = true;
+        config.save_plain(&base).unwrap();
+        assert_eq!(strict_with_runtime(&base, Some(&runtime)).unwrap(), config);
+        assert!(!runtime.exists());
+        std::fs::create_dir(&runtime).unwrap();
+        assert!(matches!(
+            strict_with_runtime(&base, Some(&runtime)),
+            Err(ConfigError::Read { .. })
+        ));
+    }
+
+    #[test]
+    fn strict_load_preserves_and_rejects_damaged_runtime() {
+        let directory = tempfile::tempdir().unwrap();
+        let base = directory.path().join("config.toml");
+        let runtime = directory.path().join("runtime.toml");
+        Config::default().save_plain(&base).unwrap();
+        for damaged in [
+            "not = = toml",
+            "base = \"somewhere\"",
+            "[config]\nversion = 2",
+        ] {
+            std::fs::write(&runtime, damaged).unwrap();
+            assert!(matches!(
+                strict_with_runtime(&base, Some(&runtime)),
+                Err(ConfigError::Parse { .. })
+            ));
+            assert_eq!(std::fs::read_to_string(&runtime).unwrap(), damaged);
+        }
+        std::fs::write(&runtime, [0xff]).unwrap();
+        assert!(matches!(
+            strict_with_runtime(&base, Some(&runtime)),
+            Err(ConfigError::Read { .. })
+        ));
+        assert_eq!(std::fs::read(&runtime).unwrap(), [0xff]);
+    }
+
+    #[test]
+    fn strict_load_binds_runtime_to_the_base_and_validates_effective_values() {
+        let directory = tempfile::tempdir().unwrap();
+        let base = directory.path().join("config.toml");
+        let other = directory.path().join("other.toml");
+        let runtime = directory.path().join("runtime.toml");
+        Config::default().save_plain(&base).unwrap();
+        Config::default().save_plain(&other).unwrap();
+        let mut changed = Config::default();
+        changed.privacy.no_record_mode = true;
+        changed.mcp.enabled = false;
+        changed.save_with_override(&base, &runtime).unwrap();
+        let before = std::fs::read(&runtime).unwrap();
+        assert_eq!(strict_with_runtime(&base, Some(&runtime)).unwrap(), changed);
+        assert!(matches!(
+            strict_with_runtime(&other, Some(&runtime)),
+            Err(ConfigError::RuntimeIdentity { .. })
+        ));
+        assert_eq!(std::fs::read(&runtime).unwrap(), before);
+        changed.output.mode = "telepathy".into();
+        changed.save_with_override(&base, &runtime).unwrap();
+        let invalid = std::fs::read(&runtime).unwrap();
+        assert!(matches!(
+            strict_with_runtime(&base, Some(&runtime)),
+            Err(ConfigError::Invalid(_))
+        ));
+        assert_eq!(std::fs::read(&runtime).unwrap(), invalid);
+        std::fs::write(&base, "not = = toml").unwrap();
+        assert!(matches!(
+            strict_with_runtime(&base, Some(&runtime)),
+            Err(ConfigError::Parse { .. })
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn strict_load_resolves_symlinks_and_refuses_broken_links() {
+        use std::os::unix::fs::symlink;
+        let directory = tempfile::tempdir().unwrap();
+        let base = directory.path().join("config.toml");
+        let link = directory.path().join("link.toml");
+        let runtime = directory.path().join("runtime.toml");
+        symlink(&base, &link).unwrap();
+        assert!(matches!(
+            strict_with_runtime(&link, None),
+            Err(ConfigError::Read { .. })
+        ));
+        let mut config = Config::default();
+        config.privacy.no_record_mode = true;
+        config.save_plain(&base).unwrap();
+        config.save_with_override(&base, &runtime).unwrap();
+        assert_eq!(strict_with_runtime(&link, Some(&runtime)).unwrap(), config);
+        let broken_runtime = directory.path().join("broken-runtime.toml");
+        symlink(directory.path().join("absent"), &broken_runtime).unwrap();
+        assert!(matches!(
+            strict_with_runtime(&link, Some(&broken_runtime)),
+            Err(ConfigError::Read { .. })
+        ));
+        assert!(std::fs::symlink_metadata(&broken_runtime)
+            .unwrap()
+            .is_symlink());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn strict_load_detects_a_target_change_before_return() {
+        use std::os::unix::fs::symlink;
+        let directory = tempfile::tempdir().unwrap();
+        let base = directory.path().join("base.toml");
+        let other = directory.path().join("other.toml");
+        let link = directory.path().join("config.toml");
+        Config::default().save_plain(&base).unwrap();
+        std::fs::write(&other, "not = = toml").unwrap();
+        symlink(&base, &link).unwrap();
+        let replacement = directory.path().join("replacement.toml");
+        symlink(&other, &replacement).unwrap();
+        let result = Config::load_strict_with_runtime(&link, |target| {
+            assert_eq!(target, base.canonicalize().unwrap());
+            std::fs::rename(&replacement, &link).unwrap();
+            Ok(None)
+        });
+        assert!(
+            matches!(result, Err(ConfigError::Changed { .. })),
+            "{result:?}"
+        );
+    }
+
+    #[test]
+    fn strict_load_honors_the_runtime_environment_without_global_mutation() {
+        const CHILD_BASE: &str = "MOLVA_STRICT_TEST_BASE";
+        if let Some(base) = std::env::var_os(CHILD_BASE) {
+            let loaded = Config::load_strict(Path::new(&base)).unwrap();
+            assert!(loaded.privacy.no_record_mode);
+            assert!(!loaded.mcp.enabled);
+            return;
+        }
+        let directory = tempfile::tempdir().unwrap();
+        let base = directory.path().join("config.toml");
+        let runtime = directory.path().join("runtime.toml");
+        Config::default().save_plain(&base).unwrap();
+        let mut changed = Config::default();
+        changed.privacy.no_record_mode = true;
+        changed.mcp.enabled = false;
+        changed.save_with_override(&base, &runtime).unwrap();
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "config::tests::strict_load_honors_the_runtime_environment_without_global_mutation",
+                "--nocapture",
+            ])
+            .env(CHILD_BASE, &base)
+            .env("MOLVA_RUNTIME_CONFIG", &runtime)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed"));
     }
 
     #[test]
@@ -1845,6 +2276,29 @@ mod tests {
         assert!(text.contains("output.mode"), "{text}");
         assert!(text.contains("pasta"), "{text}");
         assert!(text.contains("auto, paste, type, clipboard"), "{text}");
+    }
+
+    #[test]
+    fn every_method_the_chain_knows_is_a_valid_backend_setting() {
+        let mut config = Config::default();
+        for name in crate::infra::inject::chain::BACKEND_NAMES {
+            config.output.paste_backend = (*name).to_string();
+            config.output.type_backend = name.to_ascii_uppercase();
+            assert_eq!(config.validate(), Ok(()), "{name}");
+        }
+    }
+
+    #[test]
+    fn an_unknown_backend_setting_names_the_key_the_value_and_the_methods() {
+        let mut config = Config::default();
+        config.output.paste_backend = "telepathy".into();
+        let issues = config.validate().unwrap_err();
+        assert_eq!(issues.len(), 1, "{issues:?}");
+        let text = issues[0].to_string();
+        assert!(text.contains("output.paste_backend"), "{text}");
+        assert!(text.contains("telepathy"), "{text}");
+        assert!(text.contains("hyprctl"), "{text}");
+        assert!(text.contains("uinput"), "{text}");
     }
 
     #[test]

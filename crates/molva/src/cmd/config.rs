@@ -75,16 +75,19 @@ pub(crate) fn run(action: ConfigAction, config_path: &Path, socket: &Path) -> an
             // A managed file is a store symlink. The editor gets a plain copy of the effective
             // settings, and the edited copy goes back through the runtime path
             let config = load(config_path)?;
-            let file =
-                std::env::temp_dir().join(format!("molva-config-{}.toml", std::process::id()));
-            config.save_plain(&file)?;
-            let status = std::process::Command::new(&editor).arg(&file).status()?;
+            use std::io::Write;
+            let mut file = tempfile::Builder::new()
+                .prefix("molva-config-")
+                .suffix(".toml")
+                .tempfile()?;
+            file.write_all(config.to_toml_string()?.as_bytes())?;
+            let status = std::process::Command::new(&editor)
+                .arg(file.path())
+                .status()?;
             if !status.success() {
-                let _ = std::fs::remove_file(&file);
                 anyhow::bail!("the editor {editor} exited with an error");
             }
-            let edited = Config::import(&file)?;
-            let _ = std::fs::remove_file(&file);
+            let edited = Config::import(file.path())?;
             edited.save(config_path)?;
             println!(
                 "Settings edited: {}",
