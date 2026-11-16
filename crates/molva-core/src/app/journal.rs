@@ -600,19 +600,31 @@ impl FileJournal {
 
     /// Rotation: keep at most `max_entries` latest entries and stay within `max_size_mb`
     ///
-    /// A zero in either limit turns that limit off. Returns the number of removed entries
+    /// A zero in either limit turns that limit off. Returns the number of removed entries. The
+    /// explicit call keeps exactly what it is given; the retention after an append leaves
+    /// headroom, so the same limits cost one rewrite in a thousand phrases rather than one per
+    /// phrase
     pub fn rotate(&self, max_entries: u32, max_size_mb: u32) -> Result<usize, JournalError> {
         let _lock = self.lock_exclusive()?;
         self.rotate_locked(max_entries, max_size_mb)
     }
 
     /// Retention after an append, under the lock the append already holds
+    ///
+    /// The rotation cuts below the limit instead of down to it. A journal that sits exactly at
+    /// `max_entries` crosses the limit with every phrase, so a rotation down to the limit would
+    /// rewrite the whole file on every append: tens of milliseconds on ten thousand entries. The
+    /// headroom makes that once in a thousand phrases, and the cost is that the limit reads as
+    /// "not more than", which is what a history wants anyway
     fn apply_retention_locked(&self) -> Result<(), JournalError> {
         if !self.limits_exceeded()? {
             return Ok(());
         }
-        self.rotate_locked(self.max_entries, self.max_size_mb)
-            .map(|_| ())
+        let (entries, size) = (
+            retention_target(self.max_entries),
+            retention_target(self.max_size_mb),
+        );
+        self.rotate_locked(entries, size).map(|_| ())
     }
 
     /// Whether a limit may have been crossed, decided without parsing a line. A full rotation on
@@ -822,6 +834,14 @@ fn restrict_permissions(file: &File, path: &Path) -> Result<(), JournalError> {
 #[allow(clippy::unnecessary_wraps)]
 fn restrict_permissions(_file: &File, _path: &Path) -> Result<(), JournalError> {
     Ok(())
+}
+
+/// What a limit leaves after the retention cut it: nine tenths of it, and never zero
+fn retention_target(limit: u32) -> u32 {
+    if limit == 0 {
+        return 0;
+    }
+    (limit.saturating_mul(9) / 10).max(1)
 }
 
 fn serialized_size(entries: &[Entry]) -> Result<u64, JournalError> {
@@ -1963,8 +1983,50 @@ mod tests {
                 .unwrap();
         }
         let left = journal.load_all().unwrap();
-        assert_eq!(left.len(), 3, "{left:#?}");
-        assert_eq!(left[2].words, 10, "the newest entry is kept");
+        // The limit reads as "not more than": the retention cuts a tenth below it, so a journal
+        // that sits at the cap is not rewritten with every phrase
+        assert!(left.len() <= 3, "more than the limit: {left:#?}");
+        assert_eq!(left.last().unwrap().words, 10, "the newest entry is kept");
+    }
+
+    /// The point of the headroom: an append within the limit touches no other line, and a
+    /// rewrite would replace the file by `rename`, which gives it another inode
+    #[cfg(unix)]
+    #[test]
+    fn the_retention_leaves_headroom_so_the_file_is_not_rewritten_every_phrase() {
+        use std::os::unix::fs::MetadataExt as _;
+        let directory = tempfile::tempdir().unwrap();
+        let mut config = config_in(directory.path());
+        config.journal.max_entries = 10;
+        config.journal.max_size_mb = 0;
+        let mut journal = FileJournal::open_for(&config).unwrap();
+        let append = |journal: &mut FileJournal, minute: u32| {
+            journal
+                .append(&test_entry(
+                    &format!("2026-09-05T10:{minute:02}:00Z"),
+                    minute,
+                    4.0,
+                    "kitty",
+                ))
+                .unwrap();
+        };
+        for minute in 0..11 {
+            append(&mut journal, minute);
+        }
+        let inode = std::fs::metadata(journal.path()).unwrap().ino();
+        assert_eq!(
+            journal.load_all().unwrap().len(),
+            9,
+            "the cut leaves a tenth of the limit free"
+        );
+        // Up to the limit again: nothing is rewritten
+        append(&mut journal, 11);
+        assert_eq!(
+            std::fs::metadata(journal.path()).unwrap().ino(),
+            inode,
+            "a phrase within the limit rewrote the whole journal"
+        );
+        assert_eq!(journal.load_all().unwrap().len(), 10);
     }
 
     #[test]

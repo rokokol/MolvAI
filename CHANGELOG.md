@@ -34,7 +34,7 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 - **Breaking:** an autostart entry starts the window minimized to the tray only when it carries `--autostart`, so entries written by an older version must be switched off and on once. The behaviour itself is the new `gui.start_in_tray` setting
 
-- The journal keeps its limits: `max_entries` and `max_size_mb` now rotate the file, and one process no longer loses an entry that another appended at the same moment. The lock, the rewrite and the header creation share one protocol
+- The journal keeps its limits: `max_entries` and `max_size_mb` now rotate the file, and one process no longer loses an entry that another appended at the same moment. The lock, the rewrite and the header creation share one protocol. A rotation cuts a tenth below the limit, so the limits read as "not more than" and a full journal is not rewritten with every phrase
 
 - `gui.start_in_tray` and the `--autostart` argument, so a window that starts with the session waits in the tray instead of opening in front of the person
 
