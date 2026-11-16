@@ -28,11 +28,9 @@ fn editor_receives_a_private_file_and_saves_the_secret() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert_eq!(std::fs::read_dir(tmp).unwrap().count(), 0);
-    assert!(
-        std::fs::read_to_string(config)
-            .unwrap()
-            .contains("secret-for-test")
-    );
+    assert!(std::fs::read_to_string(config)
+        .unwrap()
+        .contains("secret-for-test"));
 }
 
 #[test]
@@ -65,10 +63,8 @@ fn editor_failures_remove_the_secret_copy() {
             String::from_utf8_lossy(&output.stdout)
         );
         assert_eq!(std::fs::read_dir(&tmp).unwrap().count(), 0);
-        assert!(
-            std::fs::read_to_string(&config)
-                .unwrap()
-                .contains("secret-for-test")
-        );
+        assert!(std::fs::read_to_string(&config)
+            .unwrap()
+            .contains("secret-for-test"));
     }
 }

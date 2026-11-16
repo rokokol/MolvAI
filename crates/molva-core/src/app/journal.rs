@@ -1480,7 +1480,9 @@ mod tests {
             "a lock file appeared in a directory that allows none"
         );
         assert!(
-            reader.append(&test_entry("2026-09-05T12:01:00Z", 4, 2.0, "kitty")).is_err(),
+            reader
+                .append(&test_entry("2026-09-05T12:01:00Z", 4, 2.0, "kitty"))
+                .is_err(),
             "a write without a lock must be refused, not done blind"
         );
         std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o755)).unwrap();

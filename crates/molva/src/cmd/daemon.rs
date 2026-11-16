@@ -618,7 +618,10 @@ mod tests {
 
         // Zero age means "everything this program left", which is what a start after a crash
         // does with files older than an hour
-        assert_eq!(sweep_stale_wavs(directory.path(), std::time::Duration::ZERO), 1);
+        assert_eq!(
+            sweep_stale_wavs(directory.path(), std::time::Duration::ZERO),
+            1
+        );
         assert!(!stale.exists());
     }
 

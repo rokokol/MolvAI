@@ -178,7 +178,10 @@ fn a_missing_key_over_ciphertext_is_refused_and_creates_no_new_key() {
     let history = workspace.history();
     assert!(history.status.success(), "{}", stderr(&history));
     let entries: serde_json::Value = serde_json::from_slice(&history.stdout).unwrap();
-    assert_eq!(entries[0]["text_raw"].as_str().unwrap_or_default(), FAKE_TEXT);
+    assert_eq!(
+        entries[0]["text_raw"].as_str().unwrap_or_default(),
+        FAKE_TEXT
+    );
 }
 
 #[test]
@@ -188,7 +191,10 @@ fn without_encryption_the_phrase_is_on_the_disk_and_no_key_appears() {
     assert!(output.status.success(), "{}", stderr(&output));
 
     let disk = std::fs::read_to_string(workspace.journal()).unwrap();
-    assert!(disk.contains(FAKE_TEXT), "the plain journal lost the phrase");
+    assert!(
+        disk.contains(FAKE_TEXT),
+        "the plain journal lost the phrase"
+    );
     assert!(
         !workspace.key().exists(),
         "a key was created for a journal that is not encrypted"
@@ -197,7 +203,10 @@ fn without_encryption_the_phrase_is_on_the_disk_and_no_key_appears() {
     let history = workspace.history();
     assert!(history.status.success(), "{}", stderr(&history));
     let entries: serde_json::Value = serde_json::from_slice(&history.stdout).unwrap();
-    assert_eq!(entries[0]["text_raw"].as_str().unwrap_or_default(), FAKE_TEXT);
+    assert_eq!(
+        entries[0]["text_raw"].as_str().unwrap_or_default(),
+        FAKE_TEXT
+    );
 }
 
 #[test]

@@ -296,7 +296,10 @@ mod tests {
         ));
 
         config.stt.remote.api_key_source = "none".into();
-        assert!(matches!(resolve(SecretName::Stt, &config).unwrap(), Backend::None));
+        assert!(matches!(
+            resolve(SecretName::Stt, &config).unwrap(),
+            Backend::None
+        ));
         assert!(validate(SecretName::Stt, "sk-anything").is_ok());
     }
 
