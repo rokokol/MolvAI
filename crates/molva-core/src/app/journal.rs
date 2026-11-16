@@ -71,7 +71,13 @@ impl std::fmt::Debug for JournalLock {
 impl JournalLock {
     /// Writers wait for each other and for the readers
     fn exclusive(path: &Path) -> Result<Self, JournalError> {
-        let file = open_lock_file(path)?;
+        let Some(file) = open_lock_file(path)? else {
+            return Err(JournalError::Io(format!(
+                "cannot lock {}: the directory allows no lock file, and a write without the lock \
+                 could lose the line another process appends",
+                path.display()
+            )));
+        };
         // The trait is named in full: `File::lock` of the standard library arrived in Rust 1.89,
         // and this workspace keeps 1.85 as its floor
         // An operation without its lock loses a concurrent write: the caller gets the error
@@ -85,9 +91,16 @@ impl JournalLock {
     ///
     /// A reader takes the exclusive lock this way, because a read must not wait for a writer, and
     /// moves a damaged line only under the exclusive lock. `exclusive = false` asks for the shared
-    /// lock, which a read takes when other readers hold the file
+    /// lock, which a read takes when other readers hold the file. `None` also answers a directory
+    /// that allows no lock file at all: a read goes on, a write asks for the blocking lock instead
     fn try_acquire(path: &Path, exclusive: bool) -> Result<Option<Self>, JournalError> {
-        let file = open_lock_file(path)?;
+        let Some(file) = open_lock_file(path)? else {
+            warn!(
+                path = %path.display(),
+                "no lock file is available, the journal is read without the lock"
+            );
+            return Ok(None);
+        };
         let locked = if exclusive {
             fs4::FileExt::try_lock(&file)
         } else {
@@ -114,7 +127,12 @@ impl Drop for JournalLock {
     }
 }
 
-fn open_lock_file(path: &Path) -> Result<File, JournalError> {
+/// The lock file, or `None` when the directory allows none
+///
+/// A journal opened for reading may sit in a directory this process can only read, and then no
+/// lock file can be created beside it: the read goes on, and a write refuses instead of writing
+/// without the lock
+fn open_lock_file(path: &Path) -> Result<Option<File>, JournalError> {
     let mut options = OpenOptions::new();
     options.read(true).write(true).create(true);
     #[cfg(unix)]
@@ -122,9 +140,28 @@ fn open_lock_file(path: &Path) -> Result<File, JournalError> {
         use std::os::unix::fs::OpenOptionsExt as _;
         options.mode(0o600);
     }
-    let file = options.open(path).map_err(|e| io_err(path, &e))?;
-    restrict_permissions(&file, path)?;
-    Ok(file)
+    match options.open(path) {
+        Ok(file) => {
+            restrict_permissions(&file, path)?;
+            Ok(Some(file))
+        }
+        // The lock file exists but may only be read: the shared lock still works on that handle
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+            match File::open(path) {
+                Ok(file) => Ok(Some(file)),
+                Err(inner)
+                    if matches!(
+                        inner.kind(),
+                        std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::NotFound
+                    ) =>
+                {
+                    Ok(None)
+                }
+                Err(inner) => Err(io_err(path, &inner)),
+            }
+        }
+        Err(error) => Err(io_err(path, &error)),
+    }
 }
 
 /// The shortest line an entry of this schema can produce, with a wide margin below the real one.
@@ -174,26 +211,30 @@ impl FileJournal {
             max_entries: 0,
             max_size_mb: 0,
         };
-        // The existence check and the header belong to one critical section: two processes that
-        // both saw no file each wrote a header of their own
-        let _lock = journal.lock_exclusive()?;
-        let existed = path.exists();
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)
-            .map_err(|e| io_err(path, &e))?;
-        restrict_permissions(&file, path)?;
-        if !existed {
-            let header = Header {
-                schema: SCHEMA_VERSION,
-                created: Utc::now(),
-            };
-            let line = serde_json::to_string(&header)
-                .map_err(|e| JournalError::Serialize(e.to_string()))?;
-            let mut file = file;
-            writeln!(file, "{line}").map_err(|e| io_err(path, &e))?;
-            file.sync_all().map_err(|e| io_err(path, &e))?;
+        // An existing journal is opened by nobody at this point: every operation takes the lock
+        // and its own handle, so a journal in a directory this process can only read stays
+        // readable, and the header is written only where a file is missing
+        if !path.exists() {
+            // The existence check and the header belong to one critical section: two processes
+            // that both saw no file each wrote a header of their own
+            let _lock = journal.lock_exclusive()?;
+            if !path.exists() {
+                let file = OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(path)
+                    .map_err(|e| io_err(path, &e))?;
+                restrict_permissions(&file, path)?;
+                let header = Header {
+                    schema: SCHEMA_VERSION,
+                    created: Utc::now(),
+                };
+                let line = serde_json::to_string(&header)
+                    .map_err(|e| JournalError::Serialize(e.to_string()))?;
+                let mut file = file;
+                writeln!(file, "{line}").map_err(|e| io_err(path, &e))?;
+                file.sync_all().map_err(|e| io_err(path, &e))?;
+            }
         }
         Ok(journal)
     }
@@ -1390,6 +1431,39 @@ mod tests {
         assert_eq!(csv_field("kitty"), "kitty");
         assert_eq!(csv_field("a,b"), "\"a,b\"");
         assert_eq!(csv_field("say \"hi\""), "\"say \"\"hi\"\"\"");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_journal_in_a_read_only_directory_is_read_without_a_lock() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("journal.jsonl");
+        {
+            let mut writer = FileJournal::open(&path).unwrap();
+            writer
+                .append(&test_entry("2026-09-05T12:00:00Z", 3, 2.0, "kitty"))
+                .unwrap();
+        }
+        // No lock file existed while the journal was written: the directory is made read-only
+        // afterwards, and nothing can create one now
+        std::fs::remove_file(path.with_file_name("journal.jsonl.lock")).unwrap();
+        std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
+
+        let mut reader = FileJournal::open(&path).unwrap();
+        let entries = reader
+            .load_all()
+            .expect("a read-only directory must not fail a read");
+        assert_eq!(entries.len(), 1);
+        assert!(
+            !path.with_file_name("journal.jsonl.lock").exists(),
+            "a lock file appeared in a directory that allows none"
+        );
+        assert!(
+            reader.append(&test_entry("2026-09-05T12:01:00Z", 4, 2.0, "kitty")).is_err(),
+            "a write without a lock must be refused, not done blind"
+        );
+        std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
     }
 
     #[cfg(unix)]
