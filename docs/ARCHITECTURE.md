@@ -5,7 +5,7 @@
 - **`molva daemon`** (`molvad`) owns the microphone, the recognition model and the state. There is one instance per user; a second copy exits with a message
 - **`molva`** is the CLI. It sends commands to the daemon over IPC (`record start|stop|toggle|cancel`, `status`), works with the journal and the statistics directly through the file, and transcribes files offline without the daemon: `molva transcribe` loads its own engine, which is what an offline batch or CI needs
 - **`molva-gui`** is Tauri 2: the tray, the settings, the history and the statistics. It is an IPC client of the daemon and starts the daemon itself when a recording or a file needs one, with the same settings file and the same socket. Quit stops only the daemon that the window started: a process from the Home Manager service or from a terminal survives
-- **`molva mcp`** is a stdio MCP server. It has no port, no URL and no autostart: the harness starts it. A transcription goes to the daemon, which the server starts when nobody answers on the socket, so it reuses the recognizer that is already loaded. `mcp.enabled` gates the server
+- **`molva mcp`** is a stdio MCP server. It has no port, no URL and no autostart: the harness starts it. A transcription goes to the daemon, which the server starts when nobody answers on the socket, so it reuses the recognizer that is already loaded. The [MCP setup](../README.md#mcp-server) describes how to enable the server
 
 The compositor binds on Wayland, evdev, and the global-hotkey plugin in the GUI are three event sources. All of them meet in one place: the IPC commands of the daemon
 
