@@ -10,6 +10,16 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ### Added
 
+- Recognition through an OpenAI-compatible cloud service: `stt.engine = "remote-openai"` sends the recording to `stt.remote.base_url` (OpenAI, Groq, OpenRouter or a server of your own) and reads the transcript back with its timecodes. `stt.remote.timeout_secs` caps one request, `molva secret set stt` writes the key, and `molva secret status` shows the entry beside the model key and the journal key
+
+- The consent to a cloud provider now covers the audio as well, checked on the address of the request: without `privacy.cloud_consent` a remote service receives nothing, while a loopback address needs no consent because the recording stays on the machine
+
+- `stt_cost_usd` and `stt_unpriced` in the journal, and a recognition line in `molva stats` and the Statistics tab: the price a provider reports is summed, and the phrases whose provider reported none are counted apart, so the sum is never mistaken for the whole bill
+
+- **Breaking:** `file.cancel` names the job it stops, so a cancel that arrives while a file still waits for the worker stops that file and not the work that holds the recognizer. An identifier that no running job carries is answered with `cancelled: false`, and a job that already ended leaves its token behind for nobody
+
+- The cancel of a file transcription reaches the recognizer process, and it does so on every platform: the job owns the process instead of its number, so a job that already finished cannot have its number reused by another program, and Windows stops killing nothing. A job that was cancelled before the recognizer starts never starts it
+
 - **Breaking:** the settings that a running process cannot take now say so. `config.reload` answers `restart_required` for `privacy`, `journal`, `llm`, `stt`, `audio`, `dictionary`, `rules`, `output`, `mcp`, `gui`, `log` and for a changed hotkey. Only the style and the thresholds of the hotkeys apply live, and the answer comes after the worker applied them, never before
 
 - **Breaking:** a save that needs a restart leaves the file on disk and the process on its old settings, and the window says which sections are behind. A daemon this window did not start is not stopped any more, and a declared `molva-daemon` service is not replaced by a sidecar
@@ -51,6 +61,14 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 - A settings file that holds an API key is written with permissions for its owner only, and the temporary file it is staged in can no longer be predicted or replaced
 
 - A reload also rereads the dictionary, so a new term works without a restart
+
+- A damaged journal line is moved to `<journal>.broken` exactly once: the move happens under the exclusive lock, a line already there is not written again, and the journal drops the line it moved. A read that finds the writer busy reports the damaged lines and leaves them for the next write instead of waiting
+
+- The window stays responsive on a large history: the journal commands run off the window thread, the rows of the history and of a transcript are memoised, the transcript is parsed once per result instead of once per position change, and a long history is drawn in batches
+
+- `molva doctor` names the line `model` instead of `whisper model`, because the default weights belong to GigaAM
+
+- A failed command prints its whole cause chain, so a refused journal names the key it is missing instead of only the path
 
 ### Fixed
 
