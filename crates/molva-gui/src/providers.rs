@@ -42,7 +42,7 @@ const PRESETS: [(&str, &str, &str, Option<&str>); 6] = [
         "openrouter",
         "z-ai/glm-5.3-flash",
         "OPENROUTER_API_KEY",
-        Some("openai/whisper-large-v3"),
+        Some("microsoft/mai-transcribe-2"),
     ),
     (
         "groq",
@@ -141,7 +141,7 @@ mod tests {
             .expect("OpenRouter is in the list");
         assert_eq!(
             openrouter.stt_model.as_deref(),
-            Some("openai/whisper-large-v3"),
+            Some("microsoft/mai-transcribe-2"),
             "the transcription endpoint of OpenRouter serves this model"
         );
     }

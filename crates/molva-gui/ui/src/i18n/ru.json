@@ -379,6 +379,7 @@
   "settings.remote.promptHint": "Имена, термины и написания, которые модель должна предпочесть. Пустое поле — подсказка не отправляется",
   "settings.remote.keytermsHint": "Термины через запятую: OpenRouter передаёт их распознавателю по одному и смещает распознавание к этим словам. Пустое поле — термины не отправляются",
   "settings.remote.privacy": "Приватность провайдера",
+  "settings.remote.custom": "Свой эндпоинт (задать вручную)",
   "settings.remote.dataCollection": "Сбор данных OpenRouter",
   "settings.remote.dataCollectionDeny": "Запретить: не давать провайдерам хранить запись или обучаться на ней",
   "settings.remote.dataCollectionAllow": "Разрешить: провайдер хранит запись по своим условиям",

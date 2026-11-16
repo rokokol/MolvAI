@@ -306,6 +306,46 @@ describe("Settings: recognition", () => {
     expect(select).not.toContain(translate("en", "settings.keySource.plain"));
   });
 
+  it("hides the address and the key of the cloud recognizer behind one summary, as the model section does", () => {
+    const preset = render(
+      config((draft) => {
+        draft.stt.engine = "remote-openai";
+        draft.stt.remote.base_url = "https://api.groq.com/openai/v1";
+      }),
+    );
+    const details = preset.match(/<details[\s\S]*?<\/details>/)?.[0] ?? "";
+    expect(details).toContain(translate("en", "settings.llm.connection"));
+    expect(details).toContain('id="remote-base-url"');
+    expect(details).toContain('id="stt-key-source"');
+    expect(details).toContain('id="remote-temperature"');
+
+    // A custom endpoint is what the person came to edit, so the summary arrives open
+    const custom = render(
+      config((draft) => {
+        draft.stt.engine = "remote-openai";
+        draft.stt.remote.base_url = "http://localhost:9000/v1";
+      }),
+    );
+    expect(custom).toMatch(/<details[^>]*open=""/);
+  });
+
+  it("names the custom endpoint as its own choice", () => {
+    const html = render(
+      config((draft) => {
+        draft.stt.engine = "remote-openai";
+        draft.stt.remote.base_url = "http://localhost:9000/v1";
+      }),
+    );
+    // The presets arrive from the Rust side, so the list is empty here; what the page owns is
+    // the select and the wording of the entry that means "your own address"
+    expect(html).toContain('id="remote-provider"');
+    for (const lang of ["ru", "en"] as const) {
+      const label = translate(lang, "settings.remote.custom");
+      expect(label).not.toBe("settings.remote.custom");
+      expect(label).not.toBe(translate(lang, "settings.llmProvider.custom"));
+    }
+  });
+
   it("shows the journal encryption and where its key lives", () => {
     const off = render(config());
     expect(off).toContain(translate("en", "settings.privacy.encrypt"));

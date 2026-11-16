@@ -14,6 +14,8 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 - OpenRouter transcription through its `/audio/transcriptions` endpoint, with the routing the model section already carries: `stt.remote.zdr`, `data_collection`, `provider_order` and `allow_fallbacks` go in the `provider` part of the request, and the hint reaches the service as separate `keyterms` instead of a prompt. OpenAI and Groq take the hint as one prompt and receive no routing at all, because they read neither
 
+- The cloud recognizer offers the providers whose API transcribes as presets beside a custom endpoint: OpenAI, OpenRouter with `microsoft/mai-transcribe-2` and Groq, each filling the address, the model and the key variable. The address, the key and the knobs of the request sit behind one summary, as in the model section, and the summary of a custom endpoint arrives open
+
 - The remote recognizer carries the knobs of the post-processing model: `stt.remote.temperature` (0 by default, so a phrase reads the same way every time), `stt.remote.prompt` for names and jargon (empty means no prompt is sent), and `stt.remote.max_retries`, which repeats a request that failed on a timeout, a rate limit or a provider error and never one that failed on the key. The Settings page shows them beside the key, in the order of the model section
 
 - The consent to a cloud provider now covers the audio as well, checked on the address of the request: without `privacy.cloud_consent` a remote service receives nothing, while a loopback address needs no consent because the recording stays on the machine
@@ -55,6 +57,8 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 - The history list paints a window of the journal instead of the whole file: a journal of 10 000 phrases puts ten rows in the DOM, the rest of the height is padding that the measured rows fill in as they scroll. A search keystroke redraws a screenful rather than a year of dictation
 
 - The settings, statistics, files and snippets views arrive in their own chunk: the window opens on the dashboard with 328 KB of script instead of 404 KB, and a view downloads when it is opened
+
+- The prose face of the window is cut out of the vendored one: the letters of Russian and English, their punctuation, the arrows and the symbols of the interface travel in a 147 KB file instead of the whole 459 KB face, and the Greek and mathematical glyphs stay in a second file that the browser asks for only when such a character reaches the screen. No glyph is dropped, the kit's file stays the source, and `just subset-font-check` proves the committed split still matches it
 
 - The settings page reads the catalog, the providers, the bind file, the style names, the paths and the autostart in one command instead of eight, so one screen costs four trips through the IPC layer
 

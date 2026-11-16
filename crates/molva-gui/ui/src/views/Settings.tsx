@@ -31,6 +31,7 @@ import ProviderKeyField from "../settings/ProviderKeyField";
 import {
   engineOfModel,
   humanSize,
+  isOpenRouterAddress,
   localEngines,
   modelFitsEngine,
   modelsForEngine,
@@ -296,7 +297,15 @@ export default function Settings({
       setNewLanguage(availableLanguages[0]);
     }
   }, [availableLanguages, newLanguage]);
-  const remoteProvider = remoteSttProvider(providers, draft.stt.remote.base_url);
+  // The choice of the person, not the address, decides what the select shows: picking the custom
+  // endpoint leaves the address as it was, so a value read from the address alone snapped back to
+  // the preset and the choice looked like it did nothing
+  const [providerChoice, setProviderChoice] = useState<string | null>(null);
+  const remoteProvider = providerChoice ?? remoteSttProvider(providers, draft.stt.remote.base_url);
+  // The routing belongs to the service, whatever the choice says: an OpenRouter address keeps its
+  // knobs when the person typed it into the custom entry
+  const openRouterChosen =
+    remoteProvider === "openrouter" || isOpenRouterAddress(draft.stt.remote.base_url);
   const sttProviderChoices = sttProviders(providers);
   const profile = mcpProfiles().find((item) => item.id === mcpProfile) ?? mcpProfiles()[0];
 
@@ -697,6 +706,7 @@ export default function Settings({
                   value={remoteProvider}
                   onChange={(event) => {
                     const id = event.target.value;
+                    setProviderChoice(id);
                     const preset = sttProviderChoices.find((item) => item.id === id);
                     patch((next) => {
                       // "Set by hand" keeps what is typed below: there is no address to copy
@@ -715,7 +725,9 @@ export default function Settings({
                 >
                   {sttProviderChoices.map((item) => (
                     <option key={item.id} value={item.id}>
-                      {t(`settings.llmProvider.${item.id}`, { id: item.id })}
+                      {item.id === "custom"
+                        ? t("settings.remote.custom")
+                        : t(`settings.llmProvider.${item.id}`, { id: item.id })}
                     </option>
                   ))}
                 </select>
@@ -733,6 +745,17 @@ export default function Settings({
                   }
                 />
               </div>
+            </div>
+
+            {/* The address, the key and the knobs of the request are the connection, and the
+                model section keeps the same three behind one summary. A custom endpoint is what
+                the person came to edit, so there the summary opens on arrival */}
+            <details
+              className="help"
+              key={remoteProvider === "custom" ? "custom" : "preset"}
+              open={remoteProvider === "custom" || undefined}
+            >
+              <summary>{t("settings.llm.connection")}</summary>
               <div className="field wide">
                 <label htmlFor="remote-base-url">{t("settings.llm.baseUrl")}</label>
                 <input
@@ -746,8 +769,7 @@ export default function Settings({
                   }
                 />
               </div>
-            </div>
-            <ProviderKeyField
+              <ProviderKeyField
               kind="stt"
               idPrefix="stt"
               sources={STT_KEY_SOURCES}
@@ -834,13 +856,14 @@ export default function Settings({
                 }
               />
               <p className="small muted">
-                {remoteProvider === "openrouter"
+                {openRouterChosen
                   ? t("settings.remote.keytermsHint")
                   : t("settings.remote.promptHint")}
               </p>
             </div>
+            </details>
 
-            {remoteProvider === "openrouter" && (
+            {openRouterChosen && (
               <>
                 <h4>{t("settings.remote.privacy")}</h4>
                 <div className="formgrid">

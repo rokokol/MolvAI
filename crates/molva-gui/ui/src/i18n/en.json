@@ -379,6 +379,7 @@
   "settings.remote.promptHint": "Names, terms and spellings the model should prefer. An empty field sends no hint",
   "settings.remote.keytermsHint": "Terms separated by commas: OpenRouter passes them to the recognizer one by one and leans the reading towards them. An empty field sends no terms",
   "settings.remote.privacy": "Provider privacy",
+  "settings.remote.custom": "Custom endpoint (set by hand)",
   "settings.remote.dataCollection": "OpenRouter data collection",
   "settings.remote.dataCollectionDeny": "Deny: do not let providers keep the recording or train on it",
   "settings.remote.dataCollectionAllow": "Allow: providers may keep the recording by their own terms",
