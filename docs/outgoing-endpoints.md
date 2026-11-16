@@ -22,10 +22,13 @@ Everything else in the default configuration happens on the machine: recording f
 | `http://localhost:1234/v1` | `llm.provider = "lmstudio"` | the same, a local LM Studio |
 | `https://api.openai.com/v1` | `llm.provider = "openai"` | the text of the phrase goes to a third-party provider |
 | `https://openrouter.ai/api/v1` | `llm.provider = "openrouter"` | the same |
-| `https://api.groq.com/openai/v1` | `llm.provider = "groq"`, or `stt.engine = "remote-openai"` | the text of the phrase, and for remote recognition the audio recording itself |
+| `https://api.groq.com/openai/v1` | `llm.provider = "groq"`, or `stt.engine = "remote-openai"` with this `stt.remote.base_url` | the text of the phrase, and for remote recognition the audio recording itself |
+| `https://api.openai.com/v1` or `https://openrouter.ai/api/v1` | `stt.engine = "remote-openai"` with this `stt.remote.base_url` | the audio recording, and nothing else; the service answers with the transcript |
 | any address | `llm.provider = "custom"` together with `llm.base_url` | what the user configured |
 
 Two settings close the whole right half of the table at once. `privacy.send_to_llm = false` forbids sending text to a language model, whatever the provider. `privacy.no_record_mode = true` also turns off the journal and the history
+
+A remote recognizer is refused until `privacy.cloud_consent = true`, and the check looks at the address of the request itself: a loopback address works without consent, because the recording stays on the machine. The client follows no redirect and uses no proxy while the consent is off, so the address that was checked is the address that receives the audio
 
 The settings file does not store API keys. The config holds only the name of an environment variable (`llm.api_key_env`) or an instruction to take the key from the system keystore (`llm.api_key_source`). So you can show the config and commit it
 

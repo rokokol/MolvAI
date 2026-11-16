@@ -154,6 +154,23 @@ The catalog is [models.toml](models.toml); `molva models list` shows what is in 
 
 `stt.engine = "auto"` follows the catalog: the model says which runtime can load it, so choosing GigaAM does not require knowing that it is not a whisper file. A custom `stt.model_path` points at a directory with the weights; the catalog decides the file name inside it
 
+### Recognition through a cloud provider
+
+A third way to recognize is a service over the OpenAI-compatible `/audio/transcriptions` protocol: OpenAI, Groq or OpenRouter. The recording leaves the machine, so the cloud consent has to be on first
+
+```sh
+molva config set privacy.cloud_consent true
+molva config set stt.engine remote-openai
+molva config set stt.remote.base_url https://api.groq.com/openai/v1
+molva config set stt.remote.model whisper-large-v3-turbo
+molva config set stt.remote.api_key_source keyring
+printf '%s' "$GROQ_API_KEY" | molva secret set stt
+```
+
+`stt.remote.api_key_source` takes `keyring`, `env` (the variable named by `stt.remote.api_key_env`) or `none`, and `stt.remote.timeout_secs` caps one request. Without consent a remote address receives nothing at all; a loopback address, such as a server of your own on the same machine, needs no consent because nothing leaves the computer
+
+The service may charge for the minutes. When it reports a price, `molva stats` and the Statistics tab add it to a line of its own, and `stt_unpriced` counts the phrases whose provider reported no price, so the sum is never mistaken for the whole bill
+
 The weights are not part of the repository, and the project license does not cover them. Their terms are in [docs/model-licenses.md](docs/model-licenses.md), and every address the program can call is in [docs/outgoing-endpoints.md](docs/outgoing-endpoints.md)
 
 ## Real-time dictation

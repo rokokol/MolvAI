@@ -11,7 +11,7 @@ use std::io::Read as _;
 use clap::{Subcommand, ValueEnum};
 use molva_core::app::journal_crypto::KEY_LEN;
 use molva_core::app::secrets::{
-    llm_key_entry, FileStore, OsKeyring, SecretStore, JOURNAL_KEY_ENTRY,
+    llm_key_entry, FileStore, OsKeyring, SecretStore, JOURNAL_KEY_ENTRY, STT_KEY_ENTRY,
 };
 use molva_core::Config;
 
@@ -22,16 +22,19 @@ use super::CmdError;
 pub(crate) enum SecretName {
     /// The key of the cloud model provider (`llm.api_key_source`)
     Llm,
+    /// The key of the cloud recognizer (`stt.remote.api_key_source`)
+    Stt,
     /// The encryption key of the journal (`journal.key_source`)
     Journal,
 }
 
 impl SecretName {
-    const ALL: [Self; 2] = [Self::Llm, Self::Journal];
+    const ALL: [Self; 3] = [Self::Llm, Self::Stt, Self::Journal];
 
     fn label(self) -> &'static str {
         match self {
             Self::Llm => "llm",
+            Self::Stt => "stt",
             Self::Journal => "journal",
         }
     }
@@ -84,10 +87,11 @@ impl std::fmt::Debug for Backend {
     }
 }
 
-/// The entry name for a secret: `llm-api-key-<provider>` or `journal-key`
+/// The entry name for a secret: `llm-api-key-<provider>`, `stt-api-key` or `journal-key`
 pub(crate) fn entry_name(name: SecretName, provider: &str) -> String {
     match name {
         SecretName::Llm => llm_key_entry(provider),
+        SecretName::Stt => STT_KEY_ENTRY.to_string(),
         SecretName::Journal => JOURNAL_KEY_ENTRY.to_string(),
     }
 }
@@ -98,6 +102,7 @@ pub(crate) fn entry_name(name: SecretName, provider: &str) -> String {
 pub(crate) fn resolve(name: SecretName, config: &Config) -> Result<Backend, CmdError> {
     let source = match name {
         SecretName::Llm => config.llm.api_key_source.trim().to_lowercase(),
+        SecretName::Stt => config.stt.remote.api_key_source.trim().to_lowercase(),
         SecretName::Journal => config.journal.key_source.trim().to_lowercase(),
     };
     let entry = entry_name(name, &config.llm.provider);
@@ -107,7 +112,7 @@ pub(crate) fn resolve(name: SecretName, config: &Config) -> Result<Backend, CmdE
             entry,
             place: "OS store".into(),
         }),
-        (SecretName::Llm, "file") => {
+        (SecretName::Llm | SecretName::Stt, "file") => {
             let directory =
                 Config::secrets_directory().map_err(|e| CmdError::file(e.to_string()))?;
             Ok(Backend::Store {
@@ -137,7 +142,10 @@ pub(crate) fn resolve(name: SecretName, config: &Config) -> Result<Backend, CmdE
         (SecretName::Llm, "env") => Ok(Backend::Env {
             variable: config.llm.api_key_env.clone(),
         }),
-        (SecretName::Llm, "none") => Ok(Backend::None),
+        (SecretName::Stt, "env") => Ok(Backend::Env {
+            variable: config.stt.remote.api_key_env.clone(),
+        }),
+        (SecretName::Llm | SecretName::Stt, "none") => Ok(Backend::None),
         (_, other) => Err(CmdError::args(format!(
             "the source {other:?} is not supported for the secret {}",
             name.label()
@@ -262,6 +270,34 @@ mod tests {
         assert_eq!(entry_name(SecretName::Llm, "groq"), "llm-api-key-groq");
         assert_eq!(entry_name(SecretName::Llm, "OpenAI"), "llm-api-key-openai");
         assert_eq!(entry_name(SecretName::Journal, "groq"), "journal-key");
+    }
+
+    #[test]
+    fn the_recognizer_key_has_one_entry_of_its_own() {
+        // One cloud recognizer is configured at a time, so the entry needs no provider in its
+        // name, and the CLI reaches the same entry the daemon reads
+        assert_eq!(entry_name(SecretName::Stt, "groq"), "stt-api-key");
+
+        let mut config = Config::default();
+        config.stt.remote.api_key_source = "keyring".into();
+        match resolve(SecretName::Stt, &config).unwrap() {
+            Backend::Store { entry, place, .. } => {
+                assert_eq!(entry, "stt-api-key");
+                assert_eq!(place, "OS store");
+            }
+            other => panic!("{other:?}"),
+        }
+
+        config.stt.remote.api_key_source = "env".into();
+        config.stt.remote.api_key_env = "GROQ_API_KEY".into();
+        assert!(matches!(
+            resolve(SecretName::Stt, &config).unwrap(),
+            Backend::Env { variable } if variable == "GROQ_API_KEY"
+        ));
+
+        config.stt.remote.api_key_source = "none".into();
+        assert!(matches!(resolve(SecretName::Stt, &config).unwrap(), Backend::None));
+        assert!(validate(SecretName::Stt, "sk-anything").is_ok());
     }
 
     #[test]

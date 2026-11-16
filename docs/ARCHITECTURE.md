@@ -17,6 +17,8 @@ The request never moves the state machine. The worker sets the `job` field to `f
 
 A client decides what to do with the refusal. `molva transcribe` never meets it, because it runs its own engine. The GUI repeats the request for up to half an hour, so a person who dictates in the middle of a file does not lose it, and the MCP server waits thirty seconds before it reports the refusal to the harness
 
+A client that gives up names its job in `file.cancel`, and the daemon cancels the token of that job alone: a file that still waits for the worker stops there, and the work that holds the recognizer now is left alone. The token carries the process of the recognizer rather than its number, so the kill cannot reach a program that took the number after the file ended, and `cancelled: false` says that no running job carries the identifier. The kill reaches that one process: a helper of the CLI that inherited its pipes keeps them open, and the call then answers with an error after a bounded wait instead of a truncated transcript
+
 ## Layers of `molva-core`
 
 ```

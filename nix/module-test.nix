@@ -176,4 +176,15 @@ in
       settings.stt.chunk_pause_ms = 400;
     };
   });
+  journal = summary (eval {
+    programs.molvai = {
+      enable = true;
+      settings = {
+        journal.encrypt = true;
+        mcp.enabled = true;
+        gui.start_in_tray = true;
+        hotkeys.tap_toggles = true;
+      };
+    };
+  });
 }

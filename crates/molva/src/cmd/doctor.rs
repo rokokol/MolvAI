@@ -82,33 +82,35 @@ pub(crate) fn input_devices_check() -> Check {
     }
 }
 
-/// The whisper weights: the configured model is found on the disk and its SHA-256 matches the
-/// catalog
+/// The weights of the configured model: found on the disk and their SHA-256 matches the catalog
+///
+/// The name is not `whisper`: the default model is GigaAM, which runs on its own weights, and a
+/// line that calls them whisper sends the reader looking for the wrong thing
 pub(crate) fn whisper_model_check(config: &Config) -> Check {
     let name = config.stt.model.trim();
     let info = match models::find(name) {
         Ok(info) => info,
-        Err(error) => return Check::new("whisper model", false, error.to_string()),
+        Err(error) => return Check::new("model", false, error.to_string()),
     };
     let path = match models::installed_path(config, name) {
         Ok(path) => path,
-        Err(error) => return Check::new("whisper model", false, error.to_string()),
+        Err(error) => return Check::new("model", false, error.to_string()),
     };
     match models::verify(&path, &info.sha256) {
         Ok(true) => Check::new(
-            "whisper model",
+            "model",
             true,
             format!("{name}: {}, sha256 matches", path.display()),
         ),
         Ok(false) => Check::new(
-            "whisper model",
+            "model",
             false,
             format!(
                 "{}: sha256 does not match the catalog; download again: molva models pull {name} --force",
                 path.display()
             ),
         ),
-        Err(error) => Check::new("whisper model", false, error.to_string()),
+        Err(error) => Check::new("model", false, error.to_string()),
     }
 }
 
@@ -338,7 +340,7 @@ mod tests {
             "wtype",
             "/dev/uinput",
             "daemon",
-            "whisper model",
+            "model",
             "transcribe-cli",
             "LLM",
             "key store",

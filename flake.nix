@@ -359,6 +359,10 @@
               want '.lua.models | index("gigaam-v3-e2e-rnnt-q4_k_m")' "the default model is not fetched"
               want '.lua.configSource | test("molvai-config.toml$")' "no generated settings file"
               want '.whisper.model == "small" and .whisper.settings.stt.chunk_pause_ms == 400' "settings do not merge"
+              want '.journal.settings.journal.encrypt == true' "the journal encryption setting is dropped"
+              want '.journal.settings.mcp.enabled == true' "the MCP switch is dropped"
+              want '.journal.settings.gui.start_in_tray == true' "the tray setting is dropped"
+              want '.journal.settings.hotkeys.tap_toggles == true' "the tap setting is dropped"
               want '.off.packages == [] and .off.extraConfig == "" and .off.daemon == "" and .off.binds == ""' "the module acts while disabled"
               touch $out
             '';
