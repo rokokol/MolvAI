@@ -63,7 +63,7 @@ enum Attempt {
 /// These are the body fields the service reads: a provider of its own understands none of them,
 /// and a request to one of those carries no `provider` object at all
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct RouterPolicy {
+pub(crate) struct RouterPolicy {
     data_collection: String,
     zdr: bool,
     /// Comma-separated provider slugs, empty when the router picks
@@ -154,7 +154,7 @@ impl RemoteOpenAiEngine {
 
     /// Route the request through OpenRouter with these preferences
     #[must_use]
-    pub fn with_router(mut self, router: RouterPolicy) -> Self {
+    pub(crate) fn with_router(mut self, router: RouterPolicy) -> Self {
         self.router = Some(router);
         self
     }
