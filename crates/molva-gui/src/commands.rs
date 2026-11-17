@@ -945,8 +945,9 @@ const fn daemon_service_declared() -> bool {
 /// Whether a `LoadState=` answer of `systemctl show` names a unit that the manager loaded
 ///
 /// `loaded` is the only state that gives the daemon an owner: `not-found` is no unit, and
-/// `masked` is a service that its owner turned off on purpose. Only a systemd machine asks
-#[cfg(target_os = "linux")]
+/// `masked` is a service that its owner turned off on purpose. Only a systemd machine asks, and
+/// the tests ask everywhere, so the parser itself is not tied to one platform
+#[cfg(any(target_os = "linux", test))]
 fn unit_is_loaded(answer: &str) -> bool {
     answer.lines().any(|line| line.trim() == "LoadState=loaded")
 }

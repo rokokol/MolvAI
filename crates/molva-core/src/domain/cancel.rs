@@ -149,6 +149,8 @@ mod tests {
     use super::*;
     #[cfg(unix)]
     use std::process::Command;
+    // The only waits of this module belong to the process tests, which build on unix alone
+    #[cfg(unix)]
     use std::time::Duration;
 
     /// The longest a test waits for a process that a signal should have ended
