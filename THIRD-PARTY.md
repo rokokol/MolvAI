@@ -4,12 +4,12 @@ This file is built by the `just third-party` command (cargo-about). It lists the
 
 The licenses of the speech recognition model weights are not listed here: the weights are not part of the repository, and their terms are described in [docs/model-licenses.md](docs/model-licenses.md)
 
-- MIT License — dependencies: 514
+- MIT License — dependencies: 523
 - Unicode License v3 — dependencies: 19
 - Mozilla Public License 2.0 — dependencies: 17
 - Apache License 2.0 — dependencies: 11
 - BSD 3-Clause &quot;New&quot; or &quot;Revised&quot; License — dependencies: 6
-- ISC License — dependencies: 5
+- ISC License — dependencies: 6
 - BSD Zero Clause License — dependencies: 2
 - Boost Software License 1.0 — dependencies: 2
 - The Unlicense — dependencies: 2
@@ -914,7 +914,7 @@ limitations under the License.
 These crates are distributed under this license:
 
 - [dpi 0.1.2](https://github.com/rust-windowing/winit)
-- [tao 0.35.3](https://github.com/tauri-apps/tao)
+- [tao 0.37.1](https://github.com/tauri-apps/tao)
 
 ```
 Apache License
@@ -1126,7 +1126,7 @@ These crates are distributed under this license:
 
 - [aws-lc-sys 0.45.0](https://github.com/aws/aws-lc-rs)
 - [dunce 1.0.5](https://gitlab.com/kornelski/dunce)
-- [interprocess 2.4.4](https://github.com/kotauskas/interprocess)
+- [interprocess 2.4.8](https://github.com/kotauskas/interprocess)
 - [sync_wrapper 1.0.2](https://github.com/Actyx/sync_wrapper)
 
 ```
@@ -1210,8 +1210,8 @@ limitations under the License.
 
 These crates are distributed under this license:
 
-- [alloc-no-stdlib 2.0.4](https://github.com/dropbox/rust-alloc-no-stdlib)
-- [brotli 8.0.4](https://github.com/dropbox/rust-brotli)
+- [alloc-no-stdlib 3.0.0](https://github.com/dropbox/rust-alloc-no-stdlib)
+- [brotli 9.0.0](https://github.com/dropbox/rust-brotli)
 
 ```
 Copyright (c) 2016 Dropbox, Inc.
@@ -1272,7 +1272,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 These crates are distributed under this license:
 
-- [alloc-stdlib 0.2.4](https://github.com/dropbox/rust-alloc-no-stdlib)
+- [alloc-stdlib 0.3.0](https://github.com/dropbox/rust-alloc-no-stdlib)
 - [aws-lc-sys 0.45.0](https://github.com/aws/aws-lc-rs)
 
 ```
@@ -1363,7 +1363,7 @@ DEALINGS IN THE SOFTWARE.
 
 These crates are distributed under this license:
 
-- [clipboard-win 5.4.1](https://github.com/DoumanAsh/clipboard-win)
+- [clipboard-win 5.4.3](https://github.com/DoumanAsh/clipboard-win)
 
 ```
 Boost Software License - Version 1.0 - August 17th, 2003
@@ -1380,7 +1380,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 These crates are distributed under this license:
 
-- [webpki-roots 1.0.9](https://github.com/rustls/webpki-roots)
+- [webpki-roots 1.0.11](https://github.com/rustls/webpki-roots)
 
 ```
 # Community Data License Agreement - Permissive - Version 2.0
@@ -1475,6 +1475,7 @@ These crates are distributed under this license:
 These crates are distributed under this license:
 
 - [libloading 0.7.4](https://github.com/nagisa/rust_libloading/)
+- [libloading 0.8.9](https://github.com/nagisa/rust_libloading/)
 
 ```
 Copyright © 2015, Simonas Kazlauskas
@@ -1496,7 +1497,7 @@ THIS SOFTWARE.
 
 These crates are distributed under this license:
 
-- [rustls-webpki 0.103.15](https://github.com/rustls/webpki)
+- [rustls-webpki 0.103.16](https://github.com/rustls/webpki)
 
 ```
 Except as otherwise noted, this project is licensed under the following
@@ -1613,7 +1614,7 @@ DEALINGS IN THE SOFTWARE.
 
 These crates are distributed under this license:
 
-- [brotli 8.0.4](https://github.com/dropbox/rust-brotli)
+- [brotli 9.0.0](https://github.com/dropbox/rust-brotli)
 
 ```
 Copyright (c) 2009, 2010, 2013-2016 by the Brotli Authors.
@@ -1821,6 +1822,7 @@ These crates are distributed under this license:
 
 - [cfg-if 1.0.4](https://github.com/rust-lang/cfg-if)
 - [openssl-probe 0.2.1](https://github.com/rustls/openssl-probe)
+- [scoped-tls 1.0.1](https://github.com/alexcrichton/scoped-tls)
 - [socket2 0.6.5](https://github.com/rust-lang/socket2)
 - [toml_datetime 0.6.3](https://github.com/toml-rs/toml)
 
@@ -1952,7 +1954,7 @@ THE SOFTWARE.
 These crates are distributed under this license:
 
 - [bitflags 1.3.2](https://github.com/bitflags/bitflags)
-- [bitflags 2.13.1](https://github.com/bitflags/bitflags)
+- [bitflags 2.13.2](https://github.com/bitflags/bitflags)
 - [glob 0.3.4](https://github.com/rust-lang/glob)
 - [log 0.4.34](https://github.com/rust-lang/log)
 - [num-bigint 0.4.8](https://github.com/rust-num/num-bigint)
@@ -2000,7 +2002,7 @@ DEALINGS IN THE SOFTWARE.
 
 These crates are distributed under this license:
 
-- [uuid 1.26.0](https://github.com/uuid-rs/uuid)
+- [uuid 1.29.2](https://github.com/uuid-rs/uuid)
 
 ```
 Copyright (c) 2014 The Rust Project Developers
@@ -2036,8 +2038,8 @@ DEALINGS IN THE SOFTWARE.
 
 These crates are distributed under this license:
 
-- [html5ever 0.38.0](https://github.com/servo/html5ever)
-- [markup5ever 0.38.0](https://github.com/servo/html5ever)
+- [html5ever 0.39.0](https://github.com/servo/html5ever)
+- [markup5ever 0.39.0](https://github.com/servo/html5ever)
 - [web_atoms 0.2.6](https://github.com/servo/html5ever)
 
 ```
@@ -2297,35 +2299,6 @@ THE SOFTWARE.
 
 These crates are distributed under this license:
 
-- [winreg 0.10.1](https://github.com/gentoo90/winreg-rs)
-
-```
-Copyright (c) 2015 Igor Shaula
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-
-```
-
-## MIT License
-
-These crates are distributed under this license:
-
 - [new_debug_unreachable 1.0.6](https://github.com/mbrubeck/rust-debug-unreachable)
 
 ```
@@ -2431,6 +2404,7 @@ DEALINGS IN THE SOFTWARE.
 
 These crates are distributed under this license:
 
+- [fs4 1.1.0](https://github.com/al8n/fs4)
 - [heck 0.4.1](https://github.com/withoutboats/heck)
 - [heck 0.5.0](https://github.com/withoutboats/heck)
 - [unicode-segmentation 1.13.3](https://github.com/unicode-rs/unicode-segmentation)
@@ -2492,6 +2466,34 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+```
+
+## MIT License
+
+These crates are distributed under this license:
+
+- [dlib 0.5.3](https://github.com/elinorbgr/dlib)
+
+```
+Copyright (c) 2015 Victor Berger
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
 ```
 
 ## MIT License
@@ -2919,7 +2921,7 @@ These crates are distributed under this license:
 
 - [hyper-rustls 0.27.9](https://github.com/rustls/hyper-rustls)
 - [rustls-native-certs 0.8.4](https://github.com/rustls/rustls-native-certs)
-- [rustls 0.23.45](https://github.com/rustls/rustls)
+- [rustls 0.23.46](https://github.com/rustls/rustls)
 
 ```
 Copyright (c) 2016 Joseph Birr-Pixton <jpixton@gmail.com>
@@ -3475,6 +3477,7 @@ DEALINGS IN THE SOFTWARE.
 These crates are distributed under this license:
 
 - [keyboard-types 0.7.0](https://github.com/pyfisch/keyboard-types)
+- [keyboard-types 0.8.3](https://github.com/rust-windowing/keyboard-types)
 
 ```
 Copyright (c) 2017 Pyfisch
@@ -3709,7 +3712,7 @@ DEALINGS IN THE SOFTWARE.
 These crates are distributed under this license:
 
 - [signal-hook-registry 1.4.8](https://github.com/vorner/signal-hook)
-- [signal-hook 0.4.4](https://github.com/vorner/signal-hook)
+- [signal-hook 0.4.5](https://github.com/vorner/signal-hook)
 
 ```
 Copyright (c) 2017 tokio-jsonrpc developers
@@ -4015,10 +4018,9 @@ DEALINGS IN THE SOFTWARE.
 
 These crates are distributed under this license:
 
-- [dirs-sys 0.3.7](https://github.com/dirs-dev/dirs-sys-rs)
 - [dirs-sys 0.5.0](https://github.com/dirs-dev/dirs-sys-rs)
-- [dirs 4.0.0](https://github.com/soc/dirs-rs)
 - [dirs 6.0.0](https://github.com/soc/dirs-rs)
+- [dirs 7.0.0](https://codeberg.org/dirs/dirs-rs)
 
 ```
 Copyright (c) 2018-2019 dirs-rs contributors
@@ -4779,41 +4781,6 @@ DEALINGS IN THE SOFTWARE.
 
 These crates are distributed under this license:
 
-- [iana-time-zone 0.1.65](https://github.com/strawlab/iana-time-zone)
-
-```
-Copyright (c) 2020 Andrew D. Straw
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-
-```
-
-## MIT License
-
-These crates are distributed under this license:
-
 - [downcast-rs 1.2.1](https://github.com/marcianx/downcast-rs)
 
 ```
@@ -4854,6 +4821,41 @@ These crates are distributed under this license:
 ```
 Copyright (c) 2020 Yevhenii Reizner
 Copyright (c) 2015 Dan Burkert
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+```
+
+## MIT License
+
+These crates are distributed under this license:
+
+- [pollster 0.4.0](https://github.com/zesterer/pollster)
+
+```
+Copyright (c) 2020-2021 Joshua Barretto
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -5388,9 +5390,12 @@ These crates are distributed under this license:
 
 - [zbus 4.4.0](https://github.com/dbus2/zbus/)
 - [zbus 5.19.0](https://github.com/z-galaxy/zbus/)
+- [zbus 6.3.0](https://github.com/z-galaxy/zbus/)
 - [zbus_macros 4.4.0](https://github.com/dbus2/zbus/)
 - [zbus_macros 5.19.0](https://github.com/z-galaxy/zbus/)
+- [zbus_macros 6.3.0](https://github.com/z-galaxy/zbus/)
 - [zbus_names 4.3.4](https://github.com/z-galaxy/zbus/)
+- [zbus_utils 6.1.0](https://github.com/z-galaxy/zbus/)
 - [zvariant 4.2.0](https://github.com/dbus2/zbus/)
 - [zvariant 5.15.0](https://github.com/z-galaxy/zbus/)
 - [zvariant_derive 4.2.0](https://github.com/dbus2/zbus/)
@@ -5429,7 +5434,7 @@ DEALINGS IN THE SOFTWARE.
 
 These crates are distributed under this license:
 
-- [ctutils 0.4.2](https://github.com/RustCrypto/utils)
+- [ctutils 0.4.6](https://github.com/RustCrypto/utils)
 
 ```
 Copyright (c) 2025-2026 The RustCrypto Project Developers
@@ -5492,6 +5497,47 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
+
+```
+
+## MIT License
+
+These crates are distributed under this license:
+
+- [zruntime 0.2.3](https://github.com/z-galaxy/zruntime)
+
+```
+Copyright (c) 2026 Zeeshan Ali Khan & zruntime contributors
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+The broadcast channel (`src/broadcast.rs`), its tests (`src/tests/broadcast.rs`) and its
+benchmark (`benches/broadcast.rs`) come from the async-broadcast crate
+(https://github.com/smol-rs/async-broadcast), under the license above and this notice:
+
+Copyright (c) 2020 Yoshua Wuyts, Stjepan Glavina & Zeeshan Ali Khan
 
 ```
 
@@ -5608,7 +5654,7 @@ SOFTWARE.
 
 These crates are distributed under this license:
 
-- [libc 0.2.189](https://github.com/rust-lang/libc)
+- [libc 0.2.191](https://github.com/rust-lang/libc)
 
 ```
 Copyright (c) The Rust Project Developers
@@ -5712,12 +5758,10 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 These crates are distributed under this license:
 
+- [rand 0.10.2](https://github.com/rust-random/rand)
 - [rand 0.8.8](https://github.com/rust-random/rand)
-- [rand 0.9.5](https://github.com/rust-random/rand)
 - [rand_chacha 0.3.1](https://github.com/rust-random/rand)
-- [rand_chacha 0.9.0](https://github.com/rust-random/rand)
 - [rand_core 0.6.4](https://github.com/rust-random/rand)
-- [rand_core 0.9.5](https://github.com/rust-random/rand)
 
 ```
 Copyright 2018 Developers of the Rand project
@@ -6000,6 +6044,42 @@ SOFTWARE.
 
 These crates are distributed under this license:
 
+- [tauri-codegen 2.7.2](https://github.com/tauri-apps/tauri)
+- [tauri-macros 2.7.2](https://github.com/tauri-apps/tauri)
+- [tauri-runtime-wry 2.12.1](https://github.com/tauri-apps/tauri)
+- [tauri-runtime 2.12.1](https://github.com/tauri-apps/tauri)
+- [tauri-utils 2.10.1](https://github.com/tauri-apps/tauri)
+- [tauri 2.12.2](https://github.com/tauri-apps/tauri)
+
+```
+MIT License
+
+Copyright (c) 2017 - Present Tauri Apps Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+```
+
+## MIT License
+
+These crates are distributed under this license:
+
 - [tree_magic_mini 3.2.2](https://github.com/mbrubeck/tree_magic/)
 
 ```
@@ -6093,7 +6173,7 @@ SOFTWARE.
 
 These crates are distributed under this license:
 
-- [notify-rust 4.18.2](https://github.com/hoodie/notify-rust)
+- [notify-rust 4.19.0](https://github.com/hoodie/notify-rust)
 
 ```
 MIT License
@@ -6124,7 +6204,7 @@ SOFTWARE.
 
 These crates are distributed under this license:
 
-- [json-patch 3.0.1](https://github.com/idubrov/json-patch)
+- [json-patch 4.2.0](https://github.com/idubrov/json-patch)
 
 ```
 MIT License
@@ -6155,7 +6235,7 @@ SOFTWARE.
 
 These crates are distributed under this license:
 
-- [cfb 0.7.3](https://github.com/mdsteele/rust-cfb)
+- [cfb 0.14.0](https://github.com/mdsteele/rust-cfb)
 
 ```
 MIT License
@@ -6469,7 +6549,7 @@ SOFTWARE.
 
 These crates are distributed under this license:
 
-- [infer 0.19.0](https://github.com/bojand/infer)
+- [infer 0.22.0](https://github.com/bojand/infer)
 
 ```
 MIT License
@@ -6707,7 +6787,7 @@ SOFTWARE.
 
 These crates are distributed under this license:
 
-- [window-vibrancy 0.6.0](https://github.com/tauri-apps/tauri-plugin-vibrancy)
+- [window-vibrancy 0.8.1](https://github.com/tauri-apps/tauri-plugin-vibrancy)
 
 ```
 MIT License
@@ -6738,7 +6818,7 @@ SOFTWARE.
 
 These crates are distributed under this license:
 
-- [wry 0.55.1](https://github.com/tauri-apps/wry)
+- [wry 0.57.0](https://github.com/tauri-apps/wry)
 
 ```
 MIT License
@@ -6832,7 +6912,7 @@ SOFTWARE.
 
 These crates are distributed under this license:
 
-- [urlpattern 0.3.0](https://github.com/denoland/rust-urlpattern)
+- [urlpattern 0.6.0](https://github.com/denoland/rust-urlpattern)
 
 ```
 MIT License
@@ -6894,7 +6974,38 @@ SOFTWARE.
 
 These crates are distributed under this license:
 
-- [jsonptr 0.6.3](https://github.com/chanced/jsonptr)
+- [rfd 0.17.2](https://github.com/PolyMeilex/rfd)
+
+```
+MIT License
+
+Copyright (c) 2022 Bartłomiej Maryńczak
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+```
+
+## MIT License
+
+These crates are distributed under this license:
+
+- [jsonptr 0.7.1](https://github.com/chanced/jsonptr)
 
 ```
 MIT License
@@ -6925,7 +7036,7 @@ SOFTWARE.
 
 These crates are distributed under this license:
 
-- [arboard 3.6.1](https://github.com/1Password/arboard)
+- [arboard 3.7.0](https://github.com/1Password/arboard)
 
 ```
 MIT License
@@ -6956,7 +7067,7 @@ SOFTWARE.
 
 These crates are distributed under this license:
 
-- [auto-launch 0.5.0](https://github.com/zzzgydi/auto-launch.git)
+- [auto-launch 0.6.0](https://github.com/zzzgydi/auto-launch.git)
 
 ```
 MIT License
@@ -6988,8 +7099,8 @@ SOFTWARE.
 These crates are distributed under this license:
 
 - [global-hotkey 0.8.0](https://github.com/tauri-apps/global-hotkey)
-- [muda 0.19.3](https://github.com/tauri-apps/muda)
-- [tray-icon 0.24.2](https://github.com/tauri-apps/tray-icon)
+- [muda 0.20.0](https://github.com/tauri-apps/muda)
+- [tray-icon 0.25.1](https://github.com/tauri-apps/tray-icon)
 
 ```
 MIT License
@@ -7020,7 +7131,7 @@ SOFTWARE.
 
 These crates are distributed under this license:
 
-- [dom_query 0.27.0](https://github.com/niklak/dom_query)
+- [dom_query 0.28.0](https://github.com/niklak/dom_query)
 
 ```
 MIT License
@@ -7088,6 +7199,37 @@ SOFTWARE.
 
 These crates are distributed under this license:
 
+- [web-time 1.1.0](https://github.com/daxpedda/web-time)
+
+```
+MIT License
+
+Copyright (c) 2023 dAxpeDDa
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+```
+
+## MIT License
+
+These crates are distributed under this license:
+
 - [unit-prefix 0.5.2](https://codeberg.org/commons-rs/unit-prefix)
 
 ```
@@ -7119,12 +7261,41 @@ SOFTWARE.
 
 These crates are distributed under this license:
 
-- [molva 0.1.9](https://github.com/rokokol/MolvAI)
-- [molva-core 0.1.9](https://github.com/rokokol/MolvAI)
-- [molva-gui 0.1.9](https://github.com/rokokol/MolvAI)
+- [smappservice-rs 0.1.3](https://github.com/gethopp/smappservice-rs)
+
+```
+MIT License
+
+Copyright (c) 2025 iparaskev
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## MIT License
+
+These crates are distributed under this license:
+
+- [molva 0.4.0](https://github.com/rokokol/MolvAI)
+- [molva-core 0.4.0](https://github.com/rokokol/MolvAI)
+- [molva-gui 0.4.0](https://github.com/rokokol/MolvAI)
 - [block2 0.6.2](https://github.com/madsmtm/objc2)
-- [brotli-decompressor 5.0.3](https://github.com/dropbox/rust-brotli-decompressor)
-- [chrono 0.4.45](https://github.com/chronotope/chrono)
+- [brotli-decompressor 6.0.1](https://github.com/dropbox/rust-brotli-decompressor)
 - [dasp_sample 0.11.0](https://github.com/rustaudio/sample.git)
 - [dispatch2 0.3.1](https://github.com/madsmtm/objc2)
 - [dlopen2 0.8.2](https://github.com/OpenByteDev/dlopen2)
@@ -7142,31 +7313,24 @@ These crates are distributed under this license:
 - [objc2-exception-helper 0.1.1](https://github.com/madsmtm/objc2)
 - [objc2-foundation 0.3.2](https://github.com/madsmtm/objc2)
 - [objc2-quartz-core 0.3.2](https://github.com/madsmtm/objc2)
+- [objc2-security 0.3.2](https://github.com/madsmtm/objc2)
+- [objc2-service-management 0.3.2](https://github.com/madsmtm/objc2)
 - [objc2-web-kit 0.3.2](https://github.com/madsmtm/objc2)
 - [objc2 0.6.4](https://github.com/madsmtm/objc2)
 - [sigchld 0.2.5](https://github.com/oconnor663/sigchld.rs)
 - [siphasher 1.0.3](https://github.com/jedisct1/rust-siphash)
-- [tauri-codegen 2.6.3](https://github.com/tauri-apps/tauri)
-- [tauri-macros 2.6.3](https://github.com/tauri-apps/tauri)
-- [tauri-plugin-autostart 2.5.1](https://github.com/tauri-apps/plugins-workspace)
-- [tauri-plugin-global-shortcut 2.3.2](https://github.com/tauri-apps/plugins-workspace)
-- [tauri-plugin-notification 2.4.0](https://github.com/tauri-apps/plugins-workspace)
-- [tauri-plugin-opener 2.5.5](https://github.com/tauri-apps/plugins-workspace)
-- [tauri-plugin-shell 2.3.6](https://github.com/tauri-apps/plugins-workspace)
-- [tauri-plugin-single-instance 2.4.4](https://github.com/tauri-apps/plugins-workspace)
-- [tauri-runtime-wry 2.11.4](https://github.com/tauri-apps/tauri)
-- [tauri-runtime 2.11.3](https://github.com/tauri-apps/tauri)
-- [tauri-utils 2.9.3](https://github.com/tauri-apps/tauri)
+- [tauri-plugin-autostart 2.7.0](https://github.com/tauri-apps/plugins-workspace)
+- [tauri-plugin-dialog 2.8.4](https://github.com/tauri-apps/plugins-workspace)
+- [tauri-plugin-fs 2.7.1](https://github.com/tauri-apps/plugins-workspace)
+- [tauri-plugin-global-shortcut 2.4.1](https://github.com/tauri-apps/plugins-workspace)
+- [tauri-plugin-notification 2.8.1](https://github.com/tauri-apps/plugins-workspace)
+- [tauri-plugin-opener 2.7.3](https://github.com/tauri-apps/plugins-workspace)
+- [tauri-plugin-shell 2.6.0](https://github.com/tauri-apps/plugins-workspace)
+- [tauri-plugin-single-instance 2.5.5](https://github.com/tauri-apps/plugins-workspace)
 - [tauri-winrt-notification 0.8.1](https://github.com/tauri-apps/winrt-notification)
-- [tauri 2.11.5](https://github.com/tauri-apps/tauri)
-- [unic-char-property 0.9.0](https://github.com/open-i18n/rust-unic/)
-- [unic-char-range 0.9.0](https://github.com/open-i18n/rust-unic/)
-- [unic-common 0.9.0](https://github.com/open-i18n/rust-unic/)
-- [unic-ucd-ident 0.9.0](https://github.com/open-i18n/rust-unic/)
-- [unic-ucd-version 0.9.0](https://github.com/open-i18n/rust-unic/)
 - [webview2-com-macros 0.8.1](https://github.com/wravery/webview2-rs)
-- [webview2-com-sys 0.38.2](https://github.com/wravery/webview2-rs)
-- [webview2-com 0.38.2](https://github.com/wravery/webview2-rs)
+- [webview2-com-sys 0.39.1](https://github.com/wravery/webview2-rs)
+- [webview2-com 0.39.1](https://github.com/wravery/webview2-rs)
 - [windows-collections 0.2.0](https://github.com/microsoft/windows-rs)
 - [windows-collections 0.3.2](https://github.com/microsoft/windows-rs)
 - [windows-core 0.61.2](https://github.com/microsoft/windows-rs)
@@ -7460,7 +7624,7 @@ These crates are distributed under this license:
 - [adler2 2.0.1](https://github.com/oyvindln/adler2)
 - [anyhow 1.0.104](https://github.com/dtolnay/anyhow)
 - [async-channel 2.5.0](https://github.com/smol-rs/async-channel)
-- [async-executor 1.14.0](https://github.com/smol-rs/async-executor)
+- [async-executor 1.14.1](https://github.com/smol-rs/async-executor)
 - [async-fs 2.2.0](https://github.com/smol-rs/async-fs)
 - [async-io 2.6.0](https://github.com/smol-rs/async-io)
 - [async-lock 3.4.2](https://github.com/smol-rs/async-lock)
@@ -7498,14 +7662,14 @@ These crates are distributed under this license:
 - [proc-macro-crate 3.5.0](https://github.com/bkchr/proc-macro-crate)
 - [proc-macro2 1.0.107](https://github.com/dtolnay/proc-macro2)
 - [quote 1.0.47](https://github.com/dtolnay/quote)
-- [rustix 1.1.4](https://github.com/bytecodealliance/rustix)
+- [rustix 1.1.6](https://github.com/bytecodealliance/rustix)
 - [semver 1.0.28](https://github.com/dtolnay/semver)
 - [serde-untagged 0.1.9](https://github.com/dtolnay/serde-untagged)
 - [serde 1.0.229](https://github.com/serde-rs/serde)
 - [serde_core 1.0.229](https://github.com/serde-rs/serde)
 - [serde_derive 1.0.229](https://github.com/serde-rs/serde)
 - [serde_derive_internals 0.29.1](https://github.com/serde-rs/serde)
-- [serde_json 1.0.151](https://github.com/serde-rs/json)
+- [serde_json 1.0.154](https://github.com/serde-rs/json)
 - [serde_repr 0.1.21](https://github.com/dtolnay/serde-repr)
 - [servo_arc 0.4.3](https://github.com/servo/stylo)
 - [syn 1.0.109](https://github.com/dtolnay/syn)
@@ -7661,8 +7825,7 @@ SOFTWARE.
 
 These crates are distributed under this license:
 
-- [ctor-proc-macro 0.0.7](https://github.com/mmastrac/rust-ctor)
-- [ctor 0.8.0](https://github.com/mmastrac/rust-ctor)
+- [ctor 1.0.13](https://github.com/mmastrac/linktime)
 
 ```
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
@@ -7842,6 +8005,8 @@ These crates are distributed under this license:
 - [aho-corasick 1.1.5](https://github.com/BurntSushi/aho-corasick)
 - [byteorder-lite 0.1.0](https://github.com/image-rs/byteorder-lite)
 - [byteorder 1.5.0](https://github.com/BurntSushi/byteorder)
+- [jiff-core 1.0.0](https://github.com/BurntSushi/jiff)
+- [jiff 1.0.0](https://github.com/BurntSushi/jiff)
 - [memchr 2.8.3](https://github.com/BurntSushi/memchr)
 - [walkdir 2.5.0](https://github.com/BurntSushi/walkdir)
 
@@ -7875,6 +8040,7 @@ THE SOFTWARE.
 These crates are distributed under this license:
 
 - [nix 0.29.0](https://github.com/nix-rust/nix)
+- [nix 0.31.3](https://github.com/nix-rust/nix)
 
 ```
 The MIT License (MIT)
@@ -8098,6 +8264,37 @@ SOFTWARE.
 
 These crates are distributed under this license:
 
+- [os_info 3.15.0](https://github.com/stanislav-tkach/os_info)
+
+```
+The MIT License (MIT)
+
+Copyright (c) 2017 Stanislav Tkach
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+```
+
+## MIT License
+
+These crates are distributed under this license:
+
 - [crossbeam-channel 0.5.16](https://github.com/crossbeam-rs/crossbeam)
 - [crossbeam-utils 0.8.22](https://github.com/crossbeam-rs/crossbeam)
 
@@ -8160,6 +8357,37 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+```
+
+## MIT License
+
+These crates are distributed under this license:
+
+- [base64 0.23.1](https://github.com/marshallpierce/rust-base64)
+
+```
+The MIT License (MIT)
+
+Copyright (c) 2025 Alice Maz, Marshall Pierce
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
 
 ```
 
@@ -9135,8 +9363,8 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 
 These crates are distributed under this license:
 
-- [cssparser-macros 0.6.1](https://github.com/servo/rust-cssparser)
-- [cssparser 0.36.0](https://github.com/servo/rust-cssparser)
+- [cssparser-macros 0.7.1](https://github.com/servo/rust-cssparser)
+- [cssparser 0.37.0](https://github.com/servo/rust-cssparser)
 
 ```
 Mozilla Public License Version 2.0
@@ -9520,7 +9748,7 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 These crates are distributed under this license:
 
 - [option-ext 0.2.0](https://github.com/soc/option-ext.git)
-- [selectors 0.36.1](https://github.com/servo/stylo)
+- [selectors 0.38.0](https://github.com/servo/stylo)
 
 ```
 Mozilla Public License Version 2.0
