@@ -735,10 +735,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327"
 dependencies = [
  "iana-time-zone",
- "js-sys",
  "num-traits",
  "serde",
- "wasm-bindgen",
  "windows-link 0.2.1",
 ]
 
@@ -2642,14 +2640,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "668b7183bd07af9a4885f5c35b0cc5c83c4607a913c16b7e17291832910d2dcc"
 dependencies = [
  "defmt",
- "jiff-core",
- "jiff-static",
+ "jiff-core 0.1.0",
+ "jiff-static 0.2.35",
  "jiff-tzdb-platform",
  "log",
  "portable-atomic",
  "portable-atomic-util",
  "serde_core",
  "windows-link 0.2.1",
+]
+
+[[package]]
+name = "jiff"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9cc767b5763de45e810109520123bb2829a653f3a7ed9be40b2bc4f81158f595"
+dependencies = [
+ "jiff-core 1.0.0",
+ "jiff-static 1.0.0",
+ "log",
+ "portable-atomic",
+ "portable-atomic-util",
+ "serde_core",
 ]
 
 [[package]]
@@ -2662,15 +2674,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "jiff-core"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "894f7ac42105f584100691b3bf6e6b92dd12fcfa225f6c397f95c8a94b47b68f"
+dependencies = [
+ "log",
+]
+
+[[package]]
 name = "jiff-static"
 version = "0.2.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a69dcb3a21cfb32ce1cd056169337ca284af0766dd766e7878819b251a49204"
 dependencies = [
- "jiff-core",
+ "jiff-core 0.1.0",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "jiff-static"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "955491488dc99b572ea6d67b172dcd98787d00744b1fb44a5689b4e6413695a6"
+dependencies = [
+ "jiff-core 1.0.0",
+ "proc-macro2",
+ "quote",
+ "syn 3.0.5",
 ]
 
 [[package]]
@@ -3062,11 +3095,11 @@ name = "molva"
 version = "0.4.0"
 dependencies = [
  "anyhow",
- "chrono",
  "clap",
  "clap_complete",
  "hound",
  "indicatif",
+ "jiff 1.0.0",
  "molva-core",
  "serde",
  "serde_json",
@@ -3083,7 +3116,6 @@ version = "0.4.0"
 dependencies = [
  "arboard",
  "chacha20poly1305",
- "chrono",
  "cpal",
  "directories",
  "enigo",
@@ -3091,6 +3123,7 @@ dependencies = [
  "fs4",
  "hound",
  "interprocess",
+ "jiff 1.0.0",
  "keyring",
  "notify-rust",
  "reqwest",
@@ -3114,9 +3147,9 @@ dependencies = [
 name = "molva-gui"
 version = "0.4.0"
 dependencies = [
- "chrono",
  "directories",
  "interprocess",
+ "jiff 1.0.0",
  "molva-core",
  "serde",
  "serde_json",
@@ -4773,7 +4806,7 @@ dependencies = [
  "hex",
  "indexmap 1.9.3",
  "indexmap 2.14.2",
- "jiff",
+ "jiff 0.2.35",
  "schemars 0.9.0",
  "schemars 1.2.2",
  "serde_core",

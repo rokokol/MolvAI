@@ -6,6 +6,10 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ## Unreleased
 
+### Changed
+
+- Journal timestamps come from `jiff` instead of `chrono`. The format stays RFC 3339 in UTC, and a line written by an older build opens unchanged. A fractional part that ends in zero digits now drops them, so `…682721110Z` reads `…68272111Z`, and both name the same instant. `chrono` leaves the build, and its unmaintained advisory leaves the dependency gate
+
 ## [0.4.0] - 2026-11-17
 
 ### Added

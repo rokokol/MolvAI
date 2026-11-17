@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 #[cfg(test)]
-use chrono::Utc;
+use jiff::Timestamp;
 use molva_core::app::dictionary::Dictionary;
 use molva_core::app::engine::{build_stt_with, EngineChoice};
 use molva_core::app::file_result::FileResult;
@@ -473,7 +473,7 @@ pub(crate) fn transcribe_jobs_as(
         let entry = Entry {
             schema: SCHEMA_VERSION,
             id: Uuid::new_v4(),
-            ts: Utc::now(),
+            ts: Timestamp::now(),
             session_id,
             mode: Mode::Dictation,
             // The source is a file and not the microphone: by this field the statistics

@@ -9,7 +9,7 @@ use std::sync::mpsc::Sender;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use chrono::{DateTime, Utc};
+use jiff::{SignedDuration, Timestamp};
 
 use super::audio::{AudioError, AudioSource, PcmAudio};
 use super::clock::Clock;
@@ -295,7 +295,7 @@ impl TextInjector for RecordingInjector {
 /// Clock that the test controls
 #[derive(Debug)]
 pub struct FakeClock {
-    now: Mutex<DateTime<Utc>>,
+    now: Mutex<Timestamp>,
     base: Instant,
     offset: Mutex<Duration>,
     /// Each pause that product code asked for: the test checks it without a real wait
@@ -303,7 +303,7 @@ pub struct FakeClock {
 }
 
 impl FakeClock {
-    pub fn at(now: DateTime<Utc>) -> Self {
+    pub fn at(now: Timestamp) -> Self {
         Self {
             now: Mutex::new(now),
             base: Instant::now(),
@@ -319,7 +319,7 @@ impl FakeClock {
 
     pub fn advance(&self, by: Duration) {
         if let Ok(mut now) = self.now.lock() {
-            *now += chrono::Duration::from_std(by).unwrap_or_default();
+            *now += SignedDuration::try_from(by).unwrap_or_default();
         }
         if let Ok(mut offset) = self.offset.lock() {
             *offset += by;
@@ -328,8 +328,8 @@ impl FakeClock {
 }
 
 impl Clock for FakeClock {
-    fn now_utc(&self) -> DateTime<Utc> {
-        self.now.lock().map_or_else(|_| Utc::now(), |n| *n)
+    fn now_utc(&self) -> Timestamp {
+        self.now.lock().map_or_else(|_| Timestamp::now(), |n| *n)
     }
 
     fn instant(&self) -> Instant {
@@ -501,13 +501,11 @@ mod tests {
 
     #[test]
     fn fake_clock_advances_both_wall_and_monotonic_time() {
-        let start = DateTime::parse_from_rfc3339("2026-09-05T12:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
+        let start = "2026-09-05T12:00:00Z".parse().expect("a fixed instant");
         let clock = FakeClock::at(start);
         let t0 = clock.instant();
         clock.advance(Duration::from_secs(90));
-        assert_eq!(clock.now_utc() - start, chrono::Duration::seconds(90));
+        assert_eq!(clock.now_utc() - start, SignedDuration::from_secs(90));
         assert_eq!(clock.instant() - t0, Duration::from_secs(90));
     }
 }

@@ -3,8 +3,8 @@
 
 use std::path::PathBuf;
 
-use chrono::Utc;
 use clap::{Args, Subcommand, ValueEnum};
+use jiff::Timestamp;
 use molva_core::app::journal::{self, FileJournal};
 use molva_core::domain::entry::Entry;
 use molva_core::domain::inject::{OutputMode, TextInjector};
@@ -99,7 +99,7 @@ pub(crate) fn run(
 
 /// Select entries by the filters and return the last `limit` in chronological order
 pub(crate) fn select(entries: &[Entry], args: &HistoryArgs) -> anyhow::Result<Vec<Entry>> {
-    let now = Utc::now();
+    let now = Timestamp::now();
     let mut selected = entries.to_vec();
     if let Some(needle) = &args.search {
         selected = journal::search_entries(&selected, needle);
@@ -160,7 +160,7 @@ pub(crate) fn line(entry: &Entry) -> String {
     let text = one_line(entry.text_final.as_deref().unwrap_or(""));
     format!(
         "{}  {}  {}  {ID_SEPARATOR}{}",
-        entry.ts.format("%Y-%m-%d %H:%M"),
+        entry.ts.strftime("%Y-%m-%d %H:%M"),
         wpm_cell(entry),
         truncate(&text, LINE_TEXT_LIMIT),
         entry.id
@@ -183,7 +183,7 @@ fn table(entries: &[Entry]) -> String {
         let text = one_line(entry.text_final.as_deref().unwrap_or("(text not saved)"));
         out.push_str(&format!(
             "{:<16}  {:>9}  {:>5}  {:<12}  {:<10}  {}\n",
-            entry.ts.format("%Y-%m-%d %H:%M"),
+            entry.ts.strftime("%Y-%m-%d %H:%M"),
             wpm_cell(entry),
             entry.words,
             truncate(entry.app.as_deref().unwrap_or("—"), 12),
@@ -361,9 +361,7 @@ mod tests {
         Entry {
             schema: 1,
             id: Uuid::new_v4(),
-            ts: chrono::DateTime::parse_from_rfc3339(ts)
-                .unwrap()
-                .with_timezone(&Utc),
+            ts: ts.parse::<Timestamp>().expect("a fixed instant"),
             session_id: Uuid::nil(),
             mode: Mode::Dictation,
             source: Source::Mic,

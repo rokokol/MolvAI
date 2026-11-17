@@ -7,6 +7,8 @@
 
 use std::io::Write;
 
+use jiff::Timestamp;
+
 use molva_core::app::search;
 use molva_core::Config;
 
@@ -50,7 +52,7 @@ pub(crate) fn render(hit: &search::Hit) -> String {
 }
 
 pub(crate) fn run(args: &Args, config: &Config, stdout: &mut dyn Write) -> Result<(), CmdError> {
-    let now = chrono::Utc::now();
+    let now = Timestamp::now();
     let since = args
         .since
         .as_deref()
@@ -94,7 +96,6 @@ pub(crate) fn run(args: &Args, config: &Config, stdout: &mut dyn Write) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
     use uuid::Uuid;
 
     #[test]
@@ -102,7 +103,7 @@ mod tests {
         let hit = search::Hit {
             entry_id: Uuid::nil(),
             file: "/tmp/lecture.mp4".into(),
-            recorded_at: Utc::now(),
+            recorded_at: Timestamp::now(),
             text: "вторая часть\nлекции".into(),
             start_ms: Some(2000),
             end_ms: Some(4000),

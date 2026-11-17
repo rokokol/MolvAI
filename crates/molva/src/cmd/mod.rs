@@ -38,7 +38,7 @@ pub(crate) mod transcribe;
 use std::io::{IsTerminal, Write};
 
 use anyhow::Context;
-use chrono::{DateTime, Duration, NaiveDate, TimeZone, Utc};
+use jiff::{civil::Date, tz::TimeZone, SignedDuration, Timestamp};
 use molva_core::app::journal::FileJournal;
 use molva_core::Config;
 use thiserror::Error;
@@ -143,37 +143,38 @@ pub(crate) fn truncate(text: &str, max: usize) -> String {
 /// For a bare date, `end_of_day` decides whether to take the start of the day or its end
 pub(crate) fn parse_moment(
     value: &str,
-    now: DateTime<Utc>,
+    now: Timestamp,
     end_of_day: bool,
-) -> anyhow::Result<DateTime<Utc>> {
+) -> anyhow::Result<Timestamp> {
     let value = value.trim();
     if let Some(rest) = value.strip_suffix('d') {
         if let Ok(days) = rest.parse::<i64>() {
-            return Ok(now - Duration::days(days));
+            return Ok(now - SignedDuration::from_hours(days.saturating_mul(24)));
         }
     }
     if let Some(rest) = value.strip_suffix('h') {
         if let Ok(hours) = rest.parse::<i64>() {
-            return Ok(now - Duration::hours(hours));
+            return Ok(now - SignedDuration::from_hours(hours));
         }
     }
     if let Some(rest) = value.strip_suffix('m') {
         if let Ok(minutes) = rest.parse::<i64>() {
-            return Ok(now - Duration::minutes(minutes));
+            return Ok(now - SignedDuration::from_mins(minutes));
         }
     }
-    if let Ok(date) = NaiveDate::parse_from_str(value, "%Y-%m-%d") {
-        let time = if end_of_day {
-            date.and_hms_opt(23, 59, 59)
+    if let Ok(date) = value.parse::<Date>() {
+        let at = if end_of_day {
+            date.at(23, 59, 59, 0)
         } else {
-            date.and_hms_opt(0, 0, 0)
+            date.at(0, 0, 0, 0)
         };
-        if let Some(naive) = time {
-            return Ok(Utc.from_utc_datetime(&naive));
-        }
+        let zoned = at
+            .to_zoned_datetime(TimeZone::UTC)
+            .map_err(|e| anyhow::anyhow!("cannot read {value:?} as a date: {e}"))?;
+        return Ok(zoned.timestamp());
     }
-    if let Ok(moment) = DateTime::parse_from_rfc3339(value) {
-        return Ok(moment.with_timezone(&Utc));
+    if let Ok(moment) = value.parse::<Timestamp>() {
+        return Ok(moment);
     }
     anyhow::bail!(
         "cannot parse the date {value:?}: expected 7d, 24h, 2026-09-01 or an RFC 3339 timestamp"
@@ -210,25 +211,23 @@ mod tests {
         assert!(!progress_enabled(true));
     }
 
-    fn now() -> DateTime<Utc> {
-        DateTime::parse_from_rfc3339("2026-09-05T12:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc)
+    fn now() -> Timestamp {
+        "2026-09-05T12:00:00Z".parse().expect("a fixed instant")
     }
 
     #[test]
     fn relative_periods_count_back_from_now() {
         assert_eq!(
             parse_moment("7d", now(), false).unwrap(),
-            DateTime::parse_from_rfc3339("2026-08-29T12:00:00Z").unwrap()
+            "2026-08-29T12:00:00Z".parse::<Timestamp>().unwrap()
         );
         assert_eq!(
             parse_moment("24h", now(), false).unwrap(),
-            DateTime::parse_from_rfc3339("2026-09-04T12:00:00Z").unwrap()
+            "2026-09-04T12:00:00Z".parse::<Timestamp>().unwrap()
         );
         assert_eq!(
             parse_moment("30m", now(), false).unwrap(),
-            DateTime::parse_from_rfc3339("2026-09-05T11:30:00Z").unwrap()
+            "2026-09-05T11:30:00Z".parse::<Timestamp>().unwrap()
         );
     }
 
@@ -236,11 +235,11 @@ mod tests {
     fn a_bare_date_takes_the_start_or_the_end_of_the_day() {
         assert_eq!(
             parse_moment("2026-09-01", now(), false).unwrap(),
-            DateTime::parse_from_rfc3339("2026-09-01T00:00:00Z").unwrap()
+            "2026-09-01T00:00:00Z".parse::<Timestamp>().unwrap()
         );
         assert_eq!(
             parse_moment("2026-09-01", now(), true).unwrap(),
-            DateTime::parse_from_rfc3339("2026-09-01T23:59:59Z").unwrap()
+            "2026-09-01T23:59:59Z".parse::<Timestamp>().unwrap()
         );
     }
 
@@ -248,7 +247,7 @@ mod tests {
     fn a_full_timestamp_is_taken_as_is_and_junk_is_refused() {
         assert_eq!(
             parse_moment("2026-09-01T08:30:00Z", now(), false).unwrap(),
-            DateTime::parse_from_rfc3339("2026-09-01T08:30:00Z").unwrap()
+            "2026-09-01T08:30:00Z".parse::<Timestamp>().unwrap()
         );
         let err = parse_moment("yesterday", now(), false)
             .unwrap_err()

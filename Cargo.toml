@@ -72,7 +72,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 anyhow = "1"
-chrono = { version = "0.4", features = ["serde"] }
+# No time zone data: every instant this project keeps is UTC, and a bundled tzdb is a megabyte
+# of tables nobody reads. `perf-inline` is the crate's own default and stays on
+jiff = { version = "1", default-features = false, features = ["std", "serde", "perf-inline"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 toml = "1"
 directories = "6"

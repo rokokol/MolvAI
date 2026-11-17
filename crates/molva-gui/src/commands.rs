@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::sync::{mpsc, Mutex};
 use std::time::{Duration, Instant};
 
-use chrono::Utc;
+use jiff::Timestamp;
 use molva_core::app::hotkeys::HotkeySpec;
 use molva_core::app::models::{self, DownloadProgress};
 use molva_core::app::probe::{LlmProbeReport, ProbeFailure, ProbeOutcome, SttProbeReport};
@@ -1730,7 +1730,7 @@ pub async fn stats_summary(
         let entries = history::load_for(&config)?;
         Ok(stats::summary(
             &entries,
-            Utc::now(),
+            Timestamp::now(),
             &config.stats,
             range_days.unwrap_or(7),
         ))
@@ -1752,7 +1752,10 @@ pub async fn stats_export_csv(
         let entries = history::load_for(&config)?;
         let dir = history::data_dir()?;
         std::fs::create_dir_all(&dir).map_err(|e| CommandError::new("history", e.to_string()))?;
-        let path = dir.join(format!("molva-stats-{}.csv", Utc::now().format("%Y-%m-%d")));
+        let path = dir.join(format!(
+            "molva-stats-{}.csv",
+            Timestamp::now().strftime("%Y-%m-%d")
+        ));
         std::fs::write(&path, stats::export_csv(&entries))
             .map_err(|e| CommandError::new("history", e.to_string()))?;
         Ok(path.display().to_string())
@@ -1827,7 +1830,7 @@ pub async fn transcribe_file<R: Runtime>(
     // Transcription is slow, so it runs off the command thread and the interface does not hang
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let started_at_ms = Utc::now().timestamp_millis();
+        let started_at_ms = Timestamp::now().as_millisecond();
         let started = Instant::now();
         let emit = |phase: Phase| {
             let _ = app.emit(

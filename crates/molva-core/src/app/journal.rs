@@ -26,7 +26,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 use uuid::Uuid;
@@ -40,7 +40,7 @@ use crate::domain::journal::{Journal, JournalError};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct Header {
     schema: u32,
-    created: DateTime<Utc>,
+    created: Timestamp,
 }
 
 fn io_err(path: &Path, err: &std::io::Error) -> JournalError {
@@ -227,7 +227,7 @@ impl FileJournal {
                 restrict_permissions(&file, path)?;
                 let header = Header {
                     schema: SCHEMA_VERSION,
-                    created: Utc::now(),
+                    created: Timestamp::now(),
                 };
                 let line = serde_json::to_string(&header)
                     .map_err(|e| JournalError::Serialize(e.to_string()))?;
@@ -734,7 +734,7 @@ impl FileJournal {
         let mut writer = BufWriter::new(tmp.as_file_mut());
         let header = Header {
             schema: SCHEMA_VERSION,
-            created: Utc::now(),
+            created: Timestamp::now(),
         };
         let line =
             serde_json::to_string(&header).map_err(|e| JournalError::Serialize(e.to_string()))?;
@@ -902,8 +902,8 @@ pub fn filter_by_app(entries: &[Entry], app: &str) -> Vec<Entry> {
 /// Filter by time: the bounds are inclusive, and `None` means the bound is not set
 pub fn filter_by_date(
     entries: &[Entry],
-    since: Option<DateTime<Utc>>,
-    until: Option<DateTime<Utc>>,
+    since: Option<Timestamp>,
+    until: Option<Timestamp>,
 ) -> Vec<Entry> {
     entries
         .iter()
@@ -919,7 +919,7 @@ pub fn entries_to_csv(entries: &[Entry]) -> String {
         String::from("ts,id,app,style,words,audio_secs,wpm,llm_used,latency_total_ms,text_final\n");
     for entry in entries {
         let row = [
-            entry.ts.to_rfc3339(),
+            entry.ts.to_string(),
             entry.id.to_string(),
             entry.app.clone().unwrap_or_default(),
             entry.style.clone(),
@@ -951,9 +951,7 @@ pub fn csv_field(value: &str) -> String {
 pub(crate) fn test_entry(ts: &str, words: u32, audio_secs: f32, app: &str) -> Entry {
     use crate::domain::entry::{LatencyMs, Mode, Source};
 
-    let ts = DateTime::parse_from_rfc3339(ts)
-        .expect("the sample time parses")
-        .with_timezone(&Utc);
+    let ts: Timestamp = ts.parse().expect("the sample time parses");
     Entry {
         schema: SCHEMA_VERSION,
         id: Uuid::new_v4(),
@@ -1322,12 +1320,8 @@ mod tests {
         assert_eq!(filter_by_app(&entries, "firefox").len(), 1);
         assert_eq!(filter_by_app(&entries, "kitty").len(), 2);
 
-        let since = DateTime::parse_from_rfc3339("2026-09-05T00:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let until = DateTime::parse_from_rfc3339("2026-09-05T23:59:59Z")
-            .unwrap()
-            .with_timezone(&Utc);
+        let since: Timestamp = "2026-09-05T00:00:00Z".parse().expect("a fixed instant");
+        let until: Timestamp = "2026-09-05T23:59:59Z".parse().expect("a fixed instant");
         let day = filter_by_date(&entries, Some(since), Some(until));
         assert_eq!(day.len(), 1);
         assert_eq!(day[0].words, 12);

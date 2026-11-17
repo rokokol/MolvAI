@@ -415,7 +415,6 @@ mod tests {
     };
     use crate::domain::inject::{InjectReport, OutputMode};
     use crate::domain::stt::Transcript;
-    use chrono::{DateTime, Utc};
     use std::time::Duration;
 
     /// A recognizer that "spends" the time of the fake clock, so the timings in the entry are
@@ -448,9 +447,7 @@ mod tests {
     }
 
     fn clock() -> Arc<FakeClock> {
-        let start = DateTime::parse_from_rfc3339("2026-09-05T12:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
+        let start = "2026-09-05T12:00:00Z".parse().expect("a fixed instant");
         Arc::new(FakeClock::at(start))
     }
 

@@ -8,7 +8,7 @@
 
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use molva_core::app::journal::{self, FileJournal};
 use molva_core::domain::Entry;
 use molva_core::Config;
@@ -74,8 +74,8 @@ pub struct Filter {
     pub query: String,
     /// Exact application name from the entry
     pub app: String,
-    pub since: Option<DateTime<Utc>>,
-    pub until: Option<DateTime<Utc>>,
+    pub since: Option<Timestamp>,
+    pub until: Option<Timestamp>,
     /// 0 means no limit
     pub limit: usize,
 }
@@ -111,16 +111,13 @@ pub fn apps_of(entries: &[Entry]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::TimeZone;
     use molva_core::domain::entry::{LatencyMs, Mode, Source, SCHEMA_VERSION};
 
     fn entry(id: u128, ts: &str, app: Option<&str>, text: &str) -> Entry {
         Entry {
             schema: SCHEMA_VERSION,
             id: Uuid::from_u128(id),
-            ts: DateTime::parse_from_rfc3339(ts)
-                .unwrap()
-                .with_timezone(&Utc),
+            ts: ts.parse().expect("a fixed instant"),
             session_id: Uuid::nil(),
             mode: Mode::Dictation,
             source: Source::Mic,
@@ -234,7 +231,7 @@ mod tests {
         let filter = Filter {
             query: "письмо".into(),
             app: "firefox".into(),
-            since: Some(Utc.with_ymd_and_hms(2026, 9, 2, 0, 0, 0).unwrap()),
+            since: Some("2026-09-02T00:00:00Z".parse().expect("a fixed instant")),
             ..Filter::default()
         };
         assert_eq!(filter_entries(sample(), &filter).len(), 1);

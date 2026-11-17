@@ -1363,9 +1363,7 @@ mod tests {
 
     fn clock() -> Arc<FakeClock> {
         Arc::new(FakeClock::at(
-            chrono::DateTime::parse_from_rfc3339("2026-09-05T12:00:00Z")
-                .unwrap()
-                .with_timezone(&chrono::Utc),
+            "2026-09-05T12:00:00Z".parse().expect("a fixed instant"),
         ))
     }
 

@@ -6,7 +6,7 @@
 //! both, so the search reads the same file and the same filter as the history. No second
 //! index exists to drift from the journal.
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -19,7 +19,7 @@ pub struct Hit {
     pub entry_id: Uuid,
     /// Source file of the transcription; empty when the journal line did not keep it
     pub file: String,
-    pub recorded_at: DateTime<Utc>,
+    pub recorded_at: Timestamp,
     pub text: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub start_ms: Option<u32>,
@@ -117,13 +117,12 @@ pub fn search(entries: &[Entry], query: &str, limit: usize) -> Vec<Hit> {
 mod tests {
     use super::*;
     use crate::domain::entry::{LatencyMs, Mode, SCHEMA_VERSION};
-    use chrono::TimeZone;
 
     fn entry(id: u128, secs: u32, text: &str, segments: Vec<Segment>) -> Entry {
         Entry {
             schema: SCHEMA_VERSION,
             id: Uuid::from_u128(id),
-            ts: Utc.timestamp_opt(i64::from(secs), 0).unwrap(),
+            ts: Timestamp::from_second(i64::from(secs)).unwrap(),
             session_id: Uuid::nil(),
             mode: Mode::Dictation,
             source: Source::File,

@@ -375,12 +375,9 @@ impl Machine {
 mod tests {
     use super::*;
     use crate::domain::fakes::FakeClock;
-    use chrono::{DateTime, Utc};
 
     fn clock() -> Arc<FakeClock> {
-        let start = DateTime::parse_from_rfc3339("2026-09-05T12:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
+        let start = "2026-09-05T12:00:00Z".parse().expect("a fixed instant");
         Arc::new(FakeClock::at(start))
     }
 

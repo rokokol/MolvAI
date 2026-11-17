@@ -16,7 +16,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use uuid::Uuid;
 
 use crate::app::probe;
@@ -161,7 +161,7 @@ struct Shared {
     state: Mutex<DaemonState>,
     subscribers: Mutex<Vec<Sender<Event>>>,
     session_id: Uuid,
-    started_at: DateTime<Utc>,
+    started_at: Timestamp,
     /// Number of the current recording: the duration watchdog must not cut the next one
     generation: AtomicU64,
     /// Paste of ready text by `inject.text`
@@ -1042,7 +1042,7 @@ impl DaemonHandle {
         self.shared.session_id
     }
 
-    pub fn started_at(&self) -> DateTime<Utc> {
+    pub fn started_at(&self) -> Timestamp {
         self.shared.started_at
     }
 
@@ -1403,9 +1403,7 @@ mod tests {
         config: Config,
         inject_delay: Duration,
     ) -> Harness {
-        let start = DateTime::parse_from_rfc3339("2026-09-05T12:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
+        let start = "2026-09-05T12:00:00Z".parse().expect("a fixed instant");
         let clock = Arc::new(FakeClock::at(start));
         let notifier = Arc::new(RecordingNotifier::default());
         let injector = SharedInjector {
@@ -2001,9 +1999,7 @@ mod tests {
         use crate::app::pipeline::{Pipeline, PipelineConfig};
         use crate::domain::stt::Transcript;
 
-        let start = DateTime::parse_from_rfc3339("2026-09-05T12:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
+        let start = "2026-09-05T12:00:00Z".parse().expect("a fixed instant");
         let clock = Arc::new(FakeClock::at(start));
         let notifier = Arc::new(RecordingNotifier::default());
         let injector = SharedInjector {
@@ -2185,9 +2181,7 @@ mod tests {
         let mut config = Config::default();
         config.stt.streaming_inject = false;
         let clock = Arc::new(FakeClock::at(
-            DateTime::parse_from_rfc3339("2026-09-05T12:00:00Z")
-                .unwrap()
-                .with_timezone(&Utc),
+            "2026-09-05T12:00:00Z".parse().expect("a fixed instant"),
         ));
         let notifier = Arc::new(RecordingNotifier::default());
         let injector = SharedInjector::default();
@@ -2619,9 +2613,7 @@ mod tests {
 
     fn file_probe_harness(text: &str) -> FileProbeHarness {
         let config = Config::default();
-        let start = DateTime::parse_from_rfc3339("2026-09-05T12:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
+        let start = "2026-09-05T12:00:00Z".parse().expect("a fixed instant");
         let clock = Arc::new(FakeClock::at(start));
         let notifier = Arc::new(RecordingNotifier::default());
         let log = Arc::new(Mutex::new(Vec::new()));
@@ -3073,9 +3065,7 @@ mod tests {
         let mut config = Config::default();
         // A tap must stay a tap: the check of the hotkeys below must not depend on the latch
         config.hotkeys.tap_toggles = false;
-        let start = DateTime::parse_from_rfc3339("2026-09-05T12:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
+        let start = "2026-09-05T12:00:00Z".parse().expect("a fixed instant");
         let clock = Arc::new(FakeClock::at(start));
         let notifier = Arc::new(RecordingNotifier::default());
         let gate = ReloadGate::default();

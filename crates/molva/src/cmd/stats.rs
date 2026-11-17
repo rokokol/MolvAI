@@ -3,8 +3,8 @@
 
 use std::path::PathBuf;
 
-use chrono::Utc;
 use clap::{Args, Subcommand, ValueEnum};
+use jiff::Timestamp;
 use molva_core::app::stats::{self, StatsSummary};
 use molva_core::domain::entry::Entry;
 use molva_core::Config;
@@ -99,14 +99,14 @@ pub(crate) fn run(args: StatsArgs, config: &Config) -> anyhow::Result<()> {
                 println!("Cancelled.");
                 return Ok(());
             }
-            stats::write_reset_marker(&journal_path, Utc::now())?;
+            stats::write_reset_marker(&journal_path, Timestamp::now())?;
             println!("Statistics reset. The phrase history is in place.");
             Ok(())
         }
         None => {
             let summary = stats::summary(
                 &entries,
-                Utc::now(),
+                Timestamp::now(),
                 &config.stats,
                 args.period.range_days(),
             );
@@ -190,7 +190,7 @@ pub(crate) fn report(summary: &StatsSummary, entries: &[Entry], args: &StatsArgs
         optional_wpm(summary.record_wpm),
         summary
             .record_at
-            .map(|at| format!(" ({})", at.format("%Y-%m-%d")))
+            .map(|at| format!(" ({})", at.strftime("%Y-%m-%d")))
             .unwrap_or_default()
     ));
     out.push_str(&format!("  Days in a row     {}\n", summary.streak_days));
@@ -282,8 +282,8 @@ pub(crate) fn report(summary: &StatsSummary, entries: &[Entry], args: &StatsArgs
             for session in tail(&sessions, args.last) {
                 out.push_str(&format!(
                     "{:<17}  {:<17}  {:>7}  {:>6}  {:>9}\n",
-                    session.started.format("%Y-%m-%d %H:%M"),
-                    session.ended.format("%Y-%m-%d %H:%M"),
+                    session.started.strftime("%Y-%m-%d %H:%M"),
+                    session.ended.strftime("%Y-%m-%d %H:%M"),
                     session.entries,
                     session.words,
                     optional_wpm(session.avg_wpm)
@@ -313,9 +313,7 @@ mod tests {
         Entry {
             schema: 1,
             id: Uuid::new_v4(),
-            ts: chrono::DateTime::parse_from_rfc3339(ts)
-                .unwrap()
-                .with_timezone(&Utc),
+            ts: ts.parse::<Timestamp>().expect("a fixed instant"),
             session_id: Uuid::nil(),
             mode: Mode::Dictation,
             source: Source::Mic,
@@ -364,10 +362,10 @@ mod tests {
         }
     }
 
-    fn now() -> chrono::DateTime<Utc> {
-        chrono::DateTime::parse_from_rfc3339("2026-09-05T12:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc)
+    fn now() -> Timestamp {
+        "2026-09-05T12:00:00Z"
+            .parse::<Timestamp>()
+            .expect("a fixed instant")
     }
 
     #[test]

@@ -3,10 +3,10 @@
 
 use std::time::{Duration, Instant};
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 
 pub trait Clock: std::fmt::Debug + Send + Sync {
-    fn now_utc(&self) -> DateTime<Utc>;
+    fn now_utc(&self) -> Timestamp;
     fn instant(&self) -> Instant;
     /// Wait. This is the only way to pause in product code: a direct `std::thread::sleep`
     /// makes a test of the pause either slow or unprovable
@@ -19,8 +19,8 @@ pub trait Clock: std::fmt::Debug + Send + Sync {
 pub struct SystemClock;
 
 impl Clock for SystemClock {
-    fn now_utc(&self) -> DateTime<Utc> {
-        Utc::now()
+    fn now_utc(&self) -> Timestamp {
+        Timestamp::now()
     }
 
     fn instant(&self) -> Instant {

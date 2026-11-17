@@ -21,7 +21,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, Duration, NaiveDate, Utc};
+use jiff::{civil::Date, tz::TimeZone, SignedDuration, Span, Timestamp};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
@@ -123,7 +123,7 @@ pub struct StatsSummary {
     pub avg_wpm_7d: Option<f32>,
     pub avg_wpm_all: Option<f32>,
     pub record_wpm: Option<f32>,
-    pub record_at: Option<DateTime<Utc>>,
+    pub record_at: Option<Timestamp>,
     pub streak_days: u32,
     pub minutes_recorded: f32,
     pub saved_minutes: f32,
@@ -141,8 +141,8 @@ pub struct StatsSummary {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Session {
     pub session_id: Uuid,
-    pub started: DateTime<Utc>,
-    pub ended: DateTime<Utc>,
+    pub started: Timestamp,
+    pub ended: Timestamp,
     pub entries: u32,
     pub words: u64,
     pub audio_secs: f32,
@@ -166,8 +166,10 @@ fn entry_wpm(entry: &Entry) -> Option<f32> {
     Entry::wpm_for(entry.words, entry.audio_secs)
 }
 
-fn day_key(ts: DateTime<Utc>) -> NaiveDate {
-    ts.date_naive()
+/// The day of an instant, taken in UTC: the statistics count in the time zone the journal is
+/// written in, not the one the reader sits in
+fn day_key(ts: Timestamp) -> Date {
+    ts.to_zoned_datetime(TimeZone::UTC).date()
 }
 
 /// Remove the minus sign from zero: the sum of an empty iterator in Rust is `-0.0`, and
@@ -184,7 +186,7 @@ fn no_minus_zero(value: f32) -> f32 {
 /// days with any activity
 pub fn summary(
     entries: &[Entry],
-    now: DateTime<Utc>,
+    now: Timestamp,
     cfg: &StatsConfig,
     range_days: u32,
 ) -> StatsSummary {
@@ -196,7 +198,7 @@ pub fn summary(
         .copied()
         .filter(|e| day_key(e.ts) == today)
         .collect();
-    let week_start = today - Duration::days(6);
+    let week_start = today - Span::new().days(6);
     let week_entries: Vec<&Entry> = all
         .iter()
         .copied()
@@ -206,7 +208,7 @@ pub fn summary(
     let range_start = if range_days == 0 {
         None
     } else {
-        Some(today - Duration::days(i64::from(range_days) - 1))
+        Some(today - Span::new().days(i64::from(range_days) - 1))
     };
     let range: Vec<&Entry> = all
         .iter()
@@ -250,8 +252,8 @@ pub fn summary(
 /// The same, with a reset marker: entries before the marker do not enter the summary
 pub fn summary_since_reset(
     entries: &[Entry],
-    reset_at: Option<DateTime<Utc>>,
-    now: DateTime<Utc>,
+    reset_at: Option<Timestamp>,
+    now: Timestamp,
     cfg: &StatsConfig,
     range_days: u32,
 ) -> StatsSummary {
@@ -260,7 +262,7 @@ pub fn summary_since_reset(
 }
 
 /// Entries that count in the statistics after a reset. The history is not lost
-pub fn entries_since_reset(entries: &[Entry], reset_at: Option<DateTime<Utc>>) -> Vec<Entry> {
+pub fn entries_since_reset(entries: &[Entry], reset_at: Option<Timestamp>) -> Vec<Entry> {
     match reset_at {
         None => entries.to_vec(),
         Some(at) => entries.iter().filter(|e| e.ts >= at).cloned().collect(),
@@ -268,8 +270,8 @@ pub fn entries_since_reset(entries: &[Entry], reset_at: Option<DateTime<Utc>>) -
 }
 
 /// Personal record: the maximum speed among phrases that are long enough
-pub fn personal_record(entries: &[&Entry]) -> (Option<f32>, Option<DateTime<Utc>>) {
-    let mut best: Option<(f32, DateTime<Utc>)> = None;
+pub fn personal_record(entries: &[&Entry]) -> (Option<f32>, Option<Timestamp>) {
+    let mut best: Option<(f32, Timestamp)> = None;
     for entry in entries {
         if entry.audio_secs < RECORD_MIN_AUDIO_SECS || entry.words < RECORD_MIN_WORDS {
             continue;
@@ -291,16 +293,15 @@ pub fn personal_record(entries: &[&Entry]) -> (Option<f32>, Option<DateTime<Utc>
 ///
 /// If there are no entries today yet, the streak counts from yesterday: a day does not count as
 /// missed until it ends
-pub fn streak_days(entries: &[&Entry], today: NaiveDate) -> u32 {
+pub fn streak_days(entries: &[&Entry], today: Date) -> u32 {
     if entries.is_empty() {
         return 0;
     }
-    let days: std::collections::BTreeSet<NaiveDate> =
-        entries.iter().map(|e| day_key(e.ts)).collect();
+    let days: std::collections::BTreeSet<Date> = entries.iter().map(|e| day_key(e.ts)).collect();
     let mut cursor = if days.contains(&today) {
         today
     } else {
-        let yesterday = today - Duration::days(1);
+        let yesterday = today - Span::new().days(1);
         if days.contains(&yesterday) {
             yesterday
         } else {
@@ -310,7 +311,7 @@ pub fn streak_days(entries: &[&Entry], today: NaiveDate) -> u32 {
     let mut streak = 0;
     while days.contains(&cursor) {
         streak += 1;
-        cursor -= Duration::days(1);
+        cursor -= Span::new().days(1);
     }
     streak
 }
@@ -384,22 +385,18 @@ pub fn stt_cost_summary(entries: &[&Entry]) -> SttCostSummary {
 
 /// Series by day. With a set window, empty days also enter the series, or the chart misstates
 /// the shape
-pub fn series(
-    entries: &[&Entry],
-    range_start: Option<NaiveDate>,
-    today: NaiveDate,
-) -> Vec<DayStats> {
-    let mut buckets: BTreeMap<NaiveDate, Vec<&Entry>> = BTreeMap::new();
+pub fn series(entries: &[&Entry], range_start: Option<Date>, today: Date) -> Vec<DayStats> {
+    let mut buckets: BTreeMap<Date, Vec<&Entry>> = BTreeMap::new();
     for entry in entries {
         buckets.entry(day_key(entry.ts)).or_default().push(entry);
     }
-    let days: Vec<NaiveDate> = match range_start {
+    let days: Vec<Date> = match range_start {
         Some(start) => {
             let mut days = Vec::new();
             let mut cursor = start;
             while cursor <= today {
                 days.push(cursor);
-                cursor += Duration::days(1);
+                cursor += Span::new().days(1);
             }
             days
         }
@@ -410,7 +407,7 @@ pub fn series(
             let empty: Vec<&Entry> = Vec::new();
             let day_entries = buckets.get(&day).unwrap_or(&empty);
             DayStats {
-                day: day.format("%Y-%m-%d").to_string(),
+                day: day.to_string(),
                 entries: day_entries.len() as u32,
                 words: day_entries.iter().map(|e| u64::from(e.words)).sum(),
                 audio_secs: no_minus_zero(day_entries.iter().map(|e| e.audio_secs).sum()),
@@ -454,7 +451,7 @@ pub fn sessions(entries: &[Entry]) -> Vec<Session> {
             None => false,
             Some(prev) => {
                 prev.session_id != entry.session_id
-                    || entry.ts - prev.ts > Duration::minutes(SESSION_GAP_MINUTES)
+                    || entry.ts - prev.ts > SignedDuration::from_mins(SESSION_GAP_MINUTES)
             }
         };
         if split {
@@ -485,7 +482,7 @@ pub fn export_csv(entries: &[Entry]) -> String {
     let mut out = String::from("ts,wpm,words,audio_secs,app,style,latency_total_ms\n");
     for entry in entries {
         let row = [
-            entry.ts.to_rfc3339(),
+            entry.ts.to_string(),
             entry_wpm(entry)
                 .map(|w| format!("{w:.1}"))
                 .unwrap_or_default(),
@@ -512,11 +509,11 @@ pub fn reset_marker_path(journal_path: &Path) -> PathBuf {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct ResetMarker {
-    reset_at: DateTime<Utc>,
+    reset_at: Timestamp,
 }
 
 /// Write the reset marker: the statistics count from this moment, and the history stays whole
-pub fn write_reset_marker(journal_path: &Path, at: DateTime<Utc>) -> Result<(), StatsError> {
+pub fn write_reset_marker(journal_path: &Path, at: Timestamp) -> Result<(), StatsError> {
     let path = reset_marker_path(journal_path);
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
@@ -527,12 +524,12 @@ pub fn write_reset_marker(journal_path: &Path, at: DateTime<Utc>) -> Result<(), 
         }
     }
     let text = serde_json::to_string(&ResetMarker { reset_at: at })
-        .unwrap_or_else(|_| format!("{{\"reset_at\":\"{}\"}}", at.to_rfc3339()));
+        .unwrap_or_else(|_| format!("{{\"reset_at\":\"{at}\"}}"));
     std::fs::write(&path, text).map_err(|source| StatsError::Write { path, source })
 }
 
 /// Read the reset marker. A missing or damaged file counts as no reset
-pub fn read_reset_marker(journal_path: &Path) -> Option<DateTime<Utc>> {
+pub fn read_reset_marker(journal_path: &Path) -> Option<Timestamp> {
     let path = reset_marker_path(journal_path);
     let text = std::fs::read_to_string(path).ok()?;
     serde_json::from_str::<ResetMarker>(&text)
@@ -577,10 +574,8 @@ mod tests {
     use crate::app::journal::test_entry;
     use crate::domain::entry::Tokens;
 
-    fn now_at(ts: &str) -> DateTime<Utc> {
-        DateTime::parse_from_rfc3339(ts)
-            .unwrap()
-            .with_timezone(&Utc)
+    fn now_at(ts: &str) -> Timestamp {
+        ts.parse().expect("a fixed instant")
     }
 
     fn cfg() -> StatsConfig {

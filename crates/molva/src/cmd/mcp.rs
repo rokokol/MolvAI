@@ -10,7 +10,7 @@ use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use molva_core::app::journal::{self, FileJournal};
 use molva_core::app::models;
 use molva_core::app::search;
@@ -229,7 +229,7 @@ fn call_tool(ctx: &Context, name: &str, arguments: &Value) -> Result<Value, Stri
         "stats_summary" => {
             let days = u32_arg(arguments, "days", 7)?;
             let entries = load_entries(ctx)?;
-            let summary = stats::summary(&entries, Utc::now(), &ctx.config.stats, days);
+            let summary = stats::summary(&entries, Timestamp::now(), &ctx.config.stats, days);
             serde_json::to_value(summary).map_err(|e| e.to_string())
         }
         "history_list" => {
@@ -404,15 +404,15 @@ fn u32_arg(arguments: &Value, name: &str, default: u32) -> Result<u32, String> {
     Ok(usize_arg(arguments, name, default as usize)? as u32)
 }
 
-fn moment_arg(arguments: &Value, name: &str) -> Result<Option<DateTime<Utc>>, String> {
+fn moment_arg(arguments: &Value, name: &str) -> Result<Option<Timestamp>, String> {
     match arguments.get(name) {
         None => Ok(None),
         Some(value) => value
             .as_str()
             .ok_or_else(|| format!("{name} must be an RFC 3339 string"))
             .and_then(|text| {
-                DateTime::parse_from_rfc3339(text)
-                    .map(|moment| Some(moment.with_timezone(&Utc)))
+                text.parse::<Timestamp>()
+                    .map(Some)
                     .map_err(|e| format!("{name}: {e}"))
             }),
     }

@@ -3,7 +3,7 @@
 //!
 //! The schema is in `docs/journal-schema.md`; the `schema` field sets the version of the line
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -69,7 +69,7 @@ pub struct Entry {
     pub schema: u32,
     pub id: Uuid,
     /// UTC, RFC 3339
-    pub ts: DateTime<Utc>,
+    pub ts: Timestamp,
     pub session_id: Uuid,
     pub mode: Mode,
     pub source: Source,
@@ -170,9 +170,7 @@ mod tests {
         Entry {
             schema: SCHEMA_VERSION,
             id: Uuid::nil(),
-            ts: DateTime::parse_from_rfc3339("2026-09-05T12:00:00Z")
-                .unwrap()
-                .with_timezone(&Utc),
+            ts: "2026-09-05T12:00:00Z".parse().expect("a fixed instant"),
             session_id: Uuid::nil(),
             mode: Mode::Dictation,
             source: Source::Mic,
