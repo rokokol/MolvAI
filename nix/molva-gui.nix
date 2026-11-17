@@ -1,5 +1,6 @@
 {
   lib,
+  pkgs,
   rustPlatform,
   fetchNpmDeps,
   npmDepsHash,
@@ -68,6 +69,9 @@ rustPlatform.buildRustPackage {
     gst_all_1.gst-plugins-good
     gst_all_1.gst-plugins-bad
     gst_all_1.gst-libav
+    # The cargo setup hook of nixpkgs sets AWS_LC_SYS_USE_SYSTEM, and aws-lc-sys then refuses to
+    # build its own copy: the library it must link has to be an input of this derivation too
+    pkgs.aws-lc
     openssl
     alsa-lib
     libxkbcommon
