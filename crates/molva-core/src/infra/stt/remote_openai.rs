@@ -649,6 +649,25 @@ impl SttEngine for RemoteOpenAiEngine {
     fn set_cancel(&mut self, cancel: Option<std::sync::Arc<CancelToken>>) {
         self.cancel = cancel;
     }
+
+    /// Another request in flight: the settings are the same, and the job token is not, because a
+    /// replica answers one chunk and the runner cancels it by not sending the next one
+    fn replica(&self) -> Option<Box<dyn SttEngine>> {
+        let http = self.policy.client(self.timeout).ok()?;
+        Some(Box::new(Self {
+            base_url: self.base_url.clone(),
+            model: self.model.clone(),
+            api_key: ApiKey::new(self.api_key.expose()),
+            timeout: self.timeout,
+            temperature: self.temperature,
+            prompt: self.prompt.clone(),
+            max_retries: self.max_retries,
+            router: self.router.clone(),
+            policy: self.policy,
+            http,
+            cancel: None,
+        }))
+    }
 }
 
 #[cfg(test)]

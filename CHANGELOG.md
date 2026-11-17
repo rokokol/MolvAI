@@ -54,6 +54,8 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ### Changed
 
+- A file cut at its pauses goes to the cloud four chunks at a time: an engine that answers over the network reports a replica, so a ten-minute file waits for the number of chunks divided by four instead of one after another. The texts keep the order of the file, the price is the sum of the chunks, and a cancel stops sending. An engine in this process reports no replica and keeps one chunk at a time
+
 - The history list paints a window of the journal instead of the whole file: a journal of 10 000 phrases puts ten rows in the DOM, the rest of the height is padding that the measured rows fill in as they scroll. A search keystroke redraws a screenful rather than a year of dictation
 
 - The settings, statistics, files and snippets views arrive in their own chunk: the window opens on the dashboard with 328 KB of script instead of 404 KB, and a view downloads when it is opened

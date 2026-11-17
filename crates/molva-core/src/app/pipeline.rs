@@ -582,6 +582,18 @@ impl Pipeline {
             return Ok(Transcript::default());
         }
 
+        // A recognizer that answers over the network takes several chunks at once: the job of a
+        // file is its whole length, and one request after another spends it waiting
+        let cancel = self.file_cancel.clone();
+        let cancelled = move || cancel.as_ref().is_some_and(|token| token.is_cancelled());
+        let audios: Vec<PcmAudio> = chunks.iter().map(|chunk| chunk.audio.clone()).collect();
+        let recognized = crate::app::chunk_runner::recognize_chunks(
+            self.stt.as_mut(),
+            &audios,
+            options,
+            &cancelled,
+        )?;
+
         let mut text = Vec::new();
         let mut segments = Vec::new();
         let mut detected_language = None;
@@ -589,14 +601,8 @@ impl Pipeline {
         // aggregated transcript is what the caller sees, so the sum travels with it
         let mut cost_usd: Option<f64> = None;
         let mut billed_seconds: Option<f64> = None;
-        for chunk in chunks {
-            // The client may give up while the model works on the previous chunk: the next one is
-            // not started, and the whole job answers as cancelled
-            if self.file_cancelled() {
-                return Err(SttError::Cancelled);
-            }
-            let transcript =
-                transcribe_with_language_policy(self.stt.as_mut(), &chunk.audio, options)?;
+        for (chunk, recognized) in chunks.into_iter().zip(recognized) {
+            let transcript = recognized?;
             if let Some(cost) = transcript.cost_usd {
                 cost_usd = Some(cost_usd.unwrap_or(0.0) + cost);
             }
@@ -1305,6 +1311,41 @@ mod tests {
 
         fn unload(&mut self) {
             self.0.lock().unwrap().unload();
+        }
+    }
+
+    /// The pool engine behind a lock, as the pipeline takes one engine and the test keeps a handle
+    struct PoolHandle(Arc<Mutex<PoolStt>>);
+
+    impl std::fmt::Debug for PoolHandle {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("PoolHandle").finish_non_exhaustive()
+        }
+    }
+
+    impl SttEngine for PoolHandle {
+        #[allow(clippy::unnecessary_literal_bound)]
+        fn id(&self) -> &str {
+            "pool"
+        }
+
+        #[allow(clippy::unnecessary_literal_bound)]
+        fn model_name(&self) -> &str {
+            "pool"
+        }
+
+        fn transcribe(
+            &mut self,
+            audio: &PcmAudio,
+            options: &SttOptions,
+        ) -> Result<Transcript, SttError> {
+            self.0.lock().unwrap().transcribe(audio, options)
+        }
+
+        fn unload(&mut self) {}
+
+        fn replica(&self) -> Option<Box<dyn SttEngine>> {
+            self.0.lock().unwrap().replica()
         }
     }
 
@@ -2282,6 +2323,136 @@ mod tests {
         assert_eq!(output_mode("clipboard"), OutputMode::Clipboard);
         assert_eq!(output_mode("something else"), OutputMode::Auto);
     }
+    /// An engine that answers over the network: it can be copied, and it counts how many of its
+    /// copies work at the same time
+    #[derive(Debug)]
+    struct PoolStt {
+        live: Arc<std::sync::atomic::AtomicUsize>,
+        peak: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl PoolStt {
+        fn new() -> Self {
+            Self {
+                live: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+                peak: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            }
+        }
+
+        fn peak(&self) -> usize {
+            self.peak.load(std::sync::atomic::Ordering::SeqCst)
+        }
+    }
+
+    impl SttEngine for PoolStt {
+        #[allow(clippy::unnecessary_literal_bound)]
+        fn id(&self) -> &str {
+            "pool"
+        }
+
+        #[allow(clippy::unnecessary_literal_bound)]
+        fn model_name(&self) -> &str {
+            "pool"
+        }
+
+        fn transcribe(
+            &mut self,
+            audio: &PcmAudio,
+            _options: &SttOptions,
+        ) -> Result<Transcript, SttError> {
+            let live = self.live.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+            self.peak
+                .fetch_max(live, std::sync::atomic::Ordering::SeqCst);
+            std::thread::sleep(Duration::from_millis(60));
+            self.live.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+            // The loudest sample names the block the chunk came from: the overlap at its edges is
+            // silence, and the first sample would say nothing
+            let loudest = audio
+                .samples
+                .iter()
+                .fold(0.0_f32, |peak, sample| peak.max(sample.abs()));
+            let step = ((loudest / 0.05).round() as u8).saturating_sub(1);
+            let letter = char::from(b'a' + step.min(25));
+            Ok(Transcript::text_only(letter.to_string()))
+        }
+
+        fn unload(&mut self) {}
+
+        fn replica(&self) -> Option<Box<dyn SttEngine>> {
+            Some(Box::new(Self {
+                live: Arc::clone(&self.live),
+                peak: Arc::clone(&self.peak),
+            }))
+        }
+    }
+
+    /// Blocks of tone at rising amplitudes, separated by silence: every block becomes a chunk,
+    /// and the cutter takes a block only after its target length, so a block is over three seconds
+    fn stepping_audio(blocks: usize) -> PcmAudio {
+        let mut samples = Vec::new();
+        for index in 0..blocks {
+            let amplitude = 0.05 * (index as f32 + 1.0);
+            samples.extend(std::iter::repeat_n(amplitude, 51_200));
+            samples.extend(std::iter::repeat_n(0.0, 16_000));
+        }
+        PcmAudio::new(samples, 16_000)
+    }
+
+    fn chunked_file() -> FileTranscriptionRequest {
+        FileTranscriptionRequest {
+            path: std::path::PathBuf::from("/tmp/lecture.wav"),
+            style: None,
+            timecodes: true,
+            no_llm: true,
+            source: Source::File,
+            chunked: true,
+            job_id: None,
+        }
+    }
+
+    #[test]
+    fn the_chunks_of_a_file_go_out_side_by_side_when_the_engine_can_be_copied() {
+        let mut config = PipelineConfig::default();
+        config.stt.chunk_pause_ms = 300;
+        let stt = Arc::new(Mutex::new(PoolStt::new()));
+        let pipeline = Pipeline::new(
+            Box::new(PoolHandle(Arc::clone(&stt))),
+            None,
+            Box::new(SharedInjector(Arc::new(Mutex::new(
+                RecordingInjector::default(),
+            )))),
+            Box::new(SharedJournal(Arc::new(Mutex::new(MemJournal::default())))),
+            clock(),
+            config,
+        );
+        let mut pipeline = pipeline;
+        let result = pipeline
+            .transcribe_audio(
+                String::from("lecture.wav"),
+                stepping_audio(4),
+                &chunked_file(),
+            )
+            .expect("the file is transcribed");
+
+        let stt = stt.lock().unwrap();
+        assert!(
+            stt.peak() > 1,
+            "the chunks went out one at a time: peak {}",
+            stt.peak()
+        );
+        let letters: Vec<char> = result
+            .text
+            .chars()
+            .filter(char::is_ascii_alphabetic)
+            .collect();
+        assert!(letters.len() >= 3, "{letters:?}");
+        // Whatever order the answers arrived in, the text keeps the order of the file
+        assert!(
+            letters.windows(2).all(|pair| pair[0] < pair[1]),
+            "the texts came out of order: {letters:?}"
+        );
+    }
+
     #[test]
     fn a_cancelled_file_stops_before_the_model_reads_it() {
         let mut config = PipelineConfig::default();

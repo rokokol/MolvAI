@@ -130,6 +130,16 @@ pub trait SttEngine: std::fmt::Debug + Send {
     /// process takes the token, and a cancel then kills that process
     fn set_cancel(&mut self, _cancel: Option<std::sync::Arc<crate::domain::cancel::CancelToken>>) {}
 
+    /// A second engine that can recognize side by side with this one, or `None` when there is
+    /// only one of it
+    ///
+    /// A model in this process holds weights and threads, and a second copy would compete with
+    /// the first for the same cores. An engine that answers over the network has neither: every
+    /// copy is a request in flight, so several chunks of one file can be in the air at once
+    fn replica(&self) -> Option<Box<dyn SttEngine>> {
+        None
+    }
+
     /// Detect the language from the first seconds of the recording, choosing only among
     /// `opts.allowed_languages`
     ///

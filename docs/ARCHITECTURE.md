@@ -19,6 +19,8 @@ A client decides what to do with the refusal. `molva transcribe` never meets it,
 
 A client that gives up names its job in `file.cancel`, and the daemon cancels the token of that job alone: a file that still waits for the worker stops there, and the work that holds the recognizer now is left alone. The token carries the process of the recognizer rather than its number, so the kill cannot reach a program that took the number after the file ended, and `cancelled: false` says that no running job carries the identifier. The kill reaches that one process: a helper of the CLI that inherited its pipes keeps them open, and the call then answers with an error after a bounded wait instead of a truncated transcript
 
+A file cut at its pauses goes to the cloud side by side: an engine that answers over the network reports a replica, and four of them carry the chunks of one file at once, so the waiting of a ten-minute file is the number of chunks divided by four rather than the number of chunks. An engine that runs in this process reports no replica, because a second copy would compete with the first for the same cores, and its chunks stay one at a time. The texts come back in the order of the chunks whatever order the answers arrived in, the price of the file is the sum of the prices of its chunks, and a cancel stops sending new ones
+
 ## Layers of `molva-core`
 
 ```

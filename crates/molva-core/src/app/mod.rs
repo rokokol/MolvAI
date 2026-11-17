@@ -9,6 +9,7 @@
 pub mod audio;
 pub mod bench;
 pub mod bench_latency;
+pub mod chunk_runner;
 pub mod command_mode;
 pub mod daemon;
 pub mod dictionary;
