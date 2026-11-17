@@ -103,7 +103,9 @@ impl CancelToken {
     ///
     /// A test needs this to place a cancel after the start of a process without a sleep of a
     /// guessed length: the answer says which of the two happened first
-    #[cfg(test)]
+    ///
+    /// The caller is the test of a process that runs on unix only, so the helper follows it
+    #[cfg(all(test, unix))]
     pub(crate) fn wait_attached(&self, wait: std::time::Duration) -> bool {
         let deadline = std::time::Instant::now() + wait;
         let mut state = self.lock();
@@ -145,10 +147,12 @@ fn kill(child: &SharedChild) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use std::process::Command;
     use std::time::Duration;
 
     /// The longest a test waits for a process that a signal should have ended
+    #[cfg(unix)]
     const ENDED: Duration = Duration::from_secs(10);
 
     /// A helper process that outlives the test by far, so a kill is the only way it ends soon
@@ -167,6 +171,7 @@ mod tests {
             .expect("the process is ours to collect")
     }
 
+    #[cfg(unix)]
     fn stop(child: &SharedChild) {
         let _ = child.kill();
         let _ = child.wait();
