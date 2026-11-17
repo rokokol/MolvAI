@@ -6,7 +6,7 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ## Unreleased
 
-## [0.4.0] - 2026-11-16
+## [0.4.0] - 2026-11-17
 
 ### Added
 
