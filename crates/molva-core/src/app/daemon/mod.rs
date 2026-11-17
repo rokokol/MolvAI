@@ -3244,10 +3244,14 @@ mod tests {
             err.message,
             "settings saved but not applied: restart required: privacy"
         );
-        assert_eq!(
-            err.hint.as_deref(),
-            Some("restart the daemon: systemctl --user restart molva-daemon")
-        );
+        // The way out differs by the platform that runs the daemon: the shared half is the
+        // restart, and the rest names the owner of the process
+        let hint = err.hint.unwrap_or_default();
+        assert!(hint.starts_with("restart the daemon:"), "{hint}");
+        #[cfg(target_os = "linux")]
+        assert!(hint.contains("systemctl --user restart"), "{hint}");
+        #[cfg(not(target_os = "linux"))]
+        assert!(hint.contains("quit MolvAI"), "{hint}");
         assert!(
             h.log.lock().unwrap().is_empty(),
             "the refused settings reached the worker: {:?}",

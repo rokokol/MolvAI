@@ -57,8 +57,8 @@
             ];
           };
           version = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.version;
-          # npmDepsHash pins the UI lockfile; the package receives it from here
-          npmDepsHash = "sha256-vyf8I1Ej0PC1gdWFDVxHc9ug1jyqp3fgAE4NhK6oWZA=";
+          # npmDepsHash pins the UI lockfile; `just npm-deps` prints the value after a bump
+          npmDepsHash = "sha256-OmAXIPtjH9jVWLJA/IFm/ETvuGryxIfec3NKeOrmqLI=";
           molva =
             pkgs.rustPlatform.buildRustPackage {
               pname = "molva";

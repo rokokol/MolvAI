@@ -950,11 +950,59 @@ impl Config {
                 path: path.to_path_buf(),
                 source,
             })?;
-        staged.persist(path).map_err(|error| ConfigError::Write {
+        Self::persist_with_retry(staged, path).map_err(|source| ConfigError::Write {
             path: path.to_path_buf(),
-            source: error.error,
+            source,
         })?;
         Ok(())
+    }
+
+    /// Replace the target with the staged file, retrying a replacement that Windows refused for
+    /// a moment
+    ///
+    /// A rename over a file that another process holds open fails on Windows with an access
+    /// error, and the hold of a writer that is finishing its own save lasts milliseconds. On unix
+    /// the rename replaces the file whatever handles exist, so the first attempt is the only one
+    fn persist_with_retry(staged: tempfile::NamedTempFile, path: &Path) -> std::io::Result<()> {
+        /// How many times a transient refusal is retried before it is reported
+        const ATTEMPTS: u32 = 20;
+        /// How long to wait between two attempts
+        const PAUSE: std::time::Duration = std::time::Duration::from_millis(5);
+
+        let mut staged = staged;
+        let mut left = ATTEMPTS;
+        loop {
+            match staged.persist(path) {
+                Ok(_) => return Ok(()),
+                Err(error) => {
+                    if left == 0 || !Self::transient_refusal(&error.error) {
+                        return Err(error.error);
+                    }
+                    left -= 1;
+                    staged = error.file;
+                    std::thread::sleep(PAUSE);
+                }
+            }
+        }
+    }
+
+    /// Whether a failed replacement is worth one more attempt
+    ///
+    /// Windows refuses to replace a file that another process holds open, and the hold of a
+    /// writer that is finishing its own save lasts milliseconds. Every other refusal is a real
+    /// one on the first attempt
+    fn transient_refusal(error: &std::io::Error) -> bool {
+        #[cfg(windows)]
+        {
+            // 5 is access denied and 32 is a sharing violation, the two the filesystem returns
+            // while a handle of the file is still open
+            matches!(error.raw_os_error(), Some(5 | 32))
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = error;
+            false
+        }
     }
 
     /// Where runtime values live: `MOLVA_RUNTIME_CONFIG` or the config directory of the user

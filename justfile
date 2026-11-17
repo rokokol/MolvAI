@@ -54,6 +54,10 @@ comments:
 prose:
     scripts/check-prose.sh README.md
 
+# The fixed-output hash of the UI dependency tree, for flake.nix after a package-lock.json change
+npm-deps:
+    nix run nixpkgs#prefetch-npm-deps -- crates/molva-gui/ui/package-lock.json
+
 # The window ships the prose face cut out of the vendored kit file: run this after a kit bump
 subset-font:
     python3 scripts/subset-font.py

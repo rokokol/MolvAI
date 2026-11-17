@@ -467,14 +467,23 @@ pub fn run() {
 mod startup_context_tests {
     use super::*;
 
+    /// The configuration the window is built from, read the way the macro reads it
+    ///
+    /// A second `generate_context!` in the same crate defines its embedded symbol twice, which
+    /// macOS reports as a duplicate at link time. The configuration file is the input either way,
+    /// and reading it here proves the same thing about the same file
+    fn window_config() -> tauri::utils::config::Config {
+        serde_json::from_str(include_str!("../tauri.conf.json"))
+            .expect("tauri.conf.json is a configuration")
+    }
+
     #[test]
     fn main_visibility_is_set_in_the_context_before_window_creation() {
         for autostart in [false, true] {
             for start_in_tray in [false, true] {
-                let mut context: tauri::Context<tauri::Wry> = tauri::generate_context!();
-                configure_startup_windows(context.config_mut(), autostart, start_in_tray);
-                let main = context
-                    .config()
+                let mut config = window_config();
+                configure_startup_windows(&mut config, autostart, start_in_tray);
+                let main = config
                     .app
                     .windows
                     .iter()

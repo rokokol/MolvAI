@@ -36,6 +36,11 @@ rustPlatform.buildRustPackage {
 
   # The Tauri beforeBuildCommand runs `npm run build` in this directory
   npmRoot = "crates/molva-gui/ui";
+  # Every tarball is fetched by the `resolved` and `integrity` that `package-lock.json` records,
+  # so a dependency bump cannot leave a hand-kept hash behind: there is none to leave
+  # The tree of the UI lockfile. Its hash lives here because nix needs a fixed-output hash before
+  # the build, and a flake lock has no field for one; `just npm-deps` prints the value that a
+  # changed package-lock.json needs
   npmDeps = fetchNpmDeps {
     src = "${source}/crates/molva-gui/ui";
     hash = npmDepsHash;
