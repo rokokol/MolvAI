@@ -39,6 +39,12 @@ yanked = "deny"
 # declared unmaintained. We cannot replace them, so the unmaintained status is checked
 # only for the direct dependencies of the workspace. A vulnerability stays an error at any depth.
 unmaintained = "workspace"
+# RUSTSEC-2026-0543: chrono lost its maintainer, and the advisory carries no vulnerability — the
+# crate still answers correctly, it is just nobody's to patch. It is a direct dependency of the
+# workspace, so the rule above would fail every run until the timestamps move to another crate.
+# The migration is its own piece of work: this entry is the accepted risk with the reason, and it
+# is removed together with the last `chrono` in Cargo.toml
+ignore = ["RUSTSEC-2026-0543"]
 
 [sources]
 unknown-registry = "deny"
