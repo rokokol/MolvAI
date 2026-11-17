@@ -29,10 +29,10 @@ import { StyleEditor } from "../settings/StyleEditor";
 import { RECOGNITION_LANGUAGES } from "../settings/language";
 import ProviderKeyField from "../settings/ProviderKeyField";
 import {
+  engineChoices,
   engineOfModel,
   humanSize,
   isOpenRouterAddress,
-  localEngines,
   modelFitsEngine,
   modelsForEngine,
   pickModel,
@@ -628,14 +628,11 @@ export default function Settings({
                 });
               }}
             >
-              {(localEngines(models).includes(engine)
-                ? localEngines(models)
-                : [...localEngines(models), engine]
-              ).map((id) => (
-                <option key={id} value={id}>
-                  {engineLabel(id, t)}
-                </option>
-              ))}
+              {engineChoices(models, engine).map((id) => (
+                  <option key={id} value={id}>
+                    {engineLabel(id, t)}
+                  </option>
+                ))}
               <option value={REMOTE_ENGINE}>
                 {t("settings.provider.remote")}
               </option>

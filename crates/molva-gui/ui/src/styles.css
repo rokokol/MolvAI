@@ -1375,11 +1375,28 @@ th.num {
   list-style: none;
 }
 
+/* The actions sit in the left corner and the words take the rest: the card grows with the text,
+   the text never runs under a button, and a phrase of ten lines keeps its Copy where the eye
+   left it. The word column is a `minmax(0, 1fr)` track, so a long token wraps inside the card
+   instead of pushing its border aside */
 .entry {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.5rem 0.9rem;
   min-width: 0;
   padding: 0.4em 0.55em;
   border: 2px solid var(--ddlc-line);
   background: var(--ddlc-ground);
+}
+
+.entry-actions {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.entry-body {
+  min-width: 0;
 }
 
 .entry .meta {
@@ -1898,6 +1915,8 @@ button.segment-copy {
 .badge {
   --badge-tone: var(--ddlc-muted);
   display: inline-flex;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   align-items: center;
   gap: 6px;
   padding: 0.12em 0.55em;

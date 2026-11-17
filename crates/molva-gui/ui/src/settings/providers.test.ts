@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import type { SttModelOption } from "../types";
 import {
+  engineChoices,
   engineOfModel,
   humanSize,
   isOpenRouterAddress,
@@ -105,6 +106,25 @@ describe("pickModel", () => {
 
   it("gives an empty name for an engine without models", () => {
     expect(pickModel(catalog, "vosk", "small")).toBe("");
+  });
+});
+
+describe("engineChoices", () => {
+  it("lists the local engines of the catalog once", () => {
+    expect(engineChoices(catalog, "transcribe-cpp")).toEqual(["whisper-cpp", "transcribe-cpp"]);
+  });
+
+  it("keeps the cloud engine out, because the choice has an entry of its own for it", () => {
+    expect(engineChoices(catalog, REMOTE_ENGINE)).toEqual(["whisper-cpp", "transcribe-cpp"]);
+  });
+
+  it("keeps an engine the catalog does not know", () => {
+    expect(engineChoices(catalog, "vosk")).toEqual(["whisper-cpp", "transcribe-cpp", "vosk"]);
+  });
+
+  it("never repeats an engine", () => {
+    const choices = engineChoices(catalog, "whisper-cpp");
+    expect(choices.filter((id) => id === "whisper-cpp")).toHaveLength(1);
   });
 });
 

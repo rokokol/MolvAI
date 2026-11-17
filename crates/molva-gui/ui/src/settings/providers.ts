@@ -71,6 +71,21 @@ export function localEngines(models: SttModelOption[]): string[] {
   return engines;
 }
 
+/**
+ * The engines the choice offers: the local ones of the catalog, plus the saved one when the
+ * catalog does not know it
+ *
+ * The cloud engine has an entry of its own beside this list, so it is never returned here: the
+ * list once carried it twice, and the choice read as two identical lines
+ */
+export function engineChoices(models: SttModelOption[], configured: string): string[] {
+  const locals = localEngines(models);
+  if (configured === REMOTE_ENGINE || configured === "" || locals.includes(configured)) {
+    return locals;
+  }
+  return [...locals, configured];
+}
+
 /** The models that one engine can load */
 export function modelsForEngine(models: SttModelOption[], engine: string): SttModelOption[] {
   return models.filter((model) => model.engine === engine);

@@ -224,6 +224,22 @@ export const HistoryRow = memo(function HistoryRow({
   }, [text, entry.id, onCopied]);
   return (
     <li className="entry" data-index={index}>
+      {/* The actions own the left corner: a phrase of ten lines keeps its Copy where the eye
+          left it, and the text beside them never runs under a button */}
+      <div className="row entry-actions">
+        <button
+          type="button"
+          className="chip"
+          disabled={!text}
+          onClick={() => void copy()}
+        >
+          {copied ? t("common.copied") : t("common.copy")}
+        </button>
+        <button type="button" className="chip danger" onClick={() => onDelete(entry.id)}>
+          {t("common.delete")}
+        </button>
+      </div>
+      <div className="entry-body">
       <div className="meta">
         <span>{formatTimestamp(entry.ts, lang)}</span>
         <span>
@@ -238,27 +254,18 @@ export const HistoryRow = memo(function HistoryRow({
         {source ? (
           <span className="badge">{t(source)}</span>
         ) : (
-          entry.llm_used && (
-            <span className="badge">
-              LLM · {entry.llm_provider ?? "?"}
-              {entry.llm_model ? ` / ${entry.llm_model}` : ""}
-            </span>
-          )
+          <span className="badge">
+            STT · {entry.stt_model || entry.stt_engine}
+          </span>
+        )}
+        {entry.llm_used && (
+          <span className="badge">
+            LLM · {entry.llm_provider ?? "?"}
+            {entry.llm_model ? ` / ${entry.llm_model}` : ""}
+          </span>
         )}
       </div>
       <p className={text ? "text" : "text muted"}>{text ?? t("history.noText")}</p>
-      <div className="row">
-        <button
-          type="button"
-          className="chip"
-          disabled={!text}
-          onClick={() => void copy()}
-        >
-          {copied ? t("common.copied") : t("common.copy")}
-        </button>
-        <button type="button" className="chip danger" onClick={() => onDelete(entry.id)}>
-          {t("common.delete")}
-        </button>
       </div>
     </li>
   );
