@@ -416,9 +416,7 @@ impl Daemon {
                                 for chunk in feeder.tick(audio.as_mut()) {
                                     let (mode, style, app) = pending.as_ref().map_or(
                                         (Mode::Dictation, None, None),
-                                        |(mode, style, app)| {
-                                            (*mode, style.clone(), app.clone())
-                                        },
+                                        |(mode, style, app)| (*mode, style.clone(), app.clone()),
                                     );
                                     let job = Job::Chunk {
                                         audio: chunk.audio,
@@ -2361,7 +2359,12 @@ mod tests {
 
     #[test]
     fn the_style_of_the_hotkey_decides_whether_the_chunks_are_typed() {
-        let responses: Vec<&str> = ["раз", "два", "три"].iter().cycle().take(24).copied().collect();
+        let responses: Vec<&str> = ["раз", "два", "три"]
+            .iter()
+            .cycle()
+            .take(24)
+            .copied()
+            .collect();
         let mut config = Config::default();
         // The words are checked literally, not after the number rule turns them into digits
         config.rules.numbers_as_digits = false;
