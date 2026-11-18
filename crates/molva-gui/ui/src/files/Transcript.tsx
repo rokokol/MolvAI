@@ -236,18 +236,43 @@ export const SegmentRow = memo(function SegmentRow({
       {copied ? t("common.copied") : t("common.copy")}
     </button>
   );
-  const main = seekable ? (
-    <button
-      type="button"
+
+  // The words of a transcript exist to be selected, and a <button> refuses selection: the
+  // WebKit window that draws this app paints a small frame instead of the highlight, and the
+  // text runs out of it. The row that seeks is a div carrying the button's semantics itself,
+  // and its click stands down when the click was the end of a selection drag
+  const onSeekClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    const selection = window.getSelection();
+    if (
+      selection &&
+      !selection.isCollapsed &&
+      selection.containsNode(event.currentTarget, true)
+    ) {
+      return;
+    }
+    onSeek(segment.start_ms);
+  };
+  const onSeekKey = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onSeek(segment.start_ms);
+    }
+  };
+  const seekProps = seekable
+    ? {
+        role: "button" as const,
+        tabIndex: 0,
+        "aria-label": t("files.seek", { time: formatTimecode(segment.start_ms) }),
+        onClick: onSeekClick,
+        onKeyDown: onSeekKey,
+      }
+    : {};
+  const main = (
+    <div
       className="segment-main"
       aria-current={active ? "true" : undefined}
-      aria-label={t("files.seek", { time: formatTimecode(segment.start_ms) })}
-      onClick={() => onSeek(segment.start_ms)}
+      {...seekProps}
     >
-      {content}
-    </button>
-  ) : (
-    <div className="segment-main" aria-current={active ? "true" : undefined}>
       {content}
     </div>
   );

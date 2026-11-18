@@ -613,6 +613,16 @@ defect 'gui/segment-copy-leaves-the-left' 'crates/molva-gui/ui/src/files/Transcr
       {copy}' \
   'the copy of a segment row stands at the right edge, where a long line pushes it out of the card'
 
+defect 'gui/segment-row-keeps-the-button-role' 'crates/molva-gui/ui/src/files/Transcript.tsx' \
+  '        role: "button" as const,' \
+  '        role: undefined as never,' \
+  'a seekable row loses its button semantics: the keyboard and the screen reader no longer see a way to jump to the segment'
+
+defect 'gui/segment-row-stays-keyboard-reachable' 'crates/molva-gui/ui/src/files/Transcript.tsx' \
+  '        tabIndex: 0,' \
+  '        tabIndex: undefined as never,' \
+  'a seekable row leaves the tab order: the keyboard cannot reach the jump to a segment'
+
 defect 'cli/second-instance-refuses-to-start' 'crates/molva/src/cmd/daemon.rs' \
   '    let Some(pid) = ping(socket) else {' \
   '    let Some(pid) = ping(socket).filter(|_| false) else {' \

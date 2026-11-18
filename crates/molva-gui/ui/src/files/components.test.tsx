@@ -153,6 +153,49 @@ describe("Transcript", () => {
     );
   });
 
+  it("seeks from a div with the semantics of a button, so its text stays selectable", () => {
+    // The words of a transcript exist to be selected, and a <button> refuses selection: a
+    // WebKit window paints a small frame around the row instead of the highlight, and the
+    // text runs out of it. The row carries the button's semantics itself
+    const html = renderToStaticMarkup(
+      wrap(
+        <SegmentRow
+          item={{ index: 0, segment: result.segments![0] }}
+          query=""
+          active={false}
+          activeRef={undefined}
+          showTimecodes
+          seekable
+          onSeek={() => undefined}
+          onCopy={() => undefined}
+          copied={false}
+        />,
+      ),
+    );
+    expect(html).toContain('<div class="segment-main" role="button" tabindex="0"');
+    // The copy chip is the only button the row holds
+    expect(html.match(/<button/g)).toHaveLength(1);
+  });
+
+  it("does not claim the button role when the row has no player to seek with", () => {
+    const html = renderToStaticMarkup(
+      wrap(
+        <SegmentRow
+          item={{ index: 0, segment: result.segments![0] }}
+          query=""
+          active={false}
+          activeRef={undefined}
+          showTimecodes
+          seekable={false}
+          onSeek={() => undefined}
+          onCopy={() => undefined}
+          copied={false}
+        />,
+      ),
+    );
+    expect(html).not.toContain('role="button"');
+  });
+
   it("carries the timecodes into the copied text only when they are on", () => {
     const first = result.segments?.[0] ?? { start_ms: 0, end_ms: 0, text: "" };
     expect(renderFileResult(result, false)).toBe(result.text);

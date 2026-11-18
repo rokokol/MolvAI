@@ -1741,7 +1741,7 @@ div.segment-main {
   text-align: left;
 }
 
-button.segment-main:hover:not(:disabled) {
+div.segment-main[role="button"]:hover {
   border-color: var(--ddlc-line);
   box-shadow: none;
   background: none;
