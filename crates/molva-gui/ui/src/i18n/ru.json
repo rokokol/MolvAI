@@ -273,6 +273,8 @@
   "settings.addLanguage": "Добавить язык",
   "settings.threads": "Потоков (0 — все ядра)",
   "settings.streamingPreview": "Черновик во время записи",
+  "settings.streamingInject": "Печатать куски сразу в поле ввода",
+  "settings.streamingInjectHint": "Готовые куски фразы вставляются в поле ввода во время записи. Работает только со стилями без модели, такими как «Как сказано».",
   "settings.rules": "Правила без модели",
   "settings.rules.enabled": "Применять правила",
   "settings.rules.structure": "Команды структуры",

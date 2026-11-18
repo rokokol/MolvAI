@@ -104,6 +104,9 @@ enum Job {
         /// Start of the recording: the delay to the first hypothesis counts from it
         started: Instant,
         mode: Mode,
+        /// The style the hotkey asked for, `None` for the automatic choice. The typing of the
+        /// chunks is decided per chunk, before the release resolves the style for the phrase
+        style: Option<String>,
         app: Option<String>,
     },
     /// The phrase has ended
@@ -411,15 +414,17 @@ impl Daemon {
                             if shared.generation.load(Ordering::SeqCst) == generation {
                                 let started = feeder.started();
                                 for chunk in feeder.tick(audio.as_mut()) {
-                                    let (mode, app) = pending
-                                        .as_ref()
-                                        .map_or((Mode::Dictation, None), |(mode, _, app)| {
-                                            (*mode, app.clone())
-                                        });
+                                    let (mode, style, app) = pending.as_ref().map_or(
+                                        (Mode::Dictation, None, None),
+                                        |(mode, style, app)| {
+                                            (*mode, style.clone(), app.clone())
+                                        },
+                                    );
                                     let job = Job::Chunk {
                                         audio: chunk.audio,
                                         started,
                                         mode,
+                                        style,
                                         app,
                                     };
                                     if work_tx.send(job).is_err() {
@@ -581,6 +586,7 @@ impl Daemon {
                                                 audio: chunk.audio,
                                                 started,
                                                 mode: *mode,
+                                                style: style.clone(),
                                                 app: app.clone(),
                                             };
                                             sent &= work_tx.send(job).is_ok();
@@ -684,6 +690,7 @@ impl Daemon {
                             audio,
                             started,
                             mode,
+                            style,
                             app,
                         } => {
                             process_chunk(
@@ -692,9 +699,10 @@ impl Daemon {
                                 &shared,
                                 &audio,
                                 started,
-                                ChunkPolicy {
+                                &ChunkPolicy {
                                     preview: streaming_preview,
                                     mode,
+                                    style,
                                 },
                                 app.as_deref(),
                             );
@@ -866,10 +874,14 @@ fn spawn_chunk_ticker(tx: Sender<Ctl>, shared: Arc<Shared>, generation: u64) {
 }
 
 /// What to do with a recognized chunk: show the draft, type it, or both
-#[derive(Debug, Clone, Copy)]
+///
+/// The style is the choice the hotkey asked for, `None` for the automatic one: the pipeline
+/// resolves it and types the chunk only when the style calls no model
+#[derive(Debug, Clone)]
 struct ChunkPolicy {
     preview: bool,
     mode: Mode,
+    style: Option<String>,
 }
 
 /// Recognize the next chunk and show the draft to the subscribers
@@ -882,7 +894,7 @@ fn process_chunk(
     shared: &Shared,
     audio: &PcmAudio,
     started: Instant,
-    policy: ChunkPolicy,
+    policy: &ChunkPolicy,
     app: Option<&str>,
 ) {
     let context = chunks.context();
@@ -895,7 +907,7 @@ fn process_chunk(
             let since_start = u32::try_from(started.elapsed().as_millis()).unwrap_or(u32::MAX);
             let mut typed = String::new();
             if policy.mode == Mode::Dictation {
-                match processor.stream_chunk(&chunk, app) {
+                match processor.stream_chunk(&chunk, policy.style.as_deref(), app) {
                     Some(Ok(progress)) => typed = progress.typed,
                     Some(Err(err)) => {
                         tracing::warn!(
@@ -2089,12 +2101,20 @@ mod tests {
 
     /// Record a phrase and return the drafts together with the final entry
     fn record(harness: &Harness) -> (Vec<String>, crate::domain::entry::Entry) {
+        record_with_style(harness, None)
+    }
+
+    /// The same, with a style the hotkey asked for
+    fn record_with_style(
+        harness: &Harness,
+        style: Option<&str>,
+    ) -> (Vec<String>, crate::domain::entry::Entry) {
         let events = harness.handle.subscribe();
         harness
             .handle
             .send(Input::RecordStart {
                 mode: Mode::Dictation,
-                style: None,
+                style: style.map(ToOwned::to_owned),
             })
             .unwrap();
         // The streaming tick runs four times a second: let the microphone return its portions
@@ -2298,6 +2318,8 @@ mod tests {
         let mut config = Config::default();
         // The words are checked literally, not after the number rule turns them into digits
         config.rules.numbers_as_digits = false;
+        // The default style calls the model, so the phrase asks for the style without one
+        config.style.default = "verbatim".into();
         config.stt.streaming_inject = true;
         let h = streaming_harness(&responses, config);
 
@@ -2334,6 +2356,37 @@ mod tests {
             "the streamed phrase lost a tail word: {final_text:?} against {:?}",
             entry.text_raw
         );
+        drop(h.daemon);
+    }
+
+    #[test]
+    fn the_style_of_the_hotkey_decides_whether_the_chunks_are_typed() {
+        let responses: Vec<&str> = ["раз", "два", "три"].iter().cycle().take(24).copied().collect();
+        let mut config = Config::default();
+        // The words are checked literally, not after the number rule turns them into digits
+        config.rules.numbers_as_digits = false;
+        let h = streaming_harness(&responses, config);
+
+        // A style that calls the model: the field gets the phrase after the release, as one
+        // whole paste, and the inject method says nothing about streaming
+        let (_, entry) = record_with_style(&h, Some("cleanup"));
+        let typed = h.injected.lock().unwrap().clone();
+        assert_eq!(
+            typed.len(),
+            1,
+            "a model style typed the chunks, not one paste: {typed:?}"
+        );
+        assert_ne!(entry.inject_method.as_deref(), Some("streamed"));
+
+        // The same recording, but the hotkey asks for the style without a model: the chunks go
+        // in during the recording, and the tail follows them after the release
+        let (_, entry) = record_with_style(&h, Some("verbatim"));
+        let typed = h.injected.lock().unwrap().clone();
+        assert!(
+            typed.len() >= 2,
+            "the style without a model typed nothing: {typed:?}"
+        );
+        assert_eq!(entry.inject_method.as_deref(), Some("streamed"));
         drop(h.daemon);
     }
 

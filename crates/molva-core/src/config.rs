@@ -192,7 +192,9 @@ pub struct SttConfig {
     /// The pause that cuts a chunk in streaming processing
     pub chunk_pause_ms: u32,
     pub streaming_preview: bool,
-    /// Type each recognized chunk while the person speaks instead of waiting for the release
+    /// Type each recognized chunk while the person speaks instead of waiting for the release.
+    /// Only styles that call no model take it: the answer of the model would repeat what the
+    /// field already holds
     pub streaming_inject: bool,
     /// Path to the transcribe-cli binary; empty means `transcribe-cli` from PATH
     pub transcribe_cli: String,
@@ -222,8 +224,7 @@ impl Default for SttConfig {
             // go to the model
             chunk_pause_ms: crate::app::audio::segmenter::DEFAULT_CHUNK_PAUSE_MS,
             streaming_preview: true,
-            // Live typing is disabled in this build: the phrase is typed as one piece after release
-            streaming_inject: false,
+            streaming_inject: true,
             transcribe_cli: String::new(),
             transcribe_backend: "auto".into(),
             remote: RemoteSttConfig::default(),
@@ -2251,16 +2252,13 @@ mod tests {
     }
 
     #[test]
-    fn streaming_preview_is_on_but_live_typing_is_off() {
-        // The draft remains visible during speech, but the phrase reaches the field as one piece
-        // after the release. Live chunk typing is a separate feature with its own task
+    fn streaming_preview_and_live_typing_are_on() {
+        // The draft stays visible during speech, and the ready chunks go into the field at once.
+        // The typing takes effect only with a style that calls no model
         let stt = Config::default().stt;
         assert!(stt.chunked, "streaming processing is off by default");
         assert!(stt.streaming_preview, "the draft is off by default");
-        assert!(
-            !stt.streaming_inject,
-            "live typing must stay off until its ordering is fixed"
-        );
+        assert!(stt.streaming_inject, "live typing is off by default");
         assert_eq!(stt.chunk_pause_ms, 700);
         assert!(stt.transcribe_cli.is_empty());
         assert_eq!(stt.transcribe_backend, "auto");

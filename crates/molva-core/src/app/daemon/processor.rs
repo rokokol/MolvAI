@@ -90,10 +90,11 @@ impl Processor for crate::app::pipeline::Pipeline {
     fn stream_chunk(
         &mut self,
         chunk: &ChunkText,
+        style: Option<&str>,
         app_hint: Option<&str>,
     ) -> Option<Result<crate::app::pipeline::StreamProgress, ProcessError>> {
         Some(
-            crate::app::pipeline::Pipeline::stream_chunk(self, chunk, app_hint)
+            crate::app::pipeline::Pipeline::stream_chunk(self, chunk, style, app_hint)
                 .map_err(ProcessError::from),
         )
     }
@@ -177,6 +178,7 @@ pub trait Processor: std::fmt::Debug + Send {
     fn stream_chunk(
         &mut self,
         _chunk: &ChunkText,
+        _style: Option<&str>,
         _app_hint: Option<&str>,
     ) -> Option<Result<crate::app::pipeline::StreamProgress, ProcessError>> {
         None

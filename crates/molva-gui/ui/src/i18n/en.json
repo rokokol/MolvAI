@@ -273,6 +273,8 @@
   "settings.addLanguage": "Add language",
   "settings.threads": "Threads (0 — all cores)",
   "settings.streamingPreview": "Draft while recording",
+  "settings.streamingInject": "Type the chunks into the field at once",
+  "settings.streamingInjectHint": "The ready chunks of the phrase go into the input field while you speak. Applies to the styles that call no model, such as As spoken.",
   "settings.rules": "Rules without a model",
   "settings.rules.enabled": "Apply rules",
   "settings.rules.structure": "Structure commands",

@@ -6,7 +6,13 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ## Unreleased
 
+### Added
+
+- A settings switch for the live typing of the chunks. With `stt.streaming_inject`, which is on by default now, each ready chunk goes into the input field while the person still speaks, with its rules applied, and only the tail follows after the release
+
 ### Changed
+
+- The live typing of the chunks stays with the styles that call no model: the answer of the model would repeat what the field already holds, so Cleanup and Formal deliver the whole phrase after the release, as before, while «Как сказано» and the custom styles without a model type it as it is recognized
 
 - Journal timestamps come from `jiff` instead of `chrono`. The format stays RFC 3339 in UTC, and a line written by an older build opens unchanged. A fractional part that ends in zero digits now drops them, so `…682721110Z` reads `…68272111Z`, and both name the same instant. `chrono` leaves the build, and its unmaintained advisory leaves the dependency gate
 

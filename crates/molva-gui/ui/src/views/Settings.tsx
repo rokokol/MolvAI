@@ -1063,6 +1063,16 @@ export default function Settings({
               }
             />
             <Check
+              label={t("settings.streamingInject")}
+              hint={t("settings.streamingInjectHint")}
+              checked={draft.stt.streaming_inject}
+              onChange={(value) =>
+                patch((next) => {
+                  next.stt.streaming_inject = value;
+                })
+              }
+            />
+            <Check
               label={t("settings.autoPull")}
               hint={t("settings.autoPullHint")}
               checked={draft.stt.auto_pull}

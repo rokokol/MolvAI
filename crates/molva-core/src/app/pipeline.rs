@@ -927,15 +927,22 @@ impl Pipeline {
     /// Type one recognized chunk while the recording is still running
     ///
     /// The rules apply to the chunk alone: no model sees the phrase, because its answer would
-    /// rewrite text that is already in the user's field. A failure leaves the typed prefix in
-    /// place and stops further streaming for this phrase.
+    /// rewrite text that is already in the user's field. A style that calls the model
+    /// therefore never gets typed chunks: they stay out of the field, and the whole phrase
+    /// reaches it after the release. A failure leaves the typed prefix in place and stops
+    /// further streaming for this phrase.
     pub fn stream_chunk(
         &mut self,
         chunk: &ChunkText,
+        style: Option<&str>,
         app_hint: Option<&str>,
     ) -> Result<StreamProgress, PipelineError> {
         if !self.config.stt.streaming_inject || self.streamed_failed || chunk.text.trim().is_empty()
         {
+            return Ok(StreamProgress::default());
+        }
+        let style = self.styles.resolve(style, app_hint, &self.config.style);
+        if style.uses_llm {
             return Ok(StreamProgress::default());
         }
         let language = chunk.language.as_deref().unwrap_or("auto");
@@ -1367,9 +1374,7 @@ mod tests {
         ))
     }
 
-    fn build(transcript: &str, llm: Option<Arc<FakeLlm>>, mut config: PipelineConfig) -> Harness {
-        // These tests exercise the streaming machinery explicitly; the shipped default is off
-        config.stt.streaming_inject = true;
+    fn build(transcript: &str, llm: Option<Arc<FakeLlm>>, config: PipelineConfig) -> Harness {
         let stt = Arc::new(Mutex::new(FakeStt::returning(transcript)));
         let injector = Arc::new(Mutex::new(RecordingInjector::default()));
         let journal = Arc::new(Mutex::new(MemJournal::default()));
@@ -1398,6 +1403,13 @@ mod tests {
         config
     }
 
+    /// The built-in style without a model, used by the streaming tests
+    fn verbatim_config() -> PipelineConfig {
+        let mut config = PipelineConfig::default();
+        config.style.default = "verbatim".into();
+        config
+    }
+
     /// A custom style with the same id takes the built-in place, so the word minimum is the one
     /// the test names
     fn set_min_words(config: &mut PipelineConfig, words: u32) {
@@ -1408,6 +1420,17 @@ mod tests {
             system_prompt: "Fix the text.".into(),
             llm_min_words: words,
         }];
+    }
+
+    /// A style of the settings that works like the built-in `verbatim`: no model, no minimum
+    fn custom_no_model_style(id: &str) -> crate::config::CustomStyle {
+        crate::config::CustomStyle {
+            id: id.into(),
+            name: id.to_string(),
+            uses_llm: false,
+            system_prompt: String::new(),
+            llm_min_words: crate::domain::text::DEFAULT_LLM_MIN_WORDS,
+        }
     }
 
     fn injected(harness: &Harness) -> Vec<String> {
@@ -2267,7 +2290,7 @@ mod tests {
 
     #[test]
     fn streaming_types_the_chunks_and_the_tail_without_losing_words() {
-        let mut harness = build("утром", None, PipelineConfig::default());
+        let mut harness = build("утром", None, verbatim_config());
         for text in ["мама", "мыла", "раму"] {
             harness
                 .pipeline
@@ -2277,6 +2300,7 @@ mod tests {
                         language: Some("ru".into()),
                         stt_ms: 0,
                     },
+                    Some("verbatim"),
                     None,
                 )
                 .expect("the chunk is typed");
@@ -2312,6 +2336,55 @@ mod tests {
                 .contains("утром"),
             "the raw text lost the tail"
         );
+    }
+
+    #[test]
+    fn a_style_that_calls_the_model_never_types_the_chunks() {
+        // The answer of the model would repeat what the field already holds: the typed chunks
+        // cannot be taken back, so a style with a model gets the whole phrase after the release
+        let mut harness = build("мама мыла раму", None, PipelineConfig::default());
+        for style in [None, Some("cleanup"), Some("formal")] {
+            let progress = harness
+                .pipeline
+                .stream_chunk(
+                    &ChunkText {
+                        text: "мама".into(),
+                        language: Some("ru".into()),
+                        stt_ms: 0,
+                    },
+                    style,
+                    None,
+                )
+                .expect("the chunk is answered");
+            assert!(
+                progress.typed.is_empty(),
+                "the style {style:?} typed the chunk: {:?}",
+                progress.typed
+            );
+        }
+        assert!(injected(&harness).is_empty());
+    }
+
+    #[test]
+    fn a_custom_style_without_a_model_types_the_chunks() {
+        let mut config = verbatim_config();
+        config.style.custom = vec![custom_no_model_style("note")];
+        let mut harness = build("мама", None, config);
+        let progress = harness
+            .pipeline
+            .stream_chunk(
+                &ChunkText {
+                    text: "мама".into(),
+                    language: Some("ru".into()),
+                    stt_ms: 0,
+                },
+                Some("note"),
+                None,
+            )
+            .expect("the chunk is typed");
+        // The capital letter is the work of the rules, and the rules apply to the chunk alone
+        assert_eq!(progress.typed, "Мама");
+        assert_eq!(injected(&harness), ["Мама"]);
     }
 
     #[test]
