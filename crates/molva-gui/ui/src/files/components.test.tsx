@@ -130,6 +130,29 @@ describe("Transcript", () => {
     expect(SegmentRow).toHaveProperty("$$typeof", Symbol.for("react.memo"));
   });
 
+  it("keeps the copy of a segment at the left of its row", () => {
+    // The row is a flex line and the first child stands on the left. A copy button placed after
+    // the words sat at the right edge, where a long line pushed it out of the card
+    const html = renderToStaticMarkup(
+      wrap(
+        <SegmentRow
+          item={{ index: 0, segment: result.segments![0] }}
+          query=""
+          active={false}
+          activeRef={undefined}
+          showTimecodes
+          seekable={false}
+          onSeek={() => undefined}
+          onCopy={() => undefined}
+          copied={false}
+        />,
+      ),
+    );
+    expect(html.indexOf('class="chip segment-copy"')).toBeLessThan(
+      html.indexOf('class="segment-main"'),
+    );
+  });
+
   it("carries the timecodes into the copied text only when they are on", () => {
     const first = result.segments?.[0] ?? { start_ms: 0, end_ms: 0, text: "" };
     expect(renderFileResult(result, false)).toBe(result.text);

@@ -606,6 +606,13 @@ defect 'gui/search-hit-stacks-its-lines' 'crates/molva-gui/ui/src/files/Transcri
   '<li className="entry split">' \
   'a search hit falls into the split grid of the history: the long path of the meta line sizes the action column and the text runs past the card'
 
+defect 'gui/segment-copy-leaves-the-left' 'crates/molva-gui/ui/src/files/Transcript.tsx' \
+  '      {copy}
+      {main}' \
+  '      {main}
+      {copy}' \
+  'the copy of a segment row stands at the right edge, where a long line pushes it out of the card'
+
 defect 'cli/second-instance-refuses-to-start' 'crates/molva/src/cmd/daemon.rs' \
   '    let Some(pid) = ping(socket) else {' \
   '    let Some(pid) = ping(socket).filter(|_| false) else {' \

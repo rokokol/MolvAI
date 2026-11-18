@@ -224,31 +224,37 @@ export const SegmentRow = memo(function SegmentRow({
       </span>
     </>
   );
+  // The row is a flex line, so the first child stands on the left: the copy of the segment
+  // goes first, and a line however long cannot push it off the card
+  const copy = (
+    <button
+      type="button"
+      className="chip segment-copy"
+      aria-label={t("files.copySegment", { time: formatTimecode(segment.start_ms) })}
+      onClick={() => onCopy(index, segment)}
+    >
+      {copied ? t("common.copied") : t("common.copy")}
+    </button>
+  );
+  const main = seekable ? (
+    <button
+      type="button"
+      className="segment-main"
+      aria-current={active ? "true" : undefined}
+      aria-label={t("files.seek", { time: formatTimecode(segment.start_ms) })}
+      onClick={() => onSeek(segment.start_ms)}
+    >
+      {content}
+    </button>
+  ) : (
+    <div className="segment-main" aria-current={active ? "true" : undefined}>
+      {content}
+    </div>
+  );
   return (
     <li className={active ? "segment active" : "segment"} ref={active ? activeRef : undefined}>
-      {seekable ? (
-        <button
-          type="button"
-          className="segment-main"
-          aria-current={active ? "true" : undefined}
-          aria-label={t("files.seek", { time: formatTimecode(segment.start_ms) })}
-          onClick={() => onSeek(segment.start_ms)}
-        >
-          {content}
-        </button>
-      ) : (
-        <div className="segment-main" aria-current={active ? "true" : undefined}>
-          {content}
-        </div>
-      )}
-      <button
-        type="button"
-        className="chip segment-copy"
-        aria-label={t("files.copySegment", { time: formatTimecode(segment.start_ms) })}
-        onClick={() => onCopy(index, segment)}
-      >
-        {copied ? t("common.copied") : t("common.copy")}
-      </button>
+      {copy}
+      {main}
     </li>
   );
 });
