@@ -1375,19 +1375,28 @@ th.num {
   list-style: none;
 }
 
-/* The actions sit in the left corner and the words take the rest: the card grows with the text,
-   the text never runs under a button, and a phrase of ten lines keeps its Copy where the eye
-   left it. The word column is a `minmax(0, 1fr)` track, so a long token wraps inside the card
-   instead of pushing its border aside */
+/* A card stacks its lines: the meta, the words, then the actions under them, with Copy first
+   in its row. The search hits, the queue and the last phrase of the dashboard are cards like
+   this one
+
+   The history row is the one card that splits, and its `.split` class is what carries the
+   grid: the actions own the left column, the words take the rest, a phrase of ten lines keeps
+   its Copy where the eye left it, and nothing runs under a button. The word column is a
+   `minmax(0, 1fr)` track, so a long token wraps inside the card instead of pushing its border
+   aside. The grid must not widen: the search hit fell into it once, its long path sized the
+   action column, and the text ran out of the frame */
 .entry {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: start;
-  gap: 0.5rem 0.9rem;
   min-width: 0;
   padding: 0.4em 0.55em;
   border: 2px solid var(--ddlc-line);
   background: var(--ddlc-ground);
+}
+
+.entry.split {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.5rem 0.9rem;
 }
 
 .entry-actions {

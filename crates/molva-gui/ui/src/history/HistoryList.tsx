@@ -223,9 +223,10 @@ export const HistoryRow = memo(function HistoryRow({
     }
   }, [text, entry.id, onCopied]);
   return (
-    <li className="entry" data-index={index}>
+    <li className="entry split" data-index={index}>
       {/* The actions own the left corner: a phrase of ten lines keeps its Copy where the eye
-          left it, and the text beside them never runs under a button */}
+          left it, and the text beside them never runs under a button. The split class is what
+          carries the two-column grid; every other card of the app stacks its lines */}
       <div className="row entry-actions">
         <button
           type="button"

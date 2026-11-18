@@ -68,7 +68,7 @@ describe("the list of phrases", () => {
   it("shows the numbers, the text and the two actions of a phrase", () => {
     const html = render([entry("a", "привет мир")]);
 
-    expect(html.match(/<li class="entry"/g)).toHaveLength(1);
+    expect(html.match(/<li class="entry split"/g)).toHaveLength(1);
     expect(html).toContain("привет мир");
     expect(html).toContain("150");
     expect(html).toContain(translate("en", "common.copy"));
@@ -96,7 +96,7 @@ describe("the list of phrases", () => {
 
     // A window, not the journal: the rows off the screen are padding, so the count does not
     // grow with the file and a keystroke in the search box redraws a screenful
-    const painted = render(entries).match(/<li class="entry"/g) ?? [];
+    const painted = render(entries).match(/<li class="entry split"/g) ?? [];
 
     expect(painted.length).toBeGreaterThan(0);
     expect(painted.length).toBeLessThan(40);
@@ -109,7 +109,7 @@ describe("the list of phrases", () => {
     );
 
     const html = render(entries);
-    expect(html.match(/<li class="entry"/g)).toHaveLength(4);
+    expect(html.match(/<li class="entry split"/g)).toHaveLength(4);
     expect(html).toContain('data-index="3"');
   });
 });

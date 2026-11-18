@@ -601,6 +601,11 @@ defect 'gui/core-rules-checked-before-saving' 'crates/molva-gui/src/commands.rs'
   '        if let Some(issue) = issues.into_iter().next().filter(|_| false) {' \
   'the window saves settings that the daemon will later reject, for example a mirror address without a scheme'
 
+defect 'gui/search-hit-stacks-its-lines' 'crates/molva-gui/ui/src/files/TranscriptSearch.tsx' \
+  '<li className="entry">' \
+  '<li className="entry split">' \
+  'a search hit falls into the split grid of the history: the long path of the meta line sizes the action column and the text runs past the card'
+
 defect 'cli/second-instance-refuses-to-start' 'crates/molva/src/cmd/daemon.rs' \
   '    let Some(pid) = ping(socket) else {' \
   '    let Some(pid) = ping(socket).filter(|_| false) else {' \

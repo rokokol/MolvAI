@@ -19,8 +19,7 @@ export interface TranscriptSearchProps {
 }
 
 export default function TranscriptSearch({ onError }: TranscriptSearchProps) {
-  const { t, lang } = useI18n();
-  const { holds, reveal } = useFilesQueue();
+  const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(20);
   const [hits, setHits] = useState<SearchHit[]>([]);
@@ -42,9 +41,6 @@ export default function TranscriptSearch({ onError }: TranscriptSearchProps) {
   useEffect(() => {
     void load();
   }, [load]);
-
-  const line = (hit: SearchHit) =>
-    hit.timecode ? `[${hit.timecode}] ${hit.text}` : hit.text;
 
   return (
     <section className="card" aria-labelledby="files-search-title">
@@ -91,53 +87,82 @@ export default function TranscriptSearch({ onError }: TranscriptSearchProps) {
         </p>
       ) : (
         <ul className="entry-list">
-          {hits.map((hit, index) => {
-            const key = `${hit.entry_id}-${hit.start_ms ?? 0}-${index}`;
-            const inQueue = holds(hit.file);
-            return (
-              <li key={key} className="entry">
-                <div className="meta">
-                  <span className="mono">{hit.file || t("search.unknownFile")}</span>
-                  {hit.timecode && <span className="mono">{hit.timecode}</span>}
-                  <span>{formatTimestamp(hit.recorded_at, lang)}</span>
-                  {hit.language && <span>{hit.language}</span>}
-                </div>
-                <p className="text">
-                  {highlightParts(hit.text, query).map((part, partIndex) =>
-                    part.match ? (
-                      <mark key={partIndex}>{part.text}</mark>
-                    ) : (
-                      <span key={partIndex}>{part.text}</span>
-                    ),
-                  )}
-                </p>
-                <div className="row">
-                  <button
-                    type="button"
-                    className="chip"
-                    onClick={async () => {
-                      if (await copyToClipboard(line(hit))) {
-                        setCopied(key);
-                      }
-                    }}
-                  >
-                    {copied === key ? t("common.copied") : t("common.copy")}
-                  </button>
-                  {inQueue && (
-                    <button
-                      type="button"
-                      className="chip"
-                      onClick={() => reveal(hit.file, hit.start_ms ?? null)}
-                    >
-                      {t("files.showInQueue")}
-                    </button>
-                  )}
-                </div>
-              </li>
-            );
-          })}
+          {hits.map((hit, index) => (
+            <SearchHitCard
+              key={`${hit.entry_id}-${hit.start_ms ?? 0}-${index}`}
+              hit={hit}
+              query={query}
+              copied={copied === `${hit.entry_id}-${hit.start_ms ?? 0}-${index}`}
+              onCopied={() => setCopied(`${hit.entry_id}-${hit.start_ms ?? 0}-${index}`)}
+            />
+          ))}
         </ul>
       )}
     </section>
+  );
+}
+
+/**
+ * One hit of the search: the file, the timecode, the fragment and the actions under it.
+ *
+ * Exported because a test holds this card to the plain stacked layout of `.entry`: the
+ * two-column grid belongs to the history rows, and a hit that fell into it pushed its words
+ * past the card, because the long path of the meta line sized the action column
+ */
+export function SearchHitCard({
+  hit,
+  query,
+  copied,
+  onCopied,
+}: {
+  hit: SearchHit;
+  query: string;
+  copied: boolean;
+  onCopied: () => void;
+}) {
+  const { t, lang } = useI18n();
+  const { holds, reveal } = useFilesQueue();
+  const inQueue = holds(hit.file);
+  const line = hit.timecode ? `[${hit.timecode}] ${hit.text}` : hit.text;
+  return (
+    <li className="entry">
+      <div className="meta">
+        <span className="mono">{hit.file || t("search.unknownFile")}</span>
+        {hit.timecode && <span className="mono">{hit.timecode}</span>}
+        <span>{formatTimestamp(hit.recorded_at, lang)}</span>
+        {hit.language && <span>{hit.language}</span>}
+      </div>
+      <p className="text">
+        {highlightParts(hit.text, query).map((part, partIndex) =>
+          part.match ? (
+            <mark key={partIndex}>{part.text}</mark>
+          ) : (
+            <span key={partIndex}>{part.text}</span>
+          ),
+        )}
+      </p>
+      <div className="row">
+        <button
+          type="button"
+          className="chip"
+          onClick={async () => {
+            if (await copyToClipboard(line)) {
+              onCopied();
+            }
+          }}
+        >
+          {copied ? t("common.copied") : t("common.copy")}
+        </button>
+        {inQueue && (
+          <button
+            type="button"
+            className="chip"
+            onClick={() => reveal(hit.file, hit.start_ms ?? null)}
+          >
+            {t("files.showInQueue")}
+          </button>
+        )}
+      </div>
+    </li>
   );
 }

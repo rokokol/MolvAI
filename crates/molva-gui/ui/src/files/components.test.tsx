@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import App from "../App";
 import { I18nContext, translate } from "../i18n";
 import { renderFileResult, renderSegment } from "../format";
-import type { FileResult } from "../types";
+import type { FileResult, SearchHit } from "../types";
 import Files from "../views/Files";
 import { FilesProvider } from "./FilesProvider";
 import JobCell from "./JobCell";
@@ -17,6 +17,7 @@ import { newJob } from "./jobs";
 import PathInput from "./PathInput";
 import ProgressBar from "./ProgressBar";
 import Transcript, { SegmentRow } from "./Transcript";
+import { SearchHitCard } from "./TranscriptSearch";
 
 const i18n = { lang: "en" as const, t: (key: string, vars?: Record<string, string | number>) => translate("en", key, vars) };
 
@@ -232,6 +233,44 @@ describe("the Files tab", () => {
     expect(html).toContain('role="combobox"');
     expect(html).toContain(translate("en", "files.suggestionHint"));
     expect(html).toContain(translate("en", "files.queueEmpty"));
+  });
+});
+
+describe("a hit of the transcript search", () => {
+  const hit: SearchHit = {
+    entry_id: "hit-1",
+    file: "/media/2026-11-07 19-42-13.mp4",
+    recorded_at: "2026-11-10T16:06:00+03:00",
+    text: "Тестовое видео Один, 2, 3.",
+    timecode: "00:01:23",
+    start_ms: 83_000,
+  };
+
+  const renderHit = (hit: SearchHit) =>
+    renderToStaticMarkup(
+      <I18nContext.Provider value={i18n}>
+        <FilesProvider onError={() => undefined}>
+          <SearchHitCard
+            hit={hit}
+            query="видео"
+            copied={false}
+            onCopied={() => undefined}
+          />
+        </FilesProvider>
+      </I18nContext.Provider>,
+    );
+
+  it("is a plain card stacked in lines, not the split grid of the history rows", () => {
+    // A hit that fell into the two-column grid of the history pushed its words past the card:
+    // the long path of the meta line sized the action column, and the text ran out of the frame
+    const html = renderHit(hit);
+    expect(html.match(/<li class="entry"/g)).toHaveLength(1);
+    expect(html).not.toContain('class="entry split"');
+    expect(html).toContain(translate("en", "common.copy"));
+  });
+
+  it("marks the words the query matched", () => {
+    expect(renderHit(hit)).toContain("<mark>видео</mark>");
   });
 });
 
