@@ -173,8 +173,8 @@ defect 'stats/streak-breaks-on-a-gap' 'crates/molva-core/src/app/stats.rs' \
   'the streak of days in a row does not notice the missed days and grows up to the first entry in the history'
 
 defect 'stats/streak-starts-from-yesterday' 'crates/molva-core/src/app/stats.rs' \
-  '        let yesterday = today - Duration::days(1);' \
-  '        let yesterday = today - Duration::days(3);' \
+  '        let yesterday = today - Span::new().days(1);' \
+  '        let yesterday = today - Span::new().days(3);' \
   'the streak resets in the morning, before the first phrase of the new day'
 
 defect 'stats/saved-minutes-subtract-dictation' 'crates/molva-core/src/app/stats.rs' \
@@ -183,7 +183,7 @@ defect 'stats/saved-minutes-subtract-dictation' 'crates/molva-core/src/app/stats
   'the saved time does not subtract the time of the dictation itself and is twice too high'
 
 defect 'stats/session-splits-on-a-pause' 'crates/molva-core/src/app/stats.rs' \
-  '                    || entry.ts - prev.ts > Duration::minutes(SESSION_GAP_MINUTES)' \
+  '                    || entry.ts - prev.ts > SignedDuration::from_mins(SESSION_GAP_MINUTES)' \
   '                    || false' \
   'a break of one hour does not split the session: the average speed per session is blurred by idle time'
 
@@ -255,8 +255,8 @@ defect 'rules/no-space-before-punctuation' 'crates/molva-core/src/app/rules.rs' 
 # --- track E: file decoding ---
 
 defect 'decode/downmix-to-mono' 'crates/molva-core/src/infra/audio/decode.rs' \
-  '                mono.extend_from_slice(&downmix_to_mono(&interleaved, channels));' \
-  '                mono.extend_from_slice(&interleaved);' \
+  '                let mono = downmix_to_mono(&interleaved, channels);' \
+  '                let mono = interleaved.clone();' \
   'a stereo file goes to whisper as interleaved channels: twice as long and sounds like mush'
 
 defect 'decode/empty-file-rejected' 'crates/molva-core/src/infra/audio/decode.rs' \
@@ -368,8 +368,10 @@ defect 'cli/postprocess-applied' 'crates/molva/src/cmd/transcribe.rs' \
   'the post-processing of the text is silently disabled: the dictionary and the rules are not applied'
 
 defect 'cli/journal-source-file' 'crates/molva/src/cmd/transcribe.rs' \
-  '            source: Source::File,' \
-  '            source: Source::Mic,' \
+  '        stdin_format,
+        Source::File,' \
+  '        stdin_format,
+        Source::Mic,' \
   'a batch transcript enters the statistics as a dictation from the microphone'
 
 defect 'cli/output-directory' 'crates/molva/src/cmd/transcribe.rs' \
@@ -388,8 +390,8 @@ defect 'cli/bench-repeat-validated' 'crates/molva/src/cmd/bench.rs' \
   '--repeat 0 silently makes one run instead of a clear error'
 
 defect 'cli/output-name-collision' 'crates/molva/src/cmd/transcribe.rs' \
-  '            if counts.get(&stem).copied().unwrap_or(0) > 1 {' \
-  '            if false {' \
+  '            let base = if counts.get(&stem).copied().unwrap_or(0) > 1 {' \
+  '            let base = if false {' \
   'tone.mp3 and tone.ogg are written to one tone.txt: half of the work is lost silently'
 
 defect 'cli/pull-skips-installed' 'crates/molva/src/cmd/models.rs' \
@@ -480,7 +482,7 @@ defect 'command/prompt-from-the-settings-wins' 'crates/molva-core/src/app/comman
   'the command prompt that the user wrote in the settings is silently ignored'
 
 defect 'llm/auth-error-is-not-retryable' 'crates/molva-core/src/infra/llm/openai_compat.rs' \
-  '        if status.as_u16() == 401 || status.as_u16() == 403 {' \
+  '        if status.as_u16() == 401 {' \
   '        if false {' \
   'a wrong key looks like a temporary outage: the pipeline repeats the request in vain'
 
@@ -520,8 +522,8 @@ defect 'pipeline/no-record-mode-writes-nothing' 'crates/molva-core/src/app/pipel
   'the "do not record" mode still writes the phrase to the journal'
 
 defect 'pipeline/auth-error-is-not-retried' 'crates/molva-core/src/app/pipeline.rs' \
-  '                Err(LlmError::Auth) => return Err(LlmError::Auth),' \
-  '                Err(LlmError::Auth) => last = LlmError::Auth,' \
+  '                Err(err @ (LlmError::Auth | LlmError::Consent)) => {' \
+  '                Err(err @ (LlmError::Auth | LlmError::Consent)) if false => {' \
   'an expired key hits the provider as many times as retries are configured'
 
 defect 'config/broken-file-is-backed-up' 'crates/molva-core/src/config.rs' \
@@ -719,7 +721,7 @@ defect 'cli/plain-line-carries-the-id' 'crates/molva/src/cmd/history.rs' \
   'the line for rofi loses the identifier mark: the chosen phrase cannot be found by id'
 
 defect 'segmenter/silence-never-reaches-the-model' 'crates/molva-core/src/app/audio/segmenter.rs' \
-  '        if !voiced {' \
+  '        if !voiced && self.file_speech.is_none() {' \
   '        if false {' \
   'chunks of pure silence go to whisper and come back as "Продолжение следует" in the middle of a phrase'
 
@@ -825,11 +827,12 @@ defect 'daemon/hold-counts-from-the-open-microphone' 'crates/molva-core/src/app/
   'a slow opening of the microphone turns a short tap into a key hold: the recording ends empty'
 
 defect 'journal/encrypt-seals-the-final-text' 'crates/molva-core/src/app/journal.rs' \
-  '            sealed.text_final = sealed
-                .text_final
-                .as_deref()
-                .map(|text| cipher.encrypt(text));' \
-  '            sealed.text_final = sealed.text_final.clone();' \
+  '            if let Some(text) = &mut entry.text_final {
+                seal(text);
+            }' \
+  '            if let Some(text) = &mut entry.text_final {
+                let _ = text;
+            }' \
   'journal.encrypt = true, but the final text of the phrase lies in the file in the open'
 
 defect 'journal/decrypt-hides-ciphertext-without-a-key' 'crates/molva-core/src/app/journal.rs' \
@@ -843,8 +846,13 @@ defect 'journal/decrypt-hides-ciphertext-without-a-key' 'crates/molva-core/src/a
   'the history without a key shows ciphertext instead of an empty field, and with a key it shows ciphertext after a failure too'
 
 defect 'daemon/config-reload-reaches-the-pipeline' 'crates/molva-core/src/app/daemon/mod.rs' \
-  '                            let _ = work_tx.send(Job::Reload(config));' \
-  '                            let _ = &config;' \
+  '                            if work_tx
+                                .send(Job::Reload {
+                                    config,
+                                    reply: reply.clone(),
+                                })
+                                .is_err()' \
+  '                            if false' \
   'a style change from the tray and config reload do not reach the pipeline: the dictation goes on with the old style'
 
 defect 'daemon/idle-waits-for-every-reply' 'crates/molva-core/src/app/daemon/state.rs' \
@@ -898,17 +906,17 @@ defect 'streaming/injection-off' 'crates/molva-core/src/app/pipeline.rs' \
   'chunks are recognized but never typed during the recording: the feature is silent again'
 
 defect 'streaming/token-pause-never-splits' 'crates/molva-core/src/infra/stt/transcribe_cpp.rs' \
-  'const TOKEN_PAUSE_MS: u32 = 400;' \
+  'const TOKEN_PAUSE_MS: u32 = 700;' \
   'const TOKEN_PAUSE_MS: u32 = u32::MAX;' \
   'GigaAM token timestamps collapse into one segment: a long file has one timecode'
 
 defect 'models/gigaam-hash-wrong' 'models.toml' \
-  'sha256 = "7d69952fb431a8d7800ed9910dc61fea37d84066fe96d10bf24c8bd4b7c68623"' \
+  'sha256 = "7d69952fb431a8d7800ed9910dc61fea37d8406bfe96d10bf24c8bd4b7c68623"' \
   'sha256 = "0000000000000000000000000000000000000000000000000000000000000000"' \
   'the default Sber weights are downloaded without a matching checksum'
 
 defect 'streaming/tail-never-typed' 'crates/molva-core/src/app/pipeline.rs' \
-  '            if !streamed_tail.is_empty() {' \
+  '            if !tail.is_empty() {' \
   '            if false {' \
   'the last chunk after the final tick never reaches the field: the phrase ends on the previous word'
 
