@@ -20,6 +20,15 @@ from source during the build. The model weights are not part of the repository a
 downloaded separately. Their licenses are described in docs/model-licenses.md.
 
 --------------------------------------------------------------------------------
+Silero VAD v5.1.2
+Copyright (c) 2020-present Silero Team
+MIT License (see LICENSE)
+https://github.com/snakers4/silero-vad/tree/v5.1.2
+
+The model detects speech pauses in files. The GGML weights come from https://huggingface.co/ggml-org/whisper-vad/tree/e5614ed76a5dd4b03fad5068c89efcd2617a9d1e
+SHA-256: 29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf
+
+--------------------------------------------------------------------------------
 scripts/t.sh — test harness
 Copyright (c) 2026 rokokol
 MIT License

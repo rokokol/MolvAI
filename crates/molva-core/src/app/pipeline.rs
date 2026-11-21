@@ -554,7 +554,7 @@ impl Pipeline {
         })
     }
 
-    /// Recognize a whole file, optionally cut at the same pauses as a live phrase
+    /// Recognize a whole file, optionally cut at pauses in the speech
     fn transcribe_ready(
         &mut self,
         ready: &PcmAudio,
@@ -575,7 +575,18 @@ impl Pipeline {
         // Neighbouring chunks share this much sound, so the halves of the overlap belong to the
         // chunk on their own side: the segments then meet instead of covering each other
         let half_overlap = config.overlap_ms / 2;
-        let mut segmenter = crate::app::audio::segmenter::Segmenter::new(config);
+        if self.file_cancelled() {
+            return Err(SttError::Cancelled);
+        }
+        let speech = crate::infra::stt::silero::classify(&ready.samples, || self.file_cancelled())
+            .unwrap_or_else(|error| {
+                tracing::warn!(%error, "File speech detection failed; use level-based pauses");
+                None
+            });
+        if self.file_cancelled() {
+            return Err(SttError::Cancelled);
+        }
+        let mut segmenter = crate::app::audio::segmenter::Segmenter::for_file(config, speech);
         let mut chunks = segmenter.push(&ready.samples);
         chunks.extend(segmenter.finish());
         if chunks.is_empty() {
@@ -601,7 +612,8 @@ impl Pipeline {
         // aggregated transcript is what the caller sees, so the sum travels with it
         let mut cost_usd: Option<f64> = None;
         let mut billed_seconds: Option<f64> = None;
-        for (chunk, recognized) in chunks.into_iter().zip(recognized) {
+        let chunk_count = chunks.len();
+        for (index, (chunk, recognized)) in chunks.into_iter().zip(recognized).enumerate() {
             let transcript = recognized?;
             if let Some(cost) = transcript.cost_usd {
                 cost_usd = Some(cost_usd.unwrap_or(0.0) + cost);
@@ -625,13 +637,15 @@ impl Pipeline {
             // segments come out shorter than a second and drift from the sound
             let start_ms = chunk.start_ms;
             let end_ms = start_ms.saturating_add((chunk.duration_secs() * 1000.0).round() as u32);
-            let (start_ms, end_ms) = if start_ms == 0 {
-                (start_ms, end_ms.saturating_sub(half_overlap))
+            let start_ms = if index == 0 {
+                start_ms
             } else {
-                (
-                    start_ms.saturating_add(half_overlap),
-                    end_ms.saturating_sub(half_overlap),
-                )
+                start_ms.saturating_add(half_overlap)
+            };
+            let end_ms = if index + 1 == chunk_count {
+                end_ms
+            } else {
+                end_ms.saturating_sub(half_overlap)
             };
             segments.push(Segment {
                 start_ms,
@@ -2714,6 +2728,38 @@ mod tests {
             (cost - 0.000_4 * seconds).abs() < 1e-9,
             "the file costs what its chunks cost: {cost} for {seconds} seconds"
         );
+    }
+
+    #[test]
+    fn chunked_file_cuts_between_utterances_over_continuous_background() {
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/privet_ru.wav");
+        let voice = decode::decode_file(&fixture).unwrap().to_16k();
+        let second = voice.samples.len() + 24_000;
+        let mut samples = vec![0.0_f32; second + voice.samples.len()];
+        for (i, sample) in samples.iter_mut().enumerate() {
+            let t = i as f32 / 16_000.0;
+            *sample = 0.025 * (t * 220.0 * std::f32::consts::TAU).sin()
+                + 0.015 * (t * 330.0 * std::f32::consts::TAU).sin();
+            if let Some(speech) = voice
+                .samples
+                .get(i)
+                .or_else(|| i.checked_sub(second).and_then(|j| voice.samples.get(j)))
+            {
+                *sample += 0.75 * speech;
+            }
+        }
+        let mut harness = build("фраза", None, PipelineConfig::default());
+        let result = harness
+            .pipeline
+            .transcribe_audio(
+                "with-background.wav".into(),
+                PcmAudio::new(samples, 16_000),
+                &chunked_file(),
+            )
+            .unwrap();
+        assert_eq!(result.segments.len(), 2, "{:?}", result.segments);
+        assert!((4_000..=6_100).contains(&result.segments[0].end_ms));
     }
 
     #[test]

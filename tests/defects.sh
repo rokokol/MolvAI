@@ -733,6 +733,16 @@ defect 'segmenter/chunks-overlap' 'crates/molva-core/src/app/audio/segmenter.rs'
   '            .saturating_sub(0)' \
   'neighbouring chunks join edge to edge: the sound at the border is lost, and a syllable is torn in half'
 
+defect 'stt/file-pauses-follow-speech' 'crates/molva-core/src/app/pipeline.rs' \
+  '        let mut segmenter = crate::app::audio::segmenter::Segmenter::for_file(config, speech);' \
+  '        let mut segmenter = crate::app::audio::segmenter::Segmenter::for_file(config, None);' \
+  'a file under music or noise is never cut: the whole lecture rides on the level threshold and goes to the model as one request'
+
+defect 'stt/trailing-background-stays-in-the-last-chunk' 'crates/molva-core/src/app/audio/segmenter.rs' \
+  '        let end = self.windows.len() + usize::from(self.file_speech.is_none());' \
+  '        let end = self.windows.len() + 1;' \
+  'the background after the last utterance becomes a request of its own, and a file of a quiet room is billed for it'
+
 defect 'chunked/recognition-starts-during-the-recording' 'crates/molva-core/src/app/daemon/mod.rs' \
   '                                        if feeder.is_enabled() {' \
   '                                        if false {' \

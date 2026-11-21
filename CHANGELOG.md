@@ -10,6 +10,8 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 - Two spend charts in Statistics, one for recognition and one for the model, each on its own scale in US dollars over the 7, 30 or 90 days the words chart covers. A day whose provider named no price becomes a gap in the line of that service and leaves the other line whole, so an unpaid bill is never drawn as zero
 
+- Pauses in a file follow speech instead of loudness: Silero VAD marks the frames that hold a voice, so a lecture over music, hiss or a fan is still cut between utterances. The switch of "Cut at pauses" keeps its meaning, the weights are 884 KB and MIT and ride inside the binary, and the trailing background stays in the last chunk instead of becoming one more request. Live dictation keeps the level threshold
+
 - A settings switch for the live typing of the chunks. With `stt.streaming_inject`, which is on by default now, each ready chunk goes into the input field while the person still speaks, with its rules applied, and only the tail follows after the release
 
 ### Changed

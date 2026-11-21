@@ -25,6 +25,7 @@ sbom/
 
 # Models and local data never enter the repository
 *.bin
+!/crates/molva-core/src/infra/stt/ggml-silero-v5.1.2.bin
 *.gguf
 *.sqlite
 journal.jsonl

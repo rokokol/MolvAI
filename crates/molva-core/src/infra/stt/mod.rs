@@ -5,6 +5,7 @@
 //! model, and it works the same for any engine (whisper.cpp, cloud)
 
 pub mod remote_openai;
+pub(crate) mod silero;
 pub mod transcribe_cpp;
 pub mod whisper;
 

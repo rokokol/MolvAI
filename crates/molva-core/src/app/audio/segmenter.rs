@@ -21,6 +21,7 @@
 //! model
 
 use crate::domain::audio::PcmAudio;
+use crate::infra::stt::silero::FRAME_SAMPLES;
 
 /// A chunk is never shorter than this: the segmenter ignores a pause before this length
 ///
@@ -112,6 +113,7 @@ pub struct Segmenter {
     buffer: Vec<f32>,
     /// Level of each whole window of the buffer in dBFS
     windows: Vec<f32>,
+    file_speech: Option<Vec<bool>>,
     /// Absolute index of `buffer[0]` from the start of the recording; `start_ms` is computed
     /// from it
     offset: usize,
@@ -125,8 +127,16 @@ impl Segmenter {
             config,
             buffer: Vec::new(),
             windows: Vec::new(),
+            file_speech: None,
             offset: 0,
             emitted: 0,
+        }
+    }
+
+    pub(crate) fn for_file(config: SegmenterConfig, speech: Option<Vec<bool>>) -> Self {
+        Self {
+            file_speech: speech,
+            ..Self::new(config)
         }
     }
 
@@ -207,7 +217,20 @@ impl Segmenter {
         let window = self.window_len();
         while (self.windows.len() + 1) * window <= self.buffer.len() {
             let from = self.windows.len() * window;
-            let level = amplitude_to_db(rms(&self.buffer[from..from + window]));
+            let level = if let Some(speech) = &self.file_speech {
+                // `file_speech` is indexed in absolute frames of the file, so it stays right
+                // after `take` drains the buffer and moves `offset`
+                let first = (self.offset + from) / FRAME_SAMPLES;
+                let last = (self.offset + from + window - 1) / FRAME_SAMPLES;
+                // A cut must not cross a model frame that contains speech
+                if speech[first..=last].iter().any(|&voiced| voiced) {
+                    f32::INFINITY
+                } else {
+                    f32::NEG_INFINITY
+                }
+            } else {
+                amplitude_to_db(rms(&self.buffer[from..from + window]))
+            };
             self.windows.push(level);
         }
     }
@@ -236,20 +259,25 @@ impl Segmenter {
 
     /// Boundary at the middle of the first pause of at least `min_pause_ms` after `target`
     ///
-    /// A pause at the end of the buffer counts the same as a finished pause. To wait until the
-    /// person speaks again would waste the very time that the design exists to save
+    /// Live cuts do not wait for speech to resume. File cuts do, to keep trailing background
+    /// in the last chunk instead of sending it as a separate request
     fn pause_cut(&self, min_pause_ms: u32) -> Option<usize> {
         let window = self.window_len();
         let min_run = (min_pause_ms as usize / WINDOW_MS as usize).max(1);
         let target = self.target_samples();
 
         let mut run_start: Option<usize> = None;
-        for index in 0..=self.windows.len() {
+        let mut after_speech = self.file_speech.is_none();
+        let end = self.windows.len() + usize::from(self.file_speech.is_none());
+        for index in 0..end {
             let silent = index < self.windows.len() && self.is_silent_window(index);
             if silent {
-                run_start.get_or_insert(index);
+                if after_speech {
+                    run_start.get_or_insert(index);
+                }
                 continue;
             }
+            after_speech = true;
             let Some(start) = run_start.take() else {
                 continue;
             };
@@ -291,7 +319,7 @@ impl Segmenter {
         self.windows.clear();
         self.analyse();
 
-        if !voiced {
+        if !voiced && self.file_speech.is_none() {
             return None;
         }
         let index = self.emitted;
