@@ -45,6 +45,10 @@ print_stderr = "allow"
 
 # Pedantic rules about taste, not about quality: we lift them all at once, so as not to spread
 # two dozen `#[allow]` over the code. The complexity limits are in `clippy.toml` next to this file
+# A test says `assert!(list.is_empty())` because the failure names the empty list, and the
+# `assert_eq!` form the lint asks for prints a value that adds nothing. The two lints arrived
+# with a newer toolchain and touch no product code
+assert_is_empty = "allow"
 module_name_repetitions = "allow"
 must_use_candidate = "allow"
 missing_errors_doc = "allow"
