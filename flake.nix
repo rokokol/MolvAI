@@ -2,6 +2,12 @@
   description = "MolvAI — open-source system-wide voice input (an analogue of Wispr Flow)";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  # The Rust version lives in rust-toolchain.toml: the shell and the packages take the compiler
+  # from there, so neither can drift to what nixpkgs happens to carry
+  inputs.rust-overlay = {
+    url = "github:oxalica/rust-overlay";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
   inputs.transcribe-cpp = {
     url = "github:handy-computer/transcribe.cpp/v0.4.1";
     flake = false;
@@ -12,6 +18,7 @@
       self,
       nixpkgs,
       transcribe-cpp,
+      rust-overlay,
     }:
     let
       # The source of the GigaAM runtime; the package that builds it is below
@@ -23,7 +30,11 @@
         "aarch64-linux"
         "aarch64-darwin"
       ];
-      forAll = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
+      overlays = [ (import rust-overlay) ];
+      forAll = f: nixpkgs.lib.genAttrs systems (system: f (import nixpkgs { inherit system overlays; }));
+      # One compiler for the shell and for the packages, named by rust-toolchain.toml. rustup
+      # reads the same file on a machine without Nix, so CI and this flake cannot disagree
+      rustToolchain = pkgs: pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
     in
     {
       # `nix run github:rokokol/MolvAI` builds and runs the CLI with one command,
@@ -32,6 +43,11 @@
         pkgs:
         let
           isLinux = pkgs.stdenv.hostPlatform.isLinux;
+          toolchain = rustToolchain pkgs;
+          rustPlatform = pkgs.makeRustPlatform {
+            cargo = toolchain;
+            rustc = toolchain;
+          };
           # Only what the builds and `cargo test` read. The search_docs index is built into
           # the binary, so the README, docs and site are part of the source too: a
           # documentation edit rebuilds the binary, which is the price of a build-time index
@@ -60,7 +76,7 @@
           # npmDepsHash pins the UI lockfile; `just npm-deps` prints the value after a bump
           npmDepsHash = "sha256-OmAXIPtjH9jVWLJA/IFm/ETvuGryxIfec3NKeOrmqLI=";
           molva =
-            pkgs.rustPlatform.buildRustPackage {
+            rustPlatform.buildRustPackage {
               pname = "molva";
               inherit version;
               src = source;
@@ -136,7 +152,12 @@
         {
           inherit molva;
           molva-gui = pkgs.callPackage ./nix/molva-gui.nix {
-            inherit source version npmDepsHash;
+            inherit
+              source
+              version
+              npmDepsHash
+              rustPlatform
+              ;
           };
           transcribe-cpp = pkgs.callPackage ./nix/transcribe-cpp.nix {
             src = transcribeSource;
@@ -168,11 +189,11 @@
             doCheck = false;
           });
 
+          # The compiler, cargo, rustfmt and clippy come from rust-toolchain.toml through
+          # rust-overlay. rust-analyzer stays the one of nixpkgs: it is an editor tool, not part
+          # of the gate, and putting it in the components of the file would slow every CI run
           rustTools = with pkgs; [
-            cargo
-            rustc
-            rustfmt
-            clippy
+            (rustToolchain pkgs)
             rust-analyzer
             cargo-tauri
             cargo-deny
@@ -242,6 +263,7 @@
           pkgsUnfree = import nixpkgs {
             inherit (pkgs.stdenv.hostPlatform) system;
             config.allowUnfree = true;
+            inherit overlays;
           };
 
           base = {
