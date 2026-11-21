@@ -5,7 +5,9 @@
 import { describe, expect, it } from "vitest";
 
 import en from "./en.json";
+import enRaw from "./en.json?raw";
 import ru from "./ru.json";
+import ruRaw from "./ru.json?raw";
 import { translate } from "./index";
 
 describe("translate", () => {
@@ -34,6 +36,17 @@ describe("translate", () => {
       [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
     for (const [key, text] of Object.entries(english)) {
       expect(placeholders(russian[key] ?? ""), key).toEqual(placeholders(text));
+    }
+  });
+
+  it("declares each key once, so a second copy cannot silently win", () => {
+    // JSON.parse keeps the last of two equal keys, so a copy added below an existing text
+    // overrides it and no other test notices
+    for (const [name, raw] of [["en", enRaw], ["ru", ruRaw]] as const) {
+      const keys = [...raw.matchAll(/^\s*"([^"]+)"\s*:/gm)].map((match) => match[1]);
+      const seen = new Set<string>();
+      const twice = keys.filter((key) => (seen.has(key) ? true : (seen.add(key), false)));
+      expect(twice, name).toEqual([]);
     }
   });
 

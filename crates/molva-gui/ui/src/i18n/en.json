@@ -129,7 +129,7 @@
   "stats.chartEmpty": "No data for the chart yet",
   "stats.sttCostChart": "Speech recognition spend by day (USD)",
   "stats.llmCostChart": "LLM spend by day (USD)",
-  "stats.costPartial": "partial",
+  "stats.costDayPartial": "partial",
   "stats.costChartNote": "If a provider did not report a price, the amount is partial or the line has a gap.",
   "stats.costValues": "Daily amounts",
   "stats.costDay": "Date (UTC)",

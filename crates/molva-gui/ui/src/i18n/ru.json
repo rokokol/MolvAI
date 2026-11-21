@@ -129,7 +129,7 @@
   "stats.chartEmpty": "Данных для графика пока нет",
   "stats.sttCostChart": "Траты на распознавание по дням (USD)",
   "stats.llmCostChart": "Траты на LLM по дням (USD)",
-  "stats.costPartial": "неполная сумма",
+  "stats.costDayPartial": "неполная сумма",
   "stats.costChartNote": "Если провайдер не сообщил цену, показана неполная сумма или пропуск на линии.",
   "stats.costValues": "Суммы по дням",
   "stats.costDay": "Дата (UTC)",

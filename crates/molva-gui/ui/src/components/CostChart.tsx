@@ -41,7 +41,7 @@ export default function CostChart({ series, kind }: { series: CostDay[]; kind: C
     x: (index + 0.5) * slot,
     y: point.cost_usd === null ? null : yFor(point.cost_usd),
     label: point.cost_usd === null ? t("stats.costUnknown") :
-      `${formatCost(point.cost_usd)}${point.incomplete ? ` (${t("stats.costPartial")})` : ""}`,
+      `${formatCost(point.cost_usd)}${point.incomplete ? ` (${t("stats.costDayPartial")})` : ""}`,
   }));
   const path = points.map(({ x, y }, index) => {
     if (y === null) return "";
