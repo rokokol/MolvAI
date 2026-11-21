@@ -1181,6 +1181,39 @@ kbd {
   fill: var(--ddlc-sayori);
 }
 
+.chart .cost-line {
+  fill: none;
+  stroke: var(--ddlc-text);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.chart .cost-dot {
+  fill: var(--ddlc-text);
+  stroke: var(--ddlc-panel);
+  stroke-width: 2;
+}
+
+.chart .cost-dot.partial {
+  fill: var(--ddlc-ground);
+  stroke: var(--ddlc-text);
+}
+
+.chart .cost-target {
+  fill: transparent;
+}
+
+.chart .cost-guide {
+  visibility: hidden;
+  stroke: var(--ddlc-muted);
+  stroke-dasharray: 4 4;
+  pointer-events: none;
+}
+
+.chart .cost-hover:hover .cost-guide {
+  visibility: visible;
+}
+
 .chart text {
   fill: var(--ddlc-muted);
   font-family: var(--ddlc-font-data);

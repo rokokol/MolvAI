@@ -187,6 +187,11 @@ defect 'stats/session-splits-on-a-pause' 'crates/molva-core/src/app/stats.rs' \
   '                    || false' \
   'a break of one hour does not split the session: the average speed per session is blurred by idle time'
 
+defect 'stats/daily-costs-never-guess-a-zero' 'crates/molva-core/src/app/stats.rs' \
+  '            cost_usd: (unpriced == 0 || calls > unpriced).then_some(cost_usd),' \
+  '            cost_usd: Some(cost_usd),' \
+  'a day whose provider named no price is drawn as a paid day of zero: the chart hides an unknown bill'
+
 defect 'stats/reset-marker-hides-old-entries' 'crates/molva-core/src/app/stats.rs' \
   '        Some(at) => entries.iter().filter(|e| e.ts >= at).cloned().collect(),' \
   '        Some(_) => entries.to_vec(),' \

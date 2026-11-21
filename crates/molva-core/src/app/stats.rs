@@ -93,6 +93,22 @@ pub struct SttCostSummary {
     pub unpriced: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DailyCost {
+    /// Absent if there were cloud calls but none reported a price
+    pub cost_usd: Option<f64>,
+    pub incomplete: bool,
+}
+
+impl DailyCost {
+    fn from_totals(cost_usd: f64, calls: u32, unpriced: u32) -> Self {
+        Self {
+            cost_usd: (unpriced == 0 || calls > unpriced).then_some(cost_usd),
+            incomplete: unpriced > 0,
+        }
+    }
+}
+
 /// One day of the series: the basis of the speed chart and the sparkline
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DayStats {
@@ -103,6 +119,8 @@ pub struct DayStats {
     pub audio_secs: f32,
     pub avg_wpm: Option<f32>,
     pub avg_latency_ms: u32,
+    pub stt_cost: DailyCost,
+    pub llm_cost: DailyCost,
 }
 
 /// Split by application over the period
@@ -406,6 +424,8 @@ pub fn series(entries: &[&Entry], range_start: Option<Date>, today: Date) -> Vec
         .map(|day| {
             let empty: Vec<&Entry> = Vec::new();
             let day_entries = buckets.get(&day).unwrap_or(&empty);
+            let llm = token_summary(day_entries);
+            let stt = stt_cost_summary(day_entries);
             DayStats {
                 day: day.to_string(),
                 entries: day_entries.len() as u32,
@@ -413,6 +433,8 @@ pub fn series(entries: &[&Entry], range_start: Option<Date>, today: Date) -> Vec
                 audio_secs: no_minus_zero(day_entries.iter().map(|e| e.audio_secs).sum()),
                 avg_wpm: weighted_wpm(day_entries),
                 avg_latency_ms: latency_summary(day_entries).total,
+                stt_cost: DailyCost::from_totals(stt.cost_usd, stt.entries, stt.unpriced),
+                llm_cost: DailyCost::from_totals(llm.cost_usd, llm.calls, llm.unpriced_calls),
             }
         })
         .collect()
@@ -635,6 +657,39 @@ mod tests {
         assert_eq!(summary.series[0].entries, 0);
         assert_eq!(summary.series[0].avg_wpm, None);
         assert_eq!(summary.series[2].entries, 1);
+    }
+
+    #[test]
+    fn daily_costs_keep_recognition_and_model_prices_independent() {
+        let mut llm = test_entry("2026-09-02T23:59:59Z", 10, 4.0, "kitty");
+        llm.local_llm = false;
+        llm.llm_calls = 2;
+        llm.llm_unpriced_calls = 1;
+        llm.llm_cost_usd = Some(0.000_02);
+        let mut stt = test_entry("2026-09-02T10:00:00Z", 10, 4.0, "kitty");
+        stt.stt_cost_usd = Some(0.000_03);
+        let mut unknown = test_entry("2026-09-03T00:00:00Z", 10, 4.0, "kitty");
+        unknown.stt_unpriced = true;
+
+        let days = summary(
+            &[llm, stt, unknown],
+            now_at("2026-09-03T12:00:00Z"),
+            &cfg(),
+            3,
+        )
+        .series;
+        for cost in [&days[0].stt_cost, &days[0].llm_cost] {
+            assert_eq!(cost.cost_usd, Some(0.0));
+            assert!(!cost.incomplete);
+        }
+        assert!((days[1].stt_cost.cost_usd.unwrap() - 0.000_03).abs() < 1e-12);
+        assert!(!days[1].stt_cost.incomplete);
+        assert!((days[1].llm_cost.cost_usd.unwrap() - 0.000_02).abs() < 1e-12);
+        assert!(days[1].llm_cost.incomplete);
+        assert_eq!(days[2].stt_cost.cost_usd, None);
+        assert!(days[2].stt_cost.incomplete);
+        assert_eq!(days[2].llm_cost.cost_usd, Some(0.0));
+        assert!(!days[2].llm_cost.incomplete);
     }
 
     #[test]
@@ -961,8 +1016,14 @@ mod tests {
             "audio_secs",
             "avg_wpm",
             "avg_latency_ms",
+            "stt_cost",
+            "llm_cost",
         ] {
             assert!(day.get(key).is_some(), "missing field series.{key}: {day}");
+        }
+        for key in ["stt_cost", "llm_cost"] {
+            assert_eq!(day[key]["cost_usd"], 0.0);
+            assert_eq!(day[key]["incomplete"], false);
         }
         let app = &value["by_app"][0];
         for key in ["app", "entries", "words", "avg_wpm"] {

@@ -238,6 +238,11 @@ export interface StatsLatency {
   total: number;
 }
 
+export interface DailyCost {
+  cost_usd: number | null;
+  incomplete: boolean;
+}
+
 export interface DayPoint {
   day: string;
   entries: number;
@@ -245,6 +250,8 @@ export interface DayPoint {
   audio_secs: number;
   avg_wpm?: number | null;
   avg_latency_ms: number;
+  stt_cost: DailyCost;
+  llm_cost: DailyCost;
 }
 
 export interface AppRow {

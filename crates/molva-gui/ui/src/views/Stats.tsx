@@ -16,6 +16,7 @@ import { useI18n } from "../i18n";
 import type { ViewProps } from "../App";
 import type { StatsSummary, SttCost, Tokens } from "../types";
 import WordsChart from "../components/WordsChart";
+import CostChart from "../components/CostChart";
 
 const RANGES = [7, 30, 90];
 
@@ -168,7 +169,7 @@ export default function Stats({ onError }: ViewProps) {
       <section className="card">
         <div className="row spread">
           <h2>{t("stats.chart")}</h2>
-          <div className="row" role="group" aria-label={t("stats.chart")}>
+          <div className="row" role="group" aria-label={t("stats.range")}>
             {RANGES.map((days) => (
               <button
                 key={days}
@@ -184,6 +185,9 @@ export default function Stats({ onError }: ViewProps) {
         </div>
         <WordsChart series={summary.series} />
       </section>
+
+      <CostChart series={summary.series} kind="stt_cost" />
+      <CostChart series={summary.series} kind="llm_cost" />
 
       <section className="card">
         <h2>{t("stats.latency")}</h2>

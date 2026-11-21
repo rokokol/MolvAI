@@ -25,7 +25,8 @@ import {
 import type { DayPoint, FileResult } from "./types";
 
 function day(date: string, words: number, avg_wpm: number | null): DayPoint {
-  return { day: date, entries: 1, words, audio_secs: 10, avg_wpm, avg_latency_ms: 500 };
+  const free = { cost_usd: 0, incomplete: false };
+  return { day: date, entries: 1, words, audio_secs: 10, avg_wpm, avg_latency_ms: 500, stt_cost: free, llm_cost: free };
 }
 
 describe("formatWpm", () => {
