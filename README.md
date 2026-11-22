@@ -121,6 +121,8 @@ The GUI starts the daemon when a recording or a file needs it and nobody answers
 
 File transcription is an IPC request (`file.transcribe`), not a second process. The daemon reads the file with the recognizer it already holds: the same model, language, dictionary and rules as dictation. `molva transcribe` remains only the standalone CLI entry for offline batched use: it loads its own engine, talks to no daemon and fits a script or CI
 
+File transcripts with timecodes show the text after post-processing. If an edit removes a clear boundary between segments, the transcript shows the edited text over the combined interval
+
 A file job does not move the state machine. It sets `job = "file"` while the state stays `idle`, and `molva status` and the panel read that as "transcribing a file". A recording during a file is accepted and queued behind it, then processed right after, because the audio cannot be repeated
 
 A file is refused with `busy` while a phrase records or processes. The CLI turns that answer into exit code 4, and `molva transcribe` does not go through the daemon at all. The GUI keeps asking for up to half an hour, so a person who happens to dictate does not lose the file, and the MCP server waits thirty seconds before it reports the refusal. One recognizer transcribes one file at a time, so a second file waits for the first

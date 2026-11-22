@@ -102,6 +102,8 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ### Fixed
 
+- A file transcript with timecodes showed the text before the dictionary, the rules and the model: the segments came from the recognizer untouched while only the whole text was post-processed, so the Files tab looked as if post-processing never ran. The segments now carry the processed text, and a rewritten passage whose boundary no longer exists keeps the combined interval rather than a guessed timecode
+
 - `molva doctor` names the cloud recognizer instead of the weights: the address, the model, and the way out when the key or the consent is missing. A key that lives in the environment is named rather than reported missing, because the daemon reads its own environment and not the shell's
 
 - A batch export of two files with the same name writes both results instead of overwriting the first

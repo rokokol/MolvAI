@@ -523,7 +523,7 @@ impl Pipeline {
             text_raw: Some(text_raw),
             text_final: None,
             audio_path: Some(label.clone()),
-            segments: transcript.segments.clone(),
+            segments: Vec::new(),
         };
 
         let text = if request.no_llm {
@@ -534,6 +534,22 @@ impl Pipeline {
         entry.words = word_count(&text);
         entry.wpm = Entry::wpm_for(entry.words, audio_secs);
         entry.text_final = Some(text.clone());
+        let segments = if text.trim().is_empty() {
+            Vec::new()
+        } else if entry.llm_used {
+            align_file_segments(transcript.segments, &text)
+        } else {
+            transcript
+                .segments
+                .into_iter()
+                .filter_map(|mut segment| {
+                    let (corrected, _) = self.dictionary.apply(&segment.text);
+                    segment.text = self.rules.apply(&corrected, &lang);
+                    (!segment.text.trim().is_empty()).then_some(segment)
+                })
+                .collect()
+        };
+        entry.segments.clone_from(&segments);
         entry.latency_ms.total = millis_since(started, self.clock.instant());
 
         // The journal is an auxiliary function here as in the CLI: its failure must not cost the
@@ -547,7 +563,7 @@ impl Pipeline {
         Ok(FileResult {
             file: label,
             text,
-            segments: transcript.segments,
+            segments,
             audio_secs,
             latency_ms: entry.latency_ms.total,
             language,
@@ -1264,6 +1280,90 @@ impl Pipeline {
         entry.llm_unpriced_calls = if local { 0 } else { spend.unpriced };
         entry.local_llm = local;
     }
+}
+
+fn timed_words(text: &str) -> impl Iterator<Item = (usize, String)> + '_ {
+    text.split_whitespace().map(move |word| {
+        let offset = word.as_ptr() as usize - text.as_ptr() as usize;
+        let key = word
+            .trim_matches(|c: char| !c.is_alphanumeric())
+            .to_lowercase();
+        (offset, key)
+    })
+}
+
+fn align_file_segments(segments: Vec<Segment>, text: &str) -> Vec<Segment> {
+    if segments.is_empty() || text.trim().is_empty() {
+        return Vec::new();
+    }
+    if segments
+        .iter()
+        .flat_map(|s| s.text.split_whitespace())
+        .eq(text.split_whitespace())
+    {
+        return segments;
+    }
+
+    let words: Vec<_> = timed_words(text).collect();
+    let source: Vec<_> = segments.iter().flat_map(|s| timed_words(&s.text)).collect();
+    let same_words = source
+        .iter()
+        .map(|(_, key)| key)
+        .eq(words.iter().map(|(_, key)| key));
+    let mut pairs = std::collections::HashMap::new();
+    if !same_words {
+        for (index, pair) in words.windows(2).enumerate() {
+            let key = (pair[0].1.as_str(), pair[1].1.as_str());
+            if !key.0.is_empty() && !key.1.is_empty() {
+                pairs
+                    .entry(key)
+                    .and_modify(|offset| *offset = None)
+                    .or_insert(Some(index + 1));
+            }
+        }
+        let mut seen = std::collections::HashSet::new();
+        for pair in source.windows(2) {
+            let key = (pair[0].1.as_str(), pair[1].1.as_str());
+            if !seen.insert(key) {
+                pairs.remove(&key);
+            }
+        }
+    }
+
+    let mut result = Vec::new();
+    let mut source_index = 0;
+    let mut start = 0;
+    let mut start_ms = segments[0].start_ms;
+    for (i, segment) in segments.iter().enumerate() {
+        let count = segment.text.split_whitespace().count();
+        source_index += count;
+        let end = if i + 1 == segments.len() {
+            Some(text.len())
+        } else if count == 0 || source_index == source.len() {
+            None
+        } else if same_words {
+            Some(words[source_index].0)
+        } else {
+            let key = (
+                source[source_index - 1].1.as_str(),
+                source[source_index].1.as_str(),
+            );
+            pairs.get(&key).and_then(|index| index.map(|i| words[i].0))
+        };
+        // An uncertain boundary stays inside one interval so text keeps its link to the audio
+        if let Some(end) = end.filter(|end| *end > start) {
+            result.push(Segment {
+                start_ms,
+                end_ms: segment.end_ms,
+                text: text[start..end].trim().to_string(),
+            });
+            start = end;
+            if let Some(next) = segments.get(i + 1) {
+                start_ms = next.start_ms;
+            }
+        }
+    }
+    result
 }
 
 #[cfg(test)]
@@ -2493,6 +2593,78 @@ mod tests {
             chunked: true,
             job_id: None,
         }
+    }
+
+    #[test]
+    fn rewritten_file_text_keeps_the_combined_interval_when_a_boundary_is_lost() {
+        let segments = vec![
+            Segment {
+                start_ms: 100,
+                end_ms: 800,
+                text: "доброе утро".into(),
+            },
+            Segment {
+                start_ms: 900,
+                end_ms: 1700,
+                text: "как дела".into(),
+            },
+        ];
+        let translated = "Good morning. How are you?";
+        assert_eq!(
+            align_file_segments(segments, translated),
+            [Segment {
+                start_ms: 100,
+                end_ms: 1700,
+                text: translated.into()
+            }],
+        );
+    }
+
+    #[test]
+    fn file_timecodes_show_the_post_processed_text() {
+        let mut config = with_llm();
+        set_min_words(&mut config, 0);
+        let llm = Arc::new(FakeLlm::echoing(
+            "Meet Alice tomorrow. Bring the blue copy.",
+        ));
+        let mut harness = build("", Some(llm), config);
+        *harness.stt.lock().unwrap() = FakeStt::with_responses(vec![Ok(Transcript {
+            text: "meet alice tomorrow bring the copy".into(),
+            segments: vec![
+                Segment {
+                    start_ms: 200,
+                    end_ms: 900,
+                    text: "meet alice tomorrow".into(),
+                },
+                Segment {
+                    start_ms: 1200,
+                    end_ms: 1900,
+                    text: "bring the copy".into(),
+                },
+            ],
+            ..Transcript::default()
+        })]);
+        let request = FileTranscriptionRequest {
+            chunked: false,
+            no_llm: false,
+            ..chunked_file()
+        };
+        let result = harness
+            .pipeline
+            .transcribe_audio("file.wav".into(), audio(2.0), &request)
+            .unwrap();
+        assert_eq!(result.segments[0].text, "Meet Alice tomorrow.");
+        assert_eq!(result.segments[1].text, "Bring the blue copy.");
+        assert_eq!(
+            result
+                .segments
+                .iter()
+                .map(|s| (s.start_ms, s.end_ms))
+                .collect::<Vec<_>>(),
+            [(200, 900), (1200, 1900)]
+        );
+        let journal = harness.journal.lock().unwrap();
+        assert_eq!(journal.entries[0].segments, result.segments);
     }
 
     #[test]
