@@ -1748,7 +1748,7 @@ SOFTWARE.
 
 These crates are distributed under this license:
 
-- [form_urlencoded 1.2.2](https://github.com/servo/rust-url)
+- [form_urlencoded 1.2.3](https://github.com/servo/rust-url)
 
 ```
 Copyright (c) 2013-2016 The rust-url developers
@@ -1785,7 +1785,7 @@ These crates are distributed under this license:
 
 - [idna 1.1.0](https://github.com/servo/rust-url/)
 - [percent-encoding 2.3.2](https://github.com/servo/rust-url/)
-- [url 2.5.8](https://github.com/servo/rust-url)
+- [url 2.5.9](https://github.com/servo/rust-url)
 
 ```
 Copyright (c) 2013-2025 The rust-url developers
@@ -7291,9 +7291,9 @@ SOFTWARE.
 
 These crates are distributed under this license:
 
-- [molva 0.4.0](https://github.com/rokokol/MolvAI)
-- [molva-core 0.4.0](https://github.com/rokokol/MolvAI)
-- [molva-gui 0.4.0](https://github.com/rokokol/MolvAI)
+- [molva 0.5.0](https://github.com/rokokol/MolvAI)
+- [molva-core 0.5.0](https://github.com/rokokol/MolvAI)
+- [molva-gui 0.5.0](https://github.com/rokokol/MolvAI)
 - [block2 0.6.2](https://github.com/madsmtm/objc2)
 - [brotli-decompressor 6.0.1](https://github.com/dropbox/rust-brotli-decompressor)
 - [dasp_sample 0.11.0](https://github.com/rustaudio/sample.git)

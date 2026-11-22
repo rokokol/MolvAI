@@ -3092,7 +3092,7 @@ dependencies = [
 
 [[package]]
 name = "molva"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -3112,7 +3112,7 @@ dependencies = [
 
 [[package]]
 name = "molva-core"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "arboard",
  "chacha20poly1305",
@@ -3145,7 +3145,7 @@ dependencies = [
 
 [[package]]
 name = "molva-gui"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "directories",
  "interprocess",

@@ -6,6 +6,8 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ## Unreleased
 
+## [0.5.0] - 2026-11-22
+
 ### Added
 
 - The Files tab names the model that post-processed a transcript beside its recognizer: the transcript of a file carries `llm_provider` and `llm_model` when the model ran, and the header shows them as `LLM · ollama / qwen3.5:4b`. A file that went through the rules alone shows no such badge
