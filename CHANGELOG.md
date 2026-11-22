@@ -28,6 +28,10 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 - Journal timestamps come from `jiff` instead of `chrono`. The format stays RFC 3339 in UTC, and a line written by an older build opens unchanged. A fractional part that ends in zero digits now drops them, so `…682721110Z` reads `…68272111Z`, and both name the same instant. `chrono` leaves the build, and its unmaintained advisory leaves the dependency gate
 
+### Fixed
+
+- A file transcript with timecodes showed the text before the dictionary, the rules and the model: the segments came from the recognizer untouched while only the whole text was post-processed, so the Files tab looked as if post-processing never ran. The segments now carry the processed text, and a rewritten passage whose boundary no longer exists keeps the combined interval rather than a guessed timecode
+
 ## [0.4.0] - 2026-11-17
 
 ### Added
@@ -109,8 +113,6 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 - A failed command prints its whole cause chain, so a refused journal names the key it is missing instead of only the path
 
 ### Fixed
-
-- A file transcript with timecodes showed the text before the dictionary, the rules and the model: the segments came from the recognizer untouched while only the whole text was post-processed, so the Files tab looked as if post-processing never ran. The segments now carry the processed text, and a rewritten passage whose boundary no longer exists keeps the combined interval rather than a guessed timecode
 
 - `molva doctor` names the cloud recognizer instead of the weights: the address, the model, and the way out when the key or the consent is missing. A key that lives in the environment is named rather than reported missing, because the daemon reads its own environment and not the shell's
 
