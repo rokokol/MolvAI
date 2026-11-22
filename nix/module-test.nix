@@ -96,6 +96,9 @@ let
       toString (config.xdg.configFile."hypr/molvai.lua".source or "")
     );
     settings = config.programs.molvai.settings;
+    # The rendered TOML, with its store path context kept: the check reads the file itself,
+    # because what a managed home runs is the file and not this attrs
+    configFile = config.xdg.configFile."molva/config.toml".source or "";
   };
 
   expectAutostart =
@@ -167,6 +170,12 @@ in
       guiAutostart.enable = true;
     };
   };
+  typingOff = summary (eval {
+    programs.molvai = {
+      enable = true;
+      settings.stt.streaming_inject = false;
+    };
+  });
   whisper = summary (eval {
     programs.molvai = {
       enable = true;

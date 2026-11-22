@@ -83,7 +83,6 @@ let
       inherit (cfg) model;
       model_path = "${weights}";
       inherit (cfg) language;
-      streaming_inject = false;
       transcribe_cli = cli;
       transcribe_backend = cfg.transcribeBackend;
     };

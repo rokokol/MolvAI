@@ -22,6 +22,8 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ### Changed
 
+- The Home Manager module keeps the core default of `stt.streaming_inject` and no longer renders it off, so a managed home types the ready chunks while the person speaks like any other install. A managed home that wants the old behaviour sets `programs.molvai.settings.stt.streaming_inject = false`, and the flake check now reads the rendered file: it fails when the module forces the value again
+
 - The live typing of the chunks stays with the styles that call no model: the answer of the model would repeat what the field already holds, so Cleanup and Formal deliver the whole phrase after the release, as before, while «Как сказано» and the custom styles without a model type it as it is recognized
 
 - Journal timestamps come from `jiff` instead of `chrono`. The format stays RFC 3339 in UTC, and a line written by an older build opens unchanged. A fractional part that ends in zero digits now drops them, so `…682721110Z` reads `…68272111Z`, and both name the same instant. `chrono` leaves the build, and its unmaintained advisory leaves the dependency gate

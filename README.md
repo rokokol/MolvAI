@@ -179,7 +179,7 @@ The weights are not part of the repository, and the project license does not cov
 
 A ready chunk goes into the active field while the person still speaks, with the dictionary and the rules applied to that chunk alone. The tail of the phrase follows after the key release
 
-A style that calls the model types nothing into the field: the answer of the model would repeat what is already there, so Cleanup and Formal deliver the whole phrase after the release, as `verbatim` does. The Home Manager module renders `stt.streaming_inject = false`, and `stt.streaming_inject = true` in the settings turns the typing back on
+A style that calls the model types nothing into the field: the answer of the model would repeat what is already there, so Cleanup and Formal deliver the whole phrase after the release, as `verbatim` does. The Home Manager module keeps the shipped value: `settings.stt.streaming_inject = false` in the module options turns the typing off in a managed home
 
 `stt.streaming_preview` keeps the draft in the panel, `stt.chunked = false` turns chunk recognition off, and `stt.chunk_pause_ms` changes the pause that cuts a chunk
 

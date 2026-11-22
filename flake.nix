@@ -386,6 +386,12 @@
               want '.lua.models | index("gigaam-v3-e2e-rnnt-q4_k_m")' "the default model is not fetched"
               want '.lua.configSource | test("molvai-config.toml$")' "no generated settings file"
               want '.whisper.model == "small" and .whisper.settings.stt.chunk_pause_ms == 400' "settings do not merge"
+              # The module keeps no opinion on the live typing of the chunks: the core default
+              # decides, and a managed home that wants it off says so through settings
+              cfg=$(jq -r .lua.configFile "$dumpPath")
+              grep -q '^streaming_inject' "$cfg" && { echo "module wiring: the module forces the live typing"; exit 1; }
+              typing=$(jq -r .typingOff.configFile "$dumpPath")
+              grep -q '^streaming_inject = false' "$typing" || { echo "module wiring: settings.stt.streaming_inject is dropped"; exit 1; }
               want '.journal.settings.journal.encrypt == true' "the journal encryption setting is dropped"
               want '.journal.settings.mcp.enabled == true' "the MCP switch is dropped"
               want '.journal.settings.gui.start_in_tray == true' "the tray setting is dropped"
