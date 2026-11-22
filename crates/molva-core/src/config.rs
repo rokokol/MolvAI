@@ -2258,7 +2258,7 @@ mod tests {
         let stt = Config::default().stt;
         assert!(stt.chunked, "streaming processing is off by default");
         assert!(stt.streaming_preview, "the draft is off by default");
-        assert!(stt.streaming_inject, "live typing is off by default");
+        assert!(stt.streaming_inject, "live typing is on by default");
         assert_eq!(stt.chunk_pause_ms, 700);
         assert!(stt.transcribe_cli.is_empty());
         assert_eq!(stt.transcribe_backend, "auto");
