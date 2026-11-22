@@ -101,6 +101,8 @@ export interface FileResult {
   latency_ms: number;
   stt_provider?: string | null;
   stt_model?: string | null;
+  llm_provider?: string | null;
+  llm_model?: string | null;
   language?: string | null;
 }
 

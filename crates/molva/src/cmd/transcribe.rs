@@ -535,6 +535,8 @@ pub(crate) fn transcribe_jobs_as(
             latency_ms: total_ms,
             stt_provider: engine.provider_id().map(str::to_owned),
             stt_model: Some(model_name.clone()),
+            llm_provider: processed.llm.as_ref().map(|trace| trace.provider.clone()),
+            llm_model: processed.llm.as_ref().map(|trace| trace.model.clone()),
             language,
         });
     }
@@ -1016,6 +1018,8 @@ mod tests {
             latency_ms: 1,
             stt_provider: None,
             stt_model: None,
+            llm_provider: None,
+            llm_model: None,
             language: None,
         };
         let results = vec![
@@ -1416,6 +1420,8 @@ mod tests {
             latency_ms: 10,
             stt_provider: None,
             stt_model: None,
+            llm_provider: None,
+            llm_model: None,
             language: Some("ru".into()),
         };
         let text = render_text(&result, true);
@@ -1436,6 +1442,8 @@ mod tests {
             latency_ms: 1,
             stt_provider: None,
             stt_model: None,
+            llm_provider: None,
+            llm_model: None,
             language: None,
         };
         assert_eq!(render_text(&result, true), "[00:00.000 → 00:01.500] привет");
@@ -1451,6 +1459,8 @@ mod tests {
             latency_ms: 1,
             stt_provider: None,
             stt_model: None,
+            llm_provider: None,
+            llm_model: None,
             language: None,
         };
         let text = render_all(&[make("a.wav"), make("b.wav")], false);
@@ -1468,6 +1478,8 @@ mod tests {
             latency_ms: 7,
             stt_provider: None,
             stt_model: None,
+            llm_provider: None,
+            llm_model: None,
             language: Some("ru".into()),
         };
         let json = serde_json::to_string(&[result]).unwrap();
@@ -1499,6 +1511,8 @@ mod tests {
                     latency_ms: 1,
                     stt_provider: None,
                     stt_model: None,
+                    llm_provider: None,
+                    llm_model: None,
                     language: None,
                 },
                 FileResult {
@@ -1509,6 +1523,8 @@ mod tests {
                     latency_ms: 1,
                     stt_provider: None,
                     stt_model: None,
+                    llm_provider: None,
+                    llm_model: None,
                     language: None,
                 },
             ],
@@ -1551,6 +1567,8 @@ mod tests {
             latency_ms: 1,
             stt_provider: None,
             stt_model: None,
+            llm_provider: None,
+            llm_model: None,
             language: None,
         };
         let names = out_file_names(
@@ -1573,6 +1591,8 @@ mod tests {
                 latency_ms: 1,
                 stt_provider: None,
                 stt_model: None,
+                llm_provider: None,
+                llm_model: None,
                 language: None,
             }],
             errors: vec![],
@@ -1613,6 +1633,8 @@ mod tests {
                 latency_ms: 1,
                 stt_provider: None,
                 stt_model: None,
+                llm_provider: None,
+                llm_model: None,
                 language: None,
             }],
             errors: vec![],

@@ -21,6 +21,11 @@ pub struct FileResult {
     pub stt_provider: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stt_model: Option<String>,
+    /// Provider of the post-processing model, absent when the model did not run
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub llm_provider: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub llm_model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
 }

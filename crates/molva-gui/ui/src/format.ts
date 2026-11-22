@@ -229,7 +229,8 @@ export function formatElapsed(ms: number | null | undefined): string {
   return hours > 0 ? `${hours}:${tail}` : tail;
 }
 
-export function sttLabel(provider?: string | null, model?: string | null): string {
+/** Provider and model of one service, as a badge shows them */
+export function providerModel(provider?: string | null, model?: string | null): string {
   return [provider, model].filter(Boolean).join(" / ");
 }
 

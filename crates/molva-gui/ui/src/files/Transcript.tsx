@@ -13,7 +13,13 @@
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { copyToClipboard } from "../api";
-import { formatElapsed, formatTimecode, renderFileResult, renderSegment, sttLabel } from "../format";
+import {
+  formatElapsed,
+  formatTimecode,
+  providerModel,
+  renderFileResult,
+  renderSegment,
+} from "../format";
 import { useI18n } from "../i18n";
 import type { FileResult, Segment } from "../types";
 import {
@@ -123,7 +129,12 @@ export default function Transcript({
         </span>
         {result.language && <span className="small muted">{result.language}</span>}
         {(result.stt_provider || result.stt_model) && (
-          <span className="badge">STT · {sttLabel(result.stt_provider, result.stt_model)}</span>
+          <span className="badge">
+            STT · {providerModel(result.stt_provider, result.stt_model)}
+          </span>
+        )}
+        {(result.llm_provider || result.llm_model) && (
+          <span className="badge">LLM · {providerModel(result.llm_provider, result.llm_model)}</span>
         )}
       </div>
 

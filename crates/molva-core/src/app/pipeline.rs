@@ -569,6 +569,8 @@ impl Pipeline {
             latency_ms: entry.latency_ms.total,
             stt_provider: entry.stt_provider,
             stt_model: Some(entry.stt_model),
+            llm_provider: entry.llm_provider,
+            llm_model: entry.llm_model,
             language,
         })
     }
@@ -2667,8 +2669,11 @@ mod tests {
                 .collect::<Vec<_>>(),
             [(200, 900), (1200, 1900)]
         );
+        assert_eq!(result.llm_provider.as_deref(), Some("fake"));
+        assert_eq!(result.llm_model.as_deref(), Some("qwen3.5:4b"));
         let journal = harness.journal.lock().unwrap();
         assert_eq!(journal.entries[0].segments, result.segments);
+        assert_eq!(journal.entries[0].llm_provider, result.llm_provider);
     }
 
     #[test]

@@ -2641,6 +2641,8 @@ mod tests {
                     latency_ms: 3,
                     stt_provider: None,
                     stt_model: None,
+                    llm_provider: None,
+                    llm_model: None,
                     language: None,
                 }],
                 errors: Vec::new(),

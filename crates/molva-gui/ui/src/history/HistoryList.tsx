@@ -16,7 +16,7 @@ import {
 } from "react";
 
 import { copyToClipboard } from "../api";
-import { entryTag, formatLatency, formatTimestamp, formatWpm, sttLabel } from "../format";
+import { entryTag, formatLatency, formatTimestamp, formatWpm, providerModel } from "../format";
 import { useI18n, type Lang } from "../i18n";
 import type { Entry } from "../types";
 import { DEFAULT_ESTIMATE, rowsWindow } from "./window";
@@ -254,12 +254,11 @@ export const HistoryRow = memo(function HistoryRow({
         </span>
         {source && <span className="badge">{t(source)}</span>}
         <span className="badge">
-          STT · {sttLabel(entry.stt_provider, entry.stt_model || entry.stt_engine)}
+          STT · {providerModel(entry.stt_provider, entry.stt_model || entry.stt_engine)}
         </span>
         {entry.llm_used && (
           <span className="badge">
-            LLM · {entry.llm_provider ?? "?"}
-            {entry.llm_model ? ` / ${entry.llm_model}` : ""}
+            LLM · {providerModel(entry.llm_provider, entry.llm_model)}
           </span>
         )}
       </div>

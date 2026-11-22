@@ -391,6 +391,8 @@ mod tests {
                 latency_ms: 12,
                 stt_provider: Some("groq".into()),
                 stt_model: Some("whisper-large-v3-turbo".into()),
+                llm_provider: Some("ollama".into()),
+                llm_model: Some("qwen3.5:4b".into()),
                 language: Some("ru".into()),
             }],
             errors: vec![FileFailure {
@@ -402,6 +404,7 @@ mod tests {
         assert_eq!(json["results"][0]["text"], "привет");
         assert_eq!(json["errors"][0]["file"], "/tmp/b.wav");
         assert_eq!(json["errors"][0]["reason"], "unknown format");
+        assert_eq!(json["results"][0]["llm_provider"], "ollama");
         let back: FileReport = serde_json::from_value(json).unwrap();
         assert_eq!(back, report);
         assert!(!report.ok());

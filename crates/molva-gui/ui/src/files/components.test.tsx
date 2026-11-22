@@ -51,6 +51,32 @@ describe("Transcript", () => {
     expect(html).toContain("STT · groq / whisper-large-v3-turbo");
   });
 
+  it("shows the post-processing model beside the recognizer when it ran", () => {
+    const html = renderToStaticMarkup(wrap(
+      <Transcript
+        result={{ ...result, llm_provider: "ollama", llm_model: "qwen3.5:4b" }}
+        timecodes
+        currentMs={null}
+        onSeek={() => undefined}
+        onOpen={() => undefined}
+      />,
+    ));
+    expect(html).toContain("LLM · ollama / qwen3.5:4b");
+  });
+
+  it("adds no model badge when no model ran", () => {
+    const html = renderToStaticMarkup(wrap(
+      <Transcript
+        result={result}
+        timecodes
+        currentMs={null}
+        onSeek={() => undefined}
+        onOpen={() => undefined}
+      />,
+    ));
+    expect(html).not.toContain("LLM ·");
+  });
+
   it("shows every segment with its start, end and text", () => {
     const html = renderToStaticMarkup(
       wrap(

@@ -8,6 +8,8 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ### Added
 
+- The Files tab names the model that post-processed a transcript beside its recognizer: the transcript of a file carries `llm_provider` and `llm_model` when the model ran, and the header shows them as `LLM · ollama / qwen3.5:4b`. A file that went through the rules alone shows no such badge
+
 - History and the Files tab name the recognizer of a transcript: `stt_provider` in the journal holds the provider of a remote recognizer and `stt_model` the model the engine actually ran, so the badge reads `groq / whisper-large-v3-turbo` instead of `remote-openai`. A line written by an older build carries no provider and opens unchanged
 
 - Two spend charts in Statistics, one for recognition and one for the model, each on its own scale in US dollars over the 7, 30 or 90 days the words chart covers. A day whose provider named no price becomes a gap in the line of that service and leaves the other line whole, so an unpaid bill is never drawn as zero
