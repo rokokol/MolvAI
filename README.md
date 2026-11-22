@@ -177,9 +177,11 @@ The weights are not part of the repository, and the project license does not cov
 
 ## Real-time dictation
 
-Live typing while you speak is disabled in this build. The phrase is recognized as chunks for the draft, but the text reaches the active field as one piece after the key release; the same whole phrase is what the model sees for post-processing. This removes the ordering and duplication problems that the per-chunk path showed
+A ready chunk goes into the active field while the person still speaks, with the dictionary and the rules applied to that chunk alone. The tail of the phrase follows after the key release
 
-`stt.streaming_preview` keeps the draft in the panel, `stt.chunked = false` turns chunk recognition off, and `stt.chunk_pause_ms` changes the pause that cuts a chunk. `stt.streaming_inject = false` is the shipped default; live chunk typing has its own roadmap item
+A style that calls the model types nothing into the field: the answer of the model would repeat what is already there, so Cleanup and Formal deliver the whole phrase after the release, as `verbatim` does. The Home Manager module renders `stt.streaming_inject = false`, and `stt.streaming_inject = true` in the settings turns the typing back on
+
+`stt.streaming_preview` keeps the draft in the panel, `stt.chunked = false` turns chunk recognition off, and `stt.chunk_pause_ms` changes the pause that cuts a chunk
 
 ## Hotkeys
 
