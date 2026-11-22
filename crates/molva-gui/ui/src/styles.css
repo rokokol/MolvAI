@@ -89,12 +89,8 @@
   --signal-lit: var(--ddlc-accent);
   --signal-peak: var(--ddlc-accent-live);
 
-  /* The kit's lattice, as a mask rather than a picture: a white-on-nothing tile that a surface
-     paints over a role colour, so the pixels of the site cost no canvas and no frame loop. The
-     dots are the dither of the site's cloud, and the grain is a one-bit noise that breaks their
-     regularity. A tile is rasterized once and then tiled, so a repaint costs an image blit */
+  /* A tiled dot mask gives the signal bars texture without a canvas or a frame loop */
   --dither-dots: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Cpath fill='%23fff' d='M0 0h2v2h-2zM4 1h2v2h-2zM1 4h2v2h-2zM5 5h2v2h-2zM9 0h2v2h-2zM12 2h2v2h-2zM10 6h2v2h-2zM14 8h2v2h-2zM0 9h2v2h-2zM4 11h2v2h-2zM8 12h2v2h-2zM12 13h2v2h-2zM2 14h2v2h-2zM6 8h2v2h-2zM11 10h2v2h-2zM15 15h2v2h-2z'/%3E%3C/svg%3E");
-  --dither-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='1' stitchTiles='stitch'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='discrete' tableValues='1 0 0 1 0'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='64' height='64' filter='url(%23g)'/%3E%3C/svg%3E");
 }
 
 *,
@@ -1992,8 +1988,6 @@ button.segment-copy {
   }
 }
 
-/* ---------- the window's mark and its ambient motion ---------- */
-
 /* The mark of the site: the pixel logo on a plate of the kit's ink, in a frame and a hard
    shadow. It sits in the brand row, in the flow of the rail, and its own ground keeps it
    readable on either theme */
@@ -2011,87 +2005,6 @@ button.segment-copy {
   width: var(--step-big);
   height: var(--step-big);
   image-rendering: pixelated;
-}
-
-/* Two layers carry the ambient grain: a field of dithered dots and a one-bit noise over them.
-   Neither is drawn by script and neither animates per frame: the tiles are rasterized once, and
-   the only motion left is a stepped drift of the masks, a few frames a second */
-.ambient-strip,
-.ambient-trail {
-  position: fixed;
-  display: block;
-  pointer-events: none;
-  image-rendering: pixelated;
-}
-
-/* The ground of the strip is the page's, so the grain has something to sit on that a theme
-   change repaints without a second palette */
-.ambient-strip {
-  inset: 0 0 auto 0;
-  z-index: 0;
-  width: 100%;
-  height: 6rem;
-  background: var(--ddlc-ground);
-  mask-image: linear-gradient(180deg, black 0%, black 26%, transparent 84%);
-  -webkit-mask-image: linear-gradient(180deg, black 0%, black 26%, transparent 84%);
-}
-
-.ambient-strip::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: var(--ddlc-accent);
-  opacity: 0.34;
-  mask-image: var(--dither-dots);
-  mask-size: 10px 10px;
-  mask-repeat: repeat;
-  animation: drift-dots 24s steps(8, end) infinite alternate;
-}
-
-.ambient-strip::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: var(--ddlc-accent-live);
-  opacity: 0.16;
-  mask-image: var(--dither-grain);
-  mask-size: 24px 24px;
-  mask-repeat: repeat;
-  animation: drift-grain 33s steps(6, end) infinite alternate;
-}
-
-/* The drift steps each mask by a few pixels in its own direction: the grain shifts, the page
-   does not, and eight steps over twenty-four seconds are eight repaints of one band */
-@keyframes drift-dots {
-  from { mask-position: 0 0; }
-  to { mask-position: 6px 2px; }
-}
-
-@keyframes drift-grain {
-  from { mask-position: 0 0; }
-  to { mask-position: -8px 3px; }
-}
-
-/* The page itself takes the finest grain of all, under every card: a band alone would read as a
-   banner, while the dither under the whole window is the ground the site is printed on */
-.layout::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  background: var(--ddlc-accent);
-  opacity: 0.07;
-  mask-image: var(--dither-dots);
-  mask-size: 6px 6px;
-  mask-repeat: repeat;
-  pointer-events: none;
-}
-
-.ambient-trail {
-  inset: 0;
-  z-index: 15;
-  width: 100%;
-  height: 100%;
 }
 
 /* ---------- a narrow window and the reader who asks for less motion ---------- */

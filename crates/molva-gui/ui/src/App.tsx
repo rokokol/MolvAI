@@ -238,9 +238,6 @@ export default function App() {
           must not unmount their listeners or their state */}
       <FilesProvider onError={setError}>
         <HistoryProvider onError={setError}>
-          {/* The ambient strip lies behind the page and takes no pointer, so nothing stands
-              between a click and a control */}
-          <div className="ambient-strip" aria-hidden="true" />
           <div className="layout">
             <a className="skip-link" href="#main">
               {t("nav.label")}
