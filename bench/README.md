@@ -82,3 +82,18 @@ peak RAM 252 MiB  peak VRAM 0 MiB
 The cloud model decides the post-processing time, so it is not a constant. The CPU-only
 GigaAM build uses no VRAM; the field is `0 MiB` because no compute application from this process tree held a GPU
 allocation; a machine without `nvidia-smi` gets `n/a` instead.
+
+## The window
+
+The window costs more than the daemon, so it is measured on its own: a headless sway session with the GLES2 renderer, the package built from the tree, and the counters read from `/proc` for the three processes of the window — the application, its web process and its network process. The view under measurement is the settings page of a first run, and the tabs are pressed in the order the rail lists them
+
+```text
+at rest on one view          0.53 % and 0.57 % of one core, two runs of 60 s
+one pass over the six tabs   54 CPU ticks
+peak resident memory         492 MiB
+video memory                 2 MiB of framebuffer
+```
+
+The same window still drawing the two drifting grain layers cost 1.03 % and 1.07 % of one core at rest and took 84 CPU ticks for the same pass, so the continuous repaint is what separates the two builds. Two passes over the tabs leave the resident memory of the window inside the same megabyte, because the history and the finished file jobs live above the tabs on purpose
+
+The resident figure comes from an empty journal. A full journal and a queue of media raise it, and the peak of that case is not taken. `nvidia-smi` reports the video memory of a graphics context but no utilisation, so the cost of one view is quoted as CPU time of the tree: a GPU share per process cannot be read from this driver
