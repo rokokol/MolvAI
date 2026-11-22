@@ -114,6 +114,10 @@ pub trait SttEngine: std::fmt::Debug + Send {
     fn id(&self) -> &str;
     /// Model name for the journal, for example `small`
     fn model_name(&self) -> &str;
+
+    fn provider_id(&self) -> Option<&str> {
+        None
+    }
     /// Recognize mono 16 kHz audio
     fn transcribe(
         &mut self,

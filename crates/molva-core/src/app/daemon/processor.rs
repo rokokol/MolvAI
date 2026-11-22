@@ -366,6 +366,7 @@ impl<I: TextInjector, J: Journal> Processor for SimpleProcessor<I, J> {
             wpm: Entry::wpm_for(words, audio_secs),
             style: self.config.style_for(style, app_hint),
             stt_engine,
+            stt_provider: self.stt.provider_id().map(str::to_owned),
             stt_model,
             llm_provider: None,
             llm_model: None,

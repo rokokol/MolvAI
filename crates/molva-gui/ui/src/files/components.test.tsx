@@ -38,6 +38,19 @@ const result: FileResult = {
 };
 
 describe("Transcript", () => {
+  it("shows the provider and model from the file result", () => {
+    const html = renderToStaticMarkup(wrap(
+      <Transcript
+        result={{ ...result, stt_provider: "groq", stt_model: "whisper-large-v3-turbo" }}
+        timecodes
+        currentMs={null}
+        onSeek={() => undefined}
+        onOpen={() => undefined}
+      />,
+    ));
+    expect(html).toContain("STT · groq / whisper-large-v3-turbo");
+  });
+
   it("shows every segment with its start, end and text", () => {
     const html = renderToStaticMarkup(
       wrap(

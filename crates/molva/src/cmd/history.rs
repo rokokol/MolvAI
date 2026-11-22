@@ -373,6 +373,7 @@ mod tests {
             wpm: Entry::wpm_for(10, 4.0),
             style: "cleanup".into(),
             stt_engine: "fake".into(),
+            stt_provider: None,
             stt_model: "fake".into(),
             llm_provider: None,
             llm_model: None,

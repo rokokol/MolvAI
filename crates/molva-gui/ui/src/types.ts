@@ -63,6 +63,7 @@ export interface Entry {
   wpm?: number | null;
   style: string;
   stt_engine: string;
+  stt_provider?: string | null;
   stt_model: string;
   llm_provider?: string | null;
   llm_model?: string | null;
@@ -98,6 +99,8 @@ export interface FileResult {
   segments?: Segment[];
   audio_secs: number;
   latency_ms: number;
+  stt_provider?: string | null;
+  stt_model?: string | null;
   language?: string | null;
 }
 

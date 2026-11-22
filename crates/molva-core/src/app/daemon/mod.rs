@@ -2639,6 +2639,8 @@ mod tests {
                     segments: Vec::new(),
                     audio_secs: 1.0,
                     latency_ms: 3,
+                    stt_provider: None,
+                    stt_model: None,
                     language: None,
                 }],
                 errors: Vec::new(),

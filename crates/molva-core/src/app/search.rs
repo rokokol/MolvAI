@@ -134,6 +134,7 @@ mod tests {
             wpm: None,
             style: "raw".into(),
             stt_engine: "transcribe-cpp".into(),
+            stt_provider: None,
             stt_model: "gigaam".into(),
             llm_provider: None,
             llm_model: None,

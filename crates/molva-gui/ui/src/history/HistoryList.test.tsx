@@ -65,6 +65,18 @@ function render(entries: Entry[], copiedId: string | null = null) {
 }
 
 describe("the list of phrases", () => {
+  it("shows the STT provider and model alongside the file source", () => {
+    const html = render([entry("a", "привет", {
+      source: "file",
+      stt_engine: "remote-openai",
+      stt_provider: "groq",
+      stt_model: "whisper-large-v3-turbo",
+    })]);
+    expect(html).toContain(translate("en", "history.files"));
+    expect(html).toContain("STT · groq / whisper-large-v3-turbo");
+    expect(html).not.toContain("remote-openai");
+  });
+
   it("shows the numbers, the text and the two actions of a phrase", () => {
     const html = render([entry("a", "привет мир")]);
 

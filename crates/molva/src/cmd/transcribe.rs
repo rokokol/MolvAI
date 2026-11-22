@@ -487,6 +487,7 @@ pub(crate) fn transcribe_jobs_as(
             wpm: Entry::wpm_for(words, audio_secs),
             style: style.to_string(),
             stt_engine: engine_id.clone(),
+            stt_provider: engine.provider_id().map(str::to_owned),
             stt_model: model_name.clone(),
             llm_provider: processed.llm.as_ref().map(|trace| trace.provider.clone()),
             llm_model: processed.llm.as_ref().map(|trace| trace.model.clone()),
@@ -532,6 +533,8 @@ pub(crate) fn transcribe_jobs_as(
             segments: transcript.segments,
             audio_secs,
             latency_ms: total_ms,
+            stt_provider: engine.provider_id().map(str::to_owned),
+            stt_model: Some(model_name.clone()),
             language,
         });
     }
@@ -1011,6 +1014,8 @@ mod tests {
             segments: vec![],
             audio_secs: 1.0,
             latency_ms: 1,
+            stt_provider: None,
+            stt_model: None,
             language: None,
         };
         let results = vec![
@@ -1409,6 +1414,8 @@ mod tests {
             ],
             audio_secs: 4.0,
             latency_ms: 10,
+            stt_provider: None,
+            stt_model: None,
             language: Some("ru".into()),
         };
         let text = render_text(&result, true);
@@ -1427,6 +1434,8 @@ mod tests {
             segments: vec![],
             audio_secs: 1.5,
             latency_ms: 1,
+            stt_provider: None,
+            stt_model: None,
             language: None,
         };
         assert_eq!(render_text(&result, true), "[00:00.000 → 00:01.500] привет");
@@ -1440,6 +1449,8 @@ mod tests {
             segments: vec![],
             audio_secs: 1.0,
             latency_ms: 1,
+            stt_provider: None,
+            stt_model: None,
             language: None,
         };
         let text = render_all(&[make("a.wav"), make("b.wav")], false);
@@ -1455,6 +1466,8 @@ mod tests {
             segments: vec![],
             audio_secs: 1.0,
             latency_ms: 7,
+            stt_provider: None,
+            stt_model: None,
             language: Some("ru".into()),
         };
         let json = serde_json::to_string(&[result]).unwrap();
@@ -1484,6 +1497,8 @@ mod tests {
                     segments: vec![],
                     audio_secs: 1.0,
                     latency_ms: 1,
+                    stt_provider: None,
+                    stt_model: None,
                     language: None,
                 },
                 FileResult {
@@ -1492,6 +1507,8 @@ mod tests {
                     segments: vec![],
                     audio_secs: 1.0,
                     latency_ms: 1,
+                    stt_provider: None,
+                    stt_model: None,
                     language: None,
                 },
             ],
@@ -1532,6 +1549,8 @@ mod tests {
             segments: vec![],
             audio_secs: 1.0,
             latency_ms: 1,
+            stt_provider: None,
+            stt_model: None,
             language: None,
         };
         let names = out_file_names(
@@ -1552,6 +1571,8 @@ mod tests {
                 segments: vec![],
                 audio_secs: 1.0,
                 latency_ms: 1,
+                stt_provider: None,
+                stt_model: None,
                 language: None,
             }],
             errors: vec![],
@@ -1590,6 +1611,8 @@ mod tests {
                 segments: vec![],
                 audio_secs: 1.0,
                 latency_ms: 1,
+                stt_provider: None,
+                stt_model: None,
                 language: None,
             }],
             errors: vec![],

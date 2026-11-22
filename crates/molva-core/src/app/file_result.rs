@@ -18,5 +18,9 @@ pub struct FileResult {
     pub audio_secs: f32,
     pub latency_ms: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stt_provider: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stt_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
 }

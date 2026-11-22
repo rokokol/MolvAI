@@ -967,6 +967,7 @@ pub(crate) fn test_entry(ts: &str, words: u32, audio_secs: f32, app: &str) -> En
         wpm: Entry::wpm_for(words, audio_secs),
         style: "cleanup".into(),
         stt_engine: "fake".into(),
+        stt_provider: None,
         stt_model: "fake".into(),
         llm_provider: None,
         llm_model: None,

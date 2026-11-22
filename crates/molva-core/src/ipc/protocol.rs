@@ -389,6 +389,8 @@ mod tests {
                 segments: Vec::new(),
                 audio_secs: 1.5,
                 latency_ms: 12,
+                stt_provider: Some("groq".into()),
+                stt_model: Some("whisper-large-v3-turbo".into()),
                 language: Some("ru".into()),
             }],
             errors: vec![FileFailure {

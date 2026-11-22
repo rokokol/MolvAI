@@ -8,6 +8,8 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 ### Added
 
+- History and the Files tab name the recognizer of a transcript: `stt_provider` in the journal holds the provider of a remote recognizer and `stt_model` the model the engine actually ran, so the badge reads `groq / whisper-large-v3-turbo` instead of `remote-openai`. A line written by an older build carries no provider and opens unchanged
+
 - Two spend charts in Statistics, one for recognition and one for the model, each on its own scale in US dollars over the 7, 30 or 90 days the words chart covers. A day whose provider named no price becomes a gap in the line of that service and leaves the other line whole, so an unpaid bill is never drawn as zero
 
 - Pauses in a file follow speech instead of loudness: Silero VAD marks the frames that hold a voice, so a lecture over music, hiss or a fan is still cut between utterances. The switch of "Cut at pauses" keeps its meaning, the weights are 884 KB and MIT and ride inside the binary, and the trailing background stays in the last chunk instead of becoming one more request. Live dictation keeps the level threshold

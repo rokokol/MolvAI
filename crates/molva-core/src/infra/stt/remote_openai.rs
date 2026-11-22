@@ -225,10 +225,19 @@ impl RemoteOpenAiEngine {
     /// The fields of `provider` and `keyterms` are that service's own: OpenAI and Groq take a
     /// `prompt` and no routing at all, and a request must not carry what the other side will reject
     fn is_openrouter_address(base_url: &str) -> bool {
-        reqwest::Url::parse(base_url)
-            .ok()
-            .and_then(|url| url.host_str().map(str::to_ascii_lowercase))
-            .is_some_and(|host| host == "openrouter.ai" || host.ends_with(".openrouter.ai"))
+        Self::provider_at(base_url) == "openrouter"
+    }
+
+    fn provider_at(base_url: &str) -> &'static str {
+        let url = reqwest::Url::parse(base_url).ok();
+        match url.as_ref().and_then(reqwest::Url::host_str) {
+            Some(host) if host == "openrouter.ai" || host.ends_with(".openrouter.ai") => {
+                "openrouter"
+            }
+            Some("api.openai.com") => "openai",
+            Some("api.groq.com") => "groq",
+            _ => "custom",
+        }
     }
 
     /// Whether the client gave up before this call reached the provider
@@ -598,8 +607,12 @@ impl SttEngine for RemoteOpenAiEngine {
         "remote-openai"
     }
 
-    fn model_name(&self) -> &'static str {
-        "remote-openai"
+    fn model_name(&self) -> &str {
+        &self.model
+    }
+
+    fn provider_id(&self) -> Option<&str> {
+        Some(Self::provider_at(&self.base_url))
     }
 
     /// One request per phrase
@@ -1139,10 +1152,24 @@ mod tests {
     }
 
     #[test]
+    fn the_engine_reports_the_provider_behind_its_api_address() {
+        for (url, provider) in [
+            ("https://api.groq.com/openai/v1", "groq"),
+            ("https://api.openai.com/v1", "openai"),
+            ("https://openrouter.ai/api/v1", "openrouter"),
+            ("https://api.groq.com.example.org/v1", "custom"),
+        ] {
+            let engine = engine_at(url, false, Duration::from_secs(1));
+            assert_eq!(engine.provider_id(), Some(provider));
+        }
+    }
+
+    #[test]
     fn the_engine_names_itself_for_the_journal_and_keeps_the_key_out_of_the_log() {
         let engine = engine_at("http://127.0.0.1:9/v1", false, Duration::from_secs(1));
         assert_eq!(engine.id(), "remote-openai");
-        assert_eq!(engine.model_name(), "remote-openai");
+        assert_eq!(engine.model_name(), "whisper-large-v3-turbo");
+        assert_eq!(engine.provider_id(), Some("custom"));
         let printed = format!("{engine:?}");
         assert!(!printed.contains("sk-test-0123456789abcdef"), "{printed}");
         assert!(printed.contains("sk-…cdef"), "{printed}");

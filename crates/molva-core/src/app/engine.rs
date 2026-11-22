@@ -433,7 +433,8 @@ mod tests {
 
             let mut engine = build_stt(&cfg, None).expect("the key is in the environment");
             assert_eq!(engine.id(), "remote-openai");
-            assert_eq!(engine.model_name(), "remote-openai");
+            assert_eq!(engine.model_name(), cfg.stt.remote.model);
+            assert_eq!(engine.provider_id(), Some("custom"));
             let refused = engine
                 .transcribe(&audio, &SttOptions::default())
                 .unwrap_err()

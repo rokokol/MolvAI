@@ -87,6 +87,8 @@ pub struct Entry {
     pub wpm: Option<f32>,
     pub style: String,
     pub stt_engine: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stt_provider: Option<String>,
     pub stt_model: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub llm_provider: Option<String>,
@@ -182,6 +184,7 @@ mod tests {
             wpm: Entry::wpm_for(10, 4.0),
             style: "cleanup".into(),
             stt_engine: "fake".into(),
+            stt_provider: None,
             stt_model: "fake".into(),
             llm_provider: None,
             llm_model: None,

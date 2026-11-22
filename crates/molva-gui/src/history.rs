@@ -129,6 +129,7 @@ mod tests {
             wpm: Entry::wpm_for(10, 4.0),
             style: "cleanup".into(),
             stt_engine: "whisper-cpp".into(),
+            stt_provider: None,
             stt_model: "small".into(),
             stt_cost_usd: None,
             stt_unpriced: false,

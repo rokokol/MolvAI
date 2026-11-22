@@ -499,6 +499,7 @@ impl Pipeline {
             wpm: None,
             style: style.id.clone(),
             stt_engine: self.stt.id().to_string(),
+            stt_provider: self.stt.provider_id().map(str::to_owned),
             stt_model: self.stt.model_name().to_string(),
             llm_provider: None,
             llm_model: None,
@@ -566,6 +567,8 @@ impl Pipeline {
             segments,
             audio_secs,
             latency_ms: entry.latency_ms.total,
+            stt_provider: entry.stt_provider,
+            stt_model: Some(entry.stt_model),
             language,
         })
     }
@@ -781,6 +784,7 @@ impl Pipeline {
             wpm: None,
             style: style.id.clone(),
             stt_engine: self.stt.id().to_string(),
+            stt_provider: self.stt.provider_id().map(str::to_owned),
             stt_model: self.stt.model_name().to_string(),
             llm_provider: None,
             llm_model: None,

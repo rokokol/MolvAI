@@ -229,6 +229,10 @@ export function formatElapsed(ms: number | null | undefined): string {
   return hours > 0 ? `${hours}:${tail}` : tail;
 }
 
+export function sttLabel(provider?: string | null, model?: string | null): string {
+  return [provider, model].filter(Boolean).join(" / ");
+}
+
 /** One segment as copied text: with its timecodes when they are asked for */
 export function renderSegment(segment: Segment, timecodes: boolean): string {
   const text = segment.text.trim();

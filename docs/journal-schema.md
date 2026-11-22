@@ -22,6 +22,7 @@ The reference for the type is `crates/molva-core/src/domain/entry.rs` (`Entry`)
 | `wpm` | float | no | words per minute; absent if `audio_secs < 1` |
 | `style` | string | yes | post-processing profile |
 | `stt_engine` | string | yes | recognition engine (`whisper-cpp`, `remote-openai`, `fake`) |
+| `stt_provider` | string | no | API provider of the remote recognizer, if recorded |
 | `stt_model` | string | yes | recognition model (`small`, `large-v3-turbo`) |
 | `llm_provider` | string | no | provider of the post-processing model (`ollama`, `openai`, …) |
 | `llm_model` | string | no | post-processing model |
