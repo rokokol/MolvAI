@@ -57,9 +57,7 @@ jobs:
       - name: nix fmt --ci (Nix here is as the formatter writes it)
         run: nix fmt -- --ci
 
-  # The derivations the user installs, built from the same lock file. A stale fixed-output hash of
-  # the UI dependency tree breaks nothing in the gate above, because the gate never asks nix to
-  # build the package: a dependency bump landed that way and the next rebuild of the system failed
+  # The gate does not build the Nix packages that users install
   packages:
     name: packages (Linux)
     runs-on: ubuntu-24.04
