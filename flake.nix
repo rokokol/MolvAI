@@ -73,8 +73,6 @@
             ];
           };
           version = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.version;
-          # npmDepsHash pins the UI lockfile; `just npm-deps` prints the value after a bump
-          npmDepsHash = "sha256-OmAXIPtjH9jVWLJA/IFm/ETvuGryxIfec3NKeOrmqLI=";
           molva =
             rustPlatform.buildRustPackage {
               pname = "molva";
@@ -155,7 +153,6 @@
             inherit
               source
               version
-              npmDepsHash
               rustPlatform
               ;
           };
