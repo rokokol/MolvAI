@@ -287,6 +287,30 @@ mark {
   mask-image: var(--alert-icon);
 }
 
+/* A sound mark for any control that turns the page's own audio on and off. The mark is a mask,
+   so it takes the colour of the button around it, and it is drawn on the same 8x8 grid as the
+   theme glyphs: a beamed note, and `data-state="off"` strikes that note through */
+.sound-mark {
+  --sound-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath fill='black' fill-rule='evenodd' d='M3 0h1v1H3zM4 0h3v1H4zM5 1h2v1H5zM3 1h1v6H3zM1 5h3v3H1z'/%3E%3C/svg%3E");
+  --sound-off-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath fill='black' fill-rule='evenodd' d='M3 0h1v1H3zM4 0h3v1H4zM5 1h2v1H5zM3 1h1v6H3zM1 5h3v3H1zM0 0h1v1H0zM1 1h1v1H1zM2 2h1v1H2zM6 6h1v1H6zM7 7h1v1H7z'/%3E%3C/svg%3E");
+  display: inline-block;
+  width: 1.15em;
+  height: 1.15em;
+  flex: none;
+  background: currentColor;
+  -webkit-mask: var(--sound-icon) center / contain no-repeat;
+  mask: var(--sound-icon) center / contain no-repeat;
+}
+
+.sound-mark[data-state="off"] {
+  -webkit-mask-image: var(--sound-off-icon);
+  mask-image: var(--sound-off-icon);
+}
+
+.sound-mark[data-state="unavailable"] {
+  opacity: .55;
+}
+
 /* Text for a screen reader only; the same utility a page uses for an icon-only control */
 .sr-only {
   position: absolute;
