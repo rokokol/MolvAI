@@ -10,6 +10,8 @@ The entries up to 0.1.9 were written after the fact, from the release tags and t
 
 - The window draws no continuous background motion: the two drifting grain layers and the page-wide dither are gone, together with the canvas component and its arithmetic that nothing mounted. In one headless session the three processes of the window fell from about 1 % of one core to about 0.5 % at rest, and one pass over the six tabs cost 54 CPU ticks instead of 84. Peak resident memory of the tree stays near 492 MiB, against 498 MiB before
 
+- `cookie` moves to 0.18.3, the release that closes RUSTSEC-2026-0594: a private nonce could repeat in a process that forks. Nothing else moves, because `tauri` asks for `^0.18`
+
 ## [0.5.0] - 2026-11-22
 
 ### Added
